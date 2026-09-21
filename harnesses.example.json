@@ -1,0 +1,87 @@
+{
+  "harness-a": {
+    "harness_id": "harness-a",
+    "harness_name": "示例 Harness A（ACP 类）",
+    "harness_version": "1.0",
+    "harness_type": "ide-agent",
+    "transports": ["http"],
+    "callback_url": "",
+    "wakeup_method": "acp",
+    "wakeup_url": "",
+    "wakeup_dir": "",
+    "acp_command": "node /path/to/acp-server",
+    "acp_cwd": "",
+    "api_base_url": "",
+    "api_message_path": "",
+    "api_outbox_dir": "",
+    "can_wake": false,
+    "waking_models": [],
+    "waking_protocols": [],
+    "bridge_dir": "",
+    "bridge_status": "",
+    "ai": {
+      "model_name": "example-model",
+      "provider": "example-provider",
+      "version": "",
+      "capabilities": ["coding", "file_ops"],
+      "max_tokens": 8192,
+      "can_see": false,
+      "can_code": true,
+      "can_browse": false,
+      "can_file_ops": true,
+      "description": "示例模型信息"
+    },
+    "tools": [
+      {
+        "name": "edit_file",
+        "description": "编辑文件",
+        "parameters": {},
+        "capability_tag": "file_ops"
+      },
+      {
+        "name": "run_code",
+        "description": "运行代码",
+        "parameters": {},
+        "capability_tag": "coding"
+      }
+    ],
+    "description": "示例：支持 ACP 协议、可由平台直接拉起子进程的外部 Agent",
+    "metadata": {}
+  },
+  "harness-b": {
+    "harness_id": "harness-b",
+    "harness_name": "示例 Harness B（文件轮询类）",
+    "harness_version": "1.0",
+    "harness_type": "desktop-agent",
+    "transports": ["http"],
+    "callback_url": "",
+    "wakeup_method": "file_poll",
+    "wakeup_url": "",
+    "wakeup_dir": "D:\\your-dir\\inbox",
+    "acp_command": "",
+    "acp_cwd": "",
+    "api_base_url": "",
+    "api_message_path": "",
+    "api_outbox_dir": "",
+    "can_wake": false,
+    "waking_models": [],
+    "waking_protocols": [],
+    "bridge_dir": "",
+    "bridge_status": "",
+    "ai": {
+      "model_name": "example-model-b",
+      "provider": "example-provider",
+      "version": "",
+      "capabilities": ["writing", "analysis"],
+      "max_tokens": 8192,
+      "can_see": false,
+      "can_code": false,
+      "can_browse": false,
+      "can_file_ops": true,
+      "description": "示例模型信息"
+    },
+    "tools": [],
+    "description": "示例：通过文件邮箱（wakeup_dir）轮询领取任务的桌面 Agent",
+    "metadata": {}
+  }
+}

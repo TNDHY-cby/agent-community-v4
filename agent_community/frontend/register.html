@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+
+<html lang="zh">
+
+<head>
+
+<meta charset="utf-8">
+
+<title>外端agent生产合作社 — Harness 接入</title>
+
+<style>
+
+:root{
+
+  --bg:#0e0e0d; --bg2:#151514; --bg3:#1c1b19; --bg4:#272521;
+
+  --ink:#ece9e3; --muted:#a29e95; --dim:#716d63;
+
+  --rule:rgba(255,255,255,.07); --rule-strong:rgba(255,255,255,.14);
+
+  --accent:#d97757; --accent-hi:#ec8f6b; --accent-soft:rgba(217,119,87,.14);
+
+  --amber:#e0a04a; --amber-soft:rgba(224,160,74,.14);
+
+  --green:#8fb39b; --green-soft:rgba(143,179,155,.14);
+
+  --red:#d17a6e; --red-soft:rgba(209,122,110,.14);
+
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;
+
+  --mono:"JetBrains Mono","Cascadia Code",Consolas,monospace;
+
+  --r-lg:18px; --r-md:12px; --r-sm:9px;
+
+  --sh-1:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.24);
+
+  --glow:0 0 0 3px rgba(217,119,87,.18);
+
+}
+
+*{box-sizing:border-box}
+
+*{scrollbar-width:thin;scrollbar-color:#33312c transparent}
+
+::-webkit-scrollbar{width:8px;height:8px}
+
+::-webkit-scrollbar-track{background:transparent}
+
+::-webkit-scrollbar-thumb{background:#33312c;border-radius:5px}
+
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.7;-webkit-font-smoothing:antialiased;min-height:100vh}
+
+body::before{content:'';position:fixed;inset:0;pointer-events:none;background:radial-gradient(900px 420px at 18% -8%,rgba(217,119,87,.09),transparent 60%),radial-gradient(700px 380px at 88% -12%,rgba(224,160,74,.06),transparent 60%);z-index:0}
+
+.wrap{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:24px 24px 80px}
+
+/* top */
+
+.top{display:flex;align-items:center;gap:14px;margin-bottom:22px;padding-bottom:16px;border-bottom:1px solid var(--rule)}
+
+.top h1{font-size:22px;margin:0;font-weight:900;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+
+.top h1::before{content:'';width:10px;height:10px;border-radius:3px;background:var(--accent);box-shadow:0 0 10px rgba(217,119,87,.7)}
+
+.back{position:fixed;top:14px;right:16px;z-index:100;color:var(--ink);text-decoration:none;font-size:12.5px;padding:8px 16px;border:1px solid var(--rule-strong);border-radius:10px;transition:all .15s;background:var(--bg3);font-weight:700;box-shadow:var(--sh-1)}
+
+.back:hover{border-color:var(--accent);background:var(--accent-soft);transform:translateY(-1px)}
+
+/* panels */
+
+.panel{background:var(--bg2);border:1px solid var(--rule);border-radius:var(--r-lg);padding:22px 24px;margin-bottom:20px;box-shadow:var(--sh-1);position:relative;overflow:hidden}
+
+.panel::before{content:'';position:absolute;inset:0 0 auto 0;height:3px;background:linear-gradient(90deg,var(--accent),transparent);opacity:.55}
+
+.panel h2{font-size:15px;margin:0 0 16px;color:var(--ink);font-weight:800;display:flex;align-items:center;gap:9px}
+
+.panel h2::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px rgba(217,119,87,.7)}
+
+/* tutorial */
+
+.tut p{font-size:13.5px;color:var(--muted);line-height:1.8}
+
+.tut p b{color:var(--ink)}
+
+.tut p:first-child{margin-top:0}
+
+.tut pre{background:var(--bg3);border:1px solid var(--rule);border-radius:12px;padding:14px 16px;font-family:var(--mono);font-size:12.5px;line-height:1.75;color:#d8d2c6;overflow-x:auto;white-space:pre-wrap;word-break:break-word;margin:10px 0}
+
+.tut .btn{margin-top:6px}
+
+.btn{background:var(--bg3);border:1px solid var(--rule-strong);color:var(--ink);border-radius:10px;padding:9px 18px;font-size:12.5px;cursor:pointer;font-weight:700;transition:all .16s}
+
+.btn:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-1px)}
+
+.btn.primary{background:linear-gradient(135deg,var(--accent),#c25f3f);border-color:transparent;color:#fff;box-shadow:0 2px 10px rgba(217,119,87,.3)}
+
+.btn.primary:hover{filter:brightness(1.08);color:#fff}
+
+/* msg */
+
+.msg{border-radius:11px;padding:11px 14px;font-size:13px;margin-top:12px;display:none}
+
+.msg.ok{display:block;background:var(--green-soft);border:1px solid rgba(143,179,155,.3);color:var(--green)}
+
+.msg.err{display:block;background:var(--red-soft);border:1px solid rgba(209,122,110,.3);color:var(--red)}
+
+/* list */
+
+.h-item{display:flex;align-items:center;gap:12px;background:var(--bg3);border:1px solid var(--rule);border-radius:12px;padding:11px 14px;margin-bottom:8px;transition:border-color .15s}
+
+.h-item:hover{border-color:var(--rule-strong)}
+
+.h-item .name{font-weight:800;font-size:13.5px;flex:0 0 auto;color:var(--ink)}
+
+.h-item .ai{font-size:11.5px;color:var(--muted);flex:1;font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.h-item .del{background:transparent;border:1px solid var(--rule);color:var(--red);border-radius:8px;padding:5px 12px;font-size:11.5px;cursor:pointer;font-weight:700;transition:all .15s}
+
+.h-item .del:hover{background:var(--red-soft);border-color:var(--red)}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ===== 自定义弹窗 UI ===== */
+
+.ac-modal-overlay{position:fixed;inset:0;background:rgba(8,9,11,.62);backdrop-filter:blur(5px);z-index:600;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;transition:opacity .18s ease}
+
+.ac-modal-overlay.show{opacity:1}
+
+.ac-modal{background:var(--bg2);border:1px solid var(--rule);border-radius:14px;width:440px;max-width:100%;box-shadow:0 12px 38px rgba(0,0,0,.5);transform:translateY(10px) scale(.97);transition:transform .18s ease;overflow:hidden}
+
+.ac-modal-overlay.show .ac-modal{transform:translateY(0) scale(1)}
+
+.acm-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--rule)}
+
+.acm-title{font-size:13.5px;font-weight:600;color:var(--ink);letter-spacing:.2px}
+
+.acm-close{cursor:pointer;color:var(--dim);font-size:16px;line-height:1;padding:2px 6px;border-radius:6px;transition:all .15s}
+
+.acm-close:hover{color:var(--ink);background:var(--bg4)}
+
+.acm-body{padding:16px 18px;font-size:12.5px;line-height:1.65;color:var(--muted);word-break:break-word}
+
+.acm-input-wrap{margin-top:10px}
+
+.acm-input{width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--rule);border-radius:8px;padding:9px 12px;color:var(--ink);font-size:12.5px;font-family:var(--mono,monospace);outline:none;transition:border-color .15s,box-shadow .15s;resize:vertical;min-height:64px}
+
+.acm-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(217,119,87,.22)}
+
+.acm-foot{display:flex;justify-content:flex-end;gap:10px;padding:12px 18px;border-top:1px solid var(--rule)}
+
+.acm-btn{border:none;border-radius:9px;padding:8px 18px;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .15s}
+
+.acm-btn.cancel{background:transparent;border:1px solid var(--rule);color:var(--muted)}
+
+.acm-btn.cancel:hover{border-color:var(--bg4);color:var(--ink);background:var(--bg3)}
+
+.acm-btn.confirm{background:linear-gradient(135deg,var(--accent),var(--accent-hi,var(--accent)));color:#fff}
+
+.acm-btn.confirm:hover{filter:brightness(1.08)}
+
+.acm-btn.danger{background:linear-gradient(135deg,#b05a50,var(--red));color:#fff}
+
+.acm-btn.danger:hover{filter:brightness(1.08)}
+
+.acm-toast{position:fixed;top:22px;left:50%;transform:translateX(-50%) translateY(-16px);background:var(--bg3);border:1px solid var(--rule);color:var(--ink);padding:9px 20px;border-radius:10px;font-size:12.5px;z-index:700;opacity:0;pointer-events:none;transition:all .2s ease;box-shadow:0 12px 38px rgba(0,0,0,.5)}
+
+.acm-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.acm-toast.err{border-color:var(--red);color:var(--red)}
+
+</style>
+
+</head>
+
+<body>
+
+
+
+<div class="wrap">
+
+  <div class="top">
+
+    <h1>🔌 注册 Harness</h1>
+
+    <a class="back" href="/">← 返回大厅</a>
+
+  </div>
+
+
+
+  <div class="panel">
+
+    <h2>📖 接入教程 + 注册模板（第 1 段复制）</h2>
+
+    <div class="tut" id="copyAll">
+
+      <p>1. 一键复制下面的「请帮我注册」话术，粘贴给<b>任意 AI（或你的 harness 本体）</b>，它会<b>自己收集信息</b>（向 harness 本体探测，而不是向用户问技术细节），再生成注册 JSON 并注册：</p>
+
+      <pre id="aiPrompt">请把我注册为「员工工作间」平台的员工（harness）。接入分两个阶段：
+
+【阶段1：初步消息注册（你只需声明部分信息，不必懂技术细节）】
+POST http://127.0.0.1:{PORT}/api/harness/pre-register
+body: {
+  "harness_id": "我的唯一标识",
+  "harness_name": "我的显示名",
+  "harness_type": "desktop-agent",      // 可选：类型猜测（cli-agent/ide-agent/desktop-agent/api-proxy/custom）
+  "process_hint": "我的进程名线索",       // 可选：让平台能扫到我的进程（如 electron/my_harness/python）
+  "port_hint": 3721,                     // 可选：我的 HTTP API 端口（若有）
+  "path_hint": "我的安装路径",            // 可选
+  "capabilities": ["web_search","file_ops"],  // 可选：我的能力
+  "description": "一句话说明我是什么"
+}
+这一步只告诉平台「我叫什么、大概是什么、有什么线索」，不需要你懂 wakeup_method / api_base_url 这些技术字段。
+
+【阶段2：平台探测补齐并正式注册】
+POST http://127.0.0.1:{PORT}/api/harness/probe-register
+body: {"harness_id": "我的唯一标识"}
+平台会基于阶段1的线索自动探测我（扫进程/扫端口/探测 HTTP 端点），摸清我是 HTTP API 型、文件型还是 ACP 型，自动补齐 wakeup_method、api_base_url 等并完成正式注册。
+
+【收集信息的方式（重要）：不要向用户问技术细节！】
+
+用户是平台的拥有者，不是 harness 本身，不必了解 harness_type / model_name / capabilities / wakeup_method 这些技术字段。请这样收集：
+
+1. 如果你就是 harness 本体（比如你运行在这个工具/程序里）：直接用你自己的真实信息（你的模型名、能力、类型、怎么被唤醒），不需要询问任何人。
+
+2. 如果你不是 harness 本体（你是辅助接入的第三方 AI）：主动探测 harness 环境来推断技术信息——看它的配置文件、README、启动脚本、可执行文件等，识别它是 CLI 工具还是桌面程序还是 API 服务、用哪个模型、有哪些能力。
+
+3. 只能向用户问「用户知道、且只有用户知道」的事：harness 叫什么名字？它装在哪里（路径/启动命令）？这两个问一下即可，其余技术字段靠探测或合理推断。
+
+4. 探测/推断不出的字段用合理默认值，禁止用 "[如：xxx]" 占位符注册。
+
+
+
+【注册前先探测平台是否在线】
+
+用下面任一种方式确认平台可达，再注册（探测失败先告诉我，不要盲目 POST）：
+
+  - Python：python -c "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:{PORT}/api/status',timeout=5).status)"
+
+  - 或 PowerShell：Invoke-WebRequest -Uri http://127.0.0.1:{PORT}/api/status -TimeoutSec 5
+
+
+
+【发送时注意中文编码（重要！）】
+
+注册 JSON 里有中文时，务必用 UTF-8 编码发送，否则服务端收到乱码。推荐用 Python（显式 UTF-8）：
+
+  python -c "import json,urllib.request;body=json.dumps({...注册JSON...},ensure_ascii=False).encode('utf-8');req=urllib.request.Request('http://127.0.0.1:{PORT}/api/harness/register',data=body,headers={'Content-Type':'application/json; charset=utf-8'});print(urllib.request.urlopen(req,timeout=10).read().decode('utf-8'))"
+
+（如果你用 PowerShell，请用 [System.Text.Encoding]::UTF8.GetBytes() 转字节数组再发；响应里的中文若显示乱码，通常是显示层问题，数据本身是对的，可用 Python 拉取验证。）
+
+
+
+【注册完成后】
+
+1. 告诉我注册结果：harness_id + wakeup_method + 是否成功；
+2. 然后【按 wakeup_method 完成回报配置】（见下方【架桥】段），否则收不到任务。
+
+
+
+【架桥 / 回报配置（注册 ≠ 接入！）】
+
+注册后，按平台探测出的 wakeup_method 完成回报配置，并提醒我【必须常驻运行】：
+
+- http_api（对象自带 HTTP API，平台直接 POST 推送）：无需桥。平台推任务后，我处理完直接 POST /api/harness/task-result 回报（body: {"workshop_id","member_id","ok":true,"result":"..."}），或写回报文件到 api_outbox_dir 让平台轮询。
+
+- file_poll：跑 filepoll_harness_bridge.py
+
+    python agent_community\examples\filepoll_harness_bridge.py --harness-id [我的harness_id] --inbox [我的wakeup_dir] --platform http://127.0.0.1:{PORT}
+
+- acp / http / clipboard（没有真实 ACP server 的，如 GUI 程序）：跑 pending_poll_bridge.py
+
+    python agent_community\examples\pending_poll_bridge.py --harness-id [我的harness_id] --url http://127.0.0.1:{PORT} --work-dir [我的任务落盘目录]
+
+    领到的激活/任务会写到 <work-dir>\inbox\*.json；我干完活把回报写 <work-dir>\replies\reply_*.json，桥自动转发给平台。
+
+- acp 且有真实 ACP server：跑 dsh_harness_bridge.py 同类的专用桥（示例）。</pre>
+
+      <p>2. 参考：完整注册消息体（字段照抄、值换成自己的即可，下面用的是<b>虚拟示例</b>）：</p>
+
+      <pre id="jsonTemplate">{
+
+  "harness_id": "示例Harness-A",
+
+  "harness_name": "示例Harness-A",
+
+  "harness_type": "cli-agent",
+
+  "wakeup_method": "acp",
+
+  "callback_url": "",
+
+  "wakeup_dir": "",
+
+  "acp_command": "your-command --flag value",
+
+  "acp_cwd": "C:\\path\\to\\your\\harness",
+
+  "ai": {
+
+    "model_name": "your-model",
+
+    "provider": "your-provider",
+
+    "capabilities": ["coding", "file_ops", "web_search"],
+
+    "can_code": true,
+
+    "can_file_ops": true,
+
+    "description": "你的模型：能编码、读写文件、跑命令、联网搜索"
+
+  },
+
+  "tools": [
+
+    {"name": "bash", "description": "执行命令", "capability_tag": "coding"},
+
+    {"name": "read_file", "description": "读文件", "capability_tag": "file_ops"},
+
+    {"name": "write_file", "description": "写文件", "capability_tag": "file_ops"}
+
+  ],
+
+  "description": "示例 Harness，通过 ACP 拉起 HA 会话"
+
+}</pre>
+
+      <p>3. 注册成功后，harness 会出现在下方列表，可被「员工名单」选中。<b style="color:var(--red)">但这只是"名单里有名字"——要真正接到活，必须在 harness 侧跑桥（见第 1 步的架桥命令）。不架桥 = 只注册不干活。</b></p>
+
+      <button class="btn" onclick="copyTemplate()">复制接入教程+注册话术（第 1 段：粘贴给 AI 帮注册）</button>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="panel">
+
+    <h2>🌉 架桥速查（注册后必做 · 第 2 段复制）</h2>
+
+    <div class="tut" id="copyBridge">
+
+      <p>平台按 wakeup_method 分流：<b>http_api 类直接 POST 到对象自带 HTTP API</b>（实时、最推荐）、<b>file_poll 类直接写文件到 inbox</b>，其余进 pending 队列等桥来领。四种方式任选其一：</p>
+
+      <p><b>⓪ http_api 类（对象自带 HTTP API，如桌面 Agent 暴露端口）</b> — 平台直接 HTTP 推送，无需桥：</p>
+      <pre>注册时填 wakeup_method=http_api + api_base_url=http://127.0.0.1:[端口] + api_message_path=/message
+平台 POST {api_base_url}{api_message_path} 推任务，对象处理完 POST /api/harness/task-result 回报（或写 api_outbox_dir 平台轮询）。</pre>
+
+      <p><b>① file_poll 类（走文件邮箱的桌面 Agent）</b> — 用文件桥：</p>
+
+      <pre>python agent_community\examples\filepoll_harness_bridge.py --harness-id [id] --inbox [wakeup_dir] --platform http://127.0.0.1:{PORT} [--trigger "启动 harness 的命令"]</pre>
+
+      <p><b>② acp/http/clipboard 类（无真实 ACP server，如 GUI 程序）</b> — 用通用 pending 桥（任务落盘 inbox，回报写 replies 自动转发）：</p>
+
+      <pre>python agent_community\examples\pending_poll_bridge.py --harness-id [id] --url http://127.0.0.1:{PORT} --work-dir [任务目录] [--trigger "启动 harness 的命令"]</pre>
+
+      <p><b>③ acp 且有真实 ACP server（如 dsh）</b> — 用 dsh 专用桥：</p>
+
+      <pre>python agent_community\examples\dsh_harness_bridge.py --url http://127.0.0.1:{PORT}</pre>
+
+      <p>回报协议（harness 有联网能力时可直接 POST，无需桥）：
+
+        激活 <code>POST /api/harness/activation-result</code> body: <code>{"workshop_id","member_id","status":"entered"}</code>；
+
+        任务 <code>POST /api/harness/task-result</code> body: <code>{"workshop_id","member_id","ok":true,"result":"..."}</code>。</p>
+
+      <p><b>桥测试 + 桥坐标登记（建好桥后必做）：</b>平台会向你的桥发测试（file_poll 写 inbox 的 bridge_test / 其余进 pending-bridge-tests 队列），桥收到后自动回报 <code>POST /api/harness/bridge-test-result</code>（body: <code>{"harness_id","test_id","ok":true,"echo":"..."}</code>）确认通道正常；测试通过后，把桥文件路径告知平台：<code>POST /api/harness/bridge-path</code>（body: <code>{"harness_id","bridge_dir":"桥文件所在文件夹"}</code>），平台记录到该 harness 名下并持久化。</p>
+
+      <p style="color:var(--yellow)"><b>⚠️ 桥必须常驻：</b>桥是独立进程，终端关闭/会话结束它就停了——「注册了但桥没常驻」等于收不到任务。要让平台随时能派活，请把桥命令加入开机启动项或计划任务。</p>
+
+      <p style="color:var(--yellow)"><b>⚠️ 发中文请求注意编码：</b>用 PowerShell 发 HTTP 请求时中文可能乱码（显示层问题，服务端数据是对的）。可靠做法：用 Python 显式 UTF-8 编码发送（<code>json.dumps(body).encode("utf-8")</code>），或检查响应按 UTF-8 解码。</p>
+
+      <p style="color:var(--yellow)"><b>⚠️ 桥需要 inbox 目录的写权限：</b>file_poll 桥要在 <code>wakeup_dir</code> 里创建 delivered/ 并移动任务文件；pending 桥要在 <code>work-dir</code> 建 inbox/replies。如果 inbox 在会话工作区之外（如 <code>D:\你的目录\inbox</code>），受沙箱限制的进程可能写不进去（WinError 5 拒绝访问）——请确保桥进程对这两个目录有读写权限，或把桥放到无沙箱限制的环境里跑。</p>
+
+    </div>
+
+    <button class="btn" onclick="copyBridge()">复制架桥速查（第 2 段：注册后粘贴给 harness/AI 配桥）</button>
+
+  </div>
+
+
+
+
+
+  <div class="panel">
+    <h2>🚀 平台 Agent 协助架桥（第 3 步 · 推荐）</h2>
+    <div class="tut" id="copyLaunch">
+      <p>前面两步是手动注册+架桥。如果想让<b>平台 Agent 帮忙分析并指导架桥</b>，注册后到下方「💬 平台 Agent 直聊」区，点<b>「📋 请求桥建造指导」</b>按钮——平台 Agent 会自动检测<b>最近接入的对象</b>，基于它对平台自身接口（注册/激活/任务/桥测试/桥坐标等）的了解，给出<b>详细的文本架桥指导</b>。</p>
+      <p>⚠️ 注意：平台 Agent <b>不了解对端对象的真实接口</b>，不能凭空替你"自动生成并启动桥"。它给的是<b>指导文本</b>，你可以：</p>
+      <ul style="margin:6px 0;padding-left:20px;color:var(--muted);font-size:13px;line-height:1.8;">
+        <li><b>复制指导</b>发给对象 agent（让它按说明架桥）；或</li>
+        <li><b>告诉平台 Agent 修正</b>：把你掌握的对象接口信息发回去，让它在对话里持续修正，最后发回修改后的架桥方案。</li>
+      </ul>
+      <p>如果你确实知道对象的 acp_command 且它是可被 subprocess 拉起的 CLI，也可以让平台 Agent 走平台内置自动流程：</p>
+      <pre>---
+外端 Harness 自动接入流程（先确保已注册，再执行以下步骤）：
+1. 调 POST /api/harness/{harness_id}/bridge/generate 生成桥脚本（平台自动套模板渲染，无需手动写桥）
+2. 调 POST /api/harness/launch 启动该 harness（传入：{"harness_id": "xxx", "wait_online": true, "timeout": 60}）
+   - 平台会读取注册时的 acp_command/acp_cwd，用 subprocess 拉起 harness 进程
+   - 启动后轮询等待上线（最多 60 秒），返回在线状态
+3. 启动后平台自动拉起桥（桥脚本已由第 1 步生成存入平台），桥接过 pending 队列开始领任务
+4. 桥测试验证：检测桥是否在线并回报桥测，确认通道正常
+5. 创建工作间 → 把该 harness 加入员工名单 → 派任务验证闭环
+
+⚠️ 桥已经由平台生成并登记坐标，无需手动运行桥脚本。
+⚠️ 查看启动历史：GET /api/harness/launch-log
+⚠️ 平台没有启动指令的 harness（acp_command 为空）无法自动拉起，需手动架桥。</pre>
+    </div>
+    <button class="btn" onclick="copyLaunch()">复制平台自动接入话术（第 3 段：仅当对象可被 subprocess 拉起时）</button>
+  </div>
+
+  <div class="panel" id="assistantPanel">
+    <h2>💬 平台 Agent 直聊（沟通与架桥）</h2>
+    <p style="color:var(--yellow)"><b>💡 说明：</b>在这里可以直接与平台 Agent 对话，沟通外部 Harness 的接入与架桥；外部 Harness「已接入」通知也会自动出现在此区域，方便平台 Agent 掌握目标信息。</p>
+    <div id="assistantMsgs" style="max-height:360px;overflow-y:auto;background:var(--panel-bg,#151a22);border:1px solid var(--border,#2a3444);border-radius:10px;padding:10px;margin-bottom:10px;"></div>
+    <div style="margin-bottom:8px;">
+      <button class="btn" id="assistantBridgeDemand" style="width:100%;border-style:dashed;">📋 请求桥建造指导（自动检测最近接入的对象，发给平台 Agent）</button>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <textarea id="assistantInput" rows="2" placeholder="输入消息，直接与平台 Agent 对话…（Enter 发送，Shift+Enter 换行）" style="flex:1;resize:vertical;background:var(--panel-bg,#151a22);color:var(--text,#e5e9f0);border:1px solid var(--border,#2a3444);border-radius:8px;padding:8px;"></textarea>
+      <button class="btn" id="assistantSend" style="align-self:flex-end;white-space:nowrap;">发送</button>
+    </div>
+
+    <div style="margin-top:14px;border-top:1px dashed var(--border,#2a3444);padding-top:12px;">
+      <h3 style="margin:0 0 8px;font-size:13px;color:var(--accent,#d97757);font-weight:800;">🔁 平台 Agent ↔ 外端对象 传讯（复制粘贴中转）</h3>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+        <span style="font-size:12px;color:var(--muted);">对话对象:</span>
+        <select id="relayTarget" style="flex:1;background:var(--panel-bg,#151a22);color:var(--text,#e5e9f0);border:1px solid var(--border,#2a3444);border-radius:8px;padding:6px 8px;font-size:13px;"></select>
+        <button class="btn" id="relayRefresh" title="刷新对象列表">🔄</button>
+      </div>
+      <p style="margin:0 0 8px;font-size:12.5px;color:var(--muted);line-height:1.6;">
+        <b>外端对象 → 平台 Agent：</b>把外端 Agent 说的话粘贴到下面，点「发给平台 Agent」，平台 Agent 会基于它对平台接口的了解给出下一步指导。<br>
+        <b>平台 Agent → 外端对象：</b>平台 Agent 的回复出现在上方对话区，点「复制平台回复」粘贴给外端对象，循环传话。
+      </p>
+      <textarea id="relayInput" rows="3" placeholder="粘贴外端对象 Agent 的回复到这里，再发给平台 Agent…" style="width:100%;resize:vertical;background:var(--panel-bg,#151a22);color:var(--text,#e5e9f0);border:1px solid var(--border,#2a3444);border-radius:8px;padding:8px;margin-bottom:8px;"></textarea>
+      <div style="display:flex;gap:8px;">
+        <button class="btn" id="relaySend" style="flex:1;">📨 发给平台 Agent（标注为对象说的）</button>
+        <button class="btn" id="relayCopy" style="flex:1;">📋 复制平台回复（粘贴给外端对象）</button>
+      </div>
+    </div>
+  </div>
+
+    <div class="panel">
+
+    <h2>已注册 Harness</h2>
+
+    <div class="msg" id="msg"></div>
+
+    <p style="color:var(--yellow)"><b>💡 平台验证能力：</b>注册后的状态只是展示，不代表桥真的可用。点「验证桥」，平台会检查桥坐标、桥进程、历史测试，并实时发送测试消息等待桥回报——只有收到真实回报才判定通过。</p>
+
+    <div id="list"></div>
+
+  </div>
+
+</div>
+
+
+
+<script>
+
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+function show(msg, ok){const el=document.getElementById('msg');if(!el){alert(msg);return;}el.textContent=msg;el.className='msg '+(ok?'ok':'err');}
+
+async function refreshList(){
+
+  try{
+
+    const d=await fetch('/api/harness/list').then(x=>x.json());
+
+    const hs=d.harnesses||[];
+
+    document.getElementById('list').innerHTML = hs.length? hs.map(h=>{
+
+      const bs=h.bridge_status||'';
+
+      const bd=h.bridge_dir||'';
+
+      const bt=h.bridge_test||{};
+
+      const testedAt = bt.at ? new Date(bt.at).toLocaleString() : '';
+
+      const echo = bt.echo ? esc(String(bt.echo).slice(0,60)) : '';
+
+      let bridgeTag;
+
+      if(bs==='tested'){
+
+        bridgeTag = '<span class="ai" style="color:var(--green)">桥:✅测试通过'+(testedAt?'（'+esc(testedAt)+'）':'')+(echo?' · '+echo:'')+'</span>';
+
+      } else if(bs==='reported'){
+
+        bridgeTag = '<span class="ai" style="color:var(--accent)">桥:📁已登记</span>';
+
+      } else {
+
+        bridgeTag = '<span class="ai" style="color:var(--red)">桥:未建</span>';
+
+      }
+
+      return `<div class="h-item" data-hid="${esc(h.harness_id)}">
+
+        <span class="name">${esc(h.harness_name)}</span>
+
+        <span class="ai">${esc(h.harness_id)} · ${esc(h.ai&&h.ai.model_name||'')}</span>
+
+        <span class="ai">${esc(h.status||'')}</span>
+
+        ${bridgeTag}
+
+        ${bd?`<span class="ai" title="${esc(bd)}">📂 ${esc(bd)}</span>`:''}
+
+        <button class="del" onclick="verifyBridge('${esc(h.harness_id).replace(/'/g,"\\'")}')">验证桥</button>
+
+        <button class="del" onclick="recordBridge('${esc(h.harness_id).replace(/'/g,"\\'")}')">记录桥坐标</button>
+
+        <button class="del" onclick="delHarness('${esc(h.harness_id).replace(/'/g,"\\'")}')">删除</button>
+
+      </div>`;
+
+    }).join('') : '<div class="ai">暂无已注册 harness</div>';
+
+  }catch(e){}
+
+}
+
+async function verifyBridge(id){
+
+  const btn = event && event.target ? event.target : null;
+
+  if(btn){ btn.disabled = true; btn.textContent = '验证中…'; }
+
+  show('正在验证「'+id+'」的桥：检查桥坐标 / 桥进程 / 历史测试，并实时发送测试消息等待回报（最多 12 秒）…', true);
+
+  try{
+
+    const r = await fetch('/api/harness/bridge-verify', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({harness_id:id, timeout:10})}).then(x=>x.json());
+
+    if(r.error){ show('验证失败：'+(r.error||JSON.stringify(r)), false); }
+
+    else{
+
+      renderVerify(r);
+
+      show('验证完成：'+ (r.ok?'桥可用 ✅':'桥不可用 ❌（详见下方验证报告）'), r.ok);
+
+    }
+
+  }catch(e){ show('验证请求失败：'+e.message, false); }
+
+  finally{ if(btn){ btn.disabled = false; btn.textContent = '验证桥'; } }
+
+}
+
+function renderVerify(r){
+
+  let host = null;
+
+  try{ host = document.querySelector('.h-item[data-hid="'+CSS.escape(r.harness_id)+'"]'); }catch(e){}
+
+  if(!host) return;
+
+  const d = r.bridge_dir||{}, p = r.bridge_process||{}, h = r.history_test||{}, l = r.live_channel||{};
+
+  const okMark = ok => ok ? '<span style="color:var(--green)">✅</span>' : '<span style="color:var(--red)">❌</span>';
+
+  const procs = (p.processes||[]).map(x=>x.name+'#'+x.pid).join('，');
+
+  const html = `<div class="verify-report" style="margin-top:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;line-height:1.7">
+
+    <b>桥验证报告</b>（${esc(r.checked_at||'')}）· 总判定：${r.ok?'<b style="color:var(--green)">桥可用 ✅</b>':'<b style="color:var(--red)">桥不可用 ❌</b>'}<br>
+
+    ① 桥坐标：${okMark(!!d.exists)} ${d.exists?'目录存在':'目录不存在或未记录'}（${esc(d.path||'-')}）${(d.file_count!==undefined&&d.file_count>=0)?'，文件数 '+d.file_count:''}<br>
+
+    ② 桥进程：${okMark(!!p.running)} ${p.running?('匹配到进程：'+esc(procs)):'未发现匹配的桥进程'}<br>
+
+    ③ 历史测试：${h.has_record?(h.ok?'✅ 有通过记录':'❌ 有失败记录')+'（'+esc(h.at||'')+'）':'无历史记录'}（仅参考）<br>
+
+    ④ 实时通道：${okMark(!!l.sent)} 发送${l.sent?('成功（'+esc(l.sent_via||'')+'）'):'失败'}；回报：${l.reported?(l.ok?'✅ 已收到真实回报（test_id 匹配）':'❌ 收到回报但未通过'):'⏳ 等待超时，未收到回报'} ${l.echo?('· '+esc(l.echo)):''}<br>
+
+    结论：${r.ok?'桥通道完整可用。':'平台未确认桥可用：按上表逐项修复后重新点「验证桥」。验证不通过时不会标记为测试通过。'}
+
+  </div>`;
+
+  const old = host.querySelector('.verify-report');
+
+  if(old) old.remove();
+
+  host.insertAdjacentHTML('beforeend', html);
+
+}
+
+async function recordBridge(id){
+
+  acModal.show({
+
+    title:'记录桥文件坐标',
+
+    message:`为 harness「${id}」记录桥文件所在文件夹的绝对路径（留空或取消 = 不修改）：`,
+
+    input:'', placeholder:'例如 D:\\harness\\bridge', rows:2,
+
+    onSubmit: async path => {
+
+      if(path===null) return;
+
+      const dir = path.trim();
+
+      if(!dir){ show('已取消，未修改桥坐标', true); return; }
+
+      try{
+
+        const r = await fetch('/api/harness/bridge-path', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({harness_id:id, bridge_dir:dir})}).then(x=>x.json());
+
+        if(r.success){ show('已记录「'+id+'」桥坐标：'+r.bridge_dir+'（状态：'+r.bridge_status+'）', true); refreshList(); }
+
+        else{ show('记录失败：'+(r.error||JSON.stringify(r)), false); }
+
+      }catch(e){ show('请求失败：'+e.message, false); }
+
+    }
+
+  });
+
+}
+
+async function delHarness(id){
+
+  acModal.show({
+
+    title:'删除 harness',
+
+    message:`确定删除 harness「${id}」？将删除其注册信息、桥坐标和队列残留，并终止桥进程、把桥目录移入回收站，且不可恢复。`,
+
+    danger:true,
+
+    onConfirm: async () => {
+
+      try{
+
+        const r = await fetch('/api/harness/'+encodeURIComponent(id), {method:'DELETE'}).then(x=>x.json());
+
+        if(r.success){ show('已删除：'+id+'（注册信息+桥信息已清理，桥进程已终止'+(r.trash&&r.trash.trashed?'，桥目录已移入回收站':'')+'）', true); }
+
+        else{ show('删除失败：'+(r.error||JSON.stringify(r)), false); }
+
+        refreshList();
+
+      }catch(e){ show('删除请求失败：'+e.message, false); }
+
+    }
+
+  });
+
+}
+
+function safeCopy(text, onResult){
+  const finish = (ok)=>{
+    if (typeof onResult === 'function') onResult(ok);
+  };
+  const tryExec = ()=>{
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      const r = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return !!r;
+    } catch(e){ return false; }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    const p = navigator.clipboard.writeText(text).then(()=>true).catch(()=>false);
+    const timer = new Promise(res => setTimeout(()=>res(false), 2000));
+    Promise.race([p, timer]).then(ok => {
+      if (ok) return finish(true);
+      finish(tryExec());
+    });
+  } else {
+    finish(tryExec());
+  }
+}
+
+function copyTemplate(){
+
+  const t = document.getElementById('copyAll').textContent;
+
+  safeCopy(t, (ok) => {
+    if (ok) show('已复制第 1 段（接入教程+注册话术），粘贴给任意 AI 即可帮你注册', true);
+    else show('复制失败，请手动选择复制', false);
+  });
+}
+
+function copyBridge(){
+
+  const t = document.getElementById('copyBridge').textContent;
+
+  safeCopy(t, (ok) => {
+    if (ok) show('已复制第 2 段（架桥速查），注册后粘贴给 harness/AI 配桥', true);
+    else show('复制失败，请手动选择复制', false);
+  });
+}
+
+function copyLaunch(){
+  const el = document.getElementById('copyLaunch');
+  if (!el) return;
+  const text = el.textContent || el.innerText;
+  safeCopy(text, (ok) => {
+    if (ok) acToast('已复制平台启动 Harness 话术');
+    else acToast('复制失败，请手动选中文本复制');
+  });
+}
+
+(function fillPort(){
+
+  const port = location.port || '18920';
+
+  document.querySelectorAll('pre').forEach(el => {
+
+    if(el.textContent.includes('{PORT}')) el.textContent = el.textContent.replace(/\{PORT\}/g, port);
+
+  });
+
+})();
+
+refreshList();
+
+setInterval(refreshList, 5000);
+
+/* ===== 平台助手直聊 ===== */
+(function(){
+  var container = document.getElementById('assistantMsgs');
+  var input = document.getElementById('assistantInput');
+  var sendBtn = document.getElementById('assistantSend');
+  if (!container || !input || !sendBtn) return;
+
+  function esc(s){ return String(s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]}) }
+
+  function appendMsg(role, text, extra){
+    var d = document.createElement('div');
+    d.style.cssText = 'margin-bottom:8px;padding:7px 10px;border-radius:8px;font-size:14px;line-height:1.5;word-break:break-word;white-space:pre-wrap;';
+    if(role === 'user'){
+      d.style.cssText += 'background:var(--accent,#d97757);color:#fff;text-align:right;margin-left:40px;';
+      d.textContent = '🙋 ' + text;
+    } else if(role === 'system'){
+      d.style.cssText += 'background:rgba(255,255,255,0.06);color:var(--yellow,#e6b450);text-align:center;font-size:13px;';
+      d.textContent = '🖥️ ' + text;
+    } else {
+      d.style.cssText += 'background:rgba(255,255,255,0.08);color:var(--text,#e5e9f0);margin-right:40px;';
+      d.textContent = '🤖 ' + text;
+    }
+    if(extra) d.setAttribute('data-extra', extra);
+    container.appendChild(d);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  // 思考中...加载动画：呼吸闪烁气泡 + 按钮文字切换
+  (function(){
+    var st = document.createElement('style');
+    st.textContent = '@keyframes acThinkingPulse{0%,100%{opacity:1}50%{opacity:0.35}}';
+    document.head.appendChild(st);
+  })();
+  function showThinking(){
+    if(document.getElementById('acThinkingMsg')) return;
+    var d = document.createElement('div');
+    d.id = 'acThinkingMsg';
+    d.style.cssText = 'margin-bottom:8px;padding:7px 10px;border-radius:8px;font-size:14px;line-height:1.5;background:rgba(255,255,255,0.08);color:var(--text,#e5e9f0);margin-right:40px;animation:acThinkingPulse 1s ease-in-out infinite;';
+    d.textContent = '🤖 思考中...';
+    container.appendChild(d);
+    container.scrollTop = container.scrollHeight;
+  }
+  function hideThinking(){
+    var el = document.getElementById('acThinkingMsg');
+    if(el) el.remove();
+  }
+
+  function loadHistory(){
+    fetch('/api/assistant/history').then(function(r){ return r.json() }).then(function(d){
+      if(!d.success) return;
+      container.innerHTML = '';
+      (d.history||[]).forEach(function(m){
+        var role = m.role;
+        if(role === 'system') role = 'system';
+        appendMsg(role, m.content);
+      });
+    }).catch(function(){});
+  }
+
+  var lastAssistantReply = '';
+
+  function sendMessage(relayedFrom){
+    var msg = input.value.trim();
+    if(!msg) return;
+    // 若指定了来源对象（传讯模式），给消息加上对象上下文前缀
+    var payload = {message: msg};
+    if(relayedFrom){
+      payload.message = '【这是外端对象「' + relayedFrom + '」通过用户中转传来的话，请把它当作对象 agent 的回复/发言，基于你对平台接口的了解给出下一步指导或修正】\n' + msg;
+    }
+    input.value = '';
+    input.disabled = true;
+    sendBtn.disabled = true;
+    sendBtn.textContent = '思考中...';
+    appendMsg('user', msg);
+    showThinking();
+    fetch('/api/assistant/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    }).then(function(r){ return r.json() }).then(function(d){
+      if(d.success && d.reply){
+        lastAssistantReply = d.reply;
+        appendMsg('assistant', d.reply);
+      } else if(d.error){
+        appendMsg('system', '请求失败：' + esc(d.error));
+      } else {
+        appendMsg('system', '未收到回复');
+      }
+    }).catch(function(e){
+      appendMsg('system', '网络错误：' + esc(e.message));
+    }).finally(function(){
+      input.disabled = false;
+      sendBtn.disabled = false;
+      sendBtn.textContent = '发送';
+      hideThinking();
+      input.focus();
+    });
+  }
+
+  // 🔁 传讯：对象选择 / 刷新 / 发送对象的话给平台 / 复制平台回复
+  var relayTarget = document.getElementById('relayTarget');
+  var relayInput = document.getElementById('relayInput');
+  var relaySend = document.getElementById('relaySend');
+  var relayCopy = document.getElementById('relayCopy');
+  var relayRefresh = document.getElementById('relayRefresh');
+  var relayDefault = '';
+
+  function loadRelayTargets(){
+    fetch('/api/harness/list').then(function(r){ return r.json() }).then(function(d){
+      if(!relayTarget) return;
+      var hs = d.harnesses || [];
+      var cur = relayTarget.value || relayDefault;
+      relayTarget.innerHTML = '';
+      if(!hs.length){
+        var o = document.createElement('option');
+        o.value = ''; o.textContent = '(暂无已注册 harness)';
+        relayTarget.appendChild(o);
+        return;
+      }
+      hs.forEach(function(h){
+        var opt = document.createElement('option');
+        opt.value = h.harness_id;
+        opt.textContent = h.harness_name + ' (' + h.harness_id + ') · bridge=' + (h.bridge_status || '未建');
+        relayTarget.appendChild(opt);
+      });
+      // 默认选中：桥未建好的最近接入，否则最近一个
+      var target = null;
+      for(var i = hs.length - 1; i >= 0; i--){
+        if(hs[i].bridge_status !== 'tested'){ target = hs[i]; break; }
+      }
+      if(!target) target = hs[hs.length - 1];
+      if(target) relayTarget.value = target.harness_id;
+    }).catch(function(){});
+  }
+
+  function safeCopy(text, done){
+    function fallback(){
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch(e){}
+      document.body.removeChild(ta);
+      done && done();
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      Promise.race([
+        navigator.clipboard.writeText(text),
+        new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('timeout')) }, 2000) })
+      ]).then(function(){ done && done() }).catch(fallback);
+    } else { fallback(); }
+  }
+
+  if(relaySend){
+    relaySend.addEventListener('click', function(){
+      var text = relayInput.value.trim();
+      if(!text){ appendMsg('system', '请先粘贴外端对象的回复'); return; }
+      var target = relayTarget ? relayTarget.value : '';
+      if(!target){ appendMsg('system', '请先选择对话对象'); return; }
+      input.value = text;
+      sendMessage(target);
+      relayInput.value = '';
+    });
+  }
+  if(relayCopy){
+    relayCopy.addEventListener('click', function(){
+      if(!lastAssistantReply){ appendMsg('system', '平台 Agent 还没有回复可复制'); return; }
+      var label = document.createElement('span');
+      safeCopy(lastAssistantReply, function(){
+        appendMsg('system', '已复制平台 Agent 回复，可粘贴给外端对象。');
+      });
+    });
+  }
+  if(relayRefresh) relayRefresh.addEventListener('click', loadRelayTargets);
+
+  // 发送事件
+  sendBtn.addEventListener('click', sendMessage);
+  input.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && !e.shiftKey){
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  // 📋 请求桥建造指导：自动检测最近接入且桥未建好的 harness，把需求发给平台 Agent
+  var bridgeDemandBtn = document.getElementById('assistantBridgeDemand');
+  if(bridgeDemandBtn){
+    bridgeDemandBtn.addEventListener('click', function(){
+      bridgeDemandBtn.disabled = true;
+      bridgeDemandBtn.textContent = '检测中...';
+      fetch('/api/harness/list')
+        .then(function(r){ return r.json() })
+        .then(function(d){
+          var hs = d.harnesses || [];
+          // 找出最近接入、且桥未建好（bridge_status 不是 tested）的 harness
+          var target = null;
+          for(var i = hs.length - 1; i >= 0; i--){
+            var h = hs[i];
+            if(h.bridge_status !== 'tested'){ target = h; break; }
+          }
+          if(!target && hs.length){ target = hs[hs.length - 1]; } // 兜底：最近一个
+          if(!target){ throw {message:'暂无已注册 harness'} }
+          var wk = target.wakeup || {};
+          var msg = '请帮我探测并配置最近接入的对象 harness「' + target.harness_id + '」。\n' +
+            '当前注册信息：type=' + target.harness_type + ', wakeup=' + (wk.wakeup_method || '?') + ', bridge_status=' + (target.bridge_status || '未建') + '。\n' +
+            '请用 probe_harness 工具实际探测这个对象（用它的名字/路径作线索扫进程和端口），摸清它的真实接入方式：\n' +
+            '- 如果它自带 HTTP API（探测到端口 + /message 等端点），给出推荐的 http_api 配置（wakeup_method=http_api + api_base_url + api_message_path），并调用 api-probe 验证；\n' +
+            '- 如果是文件型，给出 file_poll 配置（wakeup_dir）；\n' +
+            '- 如果是 ACP 型，给出 acp_command。\n' +
+            '然后告诉我：探测结果 + 推荐的完整注册配置 + 回报方式（POST /api/harness/task-result 或写 outbox）。';
+          input.value = msg;
+          sendMessage();
+        })
+        .catch(function(e){
+          appendMsg('system', '检测失败：' + esc(e.message || e));
+          bridgeDemandBtn.disabled = false;
+          bridgeDemandBtn.textContent = '📋 请求桥建造指导（自动检测最近接入的对象，发给平台 Agent）';
+        });
+    });
+  }
+
+  // 加载历史
+  loadHistory();
+  // 加载传讯对象列表
+  loadRelayTargets();
+
+  // WebSocket 监听：接收大厅广播中的"已接入"通知，同时显示到对话区
+  var wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var wsUrl = wsProto + '//' + location.host + '/ws';
+  var ws = new WebSocket(wsUrl);
+  ws.onmessage = function(evt){
+    try {
+      var data = JSON.parse(evt.data);
+      // 检测外部 Harness 接入通知：type=message, from_agent=system, 内容含"已接入"
+      if(data.type === 'message' && data.data){
+        var msg = data.data;
+        if(msg.type === 'system' || msg.type === 'SYSTEM'){
+          if(msg.from_agent === 'system' && msg.content && msg.content.indexOf('已接入') !== -1){
+            appendMsg('system', msg.content);
+          }
+        }
+      } else if(data.type === 'history' && data.data){
+        // 历史消息中的已接入通知
+        var h = data.data;
+        if(h.type === 'system' || h.type === 'SYSTEM'){
+          if(h.from_agent === 'system' && h.content && h.content.indexOf('已接入') !== -1){
+            appendMsg('system', h.content);
+          }
+        }
+      }
+    } catch(e){}
+  };
+  ws.onclose = function(){};
+  ws.onerror = function(){};
+})();
+
+/* ===== 自定义弹窗 UI ===== */
+
+(function(){var ov=null,timer=null,escH=null;
+
+function ensure(){if(ov)return ov;ov=document.createElement('div');ov.className='ac-modal-overlay';ov.innerHTML='<div class="ac-modal"><div class="acm-head"><span class="acm-title"></span><span class="acm-close">✕</span></div><div class="acm-body"></div><div class="acm-foot"></div></div>';ov.querySelector('.acm-close').onclick=function(){hide()};ov.addEventListener('mousedown',function(e){if(e.target===ov)hide()});document.body.appendChild(ov);return ov}
+
+function hide(){if(!ov)return;ov.classList.remove('show');if(escH){document.removeEventListener('keydown',escH);escH=null}setTimeout(function(){ov.style.display='none'},180)}
+
+function show(cfg){var m=ensure();ov.style.display='flex';requestAnimationFrame(function(){ov.classList.add('show')});m.querySelector('.acm-title').textContent=cfg.title||'';var body=m.querySelector('.acm-body'),foot=m.querySelector('.acm-foot');body.innerHTML='';foot.innerHTML='';
+
+if(cfg.message){var p=document.createElement('div');p.textContent=cfg.message;body.appendChild(p)}
+
+if(cfg.input!==undefined){var wrap=document.createElement('div');wrap.className='acm-input-wrap';var ta=document.createElement('textarea');ta.className='acm-input';ta.placeholder=cfg.placeholder||'';ta.value=cfg.input;ta.rows=cfg.rows||3;wrap.appendChild(ta);body.appendChild(wrap);setTimeout(function(){ta.focus();ta.select()},60)}
+
+function mkBtn(label,cls,fn){var b=document.createElement('button');b.className='acm-btn '+cls;b.textContent=label;b.onclick=fn;foot.appendChild(b)}
+
+if(cfg.buttons&&cfg.buttons.length){cfg.buttons.forEach(function(x){mkBtn(x.label,x.cls||'confirm',function(){hide();x.onClick&&x.onClick()})})}else if(cfg.input!==undefined){mkBtn('取消','cancel',hide);mkBtn('确定','confirm',function(){var ta=body.querySelector('textarea');var v=ta?ta.value:null;hide();cfg.onSubmit&&cfg.onSubmit(v)})}else{mkBtn('取消','cancel',hide);mkBtn('确定',cfg.danger?'danger':'confirm',function(){hide();cfg.onConfirm&&cfg.onConfirm()})}
+
+if(escH)document.removeEventListener('keydown',escH);escH=function(e){if(e.key==='Escape')hide()};document.addEventListener('keydown',escH)}
+
+window.acModal={show:show,hide:hide};
+
+window.acToast=function(msg,err){var t=document.querySelector('.acm-toast');if(!t){t=document.createElement('div');t.className='acm-toast';document.body.appendChild(t)}t.textContent=msg;t.classList.toggle('err',!!err);t.classList.add('show');clearTimeout(timer);timer=setTimeout(function(){t.classList.remove('show')},2600)};
+
+})();
+
+</script>
+
+
+
+
+
+</body>
+
+</html>

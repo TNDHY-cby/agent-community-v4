@@ -1,0 +1,2386 @@
+<!DOCTYPE html>
+
+
+<html lang="zh">
+
+
+<head>
+
+
+<meta charset="utf-8">
+
+
+<title>外端agent生产合作社 — 工作间</title>
+
+
+<style>
+
+
+:root{
+
+
+  --bg:#0e0e0d; --bg2:#151514; --bg3:#1c1b19; --bg4:#272521; --bg5:#332f2a;
+
+
+  --ink:#ece9e3; --muted:#a29e95; --dim:#716d63;
+
+
+  --rule:rgba(255,255,255,.07); --rule-strong:rgba(255,255,255,.14);
+
+
+  --accent:#d97757; --accent-hi:#ec8f6b; --accent-soft:rgba(217,119,87,.14);
+
+
+  --amber:#e0a04a; --amber-soft:rgba(224,160,74,.14);
+
+
+  --green:#8fb39b; --green-soft:rgba(143,179,155,.14);
+
+
+  --red:#d17a6e; --red-soft:rgba(209,122,110,.14);
+
+
+  --purple:#b08fc2; --purple-soft:rgba(176,143,194,.14);
+
+
+  --cyan:#79b8bd; --cyan-soft:rgba(121,184,189,.14);
+
+
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;
+
+
+  --mono:"JetBrains Mono","Cascadia Code",Consolas,monospace;
+
+
+  --r-lg:18px; --r-md:12px; --r-sm:9px;
+
+
+  --sh-1:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.24);
+
+
+  --sh-2:0 12px 38px rgba(0,0,0,.5);
+
+
+  --glow:0 0 0 3px rgba(217,119,87,.18);
+
+
+}
+
+
+*{box-sizing:border-box}
+
+
+*{scrollbar-width:thin;scrollbar-color:#33312c transparent}
+
+
+::-webkit-scrollbar{width:8px;height:8px}
+
+
+::-webkit-scrollbar-track{background:transparent}
+
+
+::-webkit-scrollbar-thumb{background:#33312c;border-radius:5px}
+
+
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.7;-webkit-font-smoothing:antialiased;height:100vh;overflow:hidden}
+
+
+/* app shell */
+
+
+.app{display:flex;flex-direction:column;height:100vh;background:var(--bg)}
+
+
+.main{display:flex;flex:1;min-height:0}
+
+
+/* columns */
+
+
+.col-left{width:238px;flex:0 0 auto;border-right:1px solid var(--rule);background:var(--bg2);display:flex;flex-direction:column;overflow:hidden}
+
+
+.col-center{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+
+
+.col-right{width:316px;flex:0 0 auto;border-left:1px solid var(--rule);background:var(--bg2);overflow-y:auto;display:flex;flex-direction:column}
+
+
+/* sidebar */
+
+
+.sidebar-back{position:fixed;top:12px;left:12px;z-index:85;display:flex;align-items:center;gap:5px;padding:9px 16px;font-size:12.5px;color:#fff;text-decoration:none;background:linear-gradient(135deg,var(--accent),#c25f3f);border-radius:10px;box-shadow:0 3px 12px rgba(217,119,87,.35);transition:all .15s;font-weight:700;flex-shrink:0}
+
+
+.sidebar-back:hover{background:#c25f3f;transform:translateY(-1px);box-shadow:0 5px 16px rgba(217,119,87,.45)}
+
+
+.col-head,.col-header{padding:12px 18px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:8px;white-space:nowrap}
+
+
+.nav-title{display:none}
+
+
+.ch-count{background:var(--accent-soft);color:var(--accent);padding:2px 9px;border-radius:999px;font-size:10px;font-weight:800}
+
+
+.nav-toggle{margin-left:auto;background:transparent;border:1px solid var(--rule);border-radius:8px;color:var(--muted);cursor:pointer;font-size:11px;padding:4px 9px;line-height:1.4;flex-shrink:0;transition:all .15s}
+
+
+.nav-toggle:hover{border-color:var(--accent);color:var(--accent)}
+
+
+.workshop-list{flex:1;overflow-y:auto;padding:10px}
+
+
+.workshop-item{padding:12px 14px;border:1px solid var(--rule);border-radius:12px;margin-bottom:8px;background:var(--bg3);cursor:pointer;transition:all .15s}
+
+
+.workshop-item:hover{border-color:var(--rule-strong);transform:translateY(-1px)}
+
+
+.workshop-item.active{border-color:var(--accent);background:var(--accent-soft);box-shadow:var(--glow)}
+
+
+.wi-top{display:flex;align-items:center;gap:8px}
+
+
+.wi-ico{font-size:15px}
+
+
+.wi-title{font-weight:800;font-size:12.5px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+
+.wi-status-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--dim)}
+
+
+.wi-status-dot.on{background:var(--green)}
+
+
+.wi-time{font-size:10.5px;color:var(--dim);margin-top:4px;display:block}
+
+
+.wi-agents{font-size:10.5px;color:var(--dim);margin-top:3px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+
+.wi-actions{display:flex;gap:6px;margin-top:8px}
+
+
+.wi-actions button{flex:1;background:var(--bg4);border:1px solid var(--rule);color:var(--muted);border-radius:7px;font-size:11px;padding:4px 6px;cursor:pointer;transition:all .15s;font-weight:600}
+
+
+.wi-actions button:hover{color:var(--accent);border-color:var(--accent)}
+
+
+/* fishbone → step rail */
+
+
+.fishbone{display:flex;align-items:center;height:60px;flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--rule);padding:0 18px;gap:4px;overflow:hidden}
+
+
+.fb-step{position:relative;display:flex;align-items:center;justify-content:center;gap:7px;min-width:112px;padding:9px 18px;font-size:12px;font-weight:700;color:var(--muted);cursor:default;transition:all .2s;white-space:nowrap;border:1px solid var(--rule);border-radius:10px;background:var(--bg3)}
+
+
+.fb-step .fb-num{font-family:var(--mono);font-size:10.5px;font-weight:900;opacity:.7}
+
+
+.fb-step.active{background:linear-gradient(135deg,var(--accent),#c25f3f);color:#fff;border-color:transparent;box-shadow:0 2px 12px rgba(217,119,87,.4);transform:translateY(-1px)}
+
+
+.fb-step.done{background:var(--accent-soft);color:var(--accent);border-color:rgba(217,119,87,.35)}
+
+
+.fb-spacer{flex:1;display:flex;align-items:center;justify-content:flex-end;padding:0 4px}
+
+
+.ws-status{display:flex;align-items:center;gap:.45rem;font-size:11px;color:var(--muted);background:var(--bg3);border:1px solid var(--rule);border-radius:999px;padding:5px 14px}
+
+
+.ws-dot{width:8px;height:8px;border-radius:50%;background:var(--dim);transition:background .3s}
+
+
+/* content */
+
+
+.ws-content{flex:1;overflow-y:auto;padding:22px 26px 48px}
+
+
+.panel{background:var(--bg2);border:1px solid var(--rule);border-radius:var(--r-lg);padding:22px 24px;margin-bottom:18px;box-shadow:var(--sh-1);position:relative;overflow:hidden}
+
+
+.panel::before{content:'';position:absolute;inset:0 0 auto 0;height:3px;background:linear-gradient(90deg,var(--accent),transparent);opacity:.5}
+
+
+.panel h2{font-size:15px;margin:0 0 14px;color:var(--ink);font-weight:800;display:flex;align-items:center;gap:8px}
+
+
+.panel h2::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px rgba(217,119,87,.7)}
+
+
+#hall{width:100%;min-height:96px;background:var(--bg3);border:1px solid var(--rule);border-radius:12px;padding:13px 15px;color:var(--ink);font-family:var(--font);font-size:13.5px;resize:vertical;line-height:1.7;transition:border-color .15s,box-shadow .15s}
+
+
+#hall:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
+
+
+/* discussion zones */
+
+
+.disc-zone{border:1px solid var(--rule);border-radius:14px;padding:16px 18px;margin-bottom:14px;background:var(--bg2);box-shadow:var(--sh-1)}
+
+
+.disc-zone.active{border-color:var(--accent);box-shadow:var(--sh-1),0 0 0 1px var(--accent-soft)}
+
+
+.zone-tag{font-size:10.5px;font-weight:800;padding:2px 9px;border-radius:999px;vertical-align:middle;letter-spacing:.03em;line-height:1.5;display:inline-block;white-space:nowrap}
+
+
+.zone-1 .zone-tag{background:var(--accent-soft);color:var(--accent)}
+
+
+.zone-2 .zone-tag{background:var(--purple-soft);color:var(--purple)}
+
+
+.zone-3 .zone-tag{background:var(--cyan-soft);color:var(--cyan)}
+
+
+.side-head{margin-bottom:10px}
+
+
+.side-head h2{display:flex;align-items:center;gap:8px}
+
+
+/* chat */
+
+
+.chat{max-height:290px;overflow-y:auto;padding:6px 2px;display:flex;flex-direction:column;gap:8px}
+
+
+.msg{max-width:82%;padding:9px 13px;border-radius:13px;font-size:13px;line-height:1.75;word-break:break-word;white-space:pre-wrap;align-self:flex-start;background:var(--bg3);border:1px solid var(--rule);color:var(--ink)}
+
+
+.msg.user{align-self:flex-end;background:var(--accent-soft);border-color:rgba(217,119,87,.3);color:var(--ink)}
+
+
+.msg.leader{align-self:flex-start;background:var(--purple-soft);border-color:rgba(176,143,194,.3);color:var(--ink)}
+.msg.leader{align-self:flex-start;background:var(--purple-soft);border-color:rgba(176,143,194,.3);color:var(--ink)}
+
+
+.msg.member{align-self:flex-start;background:var(--cyan-soft);border-color:rgba(94,164,196,.3);color:var(--ink)}
+
+
+.msg.notice{align-self:center;max-width:96%;text-align:center;background:transparent;border:1px dashed var(--rule-strong);color:var(--muted);font-size:11.5px;padding:5px 12px;border-radius:999px}
+
+
+.msg .who{display:block;font-size:11.5px;font-weight:800;letter-spacing:.05em;opacity:.92;margin-bottom:3px}
+.msg-report{border-left:3px solid rgba(121,184,189,.6)}
+.msg .who-line{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:6px;margin-bottom:3px}
+.msg .who-line .who{margin-bottom:0}
+.msg .msg-src{font-size:10px;font-weight:600;color:var(--dim);letter-spacing:.04em;white-space:nowrap}
+.msg-badge{display:inline-block;font-size:10px;line-height:1;font-weight:800;padding:3px 8px;border-radius:999px;margin-right:6px;vertical-align:1px}
+.msg-badge.done{background:rgba(143,179,155,.22);color:var(--green);border:1px solid rgba(143,179,155,.55)}
+.msg-badge.blocked{background:rgba(209,122,110,.22);color:var(--red);border:1px solid rgba(209,122,110,.55)}
+.msg-badge.progress{background:rgba(121,184,189,.18);color:var(--cyan);border:1px solid rgba(121,184,189,.5)}
+.msg .msg-summary{display:block;margin-top:5px;padding-top:4px;border-top:1px dashed rgba(255,255,255,.09);font-size:11.5px;color:var(--muted);opacity:.8}
+
+
+
+
+
+/* 空讨论区占位提示 */
+.chat:empty::before{content:"（暂无消息）";display:flex;align-items:center;justify-content:center;min-height:72px;font-size:12px;color:var(--muted);opacity:.55;border:1px dashed var(--rule);border-radius:12px;margin:2px 0}
+.zone-2 .chat:empty::before{content:"二级讨论空：组长/员工发言与进度回报会显示在这里"}
+.zone-3 .chat:empty::before{content:"三级讨论空：阶段总结与下一步方向会显示在这里"}
+
+
+.chat-input{display:flex;gap:10px;margin-top:10px}
+
+
+.chat-input textarea{min-height:44px;flex:1;resize:none;max-height:300px;background:var(--bg3);border:1px solid var(--rule);border-radius:11px;padding:11px 14px;color:var(--ink);font-family:var(--font);font-size:13px;line-height:1.6;transition:border-color .15s,box-shadow .15s}
+
+
+.chat-input textarea:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
+
+
+.chat-input button{background:linear-gradient(135deg,var(--accent),#c25f3f);color:#fff;border:none;border-radius:11px;padding:0 22px;cursor:pointer;font-weight:800;transition:all .15s;box-shadow:0 2px 8px rgba(217,119,87,.3)}
+
+
+.chat-input button:hover{filter:brightness(1.1);transform:translateY(-1px)}
+
+
+/* buttons */
+
+
+.btn{background:var(--bg3);border:1px solid var(--rule-strong);color:var(--ink);border-radius:10px;padding:9px 18px;font-size:12.5px;cursor:pointer;font-weight:700;transition:all .16s}
+
+
+.btn:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-1px)}
+
+
+.btn.mini{padding:6px 12px;font-size:11.5px;border-radius:8px;background:var(--bg3)}
+
+
+.btn.mini:hover{border-color:var(--accent);color:var(--accent)}
+
+
+/* right column */
+
+
+.sidebar{flex:1;overflow-y:auto;padding:12px}
+
+
+#sidebar{padding:10px}
+
+
+#sidebar .panel{margin:6px;border:1px solid var(--rule);padding:16px;overflow:visible}
+
+
+#sidebar .panel::before{opacity:0}
+
+
+/* roster rows */
+
+
+#roster{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+
+
+.row{display:flex;align-items:center;gap:8px}
+
+
+.row .dd{position:relative;min-width:0}
+
+
+.h-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;background:var(--bg3);border:1px solid var(--rule);border-radius:10px;padding:8px 12px;font-size:12px;transition:border-color .15s}
+
+
+.h-card .h-name{font-weight:700;font-size:13px;color:var(--ink)}
+
+
+.h-card .h-meta{font-size:11px;color:var(--muted);font-family:ui-monospace,Consolas,monospace;word-break:break-all}
+
+
+.h-card .cap-row{display:flex;flex-wrap:wrap;gap:4px;max-height:78px;overflow:hidden}
+
+
+.h-card .cap-row .cap{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+
+.h-card:hover{border-color:var(--rule-strong)}
+
+
+.h-name{font-weight:800;flex:1;color:var(--ink)}
+
+
+.h-meta{font-size:10.5px;color:var(--dim);font-family:var(--mono)}
+
+
+.cap{display:inline-block;font-size:10px;background:var(--bg4);border:1px solid var(--rule);border-radius:6px;padding:1px 7px;color:var(--muted);margin:2px 3px 2px 0;font-weight:600}
+
+
+.cap-tag{display:inline-flex;align-items:center;gap:3px;background:var(--amber-soft);color:var(--amber);border-radius:6px;padding:1px 7px;font-size:10px;font-weight:700}
+
+
+/* dropdown */
+
+
+.dd{position:relative}
+
+
+.dd-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:6px;background:var(--bg3);border:1px solid var(--rule);border-radius:10px;padding:8px 12px;font-size:12.5px;color:var(--ink);cursor:pointer;transition:all .15s;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+
+.dd-btn .dd-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+
+.dd-btn:hover{border-color:var(--accent)}
+
+
+.dd-list{display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:100%;width:max-content;max-width:320px;background:var(--bg4);border:1px solid var(--rule-strong);border-radius:10px;z-index:20;max-height:220px;overflow-y:auto;box-shadow:var(--sh-2)}
+
+
+.dd-list.open{display:block}
+
+
+.dd-opt{padding:9px 12px;font-size:12px;cursor:pointer;transition:all .1s;color:var(--ink);white-space:nowrap}
+
+
+.dd-opt:hover{background:var(--accent-soft);color:var(--accent)}
+
+
+.dd-opt.muted{color:var(--dim)}
+
+
+/* agent list */
+
+
+.agent-card{background:var(--bg3);border:1px solid var(--rule);border-radius:12px;padding:11px 13px;margin:8px 12px;transition:border-color .15s}
+
+
+.agent-card:hover{border-color:var(--rule-strong)}
+
+
+.ac-top{display:flex;align-items:center;gap:8px}
+
+
+.ac-name{font-weight:800;font-size:12.5px;flex:1;color:var(--ink)}
+
+
+.ac-id{font-size:10px;color:var(--dim);font-family:var(--mono);display:block;margin-top:3px}
+
+
+.ac-sw{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+
+
+.ac-status{font-size:10px;font-weight:700;border-radius:999px;padding:2px 8px}
+
+
+.ac-status.on{background:var(--green-soft);color:var(--green)}
+
+
+.ac-status.off{background:var(--red-soft);color:var(--red)}
+
+
+.ac-caps{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+
+
+/* stats */
+
+
+.stats-grid{padding:10px 16px 14px}
+
+
+.stat-row{display:flex;justify-content:space-between;padding:6px 0;font-size:12.5px;border-bottom:1px dashed var(--rule)}
+
+
+.sr-label{color:var(--muted);font-weight:600}
+
+
+.sr-value{font-weight:800;font-family:var(--mono);color:var(--accent);font-variant-numeric:tabular-nums}
+
+
+/* statusbar */
+
+
+.statusbar{display:flex;align-items:center;padding:0 18px;background:var(--bg2);border-top:1px solid var(--rule);font-size:11px;color:var(--muted);gap:1rem;height:38px;flex-shrink:0}
+
+
+.statusbar .sb-item strong{color:var(--ink);font-weight:700}
+
+
+/* misc */
+
+
+.del{background:transparent;border:1px solid var(--rule);color:var(--red);border-radius:8px;padding:5px 12px;font-size:11px;cursor:pointer;font-weight:700;transition:all .15s}
+
+
+.del:hover{background:var(--red-soft);border-color:var(--red)}
+
+
+.dot{width:7px;height:7px;border-radius:50%;background:var(--dim);display:inline-block}
+
+
+.spinner{width:14px;height:14px;border:2px solid var(--rule-strong);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:middle}
+
+
+.muted{color:var(--dim)}
+
+
+@keyframes spin{to{transform:rotate(360deg)}}
+
+
+@media(max-width:1100px){.col-left{width:200px}.col-right{width:264px}}
+
+
+@media(max-width:860px){.col-left{display:none}.col-right{width:240px}}
+
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+
+/* ===== 自定义弹窗 UI ===== */
+
+
+.ac-modal-overlay{position:fixed;inset:0;background:rgba(8,9,11,.62);backdrop-filter:blur(5px);z-index:600;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;transition:opacity .18s ease}
+
+
+.ac-modal-overlay.show{opacity:1}
+
+
+.ac-modal{background:var(--bg2);border:1px solid var(--rule);border-radius:14px;width:440px;max-width:100%;box-shadow:0 12px 38px rgba(0,0,0,.5);transform:translateY(10px) scale(.97);transition:transform .18s ease;overflow:hidden}
+
+
+.ac-modal-overlay.show .ac-modal{transform:translateY(0) scale(1)}
+
+
+.acm-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--rule)}
+
+
+.acm-title{font-size:13.5px;font-weight:600;color:var(--ink);letter-spacing:.2px}
+
+
+.acm-close{cursor:pointer;color:var(--dim);font-size:16px;line-height:1;padding:2px 6px;border-radius:6px;transition:all .15s}
+
+
+.acm-close:hover{color:var(--ink);background:var(--bg4)}
+
+
+.acm-body{padding:16px 18px;font-size:12.5px;line-height:1.65;color:var(--muted);word-break:break-word}
+
+
+.acm-input-wrap{margin-top:10px}
+
+
+.acm-input{width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--rule);border-radius:8px;padding:9px 12px;color:var(--ink);font-size:12.5px;font-family:var(--mono,monospace);outline:none;transition:border-color .15s,box-shadow .15s;resize:vertical;min-height:64px}
+
+
+.acm-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(217,119,87,.22)}
+
+
+.acm-foot{display:flex;justify-content:flex-end;gap:10px;padding:12px 18px;border-top:1px solid var(--rule)}
+
+
+.acm-btn{border:none;border-radius:9px;padding:8px 18px;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .15s}
+
+
+.acm-btn.cancel{background:transparent;border:1px solid var(--rule);color:var(--muted)}
+
+
+.acm-btn.cancel:hover{border-color:var(--bg4);color:var(--ink);background:var(--bg3)}
+
+
+.acm-btn.confirm{background:linear-gradient(135deg,var(--accent),var(--accent-hi,var(--accent)));color:#fff}
+
+
+.acm-btn.confirm:hover{filter:brightness(1.08)}
+
+
+.acm-btn.danger{background:linear-gradient(135deg,#b05a50,var(--red));color:#fff}
+
+
+.acm-btn.danger:hover{filter:brightness(1.08)}
+
+
+.acm-toast{position:fixed;top:22px;left:50%;transform:translateX(-50%) translateY(-16px);background:var(--bg3);border:1px solid var(--rule);color:var(--ink);padding:9px 20px;border-radius:10px;font-size:12.5px;z-index:700;opacity:0;pointer-events:none;transition:all .2s ease;box-shadow:0 12px 38px rgba(0,0,0,.5)}
+
+
+.acm-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+
+.acm-toast.err{border-color:var(--red);color:var(--red)}
+
+
+/* ── 插话 + 自治边界（V6-1）────────────────────────────── */
+.ws-sm{display:flex;align-items:center;gap:5px;margin-left:10px;padding-left:10px;border-left:1px solid var(--rule)}
+.ws-sm .ws-dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+.ws-sm .ws-dot.executing,.ws-sm .ws-dot.done{background:var(--green);box-shadow:0 0 6px var(--green)}
+.ws-sm .ws-dot.discussing{background:var(--cyan);box-shadow:0 0 6px var(--cyan)}
+.ws-sm .ws-dot.waiting_reply,.ws-sm .ws-dot.blocked-retrying{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+.ws-sm .ws-dot.stuck-paused,.ws-sm .ws-dot.timeout{background:var(--red);box-shadow:0 0 6px var(--red)}
+.ws-sm .ws-dot.created,.ws-sm .ws-dot.dropped{background:var(--dim)}
+.ws-sm #smText{font-size:10px;color:var(--dim)}
+.interject-fab{position:fixed;right:286px;bottom:20px;z-index:60;width:50px;height:50px;border-radius:50%;border:1px solid var(--rule-strong);background:var(--bg3);color:var(--ink);font-size:19px;cursor:pointer;box-shadow:var(--sh-1)}
+.interject-fab:hover{background:var(--bg4)}
+.interject-drawer{position:fixed;top:0;right:0;bottom:0;width:344px;max-width:88vw;z-index:70;background:var(--bg2);border-left:1px solid var(--rule-strong);box-shadow:var(--sh-1);transform:translateX(105%);transition:transform .22s ease;display:flex;flex-direction:column;overflow:hidden}
+.interject-drawer.open{transform:translateX(0)}
+.interject-drawer .id-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--rule);flex:0 0 auto}
+.interject-drawer .id-head h3{margin:0;font-size:14px;color:var(--ink)}
+.interject-drawer .id-close{cursor:pointer;color:var(--muted);font-size:18px;background:none;border:none;padding:2px 6px}
+.id-body{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+.id-input textarea{width:100%;min-height:64px;background:var(--bg3);border:1px solid var(--rule);border-radius:var(--r-sm);color:var(--ink);padding:8px;resize:vertical;font:inherit}
+.id-input .id-row{display:flex;gap:8px;margin-top:8px;align-items:center}
+.id-input select{flex:1;background:var(--bg3);border:1px solid var(--rule);border-radius:var(--r-sm);color:var(--ink);padding:6px;font:inherit}
+.id-input .btn{flex:0 0 auto}
+.id-sec-title{font-size:12px;color:var(--muted);margin:6px 0 4px;display:flex;align-items:center;justify-content:space-between}
+.id-list{display:flex;flex-direction:column;gap:6px}
+.id-item{background:var(--bg3);border:1px solid var(--rule);border-radius:var(--r-sm);padding:8px;font-size:12px}
+.id-item .ii-top{display:flex;align-items:center;gap:6px}
+.id-pri{font-size:11px;padding:1px 6px;border-radius:8px}
+.id-pri.紧急{background:var(--red-soft);color:var(--red)}
+.id-pri.灵感{background:var(--cyan-soft);color:var(--cyan)}
+.id-pri.一般{background:var(--bg4);color:var(--muted)}
+/* ═══ 展开车间：全屏工作台（回字形布局：左任务树 + 中心讨论区）═══ */
+.wsv-overlay{position:fixed;inset:0;z-index:90;background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
+.wsv-top{display:flex;align-items:center;gap:14px;padding:0 20px;height:56px;background:var(--bg2);border-bottom:1px solid var(--rule-strong);flex:0 0 auto;position:relative;z-index:96}
+.wsv-title{font-weight:800;color:var(--ink);font-size:15px;flex:1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.02em}
+.wsv-collapse{background:linear-gradient(135deg,var(--accent),#c25f3f);color:#fff;border:none;box-shadow:0 3px 12px rgba(217,119,87,.35);padding:9px 16px;border-radius:10px;font-weight:700}
+.wsv-collapse:hover{background:#c25f3f;transform:translateY(-1px);box-shadow:0 5px 16px rgba(217,119,87,.45)}
+.wsv-main{flex:1;display:flex;min-height:0}
+.wsv-left{width:240px;flex:0 0 auto;display:flex;flex-direction:column;border-right:1px solid var(--rule);min-width:0;position:relative;background:var(--bg)}
+.wsv-left-head{height:38px;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule);flex:0 0 auto}
+.wsv-tree{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 10px 16px;position:relative}
+.wsv-tree svg{width:100%;height:auto}
+.wsv-trunk{width:1px;height:13px;background:var(--rule-strong);margin-left:11px;flex-shrink:0}
+.wsv-node{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:8px;font-size:12px;color:var(--ink);line-height:1.4;cursor:default}
+.wsv-node:hover{background:var(--bg3)}
+.wsv-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.wsv-node-label{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wsv-node-note{font-size:10px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wsv-empty-mini{padding:22px 10px;text-align:center;color:var(--muted);font-size:11.5px;line-height:1.8;border:1px dashed var(--rule);border-radius:10px;margin:10px 4px}
+.wsv-expand{flex:0 0 auto;margin:8px 10px 12px;font-size:11.5px}
+.wsv-tree-zoom{position:fixed;inset:0;z-index:99;background:var(--bg);display:flex;flex-direction:column}
+.wsv-tree-zoom-head{height:52px;padding:0 20px;display:flex;align-items:center;gap:12px;background:var(--bg2);border-bottom:1px solid var(--rule-strong);flex:0 0 auto}
+.wsv-tree-zoom-head b{color:var(--ink);font-size:14px;flex:1}
+.wsv-tree-zoom-body{flex:1;overflow:auto;padding:28px 36px;display:flex;justify-content:center}
+.wsv-tree-zoom-body svg{max-width:100%;height:auto}
+.wsv-chat{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+.wsv-chat-head{height:38px;padding:0 16px;display:flex;align-items:center;gap:8px;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule);flex:0 0 auto}
+.wsv-chat .chat{flex:1;max-height:none;padding:16px 20px}
+.wsv-chat .chat-input{flex:0 0 auto;margin-top:0;padding:10px 16px 14px;border-top:1px solid var(--rule)}
+.wsv-right{width:250px;flex:0 0 auto;background:var(--bg2);border-left:1px solid var(--rule-strong);padding:14px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+.wsv-right-head{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding-bottom:10px;border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:6px}
+.wsv-btn{text-align:left;background:var(--bg3);border:1px solid var(--rule);color:var(--muted);border-radius:12px;padding:12px 14px;font-size:13px;cursor:pointer;transition:all .15s;font-weight:600;display:flex;align-items:center;gap:11px;position:relative;overflow:hidden}
+.wsv-btn .ico{width:34px;height:34px;border-radius:9px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;transition:all .15s}
+.wsv-btn .tt{display:flex;flex-direction:column;gap:1px;min-width:0}
+.wsv-btn .tt b{color:var(--ink);font-size:13px}
+.wsv-btn .tt span{color:var(--dim);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wsv-btn:hover{color:var(--accent);border-color:rgba(217,119,87,.45);background:var(--accent-soft);transform:translateX(2px)}
+.wsv-btn:hover .ico{background:var(--accent);color:#fff}
+.wsv-input{flex:0 0 auto;display:flex;gap:10px;padding:14px 20px;background:var(--bg2);border-top:1px solid var(--rule-strong);align-items:flex-end}
+.wsv-input textarea{flex:1;background:var(--bg3);border:1px solid var(--rule);border-radius:12px;color:var(--ink);font-family:var(--font);font-size:13px;padding:10px 14px;resize:none;line-height:1.6}
+.wsv-input textarea:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
+.wsv-input .btn{flex:0 0 auto;align-self:center;background:linear-gradient(135deg,var(--accent),#c25f3f);border:none;color:#fff;font-weight:700;padding:10px 20px;border-radius:10px;box-shadow:0 2px 10px rgba(217,119,87,.3)}
+.wsv-input .btn:hover{background:#c25f3f;transform:translateY(-1px)}
+.wsv-drop{position:absolute;top:64px;left:20px;min-width:360px;max-width:580px;background:var(--bg3);border:1px solid var(--rule-strong);border-radius:14px;box-shadow:var(--sh-2);padding:14px 16px;z-index:97;font-size:12.5px;color:var(--ink)}
+.wsv-panel{position:absolute;top:64px;right:266px;width:330px;max-width:72vw;max-height:62vh;overflow-y:auto;background:var(--bg3);border:1px solid var(--rule-strong);border-radius:14px;box-shadow:var(--sh-2);padding:14px 16px;z-index:97;font-size:12.5px;color:var(--ink)}
+.wsv-panel h4{margin:0 0 8px;font-size:12px;color:var(--accent);display:flex;align-items:center;gap:6px}
+.wsv-panel h4::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px rgba(217,119,87,.7)}
+.wsv-flow-item{padding:5px 0;border-bottom:1px solid var(--rule)}
+.wsv-flow-item.cur{background:var(--accent-soft);border-radius:8px;padding:6px 8px;border-color:rgba(217,119,87,.35)}
+.wsv-flow-item.done{opacity:.7}
+.id-st{font-size:10px;color:var(--dim);margin-left:auto}
+.id-item .ii-body{margin:6px 0;color:var(--ink);line-height:1.45;word-break:break-word}
+.id-item .ii-actions{display:flex;gap:6px;flex-wrap:wrap}
+.id-item .ii-actions .btn{font-size:11px;padding:3px 8px}
+.id-empty{color:var(--dim);font-size:12px;text-align:center;padding:12px 0}
+.id-wb{display:flex;flex-direction:column;gap:8px}
+.id-wb-block{background:var(--bg3);border:1px solid var(--rule);border-radius:var(--r-sm);padding:8px;font-size:12px}
+.id-wb-block h4{margin:0 0 6px;font-size:12px;color:var(--muted)}
+.id-wb-block .wb-item{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:3px 0;border-bottom:1px dashed var(--rule)}
+.id-wb-block .wb-item:last-child{border-bottom:none}
+.sm-lamp{display:inline-flex;align-items:center;gap:5px}
+.sm-lamp i{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--dim)}
+.sm-lamp.executing i,.sm-lamp.done i{background:var(--green);box-shadow:0 0 6px var(--green)}
+.sm-lamp.discussing i{background:var(--cyan);box-shadow:0 0 6px var(--cyan)}
+.sm-lamp.waiting_reply i,.sm-lamp.blocked-retrying i{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+.sm-lamp.stuck-paused i,.sm-lamp.timeout i{background:var(--red);box-shadow:0 0 6px var(--red)}
+.sm-lamp.created i,.sm-lamp.dropped i{background:var(--dim)}
+
+
+</style>
+
+
+</head>
+
+
+<body>
+
+
+
+
+
+<div class="app">
+
+
+  <div class="main">
+
+
+    <div class="col-left">
+
+
+      <a class="sidebar-back" href="/" title="返回大厅">← <span class="sb-text">返回大厅</span></a>
+
+
+      <div class="col-header"><span class="nav-title">工作间</span><span class="ch-count" id="workshopCount">0</span><button class="nav-toggle" id="navToggle" onclick="toggleNav()" title="折叠/展开侧边栏">◀</button></div>
+
+
+      <div class="workshop-list" id="workshopList"><div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">加载中...</div></div>
+
+
+    </div>
+
+
+    <div class="col-center">
+
+
+      <div class="fishbone" id="phaseBar">
+
+
+        <span class="fb-step" id="p1"><span class="fb-num">01</span>一级讨论</span>
+
+
+        <span class="fb-step" id="p2"><span class="fb-num">02</span>选定员工</span>
+
+
+        <span class="fb-step" id="p3"><span class="fb-num">03</span>二级讨论</span>
+
+
+        <span class="fb-step" id="p4"><span class="fb-num">04</span>工作</span>
+
+
+        <span class="fb-step" id="p5"><span class="fb-num">05</span>三级讨论</span>
+
+
+        <div class="fb-spacer"></div>
+
+
+        <div class="ws-status"><span class="ws-dot" id="wsDot"></span><span id="wsText">未连接</span><span class="ws-sm" title="自治边界状态机"><span class="ws-dot" id="smDot"></span><span id="smText">-</span></span></div>
+
+
+      </div>
+
+
+      <div class="ws-content">
+
+
+        <div class="panel" id="createPanel">
+
+
+          <h2>工作间</h2>
+
+
+          <p style="color:var(--muted);font-size:13px;line-height:1.8;margin:0">工作间由在大厅发布任务后自动创建。<br>请返回大厅，在输入框发布你的任务。</p>
+
+
+          <button class="btn" onclick="location.href='/'" style="margin-top:14px">← 返回大厅发布任务</button>
+
+
+        </div>
+
+
+
+
+
+        <div class="panel" id="layout" style="display:none">
+
+
+          <!-- 三区讨论：一级 / 二级 / 三级，各自独立输入框 -->
+
+
+          <div class="disc-zone zone-1" id="zone1">
+
+
+            <div class="side-head"><h2 style="margin:0">💬 一级讨论 <span class="zone-tag">平台AI</span></h2><button class="btn mini" id="endDiscussBtn" onclick="endDiscuss()">结束讨论，选定员工 →</button></div>
+
+
+            <div class="chat" id="discussion1"></div>
+
+
+            <div class="chat-input">
+
+
+              <textarea id="msgInput1" placeholder="和平台 AI 讨论需求..." rows="1" oninput="autoResize(this)"></textarea>
+
+
+              <button onclick="sendDiscuss(1)">发送</button>
+
+
+            </div>
+
+
+          </div>
+
+
+
+
+
+          <div class="disc-zone zone-2" id="zone2">
+
+
+            <div class="side-head"><h2 style="margin:0">💬 二级讨论 <span class="zone-tag">组长</span></h2><button class="btn mini" id="leaderStatusBtn" onclick="leaderStatus()">📋 组长检查员工状态</button></div>
+
+
+            <div class="chat" id="discussion2"></div>
+
+
+            <div class="chat-input">
+
+
+              <textarea id="msgInput2" placeholder="和组长深入讨论分工..." rows="1" oninput="autoResize(this)"></textarea>
+
+
+              <button onclick="sendDiscuss(2)">发送</button>
+
+
+            </div>
+
+
+          </div>
+
+
+
+
+
+          <div class="disc-zone zone-3" id="zone3">
+
+
+            <div class="side-head" style="display:flex;align-items:center;gap:8px"><h2 style="margin:0">💬 三级讨论 <span class="zone-tag">进度</span></h2><button class="btn mini" style="margin-left:auto" onclick="openWorkshopView()">🛠 展开车间</button></div>
+
+
+            <div class="chat" id="discussion3"></div>
+
+
+            <div class="chat-input">
+
+
+              <textarea id="msgInput3" placeholder="汇报进度、讨论卡点与下一步..." rows="1" oninput="autoResize(this)"></textarea>
+
+
+              <button onclick="sendDiscuss(3)">发送</button>
+
+
+            </div>
+
+
+          </div>
+
+
+
+
+
+          <button class="btn" id="startWorkBtn" onclick="startWork()" style="display:none;margin-top:8px">🚀 开始工作</button>
+
+
+          <div id="workStatus" style="margin-top:8px"></div>
+
+
+          <button class="btn" id="reviewBtn" onclick="startReview()" style="display:none;margin-top:8px">📋 进行三级讨论</button>
+
+
+          <div style="display:flex;gap:8px;margin-top:8px">
+
+
+            <button class="btn" id="continueBtn" onclick="continueWork()" style="display:none">▶ 继续工作</button>
+
+
+            <button class="btn" id="completeBtn" onclick="completeWork()" style="display:none">✅ 完成任务</button>
+
+
+          </div>
+
+
+        </div>
+
+
+      </div>
+
+
+    </div>
+
+
+    <div class="col-right">
+
+
+      <div class="col-header">👥 员工名单</div>
+
+
+      <div id="sidebar">
+
+
+        <div class="panel" style="margin:8px;border:1px solid var(--rule)">
+
+
+          <div class="side-head"><h2>② 选定员工</h2></div>
+
+
+          <button class="btn" id="selectBtn" onclick="selectMembers()" style="margin-bottom:8px">让平台 AI 选定员工</button>
+
+
+          <div id="roster" style="margin-bottom:8px"></div>
+
+
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+
+
+            <button class="btn" onclick="addMemberRow()">+ 添加职位 / harness</button>
+
+
+            <button class="btn" id="saveMembersBtn" onclick="saveMembers()" style="display:none">保存名单</button>
+
+
+          </div>
+
+
+          <button class="btn" id="confirmBtn" onclick="confirmMembers()" style="display:none;margin-bottom:8px">确认名单，进入二级讨论</button>
+
+
+          <div class="col-header">可用 Harness（能力）</div>
+
+
+          <div id="harnessList"></div>
+
+
+        </div>
+
+
+      </div>
+
+
+      <div class="col-header">🤖 Agent 列表</div>
+
+
+      <div id="agentList" style="flex:1;overflow-y:auto"><div style="padding:16px;color:var(--dim);font-size:12px">加载中...</div></div>
+
+
+      <div class="col-header">📊 系统统计</div>
+
+
+      <div class="stats-grid">
+
+
+        <div class="stat-row"><span class="sr-label">工作间数</span><span class="sr-value" id="statWorkshops">0</span></div>
+
+
+        <div class="stat-row"><span class="sr-label">在线Agent</span><span class="sr-value" id="statAgents">0</span></div>
+
+
+      </div>
+
+
+    </div>
+
+
+    <button class="interject-fab" id="interjectFab" onclick="toggleDrawer()" title="插话 / 组长工作台">💬</button>
+
+
+    <div class="interject-drawer" id="interjectDrawer">
+      <div class="id-head"><h3>插话 · 组长工作台</h3><button class="id-close" onclick="toggleDrawer(false)">✕</button></div>
+      <div class="id-body">
+        <div class="id-input">
+          <textarea id="itContent" placeholder="把新想法/紧急事项插进当前工作循环…" oninput="autoResize(this)"></textarea>
+          <div class="id-row">
+            <select id="itPriority">
+              <option value="一般">一般</option>
+              <option value="灵感">灵感</option>
+              <option value="紧急">紧急</option>
+            </select>
+            <button class="btn" onclick="submitInterject()">提交插话</button>
+          </div>
+          <div style="margin-top:4px;font-size:11px;color:var(--dim)">紧急 = 立即注入（可打断）；灵感 = 下一检查点注入；一般 = 进池待合并</div>
+        </div>
+        <div class="id-sec-title">插话列表 <button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px" onclick="refreshInterjects()">刷新</button></div>
+        <div class="id-list" id="itList"><div class="id-empty">未加载</div></div>
+        <div class="id-sec-title">组长工作台</div>
+        <div class="id-wb" id="itWorkbench"><div class="id-empty">未加载</div></div>
+      </div>
+    </div>
+
+
+  </div>
+
+
+  <div class="statusbar"><div class="sb-item" id="lastAction">就绪</div></div>
+
+
+  <!-- ═══ 展开车间：全屏工作台（V6-3）═══ -->
+  <div class="wsv-overlay" id="workshopView" style="display:none">
+    <div class="wsv-top">
+      <button class="btn mini wsv-collapse" onclick="closeWorkshopView()">⬇ 收起车间</button>
+      <span class="wsv-title" id="wsvTitle">车间工作台</span>
+      <!-- 工作流暂缓：按钮隐藏，插口保留（wsvToggleWorkflow / #wsvWorkflowDrop / .wsv-flow-item），待插件化接入 --><button class="btn" style="display:none" onclick="wsvToggleWorkflow()">工作流 ▾</button>
+    </div>
+    <div class="wsv-main">
+      <div class="wsv-left">
+        <div class="wsv-left-head">🌳 任务树</div>
+        <div class="wsv-tree" id="wsvTree"><div class="id-empty">加载中…</div></div>
+        <button class="btn wsv-expand" onclick="wsvTreeZoom(true)">⛶ 放大查看</button>
+      </div>
+      <div class="wsv-chat">
+        <div class="wsv-chat-head">💬 员工讨论 <span style="font-size:10px;text-transform:none;letter-spacing:0;color:var(--dim)">三级讨论 · 阶段总结与下一步</span></div>
+        <div class="chat" id="wsvChatCenter"></div>
+        <div class="chat-input">
+          <textarea id="wsvChatInput" placeholder="在讨论区发言（和组长/员工讨论进度）..." rows="1" oninput="autoResize(this)"></textarea>
+          <button onclick="wsvChatSend()">发送</button>
+        </div>
+      </div>
+      <div class="wsv-right">
+        <div class="wsv-right-head">🧰 车间面板</div>
+        <button class="btn wsv-btn" onclick="wsvPanel('staff')"><span class="ico">👥</span><span class="tt"><b>员工状态</b><span>成员在线 · 暂停标记</span></span></button>
+        <button class="btn wsv-btn" onclick="wsvPanel('interject')"><span class="ico">💬</span><span class="tt"><b>插话栏</b><span>组长插话记录</span></span></button>
+        <button class="btn wsv-btn" onclick="wsvPanel('token')"><span class="ico">🪙</span><span class="tt"><b>Token 消耗</b><span>用量统计</span></span></button>
+        <button class="btn wsv-btn" onclick="wsvPanel('slot4')"><span class="ico">🧩</span><span class="tt"><b>待定</b><span>扩展预留位</span></span></button>
+      </div>
+    </div>
+    <div class="wsv-input">
+      <textarea id="wsvCmd" placeholder="输入新指令，Enter 提交，Shift+Enter 换行" rows="2" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();wsvSubmit();}"></textarea>
+      <button class="btn" onclick="wsvSubmit()">提交指令</button>
+    </div>
+    <!-- 工作流下拉弹窗 -->
+    <div class="wsv-drop" id="wsvWorkflowDrop" style="display:none"></div>
+    <!-- 右侧面板弹层 -->
+    <div class="wsv-panel" id="wsvPanelBox" style="display:none"></div>
+  </div>
+  <!-- 任务树放大弹层 -->
+  <div class="wsv-tree-zoom" id="wsvTreeZoom" style="display:none">
+    <div class="wsv-tree-zoom-head"><b>🌳 任务树 · 放大视图</b><button class="btn" onclick="wsvTreeZoom(false)">✕ 收起</button></div>
+    <div class="wsv-tree-zoom-body" id="wsvTreeZoomBody"><div class="id-empty">加载中…</div></div>
+  </div>
+
+
+</div>
+
+
+
+
+
+<script>
+
+
+let wsId=null;
+let _msgSeenSeq=-1;
+let _msgPoll=null;
+
+
+function autoResize(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,300)+'px';}
+
+
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+// ═══ 展开车间：全屏工作台（V6-2）══════════════════════
+let _wsvData={ws:null,sm:null,wb:null,its:[]};
+function openWorkshopView(){
+  const v=document.getElementById('workshopView');if(!v)return;
+  v.style.display='flex';
+  syncWsvChat();
+  wsvLoad();
+}
+function syncWsvChat(){
+  const src=document.getElementById('discussion3');
+  const cc=document.getElementById('wsvChatCenter');
+  if(!src||!cc)return;
+  cc.innerHTML='';
+  src.querySelectorAll(':scope > .msg').forEach(m=>{
+    const c=m.cloneNode(true);
+    if(c.id==='thinking')c.removeAttribute('id');
+    cc.appendChild(c);
+  });
+  cc.scrollTop=cc.scrollHeight;
+}
+function wsvChatSend(){
+  const inp=document.getElementById('wsvChatInput');
+  const t=(inp?inp.value:'').trim();
+  if(!t||!wsId)return;
+  const m3=document.getElementById('msgInput3');
+  if(m3)m3.value=t;
+  if(inp)inp.value='';
+  sendDiscuss(3);
+}
+function wsvTreeZoom(show){
+  const z=document.getElementById('wsvTreeZoom');if(!z)return;
+  if(show){
+    wsvRenderTreeBig();
+    z.style.display='flex';
+  }else{
+    z.style.display='none';
+  }
+}
+function closeWorkshopView(){
+  const v=document.getElementById('workshopView');if(!v)return;
+  v.style.display='none';
+  const d=document.getElementById('wsvWorkflowDrop');if(d)d.style.display='none';
+  const p=document.getElementById('wsvPanelBox');if(p)p.style.display='none';
+}
+async function wsvLoad(){
+  if(!wsId)return;
+  const tree=document.getElementById('wsvTree');if(tree)tree.innerHTML='<div class="id-empty">加载中…</div>';
+  try{
+    const [wsd,smd,wbd,itd]=await Promise.all([
+      fetch(`/api/workshop/${wsId}`).then(r=>r.json()),
+      fetch(`/api/workshop/${wsId}/sm/status`).then(r=>r.json()),
+      fetch(`/api/workshop/${wsId}/leader-workbench`).then(r=>r.json()),
+      fetch(`/api/workshop/${wsId}/interjects`).then(r=>r.json())
+    ]);
+    _wsvData={ws:wsd||{},sm:smd||{},wb:wbd||{},its:(itd&&Array.isArray(itd.interjects))?itd.interjects:[]};
+    const t=document.getElementById('wsvTitle');
+    if(t)t.textContent='车间工作台 · '+((wsd&&(wsd.name||wsd.workshop_id))||'');
+    wsvRenderTree();
+    const zz=document.getElementById('wsvTreeZoom');
+    if(zz&&zz.style.display==='flex')wsvRenderTreeBig();
+  }catch(e){
+    const tr=document.getElementById('wsvTree');
+    if(tr)tr.innerHTML='<div class="id-empty">工作台数据加载失败（请确认服务与工作间状态）</div>';
+  }
+}
+function wsvNodesFromLogs(logs,state){
+  const nodes=[];
+  logs.forEach(lg=>{
+    const ev=lg.event||'';const from=lg.from||'';const to=lg.to||'';
+    const note=(lg.note||'');
+    let type='main';
+    if(ev==='complete'||to==='done')type='done';
+    else if(ev==='drop')type='dropped';
+    else if(ev==='stuck'||ev==='block'||ev==='timeout')type='fail';
+    else if(ev==='resume'||ev==='execute'||(from&&['stuck-paused','blocked-retrying','timeout','waiting_reply'].includes(from)&&['executing','discussing'].includes(to)))type='bypass';
+    nodes.push({label:SM_LABEL[to]||to||(SM_LABEL[from]||from),state:to||from,type:type,note:note||'事件日志'});
+  });
+  const last=nodes[nodes.length-1];
+  if(last&&last.state!==state){nodes.push({label:SM_LABEL[state]||state,state:state,type:'main',note:'当前状态'});}
+  return nodes;
+}
+// 窄栏极简任务树：垂直列表，圆点+状态名，仅保留语义色
+function wsvRenderTree(){
+  const box=document.getElementById('wsvTree');if(!box)return;
+  const sm=_wsvData.sm||{};
+  const state=sm.state||'created';
+  const logs=Array.isArray(sm.logs)?sm.logs.slice(-20):[];
+  const nodes=wsvNodesFromLogs(logs,state);
+  const DOT={main:'var(--green)',done:'var(--accent)',dropped:'var(--dim)',fail:'var(--red)',bypass:'var(--cyan)'};
+  let html='';
+  if(nodes.length===0){
+    html='<div class="wsv-empty-mini">任务树等待生长<br>暂无历史任务记录</div>';
+  }else{
+    html='<div class="wsv-node"><span class="wsv-dot" style="background:var(--green)"></span><span class="wsv-node-label">启动</span></div>';
+    nodes.forEach(n=>{
+      const dot=DOT[n.type]||'var(--green)';
+      const op=n.type==='dropped'?0.45:1;
+      html+='<div class="wsv-trunk"></div>';
+      html+=`<div class="wsv-node" title="${esc(n.note||'')}"><span class="wsv-dot" style="background:${dot};opacity:${op}"></span><span class="wsv-node-label" style="opacity:${op}">${esc(n.label)}</span></div>`;
+    });
+  }
+  box.innerHTML=html;
+}
+// 放大视图：居中垂直主干 + 直线侧枝，极简无装饰
+function wsvRenderTreeBig(){
+  const box=document.getElementById('wsvTreeZoomBody');if(!box)return;
+  const sm=_wsvData.sm||{};
+  const state=sm.state||'created';
+  const logs=Array.isArray(sm.logs)?sm.logs.slice(-30):[];
+  const nodes=wsvNodesFromLogs(logs,state);
+  const CX=320;
+  const ROW=58;
+  const H=Math.max(260,90+nodes.length*ROW+60);
+  const W=640;
+  let svg=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="max-width:100%;height:auto">`;
+  svg+=`<line x1="${CX}" y1="40" x2="${CX}" y2="${H-20}" style="stroke:var(--rule-strong)" stroke-width="1"/>`;
+  svg+=`<circle cx="${CX}" cy="40" r="7" style="fill:var(--green)"/><text x="${CX+14}" y="44" font-size="13" style="fill:var(--ink)">启动</text>`;
+  if(nodes.length===0){
+    svg+=`<text x="${CX}" y="${H/2}" text-anchor="middle" font-size="13" style="fill:var(--muted)">任务树等待生长 · 暂无历史任务记录</text>`;
+  }else{
+    nodes.forEach((n,i)=>{
+      const y=90+i*ROW;
+      let x=CX;
+      if(n.type==='dropped')x=CX-170;
+      else if(n.type==='fail')x=CX-80;
+      else if(n.type==='bypass')x=CX+170;
+      const dot=n.type==='done'?'var(--accent)':n.type==='dropped'?'var(--dim)':n.type==='fail'?'var(--red)':n.type==='bypass'?'var(--cyan)':'var(--green)';
+      const stc=n.type==='bypass'?'var(--cyan)':(n.type==='dropped'?'var(--dim)':(n.type==='fail'?'var(--red)':'var(--accent)'));
+      const op=n.type==='dropped'?0.45:1;
+      svg+=`<line x1="${CX}" y1="${y-44}" x2="${x}" y2="${y-12}" style="stroke:${stc}" stroke-width="1.4" opacity=".8"/>`;
+      svg+=`<circle cx="${x}" cy="${y}" r="6" style="fill:${dot};opacity:${op}"/>`;
+      svg+=`<text x="${x+13}" y="${y+4}" font-size="13" style="fill:${n.type==='dropped'?'var(--dim)':'var(--ink)'};opacity:${op}">${esc(n.label)}</text>`;
+      svg+=`<text x="${x+13}" y="${y+20}" font-size="10" style="fill:var(--muted)">${esc((n.note||'').slice(0,30))}</text>`;
+    });
+  }
+  svg+='</svg>';
+  box.innerHTML=svg;
+}
+function wsvToggleWorkflow(){
+  const d=document.getElementById('wsvWorkflowDrop');if(!d)return;
+  const p=document.getElementById('wsvPanelBox');if(p&&p.style.display==='block')p.style.display='none';
+  if(d.style.display==='block'){d.style.display='none';return;}
+  const ws=_wsvData.ws||{};
+  const st=ws.status||'draft';
+  const stages=[
+    {k:'draft',n:'创建需求',t:'需求录入大厅'},
+    {k:'discussing',n:'一级讨论',t:'平台AI 分析拆解'},
+    {k:'selecting',n:'选定员工',t:'信誉匹配选人'},
+    {k:'division',n:'二级分工',t:'组长接管分工讨论'},
+    {k:'running',n:'执行循环',t:'员工执行+组长调度'},
+    {k:'review',n:'三级讨论',t:'阶段总结与下一步'},
+    {k:'done',n:'完成',t:'任务收口'}
+  ];
+  const cur=stages.findIndex(s=>s.k===st);
+  d.innerHTML='<h4>工作流</h4>'+
+    stages.map((s,i)=>{
+      const cls=i===cur?'wsv-flow-item cur':(cur<0||i<cur)?'wsv-flow-item done':'wsv-flow-item';
+      return `<div class="${cls}" style="display:flex;gap:8px;align-items:baseline"><span style="min-width:68px;font-weight:700;color:var(--ink)">${esc(s.n)}</span><span style="color:var(--dim);font-size:11px">${esc(s.t)}</span>${i===cur?'<span style="color:var(--accent);font-size:10px;margin-left:auto">← 当前</span>':''}</div>`;
+    }).join('')+
+    `<div style="margin-top:8px;font-size:11px;color:var(--dim)">状态机：<b style="color:var(--ink)">${esc(SM_LABEL[(_wsvData.sm||{}).state]||(_wsvData.sm||{}).state||'-')}</b> · 数据源：GET /api/workshop/{ws_id}（status）</div>`;
+  d.style.display='block';
+}
+async function wsvPanel(key){
+  const box=document.getElementById('wsvPanelBox');if(!box)return;
+  const d=document.getElementById('wsvWorkflowDrop');if(d&&d.style.display==='block')d.style.display='none';
+  if(box.style.display==='block'&&box.getAttribute('data-key')===key){box.style.display='none';return;}
+  box.setAttribute('data-key',key);
+  if(key==='staff'){
+    box.innerHTML='<h4>员工状态</h4><div class="id-empty">加载中…</div>';box.style.display='block';
+    try{
+      const ws=_wsvData.ws||{};const wb=_wsvData.wb||{};
+      const members=Array.isArray(ws.members)?ws.members:[];
+      const paused=Array.isArray(wb.paused)?wb.paused.map(p=>p.member_id):[];
+      const html=members.map(m=>{
+        const isPause=paused.includes(m.member_id);
+        const stc=isPause?'var(--red)':(m.status==='working'||m.status==='entered')?'var(--green)':'var(--muted)';
+        return `<div style="padding:6px 0;border-bottom:1px solid var(--rule);display:flex;gap:8px;align-items:center"><span style="width:8px;height:8px;border-radius:50%;background:${stc};flex-shrink:0"></span><b>${esc(m.display_name||m.member_id)}</b><span style="color:var(--dim);font-size:11px">${esc(m.role)}</span><span style="color:var(--muted);font-size:11px;margin-left:auto">${esc(m.status||'-')}${isPause?'（暂停）':''}</span></div>`;
+      }).join('');
+      box.innerHTML='<h4>员工状态</h4>'+(html||'<div class="id-empty">暂无成员</div>')+'<div style="margin-top:8px;font-size:10.5px;color:var(--dim)">数据源：GET /api/workshop/{ws_id}（members.status）+ leader-workbench（paused）</div>';
+    }catch(e){box.innerHTML='<h4>员工状态</h4><div class="id-empty">加载失败</div>';}
+  }else if(key==='interject'){
+    const its=_wsvData.its||[];
+    box.innerHTML='<h4>插话栏</h4>'+(its.length?its.map(it=>{
+      const st=it.status||'pending';const pri=it.priority||'一般';
+      return `<div style="padding:6px 0;border-bottom:1px solid var(--rule)"><span class="id-pri ${esc(pri)}">${esc(pri)}</span> <span style="color:var(--dim);font-size:11px">${esc(typeof itStatusText==='function'?itStatusText(st):st)}</span><div style="margin-top:3px">${esc(it.content)}</div></div>`;
+    }).join(''):'<div class="id-empty">暂无插话</div>')+'<div style="margin-top:8px;font-size:10.5px;color:var(--dim)">复用 GET /api/workshop/{ws_id}/interjects（操作请收起车间回插话抽屉）</div>';
+    box.style.display='block';
+  }else if(key==='token'){
+    box.innerHTML='<h4>Token 消耗</h4><div class="id-empty">暂无现成接口</div><div style="margin-top:8px;font-size:11px;color:var(--dim)">平台当前未提供 token 计量接口（server.py 无用量统计端点），此处为占位，待接入模型用量上报后填充。</div>';
+    box.style.display='block';
+  }else if(key==='slot4'){
+    box.innerHTML='<h4>第4项占位</h4><div class="id-empty">预留位</div><div style="margin-top:8px;font-size:11px;color:var(--dim)">后续可扩展：成员声誉、能力台账、产出物清单等。</div>';
+    box.style.display='block';
+  }
+}
+async function wsvSubmit(){
+  const ta=document.getElementById('wsvCmd');
+  const c=(ta?ta.value:'').trim();
+  if(!c){if(typeof acToast==='function')acToast('输入不能为空','err');return;}
+  try{
+    const r=await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:c})}).then(x=>x.json());
+    const ok=!!(r&&r.task_id);
+    if(typeof acToast==='function')acToast(ok?'指令已提交（交 Orchestrator / 全局广播）':((r&&r.error)||'提交失败'),ok?'':'err');
+    if(ok&&ta)ta.value='';
+  }catch(e){if(typeof acToast==='function')acToast('提交失败','err');}
+}
+
+
+function setPhase(n){for(let i=1;i<=5;i++){const el=document.getElementById('p'+i);if(!el)continue;el.classList.toggle('active', i===n);el.classList.toggle('done', i<n);}
+
+
+  // 三个讨论区间始终可见、上下排列；只高亮当前阶段对应的区间（不隐藏历史记录）
+
+
+  document.getElementById('zone1').classList.toggle('active', n<=1);
+
+
+  document.getElementById('zone2').classList.toggle('active', n===2||n===3||n===4);
+
+
+  document.getElementById('zone3').classList.toggle('active', n>=5);
+
+
+}
+
+
+const SRC_TEXT={harness_http:'HTTP回报',file_poll:'文件回报',http_api:'API回报',pending:'待领取'};
+function addMsg(role, content, zone, meta){
+  zone=zone||1;
+  const id={1:'discussion1',2:'discussion2',3:'discussion3'}[zone]||'discussion1';
+  const d=document.getElementById(id);
+  if(!d)return;
+  const m=document.createElement('div');
+  let cls='msg';
+  if(role==='user')cls+=' user';
+  else if(role==='leader')cls+=' leader';
+  else if(role==='member')cls+=' member';
+  else if(role==='notice')cls+=' notice';
+  else cls+=' ai';
+  if(role==='member'&&meta&&meta.status)cls+=' msg-report';
+  m.className=cls;
+  let who='';
+  if(role==='user')who='我';
+  else if(role==='leader')who=meta&&meta.display_name?('组长·'+(meta.role_title&&meta.role_title!=='组长'?meta.role_title+'·':'')+meta.display_name):'组长';
+  else if(role==='member')who=(meta&&meta.role_title&&meta.role_title!=='员工'?(meta.role_title+'·'):'')+(meta&&meta.display_name||'成员');
+  else if(role==='notice')who='';
+  else who='平台AI';
+  if(role==='member'&&!who)who='成员';
+  if(role!=='notice'&&who){
+    const tag=document.createElement('span');
+    tag.className='who';
+    tag.textContent=who;
+    const srcText=(role==='member'&&meta)?(meta.source?(SRC_TEXT[meta.source]||meta.source):(meta.harness_id||'')):'';
+    if(srcText){
+      const line=document.createElement('div');
+      line.className='who-line';
+      line.appendChild(tag);
+      const st=document.createElement('span');
+      st.className='msg-src';
+      st.textContent=srcText;
+      line.appendChild(st);
+      m.appendChild(line);
+    }else{
+      m.appendChild(tag);
+    }
+  }
+  if(role==='member'&&meta&&meta.status&&(meta.status==='done'||meta.status==='blocked'||meta.status==='progress')){
+    const badge=document.createElement('span');
+    badge.className='msg-badge '+(meta.status==='done'?'done':meta.status==='blocked'?'blocked':'progress');
+    badge.textContent=meta.status==='done'?'已完成':meta.status==='blocked'?'卡点':'进行中';
+    m.appendChild(badge);
+  }
+  const tx=document.createElement('span');
+  tx.textContent=content;
+  m.appendChild(tx);
+  if(role==='member'&&meta&&meta.summary){
+    const sm=document.createElement('span');
+    sm.className='msg-summary';
+    sm.textContent='小结：'+meta.summary;
+    m.appendChild(sm);
+  }
+  d.appendChild(m);
+  d.scrollTop=d.scrollHeight;
+  if(id==='discussion3'){
+    const cc=document.getElementById('wsvChatCenter');
+    if(cc){cc.appendChild(m.cloneNode(true));cc.scrollTop=cc.scrollHeight;}
+  }
+}
+
+
+function showLayout(){
+
+
+  document.getElementById('createPanel').style.display='none';
+
+
+  document.getElementById('layout').style.display='';
+
+
+}
+
+
+function showSidebar(){ /* 员工名单已常驻右栏 */ }
+
+
+function endDiscuss(){
+
+
+  setPhase(2);
+
+
+  showSidebar();
+
+
+  loadHarnesses().then(hs=>renderHarnessList(hs));
+
+
+  document.getElementById('endDiscussBtn').style.display='none';
+
+
+}
+
+
+function toggleSidebar(){ /* 员工名单已常驻右栏，无需折叠 */ }
+
+
+async function sendDiscuss(zone){
+
+
+  zone=zone||1;
+
+
+  const inp=document.getElementById('msgInput'+zone);
+
+
+  if(!inp)return;
+
+
+  const text=inp.value.trim();
+
+
+  if(!text || !wsId) return;
+
+
+  inp.value='';
+
+
+  addMsg('user', text, zone);
+
+
+  const think=document.createElement('div');
+
+
+  think.className='msg ai';
+
+
+  think.id='thinking';
+
+
+  think.innerHTML='<span class="spinner"></span>思考中...';
+
+
+  const d=document.getElementById('discussion'+zone);
+
+
+  d.appendChild(think);
+
+
+  d.scrollTop=d.scrollHeight;
+
+
+  if(zone===3){
+    const cc=document.getElementById('wsvChatCenter');
+    if(cc){const th=think.cloneNode(true);th.removeAttribute('id');cc.appendChild(th);cc.scrollTop=cc.scrollHeight;}
+  }
+
+
+  try{
+
+
+    const r=await fetch(`/api/workshop/${wsId}/discuss`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})}).then(x=>x.json());
+
+
+    const t=document.getElementById('thinking'); if(t)t.remove();
+
+
+    if(r.reply){
+
+
+      const who=(r.stage==='leader'||r.stage==='leader_pending')?'leader':(r.stage==='orchestrator'?'ai':'ai');
+      const rz=(typeof r.zone==='number')?r.zone:zone;
+      addMsg(who, r.reply, rz);
+      if(r.stage==='leader_pending' && r.dispatched){ startMsgPolling(); }
+
+
+      const act=(r&&r.action)?r.action:'';
+      if(act==='select'){
+        setPhase(2);
+        showSidebar();
+        loadHarnesses().then(hs=>renderHarnessList(hs));
+      }else if(act==='start'){
+        setPhase(3);
+        document.getElementById('startWorkBtn').style.display='';
+      }else if(act==='continue'){
+        document.getElementById('continueBtn').style.display='';
+        document.getElementById('completeBtn').style.display='';
+      }else if(act==='complete'){
+        document.getElementById('completeBtn').style.display='';
+      }else{
+        if(r.reply.includes('需求已明确，可以选定员工')){
+          setPhase(2);
+          showSidebar();
+          loadHarnesses().then(hs=>renderHarnessList(hs));
+        }else if(r.reply.includes('分工已明确，可以开始工作')){
+          setPhase(3);
+          document.getElementById('startWorkBtn').style.display='';
+        }else if(r.reply.includes('可以继续工作')){
+          document.getElementById('continueBtn').style.display='';
+          document.getElementById('completeBtn').style.display='';
+        }else if(r.reply.includes('任务已完成')){
+          document.getElementById('completeBtn').style.display='';
+        }
+      }
+
+
+    }else{
+
+
+      addMsg('ai', '（讨论失败：'+(r.error||'未知')+'）', zone);
+
+
+    }
+
+
+  }catch(e){
+
+
+    const t=document.getElementById('thinking'); if(t)t.remove();
+
+
+    addMsg('ai', '（讨论请求失败：'+e.message+'）', zone);
+
+
+  }
+
+
+}
+
+
+async function leaderStatus(){
+  if(!wsId)return;
+  const btn=document.getElementById('leaderStatusBtn');
+  const old=btn.textContent; btn.disabled=true; btn.textContent='已通知组长检查...';
+  try{
+    const d=await fetch('/api/workshop/'+wsId).then(x=>x.json());
+    if(d.status!=='division'&&d.status!=='running'){ acToast('仅在二级讨论/工作阶段可让组长检查状态'); return; }
+    // 真实唤起组长（不伪造组长发言）：消息不含任何钩子/角色词，仅作为普通事件派发给组长
+    const r=await fetch(`/api/workshop/${wsId}/discuss`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'检查员工状态。'})}).then(x=>x.json());
+    if(r.stage==='leader_pending'||r.stage==='leader'){ acToast('已通知组长检查，组长的真实回报将实时出现'); startMsgPolling(); }
+    else acToast(r.error||'已发送');
+  }catch(e){ acToast('发送失败：'+e.message); }
+  btn.disabled=false; btn.textContent=old;
+}
+
+
+async function loadHarnesses(){
+
+
+  try{const d=await fetch('/api/harness/list').then(x=>x.json());return d.harnesses||[];}catch(e){return [];}
+
+
+}
+
+
+function renderHarnessList(harnesses){
+
+
+  const el=document.getElementById('harnessList');
+
+
+  el.innerHTML=(harnesses||[]).map(h=>{
+
+
+    const caps=(h.ai&&h.ai.capabilities||[]).slice(0,8);
+
+
+    const extra=(h.ai&&h.ai.capabilities||[]).length-caps.length;
+
+
+    return `
+
+
+    <div class="h-card">
+
+
+      <div class="h-name">${esc(h.harness_name)}</div>
+
+
+      <div class="h-meta">${esc(h.harness_id)} · 模型 ${esc(h.ai&&h.ai.model_name||'')}</div>
+
+
+      <div class="cap-row">${caps.map(c=>`<span class="cap">${esc(c)}</span>`).join('')}${extra>0?`<span class="cap">+${extra}</span>`:''}</div>
+
+
+    </div>`}).join('') || '<div class="muted">暂无已注册 harness，请先到「🔌 注册 Harness」页注册</div>';
+
+
+}
+
+
+const POSITIONS=['组长','码农','画师','搜索者'];
+
+
+function makeRosterRow(member, harnesses){
+
+
+  const role=member?member.role:'';
+
+
+  const cur=member?(member.harness_ids&&member.harness_ids[0]||member.display_name):'';
+
+
+  const roleDisp=(!role||role==='??')?'选择职位':role;
+
+
+  const curDisp=(!cur||cur==='??')?'选择 harness':cur;
+
+
+  const row=document.createElement('div');
+
+
+  row.className='row';
+
+
+  row.innerHTML=`
+
+
+    <div class="dd" style="flex:0 0 100px">
+
+
+      <button type="button" class="dd-btn role-btn">${esc(roleDisp)} ▾</button>
+
+
+      <div class="dd-list">${POSITIONS.map(p=>`<div class="dd-opt" data-role="${esc(p)}">${esc(p)}</div>`).join('')}</div>
+
+
+    </div>
+
+
+    <div class="dd" style="flex:1 1 160px;min-width:120px">
+
+
+      <button type="button" class="dd-btn harness-btn" data-hid="${esc(cur)}"><span class="dd-label">${esc(curDisp)}</span><span>▾</span></button>
+
+
+      <div class="dd-list">${(harnesses||[]).map(h=>`<div class="dd-opt" data-hid="${esc(h.harness_id)}" data-name="${esc(h.harness_name)}">${esc(h.harness_name)} <span class="muted">· ${esc(h.ai&&h.ai.model_name||'')}</span></div>`).join('')||'<div class="dd-opt muted">无可用 harness</div>'}</div>
+
+
+    </div>
+
+
+    <button class="del" type="button" onclick="removeMemberRow(this)">删</button>`;
+
+
+  row.querySelectorAll('.dd-btn').forEach(btn=>{
+
+
+    btn.addEventListener('click',e=>{
+
+
+      e.stopPropagation();
+
+
+      document.querySelectorAll('.dd-list.open').forEach(l=>{if(l!==btn.nextElementSibling)l.classList.remove('open');});
+
+
+      btn.nextElementSibling.classList.toggle('open');
+
+
+    });
+
+
+  });
+
+
+  row.querySelectorAll('.dd-opt[data-role]').forEach(opt=>{
+
+
+    opt.addEventListener('click',()=>{
+
+
+      row.querySelector('.role-btn').textContent=opt.dataset.role+' ▾';
+
+
+      row.querySelectorAll('.dd-list').forEach(l=>l.classList.remove('open'));
+
+
+      syncMembers();
+
+
+    });
+
+
+  });
+
+
+  row.querySelectorAll('.dd-opt[data-hid]').forEach(opt=>{
+
+
+    opt.addEventListener('click',()=>{
+
+
+      const btn=row.querySelector('.harness-btn');
+
+
+      btn.dataset.hid=opt.dataset.hid;
+
+
+      btn.textContent=(opt.dataset.name||opt.dataset.hid)+' ▾';
+
+
+      row.querySelectorAll('.dd-list').forEach(l=>l.classList.remove('open'));
+
+
+      syncMembers();
+
+
+    });
+
+
+  });
+
+
+  return row;
+
+
+}
+
+
+document.addEventListener('click',()=>document.querySelectorAll('.dd-list.open').forEach(l=>l.classList.remove('open')));
+
+
+function renderRoster(members, harnesses){
+
+
+  const el=document.getElementById('roster');
+
+
+  el.innerHTML='';
+
+
+  (members||[]).forEach(m=>el.appendChild(makeRosterRow(m, harnesses)));
+
+
+}
+
+
+function addMemberRow(){
+
+
+  loadHarnesses().then(hs=>{
+
+
+    document.getElementById('roster').appendChild(makeRosterRow(null, hs));
+
+
+    syncMembers();
+
+
+  });
+
+
+}
+
+
+function collectRoster(){
+
+
+  return [...document.querySelectorAll('#roster .row')].map(r=>{
+
+
+    const roleBtn=r.querySelector('.role-btn');
+
+
+    const harnessBtn=r.querySelector('.harness-btn');
+
+
+    const role=roleBtn?roleBtn.textContent.replace('▾','').trim():'员工';
+
+
+    const hid=harnessBtn?harnessBtn.dataset.hid:'';
+
+
+    return {role, harness_ids:[hid], display_name:hid};
+
+
+  });
+
+
+}
+
+
+function syncMembers(){
+
+
+  if(!wsId) return;
+
+
+  fetch(`/api/workshop/${wsId}/members`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({members:collectRoster()})}).then(x=>x.json()).then(d=>{
+
+
+    if(d.success){
+
+
+      document.getElementById('saveMembersBtn').style.display='';
+
+
+      document.getElementById('lastAction').textContent='名单已同步到后端';
+
+
+    }
+
+
+  }).catch(()=>{});
+
+
+}
+
+
+function removeMemberRow(btn){
+
+
+  const row = btn.parentNode;
+
+
+  const harnessBtn = row.querySelector('.harness-btn');
+
+
+  const raw = (harnessBtn && (harnessBtn.dataset.name || harnessBtn.dataset.hid || harnessBtn.textContent)) || '该成员';
+
+
+  const name = String(raw).replace('▾','').trim();
+
+
+  acModal.show({
+
+
+    title:'删除成员',
+
+
+    message:`确定从名单中删除成员「${name}」？删除后将同步到后端，且不可恢复。`,
+
+
+    danger:true,
+
+
+    onConfirm: () => {
+
+
+      row.remove();
+
+
+      syncMembers();
+
+
+    }
+
+
+  });
+
+
+}
+
+
+function saveMembers(){
+
+
+  fetch(`/api/workshop/${wsId}/members`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({members:collectRoster()})}).then(x=>x.json()).then(d=>{
+
+
+    if(d.success){
+
+
+      document.getElementById('lastAction').textContent='名单已保存';
+
+
+      let msg='名单已保存，后端已同步。';
+
+
+      if((d.added||[]).length>0) msg+=` 新增 ${d.added.length} 人已立即激活。`;
+
+
+      if((d.removed||[]).length>0) msg+=` 移除 ${d.removed.length} 人已终止接入。`;
+
+
+      acToast(msg);
+
+
+      if((d.added||[]).length>0 || (d.removed||[]).length>0) pollWorkStatus();
+
+
+    }else{
+
+
+      acToast('保存失败：'+(d.error||''), true);
+
+
+    }
+
+
+  });
+
+
+}
+
+
+async function selectMembers(){
+
+
+  const btn=document.getElementById('selectBtn'); btn.disabled=true; btn.textContent='选定中...';
+
+
+  const r=await fetch(`/api/workshop/${wsId}/select-members`,{method:'POST'}).then(x=>x.json());
+
+
+  btn.disabled=false; btn.textContent='重新选定';
+
+
+  const hs=await loadHarnesses();
+
+
+  renderHarnessList(hs);
+
+
+  if(r.success){
+
+
+    renderRoster(r.members, hs);
+
+
+    document.getElementById('confirmBtn').style.display='';
+
+
+    document.getElementById('saveMembersBtn').style.display='';
+
+
+  }else{
+
+
+    acToast('选定失败：'+(r.error||''), true);
+
+
+  }
+
+
+}
+
+
+function startWork(){
+  document.getElementById('startWorkBtn').style.display='none';
+  addMsg('notice','正在激活员工，拉取各 harness 的新会话...（激活状态请看右侧列表）',2);
+  fetch(`/api/workshop/${wsId}/start`,{method:'POST'}).then(x=>x.json()).then(d=>{
+    if(d.success){
+      if(d.action==='complete'){ setPhase(5); }
+      else { setPhase(4); pollWorkStatus(); }
+    }
+    else addMsg('notice','启动失败：'+(d.error||''),2);
+  });
+}
+
+
+function pollWorkStatus(){
+
+
+  const el=document.getElementById('workStatus');
+
+
+  const draw=async()=>{
+
+
+    const d=await fetch(`/api/workshop/${wsId}`).then(x=>x.json());
+
+
+    const st={pending:'待激活',activating:'激活中',entered:'已进入',working:'工作中',blocked:'失败',completed:'已完成'};
+
+
+    el.innerHTML=(d.members||[]).map(m=>`<div class="h-card" style="margin-bottom:4px"><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:${m.status==='entered'?'var(--green)':m.status==='blocked'?'var(--red)':'var(--yellow)'}"></span>${esc(m.role)}：${st[m.status]||m.status}</div>`).join('');
+
+
+    if(d.status==='running' && (d.members||[]).length>0 && (d.members||[]).every(m=>m.status==='completed'||m.status==='blocked'||m.status==='entered')){
+
+
+      clearInterval(pollWorkStatus._t);
+
+
+      addMsg('notice','全部员工已回报/就绪，可进入三级讨论复盘进展。',2);
+
+
+      document.getElementById('reviewBtn').style.display='';
+
+
+    }
+
+
+  };
+
+
+  draw();
+
+
+  pollWorkStatus._t=setInterval(draw,3000);
+
+
+}
+
+
+function startReview(){
+  document.getElementById('reviewBtn').style.display='none';
+  fetch(`/api/workshop/${wsId}/review`,{method:'POST'}).then(x=>x.json()).then(d=>{
+    if(d.success){
+      const act=d.action||'review';
+      if(act==='running'){ setPhase(4); document.getElementById('reviewBtn').style.display=''; }
+      else { setPhase(5); document.getElementById('continueBtn').style.display=''; document.getElementById('completeBtn').style.display=''; }
+      startMsgPolling();
+    }
+  });
+}
+
+
+function continueWork(){
+  document.getElementById('continueBtn').style.display='none';
+  document.getElementById('completeBtn').style.display='none';
+  fetch(`/api/workshop/${wsId}/continue`,{method:'POST'}).then(x=>x.json()).then(d=>{
+    if(d.success){
+      const act=d.action||'running';
+      if(act==='complete'){ setPhase(5); addMsg('notice','任务已收口。',3); return; }
+      setPhase(4);
+      startMsgPolling();
+      document.getElementById('reviewBtn').style.display='';
+    }
+  });
+}
+
+
+function completeWork(){
+  document.getElementById('continueBtn').style.display='none';
+  document.getElementById('completeBtn').style.display='none';
+  fetch(`/api/workshop/${wsId}/complete`,{method:'POST'}).then(x=>x.json()).then(d=>{
+    if(d.success){
+      const act=d.action||'complete';
+      if(act==='running'){ setPhase(4); startMsgPolling(); document.getElementById('reviewBtn').style.display=''; return; }
+      setPhase(5);
+      addMsg('notice','任务已完成，工作间收口。',3);
+    }
+  });
+}
+
+
+function confirmMembers(){
+
+
+  const members=[...document.querySelectorAll('#roster .row')].map(r=>{
+
+
+    const roleBtn=r.querySelector('.role-btn');
+
+
+    const harnessBtn=r.querySelector('.harness-btn');
+
+
+    let role=roleBtn?roleBtn.textContent.replace('▾','').trim():'';
+
+
+    if(!role||role==='选择职位'||role==='??')role='员工';
+
+
+    const hid=harnessBtn?harnessBtn.dataset.hid:'';
+
+
+    if(!hid||hid==='??'||hid==='选择 harness')return null;
+
+
+    return {role, harness_ids:[hid], display_name:hid};
+
+
+  }).filter(Boolean);
+
+
+  fetch(`/api/workshop/${wsId}/confirm-members`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({members})}).then(x=>x.json()).then(d=>{
+
+
+    if(d.success){
+
+
+      document.getElementById('confirmBtn').style.display='none';
+
+
+      // 进入二级讨论：平台 AI 退出，组长接管（后端 confirm-members 已真实派发组长激活任务）
+
+
+      setPhase(3);
+
+
+      startMsgPolling();
+
+
+    }else{
+
+
+      acToast('确认失败：'+(d.error||''), true);
+
+
+    }
+
+
+  });
+
+
+}
+
+
+function loadWorkshop(id){
+
+
+  fetch(`/api/workshop/${id}`).then(d=>d.json()).then(async d=>{
+
+
+    wsId=id;
+
+
+    showLayout();
+
+
+    const msgs=d.discussion||[];
+
+
+    // 历史消息按服务端归一化的 zone 落区（1平台/2组长/3进度），不再按 role 硬分流串区
+
+
+    let maxSeq=-1;
+    msgs.forEach(m=>{
+      const z=(typeof m.zone==='number')?m.zone:1;
+      addMsg(m.role||'ai', m.content, z, m);
+      if(typeof m.seq==='number'&&m.seq>maxSeq)maxSeq=m.seq;
+    });
+    _msgSeenSeq=maxSeq;
+
+
+    if(msgs.length===0){
+
+
+      addMsg('user', d.hall_content, 1);
+
+
+      const r=await fetch(`/api/workshop/${id}/discuss`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:d.hall_content})}).then(x=>x.json());
+
+
+      if(r.reply) addMsg('ai', r.reply, (typeof r.zone==='number')?r.zone:1);
+
+
+      // 后端已持久化 hall_content+回复，建立 seq 基线，避免轮询重复渲染
+
+
+      try{
+        const d2=await fetch(`/api/workshop/${id}?after_seq=0`).then(x=>x.json());
+        let mx=-1; (d2.discussion||[]).forEach(m=>{ if(typeof m.seq==='number'&&m.seq>mx)mx=m.seq; });
+        _msgSeenSeq=mx;
+      }catch(e){}
+
+
+    }
+
+
+    // 若已到选定/分工阶段，显示侧栏并恢复名单
+
+
+    if(d.status!=='discussing' && d.status!=='draft'){
+
+
+      setPhase(d.status==='selecting'?2:d.status==='division'?3:d.status==='running'?4:5);
+
+
+      showSidebar();
+
+
+      const hs=await loadHarnesses();
+
+
+      renderHarnessList(hs);
+
+
+      if(d.members&&d.members.length){renderRoster(d.members, hs); document.getElementById('confirmBtn').style.display='';}
+      // F1：running 态刷新/重进后恢复三级讨论入口（内部即时 draw 判定 reviewBtn）
+      if(d.status==='running'){ pollWorkStatus(); }
+      // F1/F3：review 态刷新/重进后常驻收口按钮（不依赖 AI 标记句）
+      if(d.status==='review'){ document.getElementById('continueBtn').style.display=''; document.getElementById('completeBtn').style.display=''; }
+
+
+    }
+
+
+    // 事件驱动轮询：仅非草稿/已完成工作间启动，增量拉取新消息（组长回报/系统通知）
+
+
+    if(d.status!=='draft' && d.status!=='done'){ startMsgPolling(); }
+    refreshSmLight();
+
+
+  });
+
+
+}
+
+
+// ═══ 插话 + 自治边界（V6-1）══════════════════════════
+const SM_LABEL={created:'已创建',assigned:'已分配',discussing:'讨论中',executing:'执行中',waiting_reply:'等回复','stuck-paused':'已暂停','blocked-retrying':'重试中',timeout:'超时',done:'完成',dropped:'放弃'};
+function setSmLight(s){
+  s=(s||'created').toLowerCase();
+  const d=document.getElementById('smDot'),t=document.getElementById('smText');if(!d||!t)return;
+  const cls=(s==='stuck-paused'||s==='timeout')?'stuck-paused':(s==='blocked-retrying')?'blocked-retrying':(s==='waiting_reply')?'waiting_reply':s;
+  d.className='ws-dot '+(SM_LABEL[cls]?cls:'created');
+  t.textContent=SM_LABEL[cls]||s||'-';
+}
+async function refreshSmLight(){
+  if(!wsId)return;
+  try{const d=await fetch(`/api/workshop/${wsId}/sm/status`).then(x=>x.json());if(d&&d.state)setSmLight(d.state);}catch(e){}
+}
+function drawerOpen(){const el=document.getElementById('interjectDrawer');return !!(el&&el.classList.contains('open'));}
+function toggleDrawer(force){
+  const el=document.getElementById('interjectDrawer');if(!el)return;
+  const open=(typeof force==='boolean')?force:!el.classList.contains('open');
+  el.classList.toggle('open',open);
+  if(open){refreshInterjects();refreshWorkbench();}
+}
+async function submitInterject(){
+  if(!wsId){if(acToast)acToast('请先打开工作间');return;}
+  const c=document.getElementById('itContent'),p=document.getElementById('itPriority');
+  const content=(c.value||'').trim();if(!content){if(acToast)acToast('内容不能为空','err');return;}
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/interject`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content,priority:p.value})}).then(x=>x.json());
+    if(r&&r.success){c.value='';if(acToast)acToast(r.judge&&r.judge.allowed?'插话已注入工作循环':'插话已进池（稍后合并）');refreshInterjects();refreshSmLight();}
+    else if(acToast)acToast((r&&r.error)||'提交失败','err');
+  }catch(e){if(acToast)acToast('提交失败','err');}
+}
+function itStatusText(s){return {pending:'待处理',inserted:'已插入',ignored:'已忽略',expired:'已过期'}[s]||s;}
+async function refreshInterjects(){
+  if(!wsId)return;
+  const box=document.getElementById('itList');if(!box)return;
+  try{
+    const d=await fetch(`/api/workshop/${wsId}/interjects`).then(x=>x.json());
+    const items=(d&&d.interjects)||[];
+    if(items.length===0){box.innerHTML='<div class="id-empty">暂无插话</div>';return;}
+    box.innerHTML=items.map(it=>{
+      const pri=it.priority||'一般',st=it.status||'pending';
+      const act=[];
+      if(st==='pending'){
+        act.push(`<button class="btn" onclick="interjectAct('${it.id}','break')">⛔ 直接打断</button>`);
+        if(pri==='紧急'){act.push(`<button class="btn" onclick="interjectAct('${it.id}','execute')">⚡ 立刻执行</button>`);}
+        act.push(`<button class="btn" onclick="interjectAct('${it.id}','resolve')">✅ 裁决</button>`);
+        act.push(`<button class="btn" onclick="interjectAct('${it.id}','dismiss')">忽略</button>`);
+      }
+      const kind=(it.kind==='system')?`<span style="font-size:10px;color:var(--amber)">系统L${it.level||1}</span>`:'';
+      return `<div class="id-item"><div class="ii-top"><span class="id-pri ${esc(pri)}">${esc(pri)}</span>${kind}<span class="id-st">${itStatusText(st)}</span></div><div class="ii-body">${esc(it.content)}</div>${act.length?`<div class="ii-actions">${act.join('')}</div>`:''}</div>`;
+    }).join('');
+  }catch(e){box.innerHTML='<div class="id-empty">加载失败</div>';}
+}
+async function interjectAct(id,action){
+  if(!wsId)return;
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/interject/${id}/${action}`,{method:'POST'}).then(x=>x.json());
+    if(acToast)acToast((r&&r.success)?({break:'已直接打断当前循环',execute:'已立刻执行（交 Orchestrator）',resolve:'已裁决，状态机恢复',dismiss:'已忽略'}[action]||'已操作'):((r&&r.error)||'操作失败'));
+    refreshInterjects();refreshWorkbench();refreshSmLight();
+  }catch(e){if(acToast)acToast('操作失败','err');}
+}
+async function refreshWorkbench(){
+  if(!wsId)return;
+  const box=document.getElementById('itWorkbench');if(!box)return;
+  try{
+    const d=await fetch(`/api/workshop/${wsId}/leader-workbench`).then(x=>x.json());
+    if(!d||!d.success){box.innerHTML='<div class="id-empty">暂无数据</div>';return;}
+    const paused=(d.paused||[]).map(m=>`<div class="wb-item"><span>${esc(m.display_name||m.member_id)}</span><span style="color:${m.status==='stuck'?'var(--red)':m.status==='blocked'?'var(--amber)':'var(--muted)'}">${m.status}</span></div>`).join('');
+    const ideas=(d.idea_bag||[]).map(it=>`<div class="wb-item"><span>${esc(it.content)}</span></div>`).join('');
+    const pr=d.pending_reviews||null;
+    let pendingHtml='<div class="id-empty">无待裁决项</div>';
+    if(pr){
+      const itms=(pr.pending_interjects||[]).map(it=>`<div class="wb-item"><span>${esc(it.content)}</span><button class="btn" style="font-size:11px;padding:2px 6px" onclick="interjectAct('${it.id}','resolve')">裁决</button></div>`).join('');
+      pendingHtml=itms||`<div class="id-empty">状态机：${esc(pr.state||'-')}</div>`;
+    }
+    box.innerHTML=
+      `<div class="id-wb-block"><h4>暂停列表（stuck/blocked）</h4>${paused||'<div class="id-empty">无</div>'}</div>`+
+      `<div class="id-wb-block"><h4>点子袋（灵感待处理）</h4>${ideas||'<div class="id-empty">无</div>'}</div>`+
+      `<div class="id-wb-block"><h4>待裁决队列</h4>${pendingHtml}</div>`+
+      `<div class="id-wb-block"><h4>自治边界状态</h4><span class="sm-lamp ${esc(d.state||'created')}"><i></i>${esc(SM_LABEL[d.state]||d.state||'-')}</span> <button class="btn" style="font-size:11px;padding:2px 6px;margin-left:6px" onclick="smAct('resume')">恢复</button> <button class="btn" style="font-size:11px;padding:2px 6px" onclick="smAct('drop')">放弃</button></div>`;
+  }catch(e){box.innerHTML='<div class="id-empty">加载失败</div>';}
+}
+async function smAct(action){
+  if(!wsId)return;
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/sm/${action}`,{method:'POST'}).then(x=>x.json());
+    if(acToast)acToast(r&&r.success?(action==='resume'?'已恢复执行':'已放弃循环'):((r&&r.error)||'操作失败'));
+    refreshInterjects();refreshWorkbench();refreshSmLight();
+  }catch(e){if(acToast)acToast('操作失败','err');}
+}
+setInterval(()=>{if(drawerOpen()){refreshInterjects();refreshWorkbench();refreshSmLight();}},30000);
+
+
+const _p=new URLSearchParams(location.search);
+
+
+if(_p.get('ws_id')) loadWorkshop(_p.get('ws_id'));
+
+
+
+
+
+// ═══ 三栏布局：左侧工作间列表 + 右侧 Agent 列表 + 折叠 ═══
+
+
+
+
+
+let workshops=[],agents=[];
+
+
+const WS_ICON={draft:'📝',discussing:'💬',selecting:'👥',division:'🧩',running:'⚙️',review:'📋',done:'✅'};
+
+
+const WS_LABEL={draft:'草稿',discussing:'一级讨论',selecting:'选定员工',division:'二级讨论',running:'工作中',review:'三级讨论',done:'已完成'};
+
+
+function setWSStatus(s){const d=document.getElementById('wsDot'),t=document.getElementById('wsText');if(!d||!t)return;d.className='ws-dot '+s;t.textContent=s==='online'?'已连接':s==='offline'?'已断开':'连接中...';}
+
+
+function connectWS(){const p=location.protocol==='https:'?'wss:':'ws:';const u=`${p}//${location.host}/ws`;setWSStatus('connecting');const w=new WebSocket(u);w.onopen=()=>setWSStatus('online');w.onclose=()=>{setWSStatus('offline');setTimeout(connectWS,5000)};w.onerror=()=>{};}
+
+
+function toggleNav(){const c=document.body.classList.toggle('nav-collapsed');const b=document.getElementById('navToggle');if(b)b.textContent=c?'▶':'◀';try{localStorage.setItem('navCollapsed',c?'1':'0')}catch(e){}}
+
+
+function initNav(){try{if(localStorage.getItem('navCollapsed')==='1'){document.body.classList.add('nav-collapsed');const b=document.getElementById('navToggle');if(b)b.textContent='▶'}}catch(e){}}
+
+
+function renderWorkshops(){const l=document.getElementById('workshopList');const cnt=document.getElementById('workshopCount');const st=document.getElementById('statWorkshops');if(cnt)cnt.textContent=workshops.length;if(st)st.textContent=workshops.length;if(!l)return;if(workshops.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无工作间<br><span style="font-size:11px">在大厅发布任务后自动创建</span></div>';return}l.innerHTML=workshops.map(w=>{const s=w.status||'draft',sl2=WS_LABEL[s]||s,ic=WS_ICON[s]||'📋';const tm=w.created_at?new Date(w.created_at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';const active=wsId===w.workshop_id;return `<div class="workshop-item ${active?'active':''}" data-ws-id="${w.workshop_id}" onclick="openWs('${w.workshop_id}')"><div class="wi-top"><span class="wi-status-dot ${s}"></span><span class="wi-ico">${w.pinned?'📌':ic}</span><span class="wi-title">${w.pinned?'📌 ':''}${esc(w.name||'(无标题)')}</span></div><div class="wi-agents">${(w.members||[]).map(m=>esc(m.role)).join(', ')||'未选员工'}</div><div class="wi-time">${sl2} · ${tm}</div><div class="wi-actions"><button class="wi-act" title="置顶" onclick="event.stopPropagation();togglePin('${w.workshop_id}',${w.pinned?'false':'true'})">${w.pinned?'📌':'📍'}</button><button class="wi-act" title="重命名" onclick="event.stopPropagation();renameWs('${w.workshop_id}')">✏️</button><button class="wi-act" title="删除" onclick="event.stopPropagation();deleteWs('${w.workshop_id}')">🗑️</button></div></div>`}).join('')}
+
+
+async function refreshWorkshops(){try{const d=await fetch('/api/workshops').then(x=>x.json());workshops=d.workshops||[];renderWorkshops()}catch(e){}}
+
+
+function openWs(wid){if(wid===wsId)return;location.href='/workshop.html?ws_id='+wid}
+
+
+async function togglePin(wid,pinned){try{await fetch('/api/workshop/'+wid+'/pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pinned})});refreshWorkshops()}catch(e){}}
+
+
+async function renameWs(wid){const w=workshops.find(x=>x.workshop_id===wid);acModal.show({title:'重命名工作间',input:w?w.name:'',placeholder:'输入新名称',rows:2,onSubmit:async n=>{if(!n||!n.trim())return;try{await fetch('/api/workshop/'+wid,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.trim()})});refreshWorkshops()}catch(e){}}})}
+
+
+async function deleteWs(wid){const w=workshops.find(x=>x.workshop_id===wid);acModal.show({title:'删除工作间',message:'确定删除工作间「'+(w?w.name:'')+'」？此操作不可恢复。',danger:true,onConfirm:async()=>{try{await fetch('/api/workshop/'+wid,{method:'DELETE'});location.href='/';}catch(e){}}})}
+
+
+async function refreshAgents(){try{const d=await fetch('/api/agents').then(x=>x.json());agents=d.agents||[];renderAgents()}catch(e){}}
+
+
+function renderAgents(){const l=document.getElementById('agentList');const st=document.getElementById('statAgents');if(st)st.textContent=agents.filter(a=>a.status==='online').length;if(!l)return;if(agents.length===0){l.innerHTML='<div style="padding:16px;color:var(--dim);font-size:12px">暂无注册 Agent</div>';return}l.innerHTML=agents.map(a=>{const caps=(a.agent_card&&(typeof a.agent_card==='string'?JSON.parse(a.agent_card):a.agent_card).capabilities)||a.capabilities||[];return `<div class="agent-card"><div class="ac-top"><span class="ac-status ${a.status}"></span><span class="ac-name">${esc(a.name||a.agent_id)}</span></div><div class="ac-id">${esc(a.agent_id)}</div>${caps.length?`<div class="ac-caps">${caps.map(c=>`<span class="cap-tag">${esc(c)}</span>`).join('')}</div>`:''}<div class="ac-sw">${esc(a.software_context||'unknown')}</div></div>`}).join('')}
+
+
+function initSidebars(){initNav();connectWS();refreshWorkshops();refreshAgents();setInterval(refreshWorkshops,5000);setInterval(refreshAgents,10000);}
+
+
+initSidebars();
+
+
+/* ===== 自定义弹窗 UI ===== */
+
+
+(function(){var ov=null,timer=null,escH=null;
+
+
+function ensure(){if(ov)return ov;ov=document.createElement('div');ov.className='ac-modal-overlay';ov.innerHTML='<div class="ac-modal"><div class="acm-head"><span class="acm-title"></span><span class="acm-close">✕</span></div><div class="acm-body"></div><div class="acm-foot"></div></div>';ov.querySelector('.acm-close').onclick=function(){hide()};ov.addEventListener('mousedown',function(e){if(e.target===ov)hide()});document.body.appendChild(ov);return ov}
+
+
+function hide(){if(!ov)return;ov.classList.remove('show');if(escH){document.removeEventListener('keydown',escH);escH=null}setTimeout(function(){ov.style.display='none'},180)}
+
+
+function show(cfg){var m=ensure();ov.style.display='flex';requestAnimationFrame(function(){ov.classList.add('show')});m.querySelector('.acm-title').textContent=cfg.title||'';var body=m.querySelector('.acm-body'),foot=m.querySelector('.acm-foot');body.innerHTML='';foot.innerHTML='';
+
+
+if(cfg.message){var p=document.createElement('div');p.textContent=cfg.message;body.appendChild(p)}
+
+
+if(cfg.input!==undefined){var wrap=document.createElement('div');wrap.className='acm-input-wrap';var ta=document.createElement('textarea');ta.className='acm-input';ta.placeholder=cfg.placeholder||'';ta.value=cfg.input;ta.rows=cfg.rows||3;wrap.appendChild(ta);body.appendChild(wrap);setTimeout(function(){ta.focus();ta.select()},60)}
+
+
+function mkBtn(label,cls,fn){var b=document.createElement('button');b.className='acm-btn '+cls;b.textContent=label;b.onclick=fn;foot.appendChild(b)}
+
+
+if(cfg.buttons&&cfg.buttons.length){cfg.buttons.forEach(function(x){mkBtn(x.label,x.cls||'confirm',function(){hide();x.onClick&&x.onClick()})})}else if(cfg.input!==undefined){mkBtn('取消','cancel',hide);mkBtn('确定','confirm',function(){var ta=body.querySelector('textarea');var v=ta?ta.value:null;hide();cfg.onSubmit&&cfg.onSubmit(v)})}else{mkBtn('取消','cancel',hide);mkBtn('确定',cfg.danger?'danger':'confirm',function(){hide();cfg.onConfirm&&cfg.onConfirm()})}
+
+
+if(escH)document.removeEventListener('keydown',escH);escH=function(e){if(e.key==='Escape')hide()};document.addEventListener('keydown',escH)}
+
+
+window.acModal={show:show,hide:hide};
+
+
+window.acToast=function(msg,err){var t=document.querySelector('.acm-toast');if(!t){t=document.createElement('div');t.className='acm-toast';document.body.appendChild(t)}t.textContent=msg;t.classList.toggle('err',!!err);t.classList.add('show');clearTimeout(timer);timer=setTimeout(function(){t.classList.remove('show')},2600)};
+
+
+})();
+
+
+
+function startMsgPolling(){
+  if(window._msgPoll) return;
+  window._msgPoll = setInterval(async function(){
+    try{
+      const url='/api/workshop/'+wsId+(_msgSeenSeq>=0?('?after_seq='+(_msgSeenSeq+1)):'');
+      const d=await fetch(url).then(r=>r.json());
+      const list=d.discussion||[];
+      if(_msgSeenSeq<0 && list.length){
+        // 首次拉全量：只建立基线不重复渲染（loadWorkshop 已渲染首屏）
+        _msgSeenSeq=Math.max.apply(null, list.map(m=>typeof m.seq==='number'?m.seq:-1));
+        return;
+      }
+      list.forEach(function(m){
+        if(typeof m.seq!=='number') return;
+        if(m.seq>_msgSeenSeq){
+          if(m.seq>_msgSeenSeq) _msgSeenSeq=m.seq;
+          addMsg(m.role||'ai', m.content, m.zone||1, m);
+        }
+      });
+    }catch(e){}
+  }, 2500);
+}
+function startLeaderPolling(){ startMsgPolling(); }
+
+</script>
+
+
+
+
+
+
+
+
+</body>
+
+
+</html>

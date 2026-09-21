@@ -1,0 +1,10 @@
+{
+  "ai_provider": "openai",
+  "ai_base_url": "https://api.example.com/v1",
+  "ai_api_key": "",
+  "ai_model": "your-model-name",
+  "ai_temperature": 1.0,
+  "ai_thinking": false,
+  "wakeup_enabled": false,
+  "port": 18920
+}

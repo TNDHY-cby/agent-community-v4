@@ -1,0 +1,204 @@
+"""file_poll 类 harness 桥 — 由平台模板自动生成，独立进程，代表一个真实 harness 接入平台。
+
+生成来源: agent_community/bridge_templates/file_poll/bridge.py.tmpl
+生成方式: 平台 API POST /api/harness/{id}/bridge/generate（纯模板渲染，无需手工编写）
+
+运行后:
+1. 心跳保活（POST /api/harness/heartbeat），保持在线
+2. 轮询 harness 的 inbox（wakeup_dir）：发现 task_*.json 任务 → 打印/落盘 + 可选 trigger 唤醒 harness
+3. 把任务文件移入 delivered/ 避免重复处理
+4. 轮询 inbox/replies/：harness 干完活写回报 JSON → 桥自动转发到平台
+   （激活回报 → /api/harness/activation-result；任务回报 → /api/harness/task-result）
+5. 响应平台桥测试（bridge_test 任务自动回报）
+
+用法:
+    python bridge.py --url http://127.0.0.1:18920
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import threading
+import time
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+# ── 以下字段由平台模板渲染注入，请勿手改 ──
+HARNESS_ID = {{HARNESS_ID_LIT}}
+INBOX_DIR = {{INBOX_DIR_LIT}}
+TRIGGER_CMD = {{TRIGGER_CMD_LIT}}
+PLATFORM_URL = {{PLATFORM_URL_LIT}}
+
+
+def post_json(url: str, payload: dict, timeout: float = 30.0) -> tuple[bool, str]:
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8", "replace")
+            return resp.status < 300, body[:300]
+    except Exception as e:
+        print(f"[转发] 失败 {url}: {e}", flush=True)
+        return False, str(e)
+
+
+def get_json(url: str, timeout: float = 30.0) -> dict:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8", "replace"))
+    except Exception as e:
+        print(f"[请求] 失败 {url}: {e}", flush=True)
+        return {}
+
+
+def heartbeat_loop(platform: str, harness_id: str, interval: float) -> None:
+    """心跳保活：注册后让平台知道桥真实在线（而非注册即在线）。"""
+    q = urllib.parse.quote(harness_id)
+    while True:
+        try:
+            post_json(f"{platform}/api/harness/heartbeat?harness_id={q}", {})
+        except Exception:
+            pass
+        time.sleep(max(interval, 15))
+
+
+def self_check(platform: str, harness_id: str, inbox: Path) -> bool:
+    """启动自检：平台在线 / inbox 可写（排查 WinError 5 沙箱拦截）。"""
+    ok = True
+    try:
+        with urllib.request.urlopen(f"{platform}/api/status", timeout=5) as r:
+            print(f"[自检] 平台在线: {platform} -> HTTP {r.status}", flush=True)
+    except Exception as e:
+        print(f"[自检][!] 平台不可达 {platform}: {e}", flush=True)
+        ok = False
+    try:
+        inbox.mkdir(parents=True, exist_ok=True)
+        (inbox / "delivered").mkdir(parents=True, exist_ok=True)
+        probe = inbox / ".bridge_write_test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        print(f"[自检] inbox 可写: {inbox}（delivered/ 已就绪）", flush=True)
+    except Exception as e:
+        print(f"[自检][!] inbox 不可写 {inbox}: {e}（检查 NTFS 权限/沙箱）", flush=True)
+        ok = False
+    return ok
+
+
+def run_trigger(trigger: str) -> None:
+    if not trigger:
+        return
+    try:
+        subprocess.Popen(trigger, shell=True)
+        print(f"[唤醒] 已执行 trigger: {trigger}", flush=True)
+    except Exception as e:
+        print(f"[唤醒] trigger 失败: {e}", flush=True)
+
+
+def pick_endpoint(payload: dict, platform: str) -> str:
+    t = str(payload.get("type", ""))
+    if t in ("task", "task_assign") or "ok" in payload or "result" in payload:
+        return f"{platform}/api/harness/task-result"
+    return f"{platform}/api/harness/activation-result"
+
+
+def scan_tasks(inbox: Path, trigger: str, interval: float, platform: str, harness_id: str) -> None:
+    delivered = inbox / "delivered"
+    delivered.mkdir(parents=True, exist_ok=True)
+    for f in sorted(inbox.glob("task_*.json")):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            print("=" * 60, flush=True)
+            print(f"[任务] {f.name}", flush=True)
+            print(json.dumps(data, ensure_ascii=False, indent=2), flush=True)
+            print("=" * 60, flush=True)
+        except Exception as e:
+            print(f"[任务] 解析失败 {f.name}: {e}", flush=True)
+            data = None
+        # 桥测试：平台测试桥通道，自动回报 ok
+        if data and data.get("type") == "bridge_test" and platform and harness_id:
+            test_id = data.get("test_id", "")
+            ok, resp = post_json(f"{platform}/api/harness/bridge-test-result", {
+                "harness_id": harness_id,
+                "test_id": test_id,
+                "ok": True,
+                "echo": f"filepoll-bridge alive, inbox={inbox}",
+            })
+            print(f"[桥测试] 已自动回报 test_id={test_id} ok={ok} {resp}", flush=True)
+        target = delivered / f"{int(time.time() * 1000)}_{f.name}"
+        try:
+            f.rename(target)
+        except Exception:
+            try:
+                f.replace(target)
+            except Exception as e2:
+                print(f"[任务] 移动失败 {f.name}: {e2}", flush=True)
+        run_trigger(trigger)
+
+
+def scan_replies(inbox: Path, platform: str, interval: float) -> None:
+    replies = inbox / "replies"
+    sent = replies / "sent"
+    if not replies.exists():
+        return
+    sent.mkdir(parents=True, exist_ok=True)
+    for f in sorted(replies.glob("reply_*.json")):
+        try:
+            payload = json.loads(f.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"[回报] 解析失败 {f.name}: {e}", flush=True)
+            payload = None
+        ok = False
+        if payload:
+            url = pick_endpoint(payload, platform)
+            ok, resp = post_json(url, payload)
+            print(f"[回报] POST {url} -> ok={ok} {resp}", flush=True)
+        target = (sent if ok else replies / "failed") / f"{int(time.time() * 1000)}_{f.name}"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            f.rename(target)
+        except Exception:
+            try:
+                f.replace(target)
+            except Exception as e2:
+                print(f"[回报] 移动失败 {f.name}: {e2}", flush=True)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="file_poll 桥：轮询 inbox 唤醒 harness 并转发回报（平台模板生成）")
+    ap.add_argument("--url", default=PLATFORM_URL, help="平台地址")
+    ap.add_argument("--harness-id", default=HARNESS_ID, help="覆盖模板注入的 harness_id（一般不需要）")
+    ap.add_argument("--inbox", default=INBOX_DIR, help="覆盖模板注入的 inbox 目录")
+    ap.add_argument("--trigger", default=TRIGGER_CMD, help="发现新任务时额外执行的唤醒命令（shell）")
+    ap.add_argument("--interval", type=float, default=3.0, help="轮询间隔秒")
+    args = ap.parse_args()
+
+    platform = args.url.rstrip("/")
+    harness_id = args.harness_id
+    inbox = Path(args.inbox)
+    inbox.mkdir(parents=True, exist_ok=True)
+    print(f"[桥] file_poll harness 桥（平台模板生成）连接 {platform}", flush=True)
+    print(f"[桥] harness: {harness_id} | inbox: {inbox} | trigger: {args.trigger or '(无)'}", flush=True)
+    try:
+        self_check(platform, harness_id, inbox)
+    except Exception as e:
+        print(f"[自检] 异常: {e}", flush=True)
+
+    threading.Thread(target=heartbeat_loop, args=(platform, harness_id, args.interval), daemon=True).start()
+    while True:
+        try:
+            scan_tasks(inbox, args.trigger, args.interval, platform, harness_id)
+            scan_replies(inbox, platform, args.interval)
+        except KeyboardInterrupt:
+            print("[桥] 退出", flush=True)
+            sys.exit(0)
+        except Exception as e:
+            print(f"[桥] 循环异常: {e}", flush=True)
+        time.sleep(args.interval)
+
+
+if __name__ == "__main__":
+    main()
