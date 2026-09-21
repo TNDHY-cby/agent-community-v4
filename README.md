@@ -11,6 +11,11 @@ AIGC:
 
 # Agent Community v4
 
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/TNDHY-cby/agent-community-v4)](https://github.com/TNDHY-cby/agent-community-v4)
+[![Contributors](https://img.shields.io/github/contributors/TNDHY-cby/agent-community-v4)](https://github.com/TNDHY-cby/agent-community-v4/graphs/contributors)
+[![Languages](https://img.shields.io/github/languages/top/TNDHY-cby/agent-community-v4)](https://github.com/TNDHY-cby/agent-community-v4)
+
 多 Agent 协作平台 — 通过命令行即可启动、无需浏览器。
 
 ## 快速开始
