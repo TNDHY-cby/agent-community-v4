@@ -1,4 +1,4 @@
-"""Agent Community — 内置 Agent"""
+"""外端Agent生产合作社（External Agent Community） — 内置 Agent"""
 
 from .pipe_agent import PipeAgent
 from .wakeup_agent import WakeupAgent

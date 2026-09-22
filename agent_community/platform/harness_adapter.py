@@ -2,7 +2,7 @@
 
 
 
-职责：将外部 AI Harness（Trae CN / Cursor / Ollama / Claude Desktop 等）
+职责：将外部 AI Harness（外部 IDE / Cursor / Ollama / Claude Desktop 等）
 
 映射为平台 Agent，透明参与讨论室和任务委托。
 
@@ -18,7 +18,7 @@
 
 4. 消息桥接：平台 → Harness → AI 处理 → 结果回传
 
-5. 支持文件轮询 / 剪贴板桥接作为后备（对 Trae CN 这类不可回调的 Harness）
+5. 支持文件轮询 / 剪贴板桥接作为后备（对 外部 IDE 这类不可回调的 Harness）
 
 """
 

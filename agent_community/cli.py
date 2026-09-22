@@ -1,4 +1,4 @@
-"""Agent Community CLI — 命令行管理工具
+"""外端Agent生产合作社（External Agent Community） CLI — 命令行管理工具
 
 用法：
     agent-community start [--port 9103] [--wakeup]
@@ -101,7 +101,7 @@ def _table(headers: list[str], rows: list[list[str]]):
 
 @click.group()
 def main():
-    """Agent Community Platform — 多 Agent 协作平台 CLI"""
+    """外端Agent生产合作社（External Agent Community） Platform — 多 Agent 协作平台 CLI"""
     pass
 
 
@@ -110,7 +110,7 @@ def main():
 @click.option("--wakeup", is_flag=True, help="启动 Wakeup Agent（通用 AI 接入层）")
 @click.option("--gui/--no-gui", default=True, help="启用桌面 GUI 窗口（默认: --gui）")
 def start(port, wakeup, gui):
-    """启动 Agent Community 服务（AI 配置在桌面窗口内完成）"""
+    """启动 外端Agent生产合作社（External Agent Community） 服务（AI 配置在桌面窗口内完成）"""
     # GUI 模式：通过 pywebview 启动桌面窗口
     if gui:
         from .gui import AgentCommunityApp
@@ -176,7 +176,7 @@ def start(port, wakeup, gui):
 
 @main.command()
 def stop():
-    """停止 Agent Community 服务"""
+    """停止 外端Agent生产合作社（External Agent Community） 服务"""
     data = _read_pid()
     if not data:
         click.secho("[WARN] 未找到运行中的服务（PID 文件不存在）", fg="yellow")
@@ -215,7 +215,7 @@ def status():
     try:
         r = httpx.get(f"{base}/api/status", timeout=5.0)
         s = r.json()
-        click.secho("=== Agent Community 服务状态 ===", fg="cyan")
+        click.secho("=== 外端Agent生产合作社（External Agent Community） 服务状态 ===", fg="cyan")
         click.echo(f"  状态:   {s.get('status', '?')}")
         click.echo(f"  版本:   {s.get('version', '?')}")
         click.echo(f"  Agent:  {s.get('agents_online', 0)}/{s.get('agents_registered', 0)} 在线")

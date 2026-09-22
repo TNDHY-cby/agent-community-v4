@@ -45,7 +45,7 @@ class WakeupAgent(PipeAgent):
             reply = await run_ai_call(
                 ai_provider.chat(
                     system_prompt=(
-                        "你是 Agent Community 平台的唤醒判断 Agent。"
+                        "你是 外端Agent生产合作社（External Agent Community） 平台的唤醒判断 Agent。"
                         "根据广播的任务描述，判断你是否应举手参与。"
                         "回复格式：如果参与，描述你的能力和角色（50字以内）；否则回复 pass。"
                     ),

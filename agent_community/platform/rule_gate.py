@@ -166,7 +166,7 @@ class RuleGate:
 
         # 5. 版本查询
         if _VERSION_RE.match(s):
-            return self._hit("version", "Agent Community v4")
+            return self._hit("version", "外端Agent生产合作社（External Agent Community）v4")
 
         # 6. 帮助
         if _HELP_RE.match(s):

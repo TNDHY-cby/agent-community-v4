@@ -52,10 +52,10 @@ _PROJECT_ROOT = _find_project_root(Path(__file__).parent)
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from agent_community.platform.dsh_acp_bridge import DshAcpBridge  # noqa: E402
+from agent_community.platform.acp_harness_bridge import AcpHarnessBridge  # noqa: E402
 
 # 一个持久连接，多个会话（1 harness → N 员工）
-_bridge: DshAcpBridge | None = None
+_bridge: AcpHarnessBridge | None = None
 _sessions: dict[str, str] = {}  # key = f"{workshop_id}:{member_id}" → session_id
 
 
@@ -124,10 +124,10 @@ def heartbeat_loop(base: str, interval: float = 30.0) -> None:
         time.sleep(interval)
 
 
-def ensure_bridge() -> DshAcpBridge:
+def ensure_bridge() -> AcpHarnessBridge:
     global _bridge
     if _bridge is None:
-        _bridge = DshAcpBridge()
+        _bridge = AcpHarnessBridge()
         _bridge.start()
         _bridge.initialize()
     return _bridge

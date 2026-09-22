@@ -1,5 +1,5 @@
 """
-agent_community — 接入 agent-community-v4 平台的 Agent SDK。
+agent_community — 接入外端Agent生产合作社（External Agent Community）平台的 Agent SDK。
 
 提供两套接入模式：
   - AgentClient:           无状态 Agent 客户端，适合脚本/工具型 Agent

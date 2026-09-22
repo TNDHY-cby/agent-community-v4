@@ -1,6 +1,6 @@
 # 贡献指南（CONTRIBUTING）
 
-感谢参与 Agent Community v4。本文说明本地开发、测试与提交规范。
+感谢参与 外端Agent生产合作社（External Agent Community）v4。本文说明本地开发、测试与提交规范。
 
 ## 1. 环境准备
 
@@ -54,7 +54,7 @@ agent-community-v4/
 **严禁**向仓库提交以下内容：
 
 - 真实 API Key、Token、密码（含示例中的真实值）
-- 本地绝对路径（如 `C:\Users\<你的用户名>`、`D:\<私有目录>`）
+- 本地绝对路径（如 `%USERPROFILE%`、`<私有目录>`）
 - 真实 harness / 内部工具名称与内部业务数据
 - `data/`、`runtime_logs/` 下的运行产物
 

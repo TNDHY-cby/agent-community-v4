@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -413,10 +413,10 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
   <div class="statusbar"><div class="sb-item">状态: <strong id="agentStatus">检查中...</strong></div><div class="sb-item">|</div><div class="sb-item" id="lastAction">就绪</div></div>
 </div>
 <div class="bridge-panel" id="bridgePanel">
-  <div class="bp-header"><span class="bp-icon">🔗</span><span class="bp-title">Trae 桥接等待中</span><span class="bp-timer" id="bridgeTimer">30:00</span></div>
-  <div class="bp-prompt-label">需要你在 Trae 中处理的任务:</div>
+  <div class="bp-header"><span class="bp-icon">🔗</span><span class="bp-title">外端桥接等待中</span><span class="bp-timer" id="bridgeTimer">30:00</span></div>
+  <div class="bp-prompt-label">需要你在外部工具中处理的任务:</div>
   <div class="bp-prompt" id="bridgePrompt"></div>
-  <div class="bp-response-area"><textarea id="bridgeResponse" placeholder="将 Trae 的回复粘贴到此处，然后点击提交..." oninput="onBridgeInput(this)"></textarea></div>
+  <div class="bp-response-area"><textarea id="bridgeResponse" placeholder="将外部工具的回复粘贴到此处，然后点击提交..." oninput="onBridgeInput(this)"></textarea></div>
   <div class="bp-actions"><button class="bp-btn submit" id="bridgeSubmitBtn" onclick="submitBridgeResponse()" disabled>提交响应</button><button class="bp-btn cancel" onclick="cancelBridge()">取消</button><button class="bp-copy" onclick="copyBridgePrompt()">复制任务</button></div>
 </div>
 <!-- ═══════════════════ 设置面板 ═══════════════════ -->
@@ -511,7 +511,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
         <!-- 关于面板 -->
         <div class="setup-panel" id="settingsPanelAbout">
           <h3>关于</h3>
-          <div class="setup-about-ver">Agent Community v4.0.0</div>
+          <div class="setup-about-ver">外端Agent生产合作社（External Agent Community）v4.0.0</div>
           <div class="setup-about-desc">
             多 Agent 协作平台，支持任务广播、讨论室协商分工、共识投票与委托执行。<br><br>
             基于 FastAPI + WebSocket 构建，前端采用原生 HTML/CSS/JS 实现。
@@ -561,7 +561,7 @@ async function checkSession(){try{const r=await fetch('/api/session/restore');co
 async function saveSession(){try{await fetch('/api/session/save',{method:'POST'});document.getElementById('lastAction').textContent='会话已保存'}catch(e){}}
 async function restoreSession(){try{const r=await fetch('/api/events?limit=50');const d=await r.json();const ev=d.events||[];const s=document.getElementById('hallMessages');s.innerHTML='';if(ev.length===0){s.innerHTML='<div class="hall-empty"><div class="he-icon">🏛️</div><div class="he-title">社区大厅</div><div class="he-sub">输入指令广播任务</div></div>';return}ev.reverse().forEach(e=>{let c=e.content||'{}';try{c=JSON.stringify(JSON.parse(c),null,2)}catch(_){}appendMessage({from_agent:e.agent_id||'system',to_agent:'console',content:`[${e.event_type}] ${c}`,message_type:'text',timestamp:e.timestamp},true)});await refreshTasks()}catch(e){}}
 async function checkHealth(){try{const r=await fetch('/api/agents?online_only=true');const d=await r.json();const on=d.agents||[];const ol=on.some(a=>a.agent_id==='ollama-qwen25'||a.agent_id==='ollama-deepseek');const tr=on.some(a=>a.agent_id==='trae-bridge');const el=document.getElementById('agentStatus');if(ol&&tr){el.textContent='全部在线';el.style.color='var(--green)'}else if(ol){el.textContent='Ollama在线';el.style.color='var(--yellow)'}else{el.textContent='离线';el.style.color='var(--red)'}}catch(e){}}
-function showBridgePanel(tid,prompt){bridgeTaskId=tid;bridgeCountdown=1800;let pt=prompt;['[桥接等待]','需要你在 Trae 中处理以下任务并提交响应:\n\n'].forEach(p=>{if(pt.startsWith(p))pt=pt.slice(p.length).trim()});document.getElementById('bridgePrompt').textContent=pt;document.getElementById('bridgeResponse').value='';document.getElementById('bridgeSubmitBtn').disabled=true;document.getElementById('bridgePanel').classList.add('show');document.getElementById('bridgeResponse').focus();startBridgeTimer();document.getElementById('lastAction').textContent='桥接等待中';renderWorkshops()}
+function showBridgePanel(tid,prompt){bridgeTaskId=tid;bridgeCountdown=1800;let pt=prompt;['[桥接等待]','需要你在外部工具中处理以下任务并提交响应:\n\n'].forEach(p=>{if(pt.startsWith(p))pt=pt.slice(p.length).trim()});document.getElementById('bridgePrompt').textContent=pt;document.getElementById('bridgeResponse').value='';document.getElementById('bridgeSubmitBtn').disabled=true;document.getElementById('bridgePanel').classList.add('show');document.getElementById('bridgeResponse').focus();startBridgeTimer();document.getElementById('lastAction').textContent='桥接等待中';renderWorkshops()}
 function hideBridgePanel(){document.getElementById('bridgePanel').classList.remove('show');bridgeTaskId=null;if(bridgeTimer){clearInterval(bridgeTimer);bridgeTimer=null}renderWorkshops()}
 function startBridgeTimer(){if(bridgeTimer)clearInterval(bridgeTimer);bridgeTimer=setInterval(()=>{bridgeCountdown--;if(bridgeCountdown<=0){hideBridgePanel();return}const m=Math.floor(bridgeCountdown/60),s=bridgeCountdown%60;document.getElementById('bridgeTimer').textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`},1000)}
 function onBridgeInput(el){document.getElementById('bridgeSubmitBtn').disabled=el.value.trim().length===0}

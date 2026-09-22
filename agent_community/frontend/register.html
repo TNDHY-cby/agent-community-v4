@@ -204,7 +204,7 @@ body: {
   "harness_id": "我的唯一标识",
   "harness_name": "我的显示名",
   "harness_type": "desktop-agent",      // 可选：类型猜测（cli-agent/ide-agent/desktop-agent/api-proxy/custom）
-  "process_hint": "我的进程名线索",       // 可选：让平台能扫到我的进程（如 electron/my_harness/python）
+  "process_hint": "我的进程名线索",       // 可选：让平台能扫到我的进程（如 electron/python）
   "port_hint": 3721,                     // 可选：我的 HTTP API 端口（若有）
   "path_hint": "我的安装路径",            // 可选
   "capabilities": ["web_search","file_ops"],  // 可选：我的能力
@@ -274,7 +274,7 @@ body: {"harness_id": "我的唯一标识"}
 
     领到的激活/任务会写到 <work-dir>\inbox\*.json；我干完活把回报写 <work-dir>\replies\reply_*.json，桥自动转发给平台。
 
-- acp 且有真实 ACP server：跑 dsh_harness_bridge.py 同类的专用桥（示例）。</pre>
+- acp 且有真实 ACP server：跑 acp_harness_bridge.py 同类的专用桥（示例）。</pre>
 
       <p>2. 参考：完整注册消息体（字段照抄、值换成自己的即可，下面用的是<b>虚拟示例</b>）：</p>
 
@@ -356,9 +356,9 @@ body: {"harness_id": "我的唯一标识"}
 
       <pre>python agent_community\examples\pending_poll_bridge.py --harness-id [id] --url http://127.0.0.1:{PORT} --work-dir [任务目录] [--trigger "启动 harness 的命令"]</pre>
 
-      <p><b>③ acp 且有真实 ACP server（如 dsh）</b> — 用 dsh 专用桥：</p>
+      <p><b>③ acp 且有真实 ACP server（如 harness-a）</b> — 用 acp 专用桥：</p>
 
-      <pre>python agent_community\examples\dsh_harness_bridge.py --url http://127.0.0.1:{PORT}</pre>
+      <pre>python agent_community\examples\acp_harness_bridge.py --url http://127.0.0.1:{PORT}</pre>
 
       <p>回报协议（harness 有联网能力时可直接 POST，无需桥）：
 

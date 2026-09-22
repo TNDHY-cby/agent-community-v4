@@ -95,7 +95,7 @@ class Workshop:
 
 # ── 固定流程指引（§九 草稿，落成 workspace/AGENTS.md）────────
 
-WORKFLOW_GUIDE = """# Agent Community 工作间指引
+WORKFLOW_GUIDE = """# 外端Agent生产合作社（External Agent Community） 工作间指引
 
 你是本工作间的一名员工。请遵守：
 
@@ -160,8 +160,8 @@ def run_minimal_flow(hall_content: str, workspace_dir: str) -> Workshop:
         hall_content=hall_content,
     )
     workshop.members.append(WorkshopMember(
-        member_id="m1", role="码农", display_name="dsh",
-        harness_ids=["dsh"],
+        member_id="m1", role="码农", display_name="harness-a",
+        harness_ids=["harness-a"],
     ))
 
     write_workspace_files(workshop)

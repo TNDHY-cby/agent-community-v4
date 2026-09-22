@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Agent Community v4 — 一键启动脚本
+"""外端Agent生产合作社（External Agent Community）v4 — 一键启动脚本
 
 启动流程：
 1. 启动 platform/server.py（uvicorn，默认端口 9103）
@@ -31,7 +31,7 @@ SERVER_SCRIPT = PLATFORM_DIR / "server.py"
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Agent Community v4 启动器")
+    parser = argparse.ArgumentParser(description="外端Agent生产合作社（External Agent Community）v4 启动器")
     parser.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
     parser.add_argument("--gui", action="store_true", default=True, help="启用桌面 GUI 窗口（默认开启）")
     parser.add_argument("--no-gui", action="store_true", help="禁用桌面 GUI，纯后台运行")
@@ -142,7 +142,7 @@ def main():
         sys.exit(1)
 
     print("=" * 60)
-    print("Agent Community Platform v4")
+    print("外端Agent生产合作社（External Agent Community）v4")
     print("=" * 60)
     print(f"  端口: {args.port}")
     print(f"  地址: http://127.0.0.1:{args.port}")

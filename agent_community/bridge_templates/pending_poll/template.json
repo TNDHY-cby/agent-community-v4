@@ -1,6 +1,6 @@
 {
   "name": "pending_poll",
-  "description": "通用 pending 队列桥：代替没有真实 ACP server、也不能被平台直接拉起的 harness（GUI 桌面 Agent / http / clipboard 类）轮询领取激活与任务，落盘到 work-dir/inbox 并可选 trigger 唤醒，把 harness 回报（work-dir/replies）转发到平台，桥测回报、心跳保活全闭环。适用于 TraeWork 等 GUI 桌面 Agent。",
+  "description": "通用 pending 队列桥：代替没有真实 ACP server、也不能被平台直接拉起的 harness（GUI 桌面 Agent / http / clipboard 类）轮询领取激活与任务，落盘到 work-dir/inbox 并可选 trigger 唤醒，把 harness 回报（work-dir/replies）转发到平台，桥测回报、心跳保活全闭环。适用于 GUI 桌面 Agent（如 harness-b）等。",
   "interface_type": "pending_poll",
   "required_fields": ["HARNESS_ID", "WORK_DIR", "PLATFORM_URL"]
 }

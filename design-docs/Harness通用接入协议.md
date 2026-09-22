@@ -1,7 +1,7 @@
 # Harness 通用接入协议 v1（2026-08-29）
 
 > 目的：任何外部 Agent / 工具（harness）都能按统一协议接入平台，被唤醒、干活、回报。
-> 不依赖 harness 的内部实现（小白龙、Trae、Claude Code、任意 CLI/桌面/API 程序都适用）。
+> 不依赖 harness 的内部实现（harness-a / harness-b / 任意 CLI/桌面/API 程序都适用）。
 
 ---
 

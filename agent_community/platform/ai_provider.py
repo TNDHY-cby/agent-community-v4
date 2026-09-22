@@ -18,7 +18,7 @@
     # 举手判断
     result = await provider.classify(
         query="分析用户需求文档",
-        candidates=[{"id": "h1", "name": "Trae CN", "capabilities": ["coding"]}],
+        candidates=[{"id": "h1", "name": "外部 IDE", "capabilities": ["coding"]}],
         context="需要前端开发能力",
     )
 """

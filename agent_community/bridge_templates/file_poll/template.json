@@ -1,6 +1,6 @@
 {
   "name": "file_poll",
-  "description": "文件邮箱（file_poll）类 harness 的标准桥：轮询 inbox 发现任务、可选 trigger 唤醒 harness、把 harness 回报（inbox/replies）转发到平台、桥测回报、心跳保活全闭环。适用于走文件邮箱（wakeup_dir）的桌面 Agent（如 my_harness 示例）。",
+  "description": "文件邮箱（file_poll）类 harness 的标准桥：轮询 inbox 发现任务、可选 trigger 唤醒 harness、把 harness 回报（inbox/replies）转发到平台、桥测回报、心跳保活全闭环。适用于走文件邮箱（wakeup_dir）的桌面 Agent（如 harness-a 示例）。",
   "interface_type": "file_poll",
   "required_fields": ["HARNESS_ID", "INBOX_DIR", "PLATFORM_URL"]
 }

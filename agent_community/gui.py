@@ -1,4 +1,4 @@
-"""Agent Community GUI — pywebview 桌面窗口
+"""外端Agent生产合作社（External Agent Community） GUI — pywebview 桌面窗口
 
 以子进程方式启动 FastAPI server，pywebview 窗口仅连接已有服务端。
 AI Provider 配置统一从 ~/.agent_community/config.json 读取。
@@ -32,12 +32,12 @@ def _find_free_port(start: int = 9103, max_attempts: int = 20) -> int:
 
 
 class AgentCommunityApp:
-    """Agent Community 桌面应用（AI 配置在窗口内完成）"""
+    """外端Agent生产合作社（External Agent Community） 桌面应用（AI 配置在窗口内完成）"""
 
     def __init__(
         self,
         port: int = 0,
-        title: str = "Agent Community",
+        title: str = "外端Agent生产合作社（External Agent Community）",
         width: int = 1200,
         height: int = 800,
     ):
@@ -144,11 +144,11 @@ def main():
     """命令行入口：python -m agent_community.gui [--port 18920] [--no-subprocess]
     """
     import argparse
-    ap = argparse.ArgumentParser(description="Agent Community 桌面窗口（pywebview）")
+    ap = argparse.ArgumentParser(description="外端Agent生产合作社（External Agent Community） 桌面窗口（pywebview）")
     ap.add_argument("--port", type=int, default=18920, help="服务端口（默认 18920，服务未运行时自动拉起）")
     ap.add_argument("--width", type=int, default=1280, help="窗口宽度")
     ap.add_argument("--height", type=int, default=820, help="窗口高度")
-    ap.add_argument("--title", default="Agent Community · 外端Agent生产合作社", help="窗口标题")
+    ap.add_argument("--title", default="外端Agent生产合作社（External Agent Community）", help="窗口标题")
     args = ap.parse_args()
 
     app = AgentCommunityApp(

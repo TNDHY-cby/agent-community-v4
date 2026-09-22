@@ -1,4 +1,4 @@
-"""Agent Community Platform — 多 Agent 协作平台
+"""外端Agent生产合作社（External Agent Community） Platform — 多 Agent 协作平台
 
 核心功能：
 - 任务广播与 Agent 举手

@@ -28,7 +28,7 @@ TEXT_EXT = {".py", ".md", ".json", ".html", ".js", ".css", ".txt", ".tmpl", ".ym
 RULES = [
     ("本地绝对路径-用户目录", re.compile(r"[A-Za-z]:\\+Users\\+", re.I)),
     ("本地绝对路径-私有盘符目录", re.compile(r"[A-Za-z]:\\+(?:DSH|O泡|Marvis|hermes|bridge\\b)", re.I)),
-    ("真实harness名-小白龙", re.compile(r"小白龙|BaiLongma", re.I)),
+    ("真实harness名-my_harness", re.compile(r"my_harness|BaiLongma", re.I)),
     ("真实harness名-TraeWork", re.compile(r"TraeWork|TRAE SOLO|trae-cn", re.I)),
     ("真实harness名-dsh私有壳", re.compile(r"dsh-web-\d|dsh_harness|dsh_acp_bridge|deepseek-harness-acp")),
     ("疑似真实密钥", re.compile(r"sk-[A-Za-z0-9]{16,}")),

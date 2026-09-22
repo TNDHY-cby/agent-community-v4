@@ -1,4 +1,4 @@
-"""Agent Community 配置管理模块
+"""外端Agent生产合作社（External Agent Community） 配置管理模块
 
 配置文件路径：~/.agent_community/config.json
 所有 AI Provider 配置统一从此文件读写，不再依赖命令行传参。

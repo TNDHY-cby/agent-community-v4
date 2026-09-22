@@ -1,4 +1,4 @@
-# Agent Community v4 — 运行时依赖
+# 外端Agent生产合作社（External Agent Community）v4 — 运行时依赖
 # 安装：pip install -r requirements.txt
 # 环境：Python >= 3.10
 

@@ -1,0 +1,43 @@
+---
+name: 功能建议
+description: 提出你的功能想法或改进建议
+title: "[Feature] 简要描述建议"
+labels: ["enhancement"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你的建议！请描述清楚动机与期望方案，便于社区讨论。
+  - type: textarea
+    id: motivation
+    attributes:
+      label: 动机
+      description: 你希望解决什么问题 / 满足什么场景？
+      placeholder: "例如：当 ... 时，我希望 ..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 期望方案
+      description: 你期望的功能行为或界面是怎样的？
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 备选方案
+      description: 是否考虑过其他实现方式？（可选）
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 优先级建议
+      description: 你认为该功能的重要程度
+      options:
+        - 高（强烈需要）
+        - 中（希望尽快）
+        - 低（锦上添花）
+    validations:
+      required: true
+*（内容由AI生成，仅供参考）*

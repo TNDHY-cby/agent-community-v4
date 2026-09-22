@@ -1,18 +1,7 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: fee6cb6926e215051ee1772520098e59_98d4b50293b911f1bafa525400287e28
-    ReservedCode1: flTvY1Hh5vovSbJGDlDFciYGkufafy05ZNEzsauEyspBlHgepM0yIgXFIDhnhg4pM3VqcgmpvfRnWxBneEVMSuE5/u+4UWDoJfCAlaOX7X+0oEKwJ+CilEv9g2h3is0Cmoj9ON6cvVSPFmWs9jpIridoBYMXrIGwIADcf1IbEXmMovS8juCLKHcucRA=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: fee6cb6926e215051ee1772520098e59_98d4b50293b911f1bafa525400287e28
-    ReservedCode2: flTvY1Hh5vovSbJGDlDFciYGkufafy05ZNEzsauEyspBlHgepM0yIgXFIDhnhg4pM3VqcgmpvfRnWxBneEVMSuE5/u+4UWDoJfCAlaOX7X+0oEKwJ+CilEv9g2h3is0Cmoj9ON6cvVSPFmWs9jpIridoBYMXrIGwIADcf1IbEXmMovS8juCLKHcucRA=
----
-
 # Harness 执行联动框架设计
 
 > 日期：2026-08-09 | 状态：设计阶段
-> 背景：agent-community-v4 讨论室提案通过后，缺少"让事情真正被做起来"的执行环节
+> 背景：外端Agent生产合作社（External Agent Community）讨论室提案通过后，缺少"让事情真正被做起来"的执行环节
 
 ---
 

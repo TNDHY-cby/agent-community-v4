@@ -122,7 +122,7 @@ async def _app_lifespan(_app):
         stop_harness_bridges()
     except Exception as _be:
         print(f"[shutdown] 回收 harness 桥失败: {_be}", flush=True)
-app = FastAPI(title="Agent Community Platform v4", default_response_class=Utf8JSONResponse, lifespan=_app_lifespan)
+app = FastAPI(title="外端Agent生产合作社（External Agent Community）v4", default_response_class=Utf8JSONResponse, lifespan=_app_lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1", "http://localhost"],
@@ -962,7 +962,7 @@ async def api_assistant_chat(request: Request):
         ListHarnessTool(), LaunchHarnessTool(), BridgeTestTool(), ProbeHarnessTool(),
     ])
     system_prompt = (
-        "你是 Agent Community 平台的内置 AI 助手（平台 Agent）。"
+        "你是 外端Agent生产合作社（External Agent Community） 平台的内置 AI 助手（平台 Agent）。"
         "当前处于与用户直聊的持续会话窗口，用户可能是想与你沟通外部 Harness 的接入与架桥。"
         "你可以调用工具来完成用户的任务：读取/写入文件、执行命令、抓取网页、"
         "生成桥脚本、列出/启动 Harness、对桥做实时测试、探测外部对象接入方式等。"
@@ -2552,7 +2552,7 @@ async def _ai_direct_response(task: Task, command: str):
         tr = ToolRegistry()
         tr.register_many([ReadFileTool(), WriteFileTool(), ShellExecTool(), WebFetchTool(), GenerateBridgeTool(), ListBridgeTemplatesTool()])
         system_prompt = (
-            "你是 Agent Community 平台的内置 AI 助手（由 Orchestrator 调度）。"
+            "你是 外端Agent生产合作社（External Agent Community） 平台的内置 AI 助手（由 Orchestrator 调度）。"
             "你可以调用工具来完成用户的任务，包括读取文件、写入文件、执行命令、抓取网页等。"
             "优先使用工具获取所需信息，然后给出准确的回答。使用中文回复。"
         )
@@ -4001,8 +4001,8 @@ async def create_workshop(request: Request):
             WorkshopMember(
                 member_id=f"m{i}",
                 role=m.get("role", "员工"),
-                display_name=m.get("display_name", "dsh"),
-                harness_ids=m.get("harness_ids", ["dsh"]),
+                display_name=m.get("display_name", "harness-a"),
+                harness_ids=m.get("harness_ids", ["harness-a"]),
             )
             for i, m in enumerate(body.get("members") or [])
         ],
@@ -4109,7 +4109,7 @@ async def workshop_discuss(ws_id: str, request: Request):
             + f"\n当前员工名单：\n{roster}\n"
         )
         system = (
-            "你是 Agent Community 平台的进度讨论伙伴（Orchestrator）。"
+            "你是 外端Agent生产合作社（External Agent Community） 平台的进度讨论伙伴（Orchestrator）。"
             "工作已进行一个阶段，现在要和用户依进度讨论：进展如何、有没有卡点、员工状态、下一步方向。"
             "像真同事自然讨论，不要问卷式。用中文，回复简洁但完整。"
             "当你判断可以继续推进时，在回复末尾写一句：可以继续工作；当你判断任务已完成时，写一句：任务已完成。"
@@ -4118,7 +4118,7 @@ async def workshop_discuss(ws_id: str, request: Request):
     else:
         context = f"任务（大厅内容）：\n{ws.hall_content}\n\n讨论历史（最近10条）：\n" + _discussion_ctx(ws, limit=10)
         system = (
-            "你是 Agent Community 平台的讨论伙伴（Orchestrator）。像一位有经验的技术同事那样和用户自然讨论需求，"
+            "你是 外端Agent生产合作社（External Agent Community） 平台的讨论伙伴（Orchestrator）。像一位有经验的技术同事那样和用户自然讨论需求，"
             "不要做成问卷/选择题。做法：先用自己的话复述对任务的理解，主动抛出你的分析、初步设想、可能的坑和权衡，"
             "再用开放式问题引导用户发散补充（不要只列 A/B/C 选项）。对话有来有回，像真人在聊。"
             "用中文，回复简洁但完整。"
@@ -4585,7 +4585,7 @@ async def workshop_select_members(ws_id: str):
         harness_desc = harness_desc + "\n\n" + _rep_bonus
     context = f"任务：{ws.hall_content}\n\n讨论（最近10条）：\n" + _discussion_ctx(ws, limit=10)
     system = (
-        "你是 Agent Community 的员工选定助手。根据任务需求 + 讨论内容 + 已注册 harness 列表，选定员工填入名单。只输出 JSON，不要解释。\n"
+        "你是 外端Agent生产合作社（External Agent Community） 的员工选定助手。根据任务需求 + 讨论内容 + 已注册 harness 列表，选定员工填入名单。只输出 JSON，不要解释。\n"
         '输出格式：{"members":[{"role":"","display_name":"","harness_ids":[""]}]}\n'
         "规则：组长必须有（负责设计/分配/检查/纠错）；职业从 组长/码农/画师/搜索者 里选（按任务需要）；"
         "display_name 和 harness_ids 用已注册 harness 的完整名；没有合适 harness 的职业就不填。"
@@ -5596,7 +5596,7 @@ def _member_replied_since(ws, member_id, seq0) -> bool:
 def _mark_sim_watch(harness_id, payload, kind):
     """派发成功时登记无回报看护（仅 manual/off 模式且是工作间派发）。
 
-    场景：acp/桥接型 harness（如 dsh-web）派发进 pending 队列"成功"了，桥也领走了，
+    场景：acp/桥接型 harness（如 harness-web）派发进 pending 队列"成功"了，桥也领走了，
     但外端无额度 → 既不回报也不报错，讨论区永久静默。此 watch 交给
     _manual_sim_sweep_once 在超时后补齐，保证交互不中断。
     watch 挂在成员对象上（非 dataclass 字段，不落盘，重启即清空，避免污染 state）。
@@ -5802,7 +5802,7 @@ else:
     print(f"[static] 警告: 前端目录不存在 {STATIC_DIR}", flush=True)
 if __name__ == "__main__":
     import argparse
-    ap = argparse.ArgumentParser(description="Agent Community Platform v4")
+    ap = argparse.ArgumentParser(description="外端Agent生产合作社（External Agent Community）v4")
     ap.add_argument("--demo", action="store_true", help="演示模式：跳过 Harness 真实连通检查")
     ap.add_argument("--token", action="append", default=[], help="外部访问 Token（可多次指定）")
     ap.add_argument("--port", type=int, default=0, help="监听端口（覆盖 AC_PORT）")

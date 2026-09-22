@@ -429,7 +429,7 @@ class WakeupMessage(BaseModel):
 class HarnessInfo(BaseModel):
     """Harness 向平台声明的自身信息"""
     harness_id: str               # 唯一标识，如 "harness-example-001"
-    harness_name: str             # 人类可读名，如 "Trae Work CN"
+    harness_name: str             # 人类可读名，如 "外部 IDE"
     harness_version: str = "1.0"
     harness_type: str = ""        # ide-agent / ollama-wrapper / api-proxy / custom
 
@@ -440,7 +440,7 @@ class HarnessInfo(BaseModel):
     # ── 接入/激活配置（平台如何拉起该 harness 的新对话）────────
     wakeup_method: WakeupMethod = WakeupMethod.CLIPBOARD   # 接入/激活方式
     wakeup_url: str = ""           # HTTP 回调激活地址
-    wakeup_dir: str = ""           # 文件轮询监听目录（如 Trae CN 的轮询目录）
+    wakeup_dir: str = ""           # 文件轮询监听目录（如 外部 IDE 的轮询目录）
     acp_command: str = ""          # ACP 激活命令（如 dsh：node --import tsx ... acp-demo ...）
     acp_cwd: str = ""              # ACP 命令的工作目录
 
