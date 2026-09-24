@@ -2,7 +2,7 @@
 
 
 
-职责：将外部 AI Harness（外部 IDE / Cursor / Ollama / Claude Desktop 等）
+职责：将外部 AI Harness（Trae CN / Cursor / Ollama / Claude Desktop 等）
 
 映射为平台 Agent，透明参与讨论室和任务委托。
 
@@ -18,7 +18,7 @@
 
 4. 消息桥接：平台 → Harness → AI 处理 → 结果回传
 
-5. 支持文件轮询 / 剪贴板桥接作为后备（对 外部 IDE 这类不可回调的 Harness）
+5. 支持文件轮询 / 剪贴板桥接作为后备（对 Trae CN 这类不可回调的 Harness）
 
 """
 
@@ -176,11 +176,23 @@ DEFAULT_POLL_DIR = Path(os.environ.get("TEMP", ".")) / "agent_harness_bridge"
 
 
 
+def normalize_harness_id(hid: str) -> str:
+    """规范化 harness_id：剥掉自带 harness- 前缀，避免 agent_id 出现 harness-harness-X 重复前缀。
+
+    桥模板注入的 harness_id 常为 'harness-测试甲'，注册拼接 f"harness-{hid}" 会得到
+    'harness-harness-测试甲'，导致 external_online 过滤与委托匹配错位。
+    """
+    hid = (hid or "").strip()
+    if hid.startswith("harness-"):
+        hid = hid[len("harness-"):]
+    return hid
+
+
 def harness_to_agent_card(info: HarnessInfo) -> AgentCard:
 
     """将 HarnessInfo 映射为平台 AgentCard"""
 
-    agent_id = f"harness-{info.harness_id}"
+    agent_id = f"harness-{normalize_harness_id(info.harness_id)}"
 
 
 
@@ -404,11 +416,26 @@ class HarnessBridge:
 
     def _send_pipe(self, msg: HarnessMessage) -> tuple[bool, str]:
 
-        """写入文件轮询目录"""
+        """写入文件轮询目录。
+
+        file_poll 外部桥约定：任务消息写入 wakeup_dir/task_*.json（桥进程扫描该目录，
+        发现后移入 delivered/ 并等待 harness 在 replies/ 写回报）。历史缺陷：曾只写
+        DEFAULT_POLL_DIR/to_{id}，与桥进程轮询的 wakeup_dir 割裂，委托消息永不到达。
+        """
 
         ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
-        path = self.to_harness / f"{ts}_{msg.id}.json"
+        info = getattr(self.session, "info", None)
+        wd = (getattr(info, "wakeup_dir", "") or "").strip() if info else ""
+        if wd:
+            target = Path(wd)
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                target = self.to_harness
+            path = target / f"task_{ts}_{msg.id}.json"
+        else:
+            path = self.to_harness / f"{ts}_{msg.id}.json"
 
         path.write_text(msg.model_dump_json(), encoding="utf-8")
 
@@ -716,7 +743,7 @@ class HarnessBridge:
 
 
     async def _manual_execute_subtask(self, exec_msg: ExecuteMessage) -> HarnessMessage:
-        """manual 接管：委托执行改由平台外部接管通道（Marvis 等）模拟该成员产出。"""
+        """manual 接管：委托执行改由平台外部接管通道模拟该成员产出。"""
         del_req = exec_msg.delegation
         ctx = exec_msg.context
         role = getattr(self.session, "agent_name", "") or self.session.harness_id
@@ -1060,9 +1087,8 @@ class HarnessSessionManager:
 
         """注册或更新 Harness，同时记录唤醒配置"""
 
-        # 生成 agent_card 用 agent_id
-
-        agent_id = f"harness-{info.harness_id}"
+        # 生成 agent_card 用 agent_id（规范化去重 harness- 前缀，避免 harness-harness-X）
+        agent_id = f"harness-{normalize_harness_id(info.harness_id)}"
 
 
 
@@ -1110,6 +1136,12 @@ class HarnessSessionManager:
             bridge = self.bridges[info.harness_id]
 
             bridge.session = sess
+
+            # 更新分支也要同步 id_to_harness（此前缺失：agent_id 规范化/变化后旧映射残留）
+            for _old_aid, _old_hid in list(self.id_to_harness.items()):
+                if _old_hid == info.harness_id and _old_aid != agent_id:
+                    self.id_to_harness.pop(_old_aid, None)
+            self.id_to_harness[agent_id] = info.harness_id
 
         else:
 

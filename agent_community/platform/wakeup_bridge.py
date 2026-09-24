@@ -2,7 +2,7 @@
 
 职责：为每个 Harness 提供多路唤醒通道，支持：
 1. HTTP 回调 — 对能接收回调的 Harness 直接 POST 唤醒消息
-2. 文件轮询 — 对 外部 IDE 等不可回调的 Harness，写入监听目录
+2. 文件轮询 — 对 Trae CN 等不可回调的 Harness，写入监听目录
 3. 剪贴板桥接 — 最后兜底，写入剪贴板供用户手动粘贴
 
 与 harness_adapter 的关系：

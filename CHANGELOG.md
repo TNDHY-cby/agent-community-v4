@@ -2,6 +2,20 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.2.0] — 2026-09-24
+
+工作间任务树结构化与记忆擦除纠偏版本。
+
+### 新增
+- **任务树结构化**：工作间任务树由扁平字符串升级为嵌套节点（parent/children），节点支持 kind（phase / task / correction）与 status（active / done / dropped）；新增 `/api/workshop/{ws_id}/tree` 端点族（建节点 / 更新状态 / 资源挂载 / 查询嵌套树）。
+- **资源库联任务树**：工作间资源（`/api/workshop/{ws_id}/resources`）支持 `task_node` 挂载点，登记资源可挂到任意任务节点，`RESOURCES.md` 清单同步标注「关联任务」，前端资源卡片显示挂载节点名。
+- **记忆擦除纠偏（确认走弯路）**：`POST /api/workshop/{ws_id}/halt-and-reset` 一键闭环——停止任务并重置状态机、在任务树落「错误路径（dropped）／正确路径（active）」纠偏节点、反思总结自动归档 `DETOUR_SUMMARY.md` 并挂正路节点、擦除讨论上下文、按成员/组长擦除平台任务记忆与 harness 经验索引、通知成员记忆已重置、工作间重置为 draft 可重新开始。
+- **前端工作间升级**：任务树改为真实树形渲染（缩进 + 纠偏标签），新增「确认走弯路·停止任务并擦除记忆重来」按钮与决策模式展示。
+### 文档
+- 新增 `design-docs/工作间模式设计V5.md`：决策模式（用户决定 / 组长独裁 / 举手投票）完整设计，平台端仅保留设计，待 harness 端开发。
+- 新增 `docs/silent-mode-orchestration-design.md`：静默模式编排设计。
+- 新增 `design-docs/工作间模式-parallel并行落地设计.md`：并行工作模式落地设计。
+
 ## [4.1.0] — 2026-09-20
 
 API 优先策略与工作间增强版本。

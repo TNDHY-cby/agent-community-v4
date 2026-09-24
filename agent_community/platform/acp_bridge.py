@@ -1,14 +1,14 @@
-"""ACP (Agent Client Protocol) 接入桥（示例 harness 接入）。
+"""dsh (DeepSeek Harness) 接入桥 — 基于 ACP (Agent Client Protocol)。
 
-通过 JSON-RPC over stdio 程序化拉起 harness 新会话、发消息、收回复。
+通过 JSON-RPC over stdio 程序化拉起 dsh 新会话、发消息、收回复。
 一条连接可同时拥有多个 session → 天然支持「1 harness → N 会话并行」。
 
 设计要点（spike 已验证）：
 - HA 会话 = ACP：session/new（cwd=工作区坐标）→ session/prompt（多轮）→ session/update（收回复）
 - 会话 fresh-only、connection-owned（连接断开 = 全部会话释放）
-- API key 须注入环境变量（harness 的 llm 提供方不认 credentials 里的扁平 key）
+- API key 须注入环境变量（dsh 的 llm 提供方不认 credentials 里的扁平 key）
 
-参考：<harness 仓库>/packages/acp/acp/README.md（ACP 协议规范）
+参考：<dsh仓库>/packages/acp/acp/README.md（ACP 协议规范）
 spike：spike_acp_test.py（已跑通 initialize → session/new → session/prompt → "收到。"）
 
 自测：python agent_community/platform/acp_bridge.py
@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-REPO = os.environ.get("DSH_REPO_DIR") or r"<harness 仓库路径>"  # 默认示例路径，可用环境变量 DSH_REPO_DIR 覆盖
+REPO = os.environ.get("DSH_REPO_DIR") or r"D:\Programs\deepseek-harness"  # 默认示例路径，可用环境变量 DSH_REPO_DIR 覆盖
 CMD = [
     "node", "--import", "tsx",
     "packages/examples/acp-demo/src/bin.ts",
@@ -35,7 +35,7 @@ PROTOCOL_VERSION = 1
 
 
 def load_api_key() -> str:
-    """从 credentials 读 DEEPSEEK_API_KEY（不打印明文）。"""
+    """从 dsh credentials 读 DEEPSEEK_API_KEY（不打印明文）。"""
     try:
         with open(CREDENTIALS, "r", encoding="utf-8") as f:
             for line in f:
@@ -48,7 +48,7 @@ def load_api_key() -> str:
 
 @dataclass
 class AcpSession:
-    """一个 HA 会话（一个并行工作的"手"，即 harness 的 ACP session）。"""
+    """一个 HA 会话（一个并行工作的"手"，即 dsh 的 ACP session）。"""
     session_id: str
     cwd: str
     text_parts: list[str] = field(default_factory=list)  # 已提交文本块
@@ -58,7 +58,7 @@ class AcpSession:
 
 
 class AcpBridge:
-    """harness ACP 桥：spawn 一个 harness ACP server，管理多个会话。
+    """dsh ACP 桥：spawn 一个 dsh ACP server，管理多个会话。
 
     线程模型：本桥为同步实现（子进程 + 读线程），供 server.py 通过
     asyncio.to_thread 调用，避免阻塞事件循环。
@@ -78,7 +78,7 @@ class AcpBridge:
 
     @classmethod
     def from_harness_info(cls, info) -> "AcpBridge":
-        """从 HarnessInfo 构造桥：读 acp_command / acp_cwd，否则用默认 harness 命令。"""
+        """从 HarnessInfo 构造桥：读 acp_command / acp_cwd，否则用默认 dsh 命令。"""
         import shlex
         cmd = shlex.split(info.acp_command) if getattr(info, "acp_command", "") else CMD
         repo = getattr(info, "acp_cwd", "") or REPO
@@ -219,7 +219,7 @@ class AcpBridge:
 if __name__ == "__main__":
     import sys
 
-    print("[bridge] start harness ACP ...", flush=True)
+    print("[bridge] start dsh ACP ...", flush=True)
     bridge = AcpBridge()
     bridge.start()
     try:

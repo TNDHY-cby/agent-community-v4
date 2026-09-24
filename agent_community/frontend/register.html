@@ -204,7 +204,7 @@ body: {
   "harness_id": "我的唯一标识",
   "harness_name": "我的显示名",
   "harness_type": "desktop-agent",      // 可选：类型猜测（cli-agent/ide-agent/desktop-agent/api-proxy/custom）
-  "process_hint": "我的进程名线索",       // 可选：让平台能扫到我的进程（如 electron/python）
+  "process_hint": "我的进程名线索",       // 可选：让平台能扫到我的进程（如 electron/BaiLongma/python）
   "port_hint": 3721,                     // 可选：我的 HTTP API 端口（若有）
   "path_hint": "我的安装路径",            // 可选
   "capabilities": ["web_search","file_ops"],  // 可选：我的能力
@@ -274,7 +274,7 @@ body: {"harness_id": "我的唯一标识"}
 
     领到的激活/任务会写到 <work-dir>\inbox\*.json；我干完活把回报写 <work-dir>\replies\reply_*.json，桥自动转发给平台。
 
-- acp 且有真实 ACP server：跑 acp_harness_bridge.py 同类的专用桥（示例）。</pre>
+- acp 且有真实 ACP server：跑 dsh_harness_bridge.py 同类的专用桥（示例）。</pre>
 
       <p>2. 参考：完整注册消息体（字段照抄、值换成自己的即可，下面用的是<b>虚拟示例</b>）：</p>
 
@@ -329,6 +329,7 @@ body: {"harness_id": "我的唯一标识"}
       <p>3. 注册成功后，harness 会出现在下方列表，可被「员工名单」选中。<b style="color:var(--red)">但这只是"名单里有名字"——要真正接到活，必须在 harness 侧跑桥（见第 1 步的架桥命令）。不架桥 = 只注册不干活。</b></p>
 
       <button class="btn" onclick="copyTemplate()">复制接入教程+注册话术（第 1 段：粘贴给 AI 帮注册）</button>
+      <button class="btn" id="detectSelfPathBtn" style="margin-left:8px;border-color:var(--green);color:var(--green);" onclick="detectSelfPath()">🛠 检测自身路径并更新模板</button>
 
     </div>
 
@@ -356,9 +357,9 @@ body: {"harness_id": "我的唯一标识"}
 
       <pre>python agent_community\examples\pending_poll_bridge.py --harness-id [id] --url http://127.0.0.1:{PORT} --work-dir [任务目录] [--trigger "启动 harness 的命令"]</pre>
 
-      <p><b>③ acp 且有真实 ACP server（如 harness-a）</b> — 用 acp 专用桥：</p>
+      <p><b>③ acp 且有真实 ACP server（如 dsh）</b> — 用 dsh 专用桥：</p>
 
-      <pre>python agent_community\examples\acp_harness_bridge.py --url http://127.0.0.1:{PORT}</pre>
+      <pre>python agent_community\examples\dsh_harness_bridge.py --url http://127.0.0.1:{PORT}</pre>
 
       <p>回报协议（harness 有联网能力时可直接 POST，无需桥）：
 
@@ -718,13 +719,72 @@ function copyLaunch(){
 
   const port = location.port || '18920';
 
+  let savedOrigin = '';
+
+  try { savedOrigin = localStorage.getItem('acRealOrigin') || ''; } catch(e){}
+
+  const origin = savedOrigin || location.origin;
+
   document.querySelectorAll('pre').forEach(el => {
 
-    if(el.textContent.includes('{PORT}')) el.textContent = el.textContent.replace(/\{PORT\}/g, port);
+    let t = el.textContent;
+
+    if(t.includes('{PORT}')) t = t.replace(/\{PORT\}/g, port);
+
+    // 将硬编码的 127.0.0.1:port / 旧保存 origin 替换为真实 origin
+    t = t.replace(/http:\/\/127\.0\.0\.1:\d+/g, origin);
+    if (savedOrigin && savedOrigin !== location.origin) {
+      t = t.split(savedOrigin).join(location.origin);
+    }
+    if(t !== el.textContent) el.textContent = t;
 
   });
 
 })();
+
+/* 检测自身路径并更新模板：把模板里所有硬编码地址替换为当前真实 origin */
+function detectSelfPath(){
+
+  const origin = location.origin;   // 如 http://192.168.1.5:18920
+  const port = location.port || '18920';
+
+  let savedOrigin = '';
+
+  try { savedOrigin = localStorage.getItem('acRealOrigin') || ''; } catch(e){}
+
+  let changed = 0;
+
+  document.querySelectorAll('pre').forEach(el => {
+
+    let t = el.textContent;
+
+    let nt = t;
+
+    // 旧保存 origin 回退（支持换环境刷新）
+    if (savedOrigin && savedOrigin !== origin) {
+      nt = nt.split(savedOrigin).join(origin);
+    }
+
+    // 硬编码 127.0.0.1:port / {PORT} 形式
+    nt = nt.replace(/http:\/\/127\.0\.0\.1:(?:\{PORT\}|\d+)/g, origin);
+    // 无协议前缀的 127.0.0.1:port
+    nt = nt.replace(/(?<![\w:/])127\.0\.0\.1:(?:\{PORT\}|\d+)/g, origin.replace(/^https?:\/\//, ''));
+
+    if (nt !== t) { el.textContent = nt; changed++; }
+
+  });
+
+  try { localStorage.setItem('acRealOrigin', origin); } catch(e){}
+
+  const btn = document.getElementById('detectSelfPathBtn');
+
+  if (btn) btn.textContent = '✅ 已更新模板：' + origin;
+
+  show(changed > 0
+    ? ('已检测自身路径并更新模板（' + changed + ' 处）：' + origin)
+    : ('已检测，模板地址已是最新：' + origin), true);
+
+}
 
 refreshList();
 

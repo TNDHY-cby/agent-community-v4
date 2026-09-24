@@ -31,7 +31,7 @@ _procs: dict[str, subprocess.Popen] = {}
 def _resolve_bridge_file(hid: str) -> str:
     """解析桥脚本真实路径：显式配置路径失效时，动态定位当前项目副本中的桥。
 
-    修复背景：_BRIDGES 曾硬编码开发副本 D:\\agent-community-v4，导致实际工作副本
+    修复背景：_BRIDGES 曾硬编码开发副本 D:\\外端Agent生产合作社（External Agent Community），导致实际工作副本
     （如用户本地部署目录）启动时找不到桥脚本、桥从不运行、
     激活消息永远堆积在 pending 队列。本模块位于 <root>\\agent_community\\platform\\
     → parents[2] 即项目根，桥位于 <root>\\agent_community\\bridges\\<hid>\\bridge.py。

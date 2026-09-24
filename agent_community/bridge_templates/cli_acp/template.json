@@ -1,6 +1,6 @@
 {
   "name": "cli_acp",
-  "description": "CLI/ACP 类 harness 的标准桥：注册、心跳、ACP 拉会话、读 hall.md 激活、派发任务、桥测回报、坐标登记全闭环。适用于能用 ACP 协议拉起的命令行 agent（如 harness-a）。",
+  "description": "CLI/ACP 类 harness 的标准桥：注册、心跳、ACP 拉会话、读 hall.md 激活、派发任务、桥测回报、坐标登记全闭环。适用于能用 ACP 协议拉起的命令行 agent（如 dsh/deepseek-harness）。",
   "interface_type": "cli_acp",
   "required_fields": ["HARNESS_ID", "ACP_COMMAND", "ACP_CWD", "MODEL_NAME", "PROVIDER", "DESCRIPTION"]
 }

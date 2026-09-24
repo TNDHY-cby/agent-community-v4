@@ -40,6 +40,8 @@ class Workshop:
     hall_content: str          # 用户最初发在大厅的内容
     members: list[WorkshopMember] = field(default_factory=list)
     discussion: list = field(default_factory=list)  # 讨论消息 [{role, content, timestamp}]
+    resources: list = field(default_factory=list)   # 工作间资源库 [{rid,name,kind,path,note,uploader,task_node,created_at}]
+    task_tree: list = field(default_factory=list)   # 任务树节点 [{node_id,label,parent_id,kind,status,note,resources[],created_at}]
     status: str = "draft"      # draft / discussing(一级讨论) / selecting(选定员工) / division(二级讨论) / running(工作) / review(三级讨论) / done
     pinned: bool = False       # 是否置顶（大厅侧边栏）
     created_at: str = ""       # 创建时间 ISO（侧边栏排序）
@@ -65,6 +67,8 @@ class Workshop:
                 for m in self.members
             ],
             "discussion": self.discussion,
+            "resources": self.resources,
+            "task_tree": self.task_tree,
         }
 
     @classmethod
@@ -87,6 +91,8 @@ class Workshop:
             hall_content=d.get("hall_content", ""),
             members=members,
             discussion=d.get("discussion", []),
+            resources=d.get("resources", []),
+            task_tree=d.get("task_tree", []),
             status=d.get("status", "draft"),
             pinned=d.get("pinned", False),
             created_at=d.get("created_at", ""),
@@ -108,11 +114,40 @@ WORKFLOW_GUIDE = """# 外端Agent生产合作社（External Agent Community） �
 
 # ── 文件语义：把大厅内容 + 流程指引写进 workspace ────────────
 
+def write_resources_manifest(workshop: Workshop) -> None:
+    """把工作间资源库清单落盘为 RESOURCES.md（供成员/外端 harness 读取共享）。
+
+    每个资源一行：`- [类型] 名称 | 路径 | 说明 | 上传者 | 关联任务`。
+    resources 目录缺失时自动创建（组长上传资源前的落点）。
+    """
+    ws = Path(workshop.workspace_dir)
+    ws.mkdir(parents=True, exist_ok=True)
+    res_dir = ws / "resources"
+    res_dir.mkdir(parents=True, exist_ok=True)
+    lines = ["# 工作间资源库", "", "本目录（resources/）用于共享工作产出与资源路径，成员可自行查看。", ""]
+    if not workshop.resources:
+        lines.append("（暂无资源）")
+    else:
+        for r in workshop.resources:
+            kind = r.get("kind", "file")
+            name = r.get("name", "")
+            path = r.get("path", "")
+            note = r.get("note", "")
+            uploader = r.get("uploader", "")
+            task_node = r.get("task_node", "")
+            tail = f" | 说明: {note}" if note else ""
+            tail += f" | 上传者: {uploader}" if uploader else ""
+            tail += f" | 关联任务: {task_node}" if task_node else ""
+            lines.append(f"- [{kind}] {name} | 路径: {path}{tail}")
+    (ws / "RESOURCES.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def write_workspace_files(workshop: Workshop) -> None:
     ws = Path(workshop.workspace_dir)
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "hall.md").write_text(workshop.hall_content, encoding="utf-8")
     (ws / "AGENTS.md").write_text(WORKFLOW_GUIDE, encoding="utf-8")
+    write_resources_manifest(workshop)
 
 
 # ── 最小竖切流程 ────────────────────────────────────────────
@@ -160,8 +195,8 @@ def run_minimal_flow(hall_content: str, workspace_dir: str) -> Workshop:
         hall_content=hall_content,
     )
     workshop.members.append(WorkshopMember(
-        member_id="m1", role="码农", display_name="harness-a",
-        harness_ids=["harness-a"],
+        member_id="m1", role="码农", display_name="dsh",
+        harness_ids=["dsh"],
     ))
 
     write_workspace_files(workshop)

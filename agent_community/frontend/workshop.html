@@ -578,9 +578,10 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .ws-sm .ws-dot.stuck-paused,.ws-sm .ws-dot.timeout{background:var(--red);box-shadow:0 0 6px var(--red)}
 .ws-sm .ws-dot.created,.ws-sm .ws-dot.dropped{background:var(--dim)}
 .ws-sm #smText{font-size:10px;color:var(--dim)}
-.interject-fab{position:fixed;right:286px;bottom:20px;z-index:60;width:50px;height:50px;border-radius:50%;border:1px solid var(--rule-strong);background:var(--bg3);color:var(--ink);font-size:19px;cursor:pointer;box-shadow:var(--sh-1)}
+.interject-fab{position:fixed;right:286px;bottom:20px;z-index:93;width:50px;height:50px;border-radius:50%;border:1px solid var(--rule-strong);background:var(--bg3);color:var(--ink);font-size:19px;cursor:grab;box-shadow:var(--sh-1);user-select:none;-webkit-user-select:none;touch-action:none}
 .interject-fab:hover{background:var(--bg4)}
-.interject-drawer{position:fixed;top:0;right:0;bottom:0;width:344px;max-width:88vw;z-index:70;background:var(--bg2);border-left:1px solid var(--rule-strong);box-shadow:var(--sh-1);transform:translateX(105%);transition:transform .22s ease;display:flex;flex-direction:column;overflow:hidden}
+.interject-fab.dragging{background:var(--bg4);box-shadow:var(--sh-2)}
+.interject-drawer{position:fixed;top:0;right:0;bottom:0;width:344px;max-width:88vw;z-index:95;background:var(--bg2);border-left:1px solid var(--rule-strong);box-shadow:var(--sh-1);transform:translateX(105%);transition:transform .22s ease;display:flex;flex-direction:column;overflow:hidden}
 .interject-drawer.open{transform:translateX(0)}
 .interject-drawer .id-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--rule);flex:0 0 auto}
 .interject-drawer .id-head h3{margin:0;font-size:14px;color:var(--ink)}
@@ -640,6 +641,48 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .wsv-input textarea:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
 .wsv-input .btn{flex:0 0 auto;align-self:center;background:linear-gradient(135deg,var(--accent),#c25f3f);border:none;color:#fff;font-weight:700;padding:10px 20px;border-radius:10px;box-shadow:0 2px 10px rgba(217,119,87,.3)}
 .wsv-input .btn:hover{background:#c25f3f;transform:translateY(-1px)}
+.wsv-plugins{display:block;padding:0}
+.wsv-plug-bar{display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:pointer;border-bottom:1px solid var(--rule);font-size:12px;font-weight:800;color:var(--ink)}
+.wsv-plug-bar:hover{background:var(--bg2)}
+.wsv-plug-bar-ico{font-size:12px}
+.wsv-plug-bar-tt{font-weight:400;font-size:10.5px;color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wsv-plug-bar-btn{font-size:11px;color:var(--accent);flex:0 0 auto}
+.wsv-plug-body{padding:10px 16px;max-height:34vh;overflow-y:auto}
+.wsv-plugins.collapsed .wsv-plug-body{display:none}
+.wsv-plugins.collapsed .wsv-plug-bar{border-bottom:none}
+.wsv-plug-sec{border:1px solid var(--rule);border-radius:10px;padding:8px 12px;margin-bottom:8px;background:var(--bg3)}
+.wsv-plug-sec:last-child{margin-bottom:0}
+.wsv-plug-head{font-size:12px;font-weight:800;display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+.wsv-plug-head span{font-size:10.5px;font-weight:400;color:var(--dim)}
+.wsv-plug-form{display:flex;gap:6px;flex-wrap:wrap}
+.wsv-plug-form input{flex:1;min-width:120px;background:var(--bg2);border:1px solid var(--rule);border-radius:8px;color:var(--ink);font-size:12px;padding:6px 10px}
+.wsv-plug-form select{background:var(--bg2);border:1px solid var(--rule);border-radius:8px;color:var(--ink);font-size:12px;padding:6px 6px}
+.wsv-plug-form .btn{padding:6px 14px;border-radius:8px;font-size:12px;align-self:center}
+.wsv-plug-list{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.wsv-plug-item{display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;background:var(--bg2);border:1px solid var(--rule);border-radius:8px}
+.wsv-plug-item b{flex:0 0 auto}
+.wsv-plug-item .pt{font-size:10px;color:var(--dim);flex:0 0 auto}
+.wsv-plug-item .tg{flex:1;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wsv-plug-item .btn{padding:2px 8px;font-size:11px;border-radius:6px}
+.wsv-plug-modes{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start}
+.wsv-plug-mode-wrap{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1 1 140px}
+.wsv-plug-mode{border:1px solid var(--rule);background:var(--bg2);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:var(--ink);text-align:left}
+.wsv-plug-mode.on{border-color:var(--accent);color:var(--accent);font-weight:700}
+.wsv-plug-mode-desc{font-size:10px;line-height:1.45;color:var(--dim);padding:0 2px}
+.mab-head{font-size:12px;color:var(--ink);font-weight:700;margin-bottom:6px}
+.mab-head .sub{font-size:10px;color:var(--dim);font-weight:400}
+.mab-block{border:1px solid var(--rule);border-radius:8px;padding:8px;margin-bottom:8px;background:var(--bg2)}
+.mab-title{font-size:12px;color:var(--ink);font-weight:600;display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.mab-title .btn{padding:2px 10px;font-size:11px;border-radius:6px;margin-left:auto}
+.mab-pre{background:var(--bg);border:1px solid var(--rule);border-radius:6px;padding:8px;font-size:11px;line-height:1.5;color:var(--ink);white-space:pre-wrap;word-break:break-all;margin:4px 0}
+.mab-tip{font-size:10.5px;color:var(--dim);line-height:1.4}
+.mab-member{border-top:1px dashed var(--rule);padding-top:6px;margin-top:6px}
+.mab-member .role{font-size:11.5px;color:var(--ink);font-weight:600;display:flex;align-items:center;gap:8px}
+.mab-member .role .btn{padding:2px 10px;font-size:11px;border-radius:6px;margin-left:auto}
+.mab-empty{font-size:11px;color:var(--dim);padding:6px 2px}
+.wsv-par-limit{display:flex;align-items:center;gap:6px;width:100%;font-size:12px;color:var(--ink)}
+.wsv-par-limit input{width:56px;border:1px solid var(--rule);background:var(--bg2);border-radius:6px;padding:3px 6px;font-size:12px;color:var(--ink)}
+.wsv-plug-ext{font-size:11px;color:var(--muted)}
 .wsv-drop{position:absolute;top:64px;left:20px;min-width:360px;max-width:580px;background:var(--bg3);border:1px solid var(--rule-strong);border-radius:14px;box-shadow:var(--sh-2);padding:14px 16px;z-index:97;font-size:12.5px;color:var(--ink)}
 .wsv-panel{position:absolute;top:64px;right:266px;width:330px;max-width:72vw;max-height:62vh;overflow-y:auto;background:var(--bg3);border:1px solid var(--rule-strong);border-radius:14px;box-shadow:var(--sh-2);padding:14px 16px;z-index:97;font-size:12.5px;color:var(--ink)}
 .wsv-panel h4{margin:0 0 8px;font-size:12px;color:var(--accent);display:flex;align-items:center;gap:6px}
@@ -665,6 +708,53 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .sm-lamp.stuck-paused i,.sm-lamp.timeout i{background:var(--red);box-shadow:0 0 6px var(--red)}
 .sm-lamp.created i,.sm-lamp.dropped i{background:var(--dim)}
 
+/* ── Harness 监控室（多画面） ── */
+.wsv-mon{position:fixed;inset:0;z-index:300;display:none;flex-direction:column;background:radial-gradient(ellipse at 50% 0%,#1a2430 0%,#0d1117 55%,#080b10 100%);color:var(--ink)}
+.wsv-mon.open{display:flex}
+.wsv-mon-head{height:54px;flex:0 0 auto;display:flex;align-items:center;gap:14px;padding:0 20px;background:rgba(13,17,23,.85);border-bottom:1px solid rgba(255,255,255,.08);backdrop-filter:blur(8px)}
+.wsv-mon-head b{font-size:14px;letter-spacing:.06em;color:#e6edf3}
+.wsv-mon-head .mon-live{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:#7ee787;letter-spacing:.15em;font-weight:700}
+.wsv-mon-head .mon-live i{width:8px;height:8px;border-radius:50%;background:#3fb950;box-shadow:0 0 10px #3fb950;animation:monBlink 1.4s infinite}
+@keyframes monBlink{0%,100%{opacity:1}50%{opacity:.35}}
+.wsv-mon-grid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;padding:18px 20px;align-content:start}
+.wsv-mon-cam{position:relative;border-radius:14px;overflow:hidden;background:#05070a;border:1px solid rgba(255,255,255,.10);min-height:190px;display:flex;flex-direction:column;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+.wsv-mon-cam:hover{border-color:rgba(63,185,80,.55);box-shadow:0 0 18px rgba(63,185,80,.12)}
+.wsv-mon-cam.off{cursor:default}
+.wsv-mon-cam-top{height:28px;flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:0 10px;background:rgba(255,255,255,.03);font-size:10px;color:#8b949e;letter-spacing:.08em;border-bottom:1px solid rgba(255,255,255,.05)}
+.wsv-mon-cam-top .rec{display:inline-flex;align-items:center;gap:5px;color:#f85149;font-weight:800;letter-spacing:.12em}
+.wsv-mon-cam-top .rec i{width:7px;height:7px;border-radius:50%;background:#f85149;box-shadow:0 0 8px #f85149;animation:monBlink 1.2s infinite}
+.wsv-mon-body{flex:1;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:0}
+.wsv-mon-name{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;color:#e6edf3}
+.wsv-mon-role{font-size:10px;color:#8b949e;background:rgba(255,255,255,.06);padding:2px 8px;border-radius:20px}
+.wsv-mon-meta{font-size:10.5px;color:#768390;line-height:1.5;word-break:break-all}
+.wsv-mon-msg{font-size:11.5px;color:#c9d1d9;background:rgba(255,255,255,.04);border-left:2px solid #3fb950;padding:6px 9px;border-radius:0 8px 8px 0;max-height:64px;overflow:hidden;line-height:1.5}
+.wsv-mon-foot{height:34px;flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:0 10px;background:rgba(255,255,255,.03);border-top:1px solid rgba(255,255,255,.05)}
+.wsv-mon-foot .st-lamp{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:#8b949e}
+.wsv-mon-foot .st-lamp i{width:8px;height:8px;border-radius:50%}
+.wsv-mon-mini-btn{margin-left:auto;font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.15);color:#c9d1d9;background:rgba(255,255,255,.05);cursor:pointer;transition:all .15s}
+.wsv-mon-mini-btn:hover{background:#3fb950;color:#05070a;border-color:#3fb950}
+.wsv-mon-cam .mon-act{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px;font-size:11px;color:#e6edf3;background:rgba(5,7,10,.55);opacity:0;transition:opacity .18s;pointer-events:none;letter-spacing:.1em;font-weight:700}
+.wsv-mon-cam:hover .mon-act{opacity:1}
+.wsv-mon-nosig{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#3d444d;font-weight:800;letter-spacing:.25em;font-size:11px;min-height:190px;border:1px dashed rgba(255,255,255,.08);border-radius:14px}
+.wsv-mon-nosig .bars{display:flex;gap:3px;align-items:flex-end;height:16px}
+.wsv-mon-nosig .bars i{width:3px;background:#21262d;animation:monBlink 1s infinite}
+.wsv-mon-nosig .bars i:nth-child(2){animation-delay:.2s}
+.wsv-mon-nosig .bars i:nth-child(3){animation-delay:.4s}
+.wsv-mon-mirror{margin:8px 10px 0;background:#05070a;border:1px solid #1f2937;border-radius:6px;overflow:hidden;display:none}
+.wsv-mon-mirror .mm-head{display:flex;align-items:center;gap:8px;padding:4px 8px;background:#0d1117;border-bottom:1px solid #1f2937;font-size:10px;color:#8b949e;min-width:0}
+.wsv-mon-mirror .mm-mode{color:#3fb950;font-weight:700;letter-spacing:.08em;flex:0 0 auto}
+.wsv-mon-mirror .mm-url{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.wsv-mon-mirror .mm-text{margin:0;padding:6px 8px;max-height:110px;overflow:auto;font-family:Consolas,'Courier New',monospace;font-size:11px;line-height:1.45;color:#c9d1d9;white-space:pre-wrap;word-break:break-all}
+/* 浮动小窗（画中画） */
+.wsv-mon-mini{position:fixed;right:24px;bottom:24px;width:300px;z-index:500;border-radius:14px;overflow:hidden;background:#0d1117;border:1px solid rgba(63,185,80,.35);box-shadow:0 12px 40px rgba(0,0,0,.55);font-size:12px;color:#e6edf3;min-width:220px;min-height:110px}
+.wsv-mon-mini-head{height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;background:rgba(63,185,80,.12);cursor:move;user-select:none;font-weight:800;font-size:11.5px;letter-spacing:.04em;border-bottom:1px solid rgba(255,255,255,.08)}
+.wsv-mon-mini-head .close{margin-left:auto;cursor:pointer;color:#8b949e;font-size:14px;line-height:1;padding:2px 6px}
+.wsv-mon-mini-head .close:hover{color:#f85149}
+.wsv-mon-mini-body{padding:10px 12px;display:flex;flex-direction:column;gap:7px;cursor:pointer}
+.wsv-mon-mini-body .mini-lamp{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:#8b949e}
+.wsv-mon-mini-body .mini-lamp i{width:8px;height:8px;border-radius:50%}
+.wsv-mon-mini-body .mini-hint{font-size:9.5px;color:#57606a;letter-spacing:.05em}
+.wsv-mon-mini-body:hover .mini-hint{color:#3fb950}
 
 </style>
 
@@ -837,7 +927,30 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 
 
+                    <!-- 工作间资源库：组长登记产出/路径，成员共享查看，可与任务树节点关联 -->
+          <div class="disc-zone zone-3" id="resourceZone" style="margin-top:14px">
+            <div class="side-head" style="display:flex;align-items:center;gap:8px"><h2 style="margin:0">📁 工作间资源库 <span class="zone-tag">共享</span></h2><button class="btn mini" style="margin-left:auto" onclick="refreshResources()">🔄 刷新</button></div>
+            <div id="resourceList" style="margin-top:8px"><div class="id-empty">加载中...</div></div>
+            <div style="margin-top:10px;border-top:1px dashed var(--rule);padding-top:10px">
+              <div style="font-size:11px;font-weight:700;color:var(--dim);margin-bottom:6px">组长登记资源（生成工作间文件夹后上传，供成员查看）</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                <input id="resName" placeholder="资源名称，如：周报汇总" style="padding:7px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--bg);color:var(--ink);font-size:12px">
+                <select id="resKind" style="padding:7px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--bg);color:var(--ink);font-size:12px">
+                  <option value="file">文件</option><option value="dir">文件夹</option><option value="link">链接</option>
+                </select>
+                <input id="resPath" placeholder="路径（工作区内相对路径或绝对路径）" style="grid-column:span 2;padding:7px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--bg);color:var(--ink);font-size:12px">
+                <input id="resNote" placeholder="说明（可选）" style="padding:7px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--bg);color:var(--ink);font-size:12px">
+                <input id="resTaskNode" placeholder="关联任务节点（可选，如：T1-子任务2）" style="padding:7px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--bg);color:var(--ink);font-size:12px">
+              </div>
+              <button class="btn" style="margin-top:8px;width:100%" onclick="addResource()">⬆️ 登记到资源库</button>
+            </div>
+          </div>
+
+
+
           <button class="btn" id="startWorkBtn" onclick="startWork()" style="display:none;margin-top:8px">🚀 开始工作</button>
+          <button class="btn" id="manualActBtn" onclick="manualActToggle()" style="display:none;margin-top:8px">📋 手动激活模板</button>
+          <div id="manualActBox" style="display:none;margin-top:8px"></div>
 
 
           <div id="workStatus" style="margin-top:8px"></div>
@@ -997,12 +1110,39 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
         <button class="btn wsv-btn" onclick="wsvPanel('staff')"><span class="ico">👥</span><span class="tt"><b>员工状态</b><span>成员在线 · 暂停标记</span></span></button>
         <button class="btn wsv-btn" onclick="wsvPanel('interject')"><span class="ico">💬</span><span class="tt"><b>插话栏</b><span>组长插话记录</span></span></button>
         <button class="btn wsv-btn" onclick="wsvPanel('token')"><span class="ico">🪙</span><span class="tt"><b>Token 消耗</b><span>用量统计</span></span></button>
-        <button class="btn wsv-btn" onclick="wsvPanel('slot4')"><span class="ico">🧩</span><span class="tt"><b>待定</b><span>扩展预留位</span></span></button>
+        <button class="btn wsv-btn" onclick="wsvMonitorToggle(true)"><span class="ico">🎛</span><span class="tt"><b>Harness 监控</b><span>监控室 · 多画面实时观察</span></span></button>
       </div>
     </div>
-    <div class="wsv-input">
-      <textarea id="wsvCmd" placeholder="输入新指令，Enter 提交，Shift+Enter 换行" rows="2" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();wsvSubmit();}"></textarea>
-      <button class="btn" onclick="wsvSubmit()">提交指令</button>
+    <div class="wsv-input wsv-plugins" id="wsvPluginsBox">
+      <div class="wsv-plug-bar" onclick="wsvPluginsToggle()" title="点击展开 / 收起">
+        <span class="wsv-plug-bar-ico">⚙</span><span>插件接口区</span>
+        <span class="wsv-plug-bar-tt" id="wsvPlugBarTt">外部程序接口 · 工作模式 · 扩展预留</span>
+        <span class="wsv-plug-bar-btn" id="wsvPlugBarBtn">收起 ▾</span>
+      </div>
+      <div class="wsv-plug-body">
+      <div class="wsv-plug-sec">
+        <div class="wsv-plug-head">🔌 外部程序接口 <span>注册外部程序 / HTTP 服务，车间内一键调用</span></div>
+        <div class="wsv-plug-form">
+          <input id="wsvPlgName" placeholder="名称（如 天气查询 / 备份脚本）" onkeydown="if(event.key==='Enter')wsvPluginAdd()">
+          <select id="wsvPlgType"><option value="http">HTTP 调用</option><option value="cmd">启动命令</option></select>
+          <input id="wsvPlgTarget" placeholder="HTTP: https://... ；命令: 直接写命令" onkeydown="if(event.key==='Enter')wsvPluginAdd()">
+          <button class="btn" onclick="wsvPluginAdd()">注册</button>
+        </div>
+        <div class="wsv-plug-list" id="wsvPlgList">加载中…</div>
+      </div>
+      <div class="wsv-plug-sec">
+        <div class="wsv-plug-head">🎛 工作模式 <span>切换车间协作节奏 · 已持久化</span></div>
+        <div class="wsv-plug-modes" id="wsvPlgModes">加载中…</div>
+      </div>
+      <div class="wsv-plug-sec">
+        <div class="wsv-plug-head">🧭 收口决策 <span>三级讨论充分后的收口方式 · 已持久化</span></div>
+        <div class="wsv-plug-modes" id="wsvDecisionModes">加载中…</div>
+      </div>
+      <div class="wsv-plug-sec">
+        <div class="wsv-plug-head">🧩 扩展预留 <span>后续可挂脚本 / MCP / 自定义工具</span></div>
+        <div class="wsv-plug-ext" id="wsvPlgExt">预留位：脚本工具、MCP 服务、自定义工作流插件将在此区展开。当前版本已提供外部程序接口与工作模式预设。</div>
+      </div>
+      </div>
     </div>
     <!-- 工作流下拉弹窗 -->
     <div class="wsv-drop" id="wsvWorkflowDrop" style="display:none"></div>
@@ -1014,6 +1154,20 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
     <div class="wsv-tree-zoom-head"><b>🌳 任务树 · 放大视图</b><button class="btn" onclick="wsvTreeZoom(false)">✕ 收起</button></div>
     <div class="wsv-tree-zoom-body" id="wsvTreeZoomBody"><div class="id-empty">加载中…</div></div>
   </div>
+  <!-- Harness 监控室（多画面） -->
+  <div class="wsv-mon" id="wsvMonitor">
+    <div class="wsv-mon-head">
+      <b>🎛 HARNESS 监控室</b>
+      <span class="mon-live"><i></i>LIVE</span>
+      <span id="wsvMonMeta" style="font-size:11px;color:#768390"></span>
+      <span style="flex:1"></span>
+      <button class="btn" onclick="wsvMonitorRefresh(true)">↻ 刷新</button>
+      <button class="btn" onclick="wsvMonitorToggle(false)">✕ 收起</button>
+    </div>
+    <div class="wsv-mon-grid" id="wsvMonGrid"></div>
+  </div>
+  <!-- 监控小窗（画中画）宿主 -->
+  <div id="wsvMonMiniHost"></div>
 
 
 </div>
@@ -1040,8 +1194,12 @@ let _wsvData={ws:null,sm:null,wb:null,its:[]};
 function openWorkshopView(){
   const v=document.getElementById('workshopView');if(!v)return;
   v.style.display='flex';
+  if(drawerOpen())toggleDrawer(false);
   syncWsvChat();
   wsvLoad();
+  wsvPluginLoad();
+  wsvModeLoad();
+  wsvDecisionLoad();
 }
 function syncWsvChat(){
   const src=document.getElementById('discussion3');
@@ -1083,13 +1241,14 @@ async function wsvLoad(){
   if(!wsId)return;
   const tree=document.getElementById('wsvTree');if(tree)tree.innerHTML='<div class="id-empty">加载中…</div>';
   try{
-    const [wsd,smd,wbd,itd]=await Promise.all([
+    const [wsd,smd,wbd,itd,trd]=await Promise.all([
       fetch(`/api/workshop/${wsId}`).then(r=>r.json()),
       fetch(`/api/workshop/${wsId}/sm/status`).then(r=>r.json()),
       fetch(`/api/workshop/${wsId}/leader-workbench`).then(r=>r.json()),
-      fetch(`/api/workshop/${wsId}/interjects`).then(r=>r.json())
+      fetch(`/api/workshop/${wsId}/interjects`).then(r=>r.json()),
+      fetch(`/api/workshop/${wsId}/tree`).then(r=>r.json()).catch(()=>({}))
     ]);
-    _wsvData={ws:wsd||{},sm:smd||{},wb:wbd||{},its:(itd&&Array.isArray(itd.interjects))?itd.interjects:[]};
+    _wsvData={ws:wsd||{},sm:smd||{},wb:wbd||{},its:(itd&&Array.isArray(itd.interjects))?itd.interjects:[],tree:(trd&&Array.isArray(trd.tree))?trd.tree:[]};
     const t=document.getElementById('wsvTitle');
     if(t)t.textContent='车间工作台 · '+((wsd&&(wsd.name||wsd.workshop_id))||'');
     wsvRenderTree();
@@ -1116,13 +1275,47 @@ function wsvNodesFromLogs(logs,state){
   if(last&&last.state!==state){nodes.push({label:SM_LABEL[state]||state,state:state,type:'main',note:'当前状态'});}
   return nodes;
 }
+// 真实任务树：把 /tree 端点返回的嵌套节点拍平成渲染用 nodes（资源挂载+纠偏语义）
+function wsvNodesFromTree(tree){
+  const nodes=[];
+  (function walk(items,depth){
+    (items||[]).forEach(n=>{
+      const st=n.status||'active';
+      const kind=n.kind||'task';
+      let type='main';
+      if(st==='dropped')type='dropped';
+      else if(st==='done')type='done';
+      else if(kind==='correction'&&st==='active')type='bypass';
+      else if(st==='bypassed')type='bypass';
+      const res=(Array.isArray(n.resources)?n.resources:[]).map(r=>r&&r.name).filter(Boolean);
+      const note=(n.note||'').trim();
+      const resNote=res.length?('📎 资源：'+res.join('、')):'';
+      nodes.push({
+        label:n.label||'未命名节点',
+        state:st,
+        type:type,
+        depth:depth||0,
+        note:[note,resNote].filter(Boolean).join(' | ')||'任务树节点',
+        nodeId:n.node_id||'',
+        kind:kind
+      });
+      walk(n.children,depth+1);
+    });
+  })(tree,0);
+  return nodes;
+}
+function wsvTreeNodes(){
+  const tree=_wsvData.tree;
+  if(Array.isArray(tree)&&tree.length)return wsvNodesFromTree(tree);
+  const sm=_wsvData.sm||{};
+  const state=sm.state||'created';
+  const logs=Array.isArray(sm.logs)?sm.logs.slice(-30):[];
+  return wsvNodesFromLogs(logs,state);
+}
 // 窄栏极简任务树：垂直列表，圆点+状态名，仅保留语义色
 function wsvRenderTree(){
   const box=document.getElementById('wsvTree');if(!box)return;
-  const sm=_wsvData.sm||{};
-  const state=sm.state||'created';
-  const logs=Array.isArray(sm.logs)?sm.logs.slice(-20):[];
-  const nodes=wsvNodesFromLogs(logs,state);
+  const nodes=wsvTreeNodes();
   const DOT={main:'var(--green)',done:'var(--accent)',dropped:'var(--dim)',fail:'var(--red)',bypass:'var(--cyan)'};
   let html='';
   if(nodes.length===0){
@@ -1132,8 +1325,9 @@ function wsvRenderTree(){
     nodes.forEach(n=>{
       const dot=DOT[n.type]||'var(--green)';
       const op=n.type==='dropped'?0.45:1;
+      const pad=(n.depth||0)*14;
       html+='<div class="wsv-trunk"></div>';
-      html+=`<div class="wsv-node" title="${esc(n.note||'')}"><span class="wsv-dot" style="background:${dot};opacity:${op}"></span><span class="wsv-node-label" style="opacity:${op}">${esc(n.label)}</span></div>`;
+      html+=`<div class="wsv-node" style="padding-left:${pad}px" title="${esc(n.note||'')}"><span class="wsv-dot" style="background:${dot};opacity:${op}"></span><span class="wsv-node-label" style="opacity:${op}">${esc(n.label)}${n.kind==='correction'?'<span style="font-size:9px;color:var(--cyan);margin-left:4px">纠偏</span>':''}</span></div>`;
     });
   }
   box.innerHTML=html;
@@ -1141,10 +1335,7 @@ function wsvRenderTree(){
 // 放大视图：居中垂直主干 + 直线侧枝，极简无装饰
 function wsvRenderTreeBig(){
   const box=document.getElementById('wsvTreeZoomBody');if(!box)return;
-  const sm=_wsvData.sm||{};
-  const state=sm.state||'created';
-  const logs=Array.isArray(sm.logs)?sm.logs.slice(-30):[];
-  const nodes=wsvNodesFromLogs(logs,state);
+  const nodes=wsvTreeNodes();
   const CX=320;
   const ROW=58;
   const H=Math.max(260,90+nodes.length*ROW+60);
@@ -1157,7 +1348,7 @@ function wsvRenderTreeBig(){
   }else{
     nodes.forEach((n,i)=>{
       const y=90+i*ROW;
-      let x=CX;
+      let x=CX+(n.depth||0)*22;
       if(n.type==='dropped')x=CX-170;
       else if(n.type==='fail')x=CX-80;
       else if(n.type==='bypass')x=CX+170;
@@ -1166,7 +1357,8 @@ function wsvRenderTreeBig(){
       const op=n.type==='dropped'?0.45:1;
       svg+=`<line x1="${CX}" y1="${y-44}" x2="${x}" y2="${y-12}" style="stroke:${stc}" stroke-width="1.4" opacity=".8"/>`;
       svg+=`<circle cx="${x}" cy="${y}" r="6" style="fill:${dot};opacity:${op}"/>`;
-      svg+=`<text x="${x+13}" y="${y+4}" font-size="13" style="fill:${n.type==='dropped'?'var(--dim)':'var(--ink)'};opacity:${op}">${esc(n.label)}</text>`;
+      const tag=n.kind==='correction'?' [纠偏]':'';
+      svg+=`<text x="${x+13}" y="${y+4}" font-size="13" style="fill:${n.type==='dropped'?'var(--dim)':'var(--ink)'};opacity:${op}">${esc(n.label)}${tag}</text>`;
       svg+=`<text x="${x+13}" y="${y+20}" font-size="10" style="fill:var(--muted)">${esc((n.note||'').slice(0,30))}</text>`;
     });
   }
@@ -1197,10 +1389,10 @@ function wsvToggleWorkflow(){
     `<div style="margin-top:8px;font-size:11px;color:var(--dim)">状态机：<b style="color:var(--ink)">${esc(SM_LABEL[(_wsvData.sm||{}).state]||(_wsvData.sm||{}).state||'-')}</b> · 数据源：GET /api/workshop/{ws_id}（status）</div>`;
   d.style.display='block';
 }
-async function wsvPanel(key){
+async function wsvPanel(key,_ev,force){
   const box=document.getElementById('wsvPanelBox');if(!box)return;
   const d=document.getElementById('wsvWorkflowDrop');if(d&&d.style.display==='block')d.style.display='none';
-  if(box.style.display==='block'&&box.getAttribute('data-key')===key){box.style.display='none';return;}
+  if(!force&&box.style.display==='block'&&box.getAttribute('data-key')===key){box.style.display='none';return;}
   box.setAttribute('data-key',key);
   if(key==='staff'){
     box.innerHTML='<h4>员工状态</h4><div class="id-empty">加载中…</div>';box.style.display='block';
@@ -1217,10 +1409,24 @@ async function wsvPanel(key){
     }catch(e){box.innerHTML='<h4>员工状态</h4><div class="id-empty">加载失败</div>';}
   }else if(key==='interject'){
     const its=_wsvData.its||[];
-    box.innerHTML='<h4>插话栏</h4>'+(its.length?its.map(it=>{
+    const items=its.length?its.map(it=>{
       const st=it.status||'pending';const pri=it.priority||'一般';
-      return `<div style="padding:6px 0;border-bottom:1px solid var(--rule)"><span class="id-pri ${esc(pri)}">${esc(pri)}</span> <span style="color:var(--dim);font-size:11px">${esc(typeof itStatusText==='function'?itStatusText(st):st)}</span><div style="margin-top:3px">${esc(it.content)}</div></div>`;
-    }).join(''):'<div class="id-empty">暂无插话</div>')+'<div style="margin-top:8px;font-size:10.5px;color:var(--dim)">复用 GET /api/workshop/{ws_id}/interjects（操作请收起车间回插话抽屉）</div>';
+      const act=[];
+      if(st==='pending'){
+        act.push(`<button class="btn" style="font-size:11px;padding:2px 6px" onclick="interjectAct('${it.id}','break')">⛔ 直接打断</button>`);
+        if(pri==='紧急'){act.push(`<button class="btn" style="font-size:11px;padding:2px 6px" onclick="interjectAct('${it.id}','execute')">⚡ 立刻执行</button>`);}
+        act.push(`<button class="btn" style="font-size:11px;padding:2px 6px" onclick="interjectAct('${it.id}','resolve')">✅ 裁决</button>`);
+        act.push(`<button class="btn" style="font-size:11px;padding:2px 6px" onclick="interjectAct('${it.id}','dismiss')">忽略</button>`);
+      }
+      const kind=(it.kind==='system')?`<span style="font-size:10px;color:var(--amber)">系统L${it.level||1}</span>`:'';
+      return `<div style="padding:6px 0;border-bottom:1px solid var(--rule)"><span class="id-pri ${esc(pri)}">${esc(pri)}</span>${kind} <span style="color:var(--dim);font-size:11px">${esc(typeof itStatusText==='function'?itStatusText(st):st)}</span><div style="margin-top:3px">${esc(it.content)}</div>${act.length?`<div style="margin-top:4px">${act.join('')}</div>`:''}</div>`;
+    }).join(''):'<div class="id-empty">暂无插话</div>';
+    box.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between"><h4 style="margin:0">插话栏</h4><button class="btn" style="font-size:11px;padding:2px 6px" onclick="wsvRefreshInterjectPanel()">刷新</button></div>'+
+      '<div style="margin:8px 0"><textarea id="wsvItContent" placeholder="把新想法/紧急事项插进当前工作循环…" style="width:100%;box-sizing:border-box;min-height:52px;resize:vertical;background:var(--bg3);color:var(--ink);border:1px solid var(--rule);border-radius:6px;padding:6px 8px;font-size:12px"></textarea>'+
+      '<div style="display:flex;gap:6px;margin-top:6px;align-items:center"><select id="wsvItPriority" style="background:var(--bg3);color:var(--ink);border:1px solid var(--rule);border-radius:6px;padding:4px 6px;font-size:12px"><option value="一般">一般</option><option value="灵感">灵感</option><option value="紧急">紧急</option></select>'+
+      '<button class="btn" style="font-size:11px;padding:4px 10px" onclick="wsvSubmitInterject()">提交插话</button>'+
+      '<span style="font-size:10.5px;color:var(--dim)">紧急=立即注入可打断；灵感=下检查点；一般=进池待合并</span></div></div>'+
+      items+'<div style="margin-top:8px;font-size:10.5px;color:var(--dim)">操作后自动刷新；组长工作台见右下角 💬 抽屉</div>';
     box.style.display='block';
   }else if(key==='token'){
     box.innerHTML='<h4>Token 消耗</h4><div class="id-empty">暂无现成接口</div><div style="margin-top:8px;font-size:11px;color:var(--dim)">平台当前未提供 token 计量接口（server.py 无用量统计端点），此处为占位，待接入模型用量上报后填充。</div>';
@@ -1240,6 +1446,167 @@ async function wsvSubmit(){
     if(typeof acToast==='function')acToast(ok?'指令已提交（交 Orchestrator / 全局广播）':((r&&r.error)||'提交失败'),ok?'':'err');
     if(ok&&ta)ta.value='';
   }catch(e){if(typeof acToast==='function')acToast('提交失败','err');}
+}
+const WSV_MODES=[
+  {id:'standard',label:'标准',desc:'常规节奏：按状态机顺序推进，适合日常协作与大多数任务。'},
+  {id:'parallel',label:'并行快进',desc:'多成员并行分工推进，配合并行度 N 控制并发上限，适合可拆解的大批量任务。'},
+  {id:'token_save',label:'省Token静默',desc:'规则优先、减少 LLM 调用，异常或需决策时才反馈用户，适合省开支的长跑任务。'},
+  {id:'strict',label:'严格串行',desc:'按序执行、严格裁决，强依赖或高风险流程下保证节奏可控。'},
+];
+function wsvPluginsToggle(){
+  var box=document.getElementById('wsvPluginsBox');
+  if(!box)return;
+  var on=box.classList.toggle('collapsed');
+  var btn=document.getElementById('wsvPlugBarBtn');
+  if(btn)btn.textContent=on?'展开 ▸':'收起 ▾';
+}
+async function wsvPluginLoad(){
+  const box=document.getElementById('wsvPlgList');if(!box)return;
+  try{
+    const d=await fetch('/api/plugins').then(x=>x.json());
+    const plugs=(d&&d.plugins)||{};
+    const names=Object.keys(plugs);
+    box.innerHTML=names.length?names.map(n=>{
+      const p=plugs[n];
+      return `<div class="wsv-plug-item"><b>${esc(n)}</b><span class="pt">${p.type==='http'?'HTTP':'命令'}</span><span class="tg" title="${esc(p.target)}">${esc(p.target)}</span><button class="btn" onclick="wsvPluginInvoke('${esc(n)}')">调用</button><button class="btn" onclick="wsvPluginDel('${esc(n)}')">删除</button></div>`;
+    }).join(''):'<div class="id-empty">暂无插件，注册一个试试</div>';
+  }catch(e){box.innerHTML='<div class="id-empty">加载失败</div>';}
+}
+async function wsvPluginAdd(){
+  const n=document.getElementById('wsvPlgName'),t=document.getElementById('wsvPlgTarget'),ty=document.getElementById('wsvPlgType');
+  const name=(n.value||'').trim(),target=(t.value||'').trim(),type=ty?ty.value:'http';
+  if(!name||!target){if(typeof acToast==='function')acToast('名称与目标不能为空','err');return;}
+  try{
+    const r=await fetch('/api/plugins',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,type,target})}).then(x=>x.json());
+    if(typeof acToast==='function')acToast(r.success?'插件已注册':((r.error)||'注册失败'),r.success?'':'err');
+    if(r.success){n.value='';t.value='';wsvPluginLoad();}
+  }catch(e){if(typeof acToast==='function')acToast('注册失败','err');}
+}
+async function wsvPluginInvoke(name){
+  if(typeof acToast==='function')acToast(`调用 ${name}…`);
+  try{
+    const r=await fetch(`/api/plugins/${encodeURIComponent(name)}/invoke`,{method:'POST'}).then(x=>x.json());
+    if(typeof acToast==='function')acToast(r.success?(r.output||'调用完成'):((r.error)||'调用失败'),r.success?'':'err');
+  }catch(e){if(typeof acToast==='function')acToast('调用失败','err');}
+}
+async function wsvPluginDel(name){
+  try{
+    const r=await fetch(`/api/plugins/${encodeURIComponent(name)}`,{method:'DELETE'}).then(x=>x.json());
+    if(typeof acToast==='function')acToast(r.success?'已删除插件':((r.error)||'删除失败'),r.success?'':'err');
+    if(r.success)wsvPluginLoad();
+  }catch(e){if(typeof acToast==='function')acToast('删除失败','err');}
+}
+async function wsvModeLoad(){
+  const box=document.getElementById('wsvPlgModes');if(!box)return;
+  if(!wsId){box.innerHTML='<div class="id-empty">请先打开工作间</div>';return;}
+  try{
+    const d=await fetch(`/api/workshop/${wsId}/mode`).then(x=>x.json());
+    const cur=(d&&d.mode)||'standard';
+    let parCtrl='';
+    if(cur==='parallel'){
+      let lim=3,max=9;
+      try{
+        const pl=await fetch(`/api/workshop/${wsId}/parallel_limit`).then(x=>x.json());
+        if(pl&&pl.parallel_limit)lim=pl.parallel_limit;
+        if(pl&&pl.max)max=pl.max;
+      }catch(e){}
+      parCtrl=`<div class="wsv-par-limit"><span>并行度 N：</span><input id="wsvParLimit" type="number" min="1" max="${max}" value="${lim}" title="同时并行推进的成员数上限（1~${max}）"><button class="btn" onclick="wsvParLimitSet()">保存</button></div>`;
+    }
+    box.innerHTML=WSV_MODES.map(m=>`<div class="wsv-plug-mode-wrap"><div class="wsv-plug-mode${m.id===cur?' on':''}" onclick="wsvModeSet('${m.id}')" title="${esc(m.desc)}">${esc(m.label)}</div><div class="wsv-plug-mode-desc">${esc(m.desc)}</div></div>`).join('')+parCtrl+`<div style="font-size:10.5px;color:var(--dim);width:100%">当前：<b>${esc((WSV_MODES.find(m=>m.id===cur)||{}).label||cur)}</b> · 模式标记已持久化</div>`;
+  }catch(e){box.innerHTML='<div class="id-empty">加载失败</div>';}
+}
+async function wsvParLimitSet(){
+  if(!wsId)return;
+  const el=document.getElementById('wsvParLimit');if(!el)return;
+  const v=parseInt(el.value||'3',10);
+  if(!v||v<1){if(typeof acToast==='function')acToast('并行度需 ≥1','err');return;}
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/parallel_limit`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit:v})}).then(x=>x.json());
+    if(typeof acToast==='function')acToast(r.success?`并行度已设为 ${r.parallel_limit}`:((r.error)||'设置失败'),r.success?'':'err');
+    if(r.success)wsvModeLoad();
+  }catch(e){if(typeof acToast==='function')acToast('设置失败','err');}
+}
+async function wsvModeSet(mode){
+  if(!wsId)return;
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/mode`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})}).then(x=>x.json());
+    if(typeof acToast==='function')acToast(r.success?`已切换为「${(WSV_MODES.find(m=>m.id===mode)||{}).label||mode}」`:((r.error)||'切换失败'),r.success?'':'err');
+    if(r.success)wsvModeLoad();
+  }catch(e){if(typeof acToast==='function')acToast('切换失败','err');}
+}
+
+// ═══ R3：收口决策模式（user / leader / vote）+ 弯路回收·记忆擦除 ═══
+const WSV_DECISION_MODES=[
+  {id:'user',label:'用户决定',desc:'三级讨论充分后，由你手动点「继续工作 / 任务已完成」。'},
+  {id:'leader',label:'组长独裁',desc:'讨论充分后自动向组长派发裁决，组长回报 decision 后按裁决收口。'},
+  {id:'vote',label:'最终方案举手',desc:'讨论充分后向全员广播表决邀请，全员举手后按多数裁决收口。'},
+];
+async function wsvDecisionLoad(){
+  const box=document.getElementById('wsvDecisionModes');if(!box)return;
+  if(!wsId){box.innerHTML='<div class="id-empty">请先打开工作间</div>';return;}
+  try{
+    const d=await fetch(`/api/workshop/${wsId}/decision-mode`).then(x=>x.json());
+    const cur=(d&&d.decision_mode)||'user';
+    box.innerHTML=WSV_DECISION_MODES.map(m=>`<div class="wsv-plug-mode-wrap"><div class="wsv-plug-mode${m.id===cur?' on':''}" onclick="wsvDecisionSet('${m.id}')" title="${esc(m.desc)}">${esc(m.label)}</div><div class="wsv-plug-mode-desc">${esc(m.desc)}</div></div>`).join('')
+      +`<div style="font-size:10.5px;color:var(--dim);width:100%">当前：<b>${esc((WSV_DECISION_MODES.find(m=>m.id===cur)||{}).label||cur)}</b> · 决策模式已持久化</div>`
+      +`<button class="btn" onclick="wsvHaltReset()" style="margin-top:8px;background:#c0392b;color:#fff;border-color:#c0392b">⚠ 确认走弯路 · 停止任务并擦除记忆重来</button>`;
+  }catch(e){box.innerHTML='<div class="id-empty">加载失败</div>';}
+}
+async function wsvDecisionSet(mode){
+  if(!wsId)return;
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/decision-mode`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})}).then(x=>x.json());
+    if(typeof acToast==='function')acToast(r.success?`已切换为「${(WSV_DECISION_MODES.find(m=>m.id===mode)||{}).label||mode}」`:((r.error)||'切换失败'),r.success?'':'err');
+    if(r.success){wsvDecisionLoad();syncReviewButtons();}
+  }catch(e){if(typeof acToast==='function')acToast('切换失败','err');}
+}
+async function wsvHaltReset(){
+  if(!wsId)return;
+  const reason=prompt('确认走弯路？请填写弯路原因（必填，将写入 DETOUR_SUMMARY.md 复盘文档）：');
+  if(reason===null)return;
+  if(!reason.trim()){if(typeof acToast==='function')acToast('弯路原因不能为空','err');return;}
+  const summary=prompt('经验总结（选填，将写入复盘文档，留空跳过）：')||'';
+  const wipeLeader=confirm('是否同时擦除组长的记忆？\n确定=擦除组长（含经验索引）；取消=仅擦除员工成员记忆');
+  const restart=confirm('是否从头开始（重置为草稿态、可重新激活）？\n确定=从头开始；取消=仅停止并擦除');
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/halt-and-reset`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:reason.trim(),summary:summary.trim(),wipe_members:true,wipe_leader:wipeLeader,restart:restart})}).then(x=>x.json());
+    if(typeof acToast==='function')acToast(r.success?(r.note||'已重置'):((r.error)||'重置失败'),r.success?'':'err');
+    if(r.success){ wsvLoad(); wsvModeLoad(); wsvDecisionLoad(); syncReviewButtons(); }
+  }catch(e){if(typeof acToast==='function')acToast('重置失败','err');}
+}
+async function syncReviewButtons(){
+  const c=document.getElementById('continueBtn'),f=document.getElementById('completeBtn');
+  if(!c||!f)return;
+  const show=()=>{c.style.display='';f.style.display='';};
+  if(!wsId)return show();
+  try{
+    const d=await fetch(`/api/workshop/${wsId}/decision-mode`).then(x=>x.json());
+    const m=(d&&d.decision_mode)||'user';
+    if(m==='leader'||m==='vote'){c.style.display='none';f.style.display='none';}
+    else show();
+  }catch(e){show();}
+}
+
+
+async function wsvSubmitInterject(){
+  if(!wsId){if(typeof acToast==='function')acToast('请先打开工作间');return;}
+  const c=document.getElementById('wsvItContent'),p=document.getElementById('wsvItPriority');
+  const content=(c.value||'').trim();if(!content){if(typeof acToast==='function')acToast('内容不能为空','err');return;}
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/interject`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content,priority:p.value})}).then(x=>x.json());
+    if(r&&r.success){c.value='';if(typeof acToast==='function')acToast(r.judge&&r.judge.allowed?'插话已注入工作循环':'插话已进池（稍后合并）');wsvRefreshInterjectPanel();refreshSmLight();}
+    else if(typeof acToast==='function')acToast((r&&r.error)||'提交失败','err');
+  }catch(e){if(typeof acToast==='function')acToast('提交失败','err');}
+}
+async function wsvRefreshInterjectPanel(){
+  if(!wsId)return;
+  const p=document.getElementById('wsvPanelBox');
+  const open=!!(p&&p.style.display==='block'&&p.getAttribute('data-key')==='interject');
+  try{
+    const d=await fetch(`/api/workshop/${wsId}/interjects`).then(x=>x.json());
+    _wsvData.its=(d&&Array.isArray(d.interjects))?d.interjects:[];
+    if(open&&typeof wsvPanel==='function'){wsvPanel('interject',null,true);}
+  }catch(e){}
 }
 
 
@@ -1321,6 +1688,11 @@ function addMsg(role, content, zone, meta){
   if(id==='discussion3'){
     const cc=document.getElementById('wsvChatCenter');
     if(cc){cc.appendChild(m.cloneNode(true));cc.scrollTop=cc.scrollHeight;}
+  }
+  // ── Harness 监控室实时喂流 ──
+  if(window._wsvMonOn&&role==='member'&&meta){
+    const k=meta.harness_id||meta.member_id||meta.display_name||'';
+    if(k){window._wsvMonFeeds[k]={t:Date.now(),c:content};wsvMonFeedBump(k);}
   }
 }
 
@@ -1438,11 +1810,11 @@ async function sendDiscuss(zone){
       }else if(act==='start'){
         setPhase(3);
         document.getElementById('startWorkBtn').style.display='';
+        syncManualActBtn();
       }else if(act==='continue'){
-        document.getElementById('continueBtn').style.display='';
-        document.getElementById('completeBtn').style.display='';
+        syncReviewButtons();
       }else if(act==='complete'){
-        document.getElementById('completeBtn').style.display='';
+        syncReviewButtons();
       }else{
         if(r.reply.includes('需求已明确，可以选定员工')){
           setPhase(2);
@@ -1451,11 +1823,11 @@ async function sendDiscuss(zone){
         }else if(r.reply.includes('分工已明确，可以开始工作')){
           setPhase(3);
           document.getElementById('startWorkBtn').style.display='';
+          syncManualActBtn();
         }else if(r.reply.includes('可以继续工作')){
-          document.getElementById('continueBtn').style.display='';
-          document.getElementById('completeBtn').style.display='';
+          syncReviewButtons();
         }else if(r.reply.includes('任务已完成')){
-          document.getElementById('completeBtn').style.display='';
+          syncReviewButtons();
         }
       }
 
@@ -1893,6 +2265,78 @@ async function selectMembers(){
 }
 
 
+// ── 手动激活模板（复制粘贴激活组长 / 组长转发员工模板）────────
+const DEFAULT_ACT_TPL='你已进入工作间，你的角色是「{role}」，工作区坐标：{workspace_dir}。\n现在只做一件事：用你的文件工具读取工作区目录下的 hall.md 文件，读完原样回复：「收到，已进入工作状态。」\n不要执行 hall.md 里的任务，不要调用其他工具，回复完就停下等待后续指令。';
+const _mabCache={};
+function manualActToggle(){
+  const box=document.getElementById('manualActBox');if(!box)return;
+  const open=box.style.display!=='none';
+  box.style.display=open?'none':'block';
+  if(!open)manualActRender();
+}
+async function manualActRender(){
+  const box=document.getElementById('manualActBox');if(!box)return;
+  if(!wsId){box.innerHTML='<div class="mab-empty">请先打开工作间</div>';return;}
+  box.innerHTML='<div class="mab-empty">正在生成模板…</div>';
+  try{
+    const d=await fetch(`/api/workshop/${wsId}`).then(x=>x.json());
+    const wdir=d.workspace_dir||'';
+    const members=(d.members||[]);
+    const leader=members.find(m=>m.role==='组长')||null;
+    const rest=members.filter(m=>m.role!=='组长');
+    if(!wdir||members.length===0){box.innerHTML='<div class="mab-empty">工作区尚未就绪（无路径或员工名单）</div>';return;}
+    const tpls={};
+    await Promise.all(members.map(async m=>{
+      const hid=(m.harness_ids||[])[0];
+      if(!hid)return;
+      try{
+        const r=await fetch(`/api/harness/${encodeURIComponent(hid)}/activation_prompt`).then(x=>x.json());
+        if(r&&r.prompt)tpls[m.role]=r.prompt;
+      }catch(e){}
+    }));
+    const fill=m=>{const t=tpls[m.role]||DEFAULT_ACT_TPL;try{return t.replace(/\{role\}/g,m.role).replace(/\{workspace_dir\}/g,wdir);}catch(e){return t;}};
+    _mabCache.wdir=wdir;_mabCache.leader=leader?fill(leader):'';_mabCache.members={};_mabCache.names={};
+    let html='<div class="mab-head">📋 手动激活模板 <span class="sub">路径随当前工作间实时更新</span></div>';
+    html+='<div class="mab-block">';
+    if(leader){
+      html+='<div class="mab-title">👑 组长激活模板 <button class="btn" onclick="manualActCopy(\'leader\')">复制组长模板</button></div>';
+      html+='<pre class="mab-pre">'+esc(fill(leader))+'</pre>';
+      html+='<div class="mab-tip">把上方模板复制粘贴给组长 harness。组长接入回复「收到，已进入工作状态。」后，即可在本页二级讨论区与组长交流选定成员；随后由组长把下方各员工模板发送给对应员工完成激活。</div>';
+    }else{
+      html+='<div class="mab-empty">员工名单中未找到「组长」角色，请先在选定员工阶段指定组长。</div>';
+    }
+    html+='</div>';
+    if(rest.length>0){
+      html+='<div class="mab-block"><div class="mab-title">👥 员工激活模板 <span style="font-size:10px;color:var(--dim);font-weight:400">（组长复制转发）</span></div>';
+      rest.forEach((m,i)=>{
+        _mabCache.members['m_'+i]=fill(m);_mabCache.names['m_'+i]=m.role;
+        html+='<div class="mab-member"><div class="role">'+esc(m.role)+' <button class="btn" onclick="manualActCopy(\'m_'+i+'\')">复制模板</button></div><pre class="mab-pre">'+esc(fill(m))+'</pre></div>';
+      });
+      html+='</div>';
+    }
+    box.innerHTML=html;
+  }catch(e){box.innerHTML='<div class="mab-empty">模板生成失败：'+esc((e&&e.message)||e)+'</div>';}
+}
+function manualActCopy(key){
+  const t=(key==='leader')?_mabCache.leader:(_mabCache.members[key]||'');
+  if(!t){if(typeof acToast==='function')acToast('模板为空','err');return;}
+  const label=(key==='leader')?'组长':(_mabCache.names[key]||key);
+  const done=()=>{if(typeof acToast==='function')acToast('已复制「'+label+'」激活模板');};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(done).catch(()=>{fallbackCopy(t);done();});
+  }else{fallbackCopy(t);done();}
+}
+function fallbackCopy(t){
+  const ta=document.createElement('textarea');ta.value=t;ta.style.position='fixed';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand('copy');}catch(e){}
+  document.body.removeChild(ta);
+}
+function syncManualActBtn(){
+  const b=document.getElementById('manualActBtn');if(!b)return;
+  const sb=document.getElementById('startWorkBtn');
+  b.style.display=(sb&&sb.style.display!=='none')?'':'none';
+}
 function startWork(){
   document.getElementById('startWorkBtn').style.display='none';
   addMsg('notice','正在激活员工，拉取各 harness 的新会话...（激活状态请看右侧列表）',2);
@@ -1957,7 +2401,7 @@ function startReview(){
     if(d.success){
       const act=d.action||'review';
       if(act==='running'){ setPhase(4); document.getElementById('reviewBtn').style.display=''; }
-      else { setPhase(5); document.getElementById('continueBtn').style.display=''; document.getElementById('completeBtn').style.display=''; }
+      else { setPhase(5); syncReviewButtons(); }
       startMsgPolling();
     }
   });
@@ -2063,6 +2507,8 @@ function loadWorkshop(id){
 
 
     wsId=id;
+    if(typeof wsvModeLoad==='function')wsvModeLoad();
+    if(typeof syncManualActBtn==='function')syncManualActBtn();
 
 
     showLayout();
@@ -2130,7 +2576,7 @@ function loadWorkshop(id){
       // F1：running 态刷新/重进后恢复三级讨论入口（内部即时 draw 判定 reviewBtn）
       if(d.status==='running'){ pollWorkStatus(); }
       // F1/F3：review 态刷新/重进后常驻收口按钮（不依赖 AI 标记句）
-      if(d.status==='review'){ document.getElementById('continueBtn').style.display=''; document.getElementById('completeBtn').style.display=''; }
+      if(d.status==='review'){ syncReviewButtons(); }
 
 
     }
@@ -2141,6 +2587,7 @@ function loadWorkshop(id){
 
     if(d.status!=='draft' && d.status!=='done'){ startMsgPolling(); }
     refreshSmLight();
+    refreshResources();
 
 
   });
@@ -2162,6 +2609,54 @@ async function refreshSmLight(){
   if(!wsId)return;
   try{const d=await fetch(`/api/workshop/${wsId}/sm/status`).then(x=>x.json());if(d&&d.state)setSmLight(d.state);}catch(e){}
 }
+/* ── 插话 FAB 鼠标拖动（V6-2）────────────────────────── */
+(function(){
+  const fab=document.getElementById('interjectFab');if(!fab)return;
+  const KEY='interjectFabPos';
+  let sx=0,sy=0,ox=0,oy=0,dragging=false,moved=false,justDragged=false;
+  try{
+    const saved=localStorage.getItem(KEY);
+    if(saved){
+      const p=JSON.parse(saved);
+      if(p&&typeof p.x==='number'&&typeof p.y==='number'){
+        fab.style.left=p.x+'px';fab.style.top=p.y+'px';
+        fab.style.right='auto';fab.style.bottom='auto';
+      }
+    }
+  }catch(e){}
+  fab.addEventListener('mousedown',function(e){
+    if(e.button!==0)return;
+    e.preventDefault();
+    dragging=true;moved=false;
+    const r=fab.getBoundingClientRect();
+    sx=e.clientX;sy=e.clientY;ox=r.left;oy=r.top;
+    fab.style.left=ox+'px';fab.style.top=oy+'px';
+    fab.style.right='auto';fab.style.bottom='auto';
+    fab.style.transition='none';
+    fab.classList.add('dragging');
+  });
+  window.addEventListener('mousemove',function(e){
+    if(!dragging)return;
+    const dx=e.clientX-sx,dy=e.clientY-sy;
+    if(Math.abs(dx)>3||Math.abs(dy)>3)moved=true;
+    const nx=Math.min(Math.max(0,ox+dx),window.innerWidth-fab.offsetWidth);
+    const ny=Math.min(Math.max(0,oy+dy),window.innerHeight-fab.offsetHeight);
+    fab.style.left=nx+'px';fab.style.top=ny+'px';
+  });
+  window.addEventListener('mouseup',function(){
+    if(!dragging)return;
+    dragging=false;
+    fab.classList.remove('dragging');
+    fab.style.transition='';
+    if(moved){
+      justDragged=true;
+      try{localStorage.setItem(KEY,JSON.stringify({x:parseInt(fab.style.left)||0,y:parseInt(fab.style.top)||0}));}catch(e){}
+    }
+  });
+  fab.addEventListener('click',function(e){
+    if(justDragged){justDragged=false;e.stopImmediatePropagation();e.preventDefault();}
+  },true);
+})();
 function drawerOpen(){const el=document.getElementById('interjectDrawer');return !!(el&&el.classList.contains('open'));}
 function toggleDrawer(force){
   const el=document.getElementById('interjectDrawer');if(!el)return;
@@ -2180,6 +2675,51 @@ async function submitInterject(){
   }catch(e){if(acToast)acToast('提交失败','err');}
 }
 function itStatusText(s){return {pending:'待处理',inserted:'已插入',ignored:'已忽略',expired:'已过期'}[s]||s;}
+// ── 工作间资源库 ─────────────────────────────────────────────
+async function refreshResources(){
+  if(!wsId)return;
+  const box=document.getElementById('resourceList');if(!box)return;
+  try{
+    const [d,tr]=await Promise.all([
+      fetch(`/api/workshop/${wsId}/resources`).then(x=>x.json()),
+      fetch(`/api/workshop/${wsId}/tree`).then(x=>x.json()).catch(()=>({}))
+    ]);
+    const items=(d&&d.resources)||[];
+    const nodeLabel={};
+    (function walk(ns){(ns||[]).forEach(n=>{if(n.node_id)nodeLabel[n.node_id]=n.label;walk(n.children);});})(tr&&tr.tree);
+    if(items.length===0){box.innerHTML='<div class="id-empty">资源库为空：组长登记产出文件夹/路径后，成员可在此查看共享</div>';return;}
+    box.innerHTML=items.map(r=>{
+      const kindIcon={file:'📄',dir:'📁',link:'🔗'}[r.kind]||'📄';
+      const kindName={file:'文件',dir:'文件夹',link:'链接'}[r.kind]||r.kind;
+      const tn=r.task_node?`<span style="font-size:10px;color:var(--purple);background:var(--purple-soft);padding:1px 7px;border-radius:999px;margin-left:6px">任务节点 ${esc(nodeLabel[r.task_node]||r.task_node)}</span>`:'';
+      const note=r.note?`<div style="font-size:11px;color:var(--dim);margin-top:3px">${esc(r.note)}</div>`:'';
+      const who=r.uploader?`<span style="font-size:10px;color:var(--dim);margin-left:6px">由 ${esc(r.uploader)} 登记</span>`:'';
+      return `<div class="id-item"><div class="ii-top"><span style="font-weight:700">${kindIcon} ${esc(r.name)}</span><span style="font-size:10px;color:var(--dim)">${kindName}</span>${tn}${who}</div><div style="font-size:11px;font-family:var(--mono);color:var(--accent);word-break:break-all;margin-top:4px">${esc(r.path)}</div>${note}<div class="ii-actions"><button class="btn" onclick="removeResource('${r.rid}','${esc(r.name)}')">🗑 移除</button></div></div>`;
+    }).join('');
+  }catch(e){box.innerHTML='<div class="id-empty">资源库加载失败</div>';}
+}
+async function addResource(){
+  if(!wsId)return;
+  const name=document.getElementById('resName').value.trim();
+  const path=document.getElementById('resPath').value.trim();
+  if(!name||!path){if(acToast)acToast('请填写资源名称与路径');return;}
+  const payload={name,path,kind:document.getElementById('resKind').value,note:document.getElementById('resNote').value.trim(),task_node:document.getElementById('resTaskNode').value.trim()};
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/resources`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(x=>x.json());
+    if(r&&r.success){document.getElementById('resName').value='';document.getElementById('resPath').value='';document.getElementById('resNote').value='';document.getElementById('resTaskNode').value='';if(acToast)acToast('已登记到资源库');refreshResources();}
+    else if(acToast)acToast((r&&r.error)||'登记失败','err');
+  }catch(e){if(acToast)acToast('登记失败','err');}
+}
+async function removeResource(rid,name){
+  if(!wsId)return;
+  if(!confirm('确定从资源库移除「'+name+'」的登记？(不删除实体文件)'))return;
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/resources/${rid}`,{method:'DELETE'}).then(x=>x.json());
+    if(acToast)acToast((r&&r.success)?'已移除登记':((r&&r.error)||'移除失败'));
+    refreshResources();
+  }catch(e){if(acToast)acToast('移除失败','err');}
+}
+// ── /工作间资源库 ─────────────────────────────────────────────
 async function refreshInterjects(){
   if(!wsId)return;
   const box=document.getElementById('itList');if(!box)return;
@@ -2206,7 +2746,7 @@ async function interjectAct(id,action){
   try{
     const r=await fetch(`/api/workshop/${wsId}/interject/${id}/${action}`,{method:'POST'}).then(x=>x.json());
     if(acToast)acToast((r&&r.success)?({break:'已直接打断当前循环',execute:'已立刻执行（交 Orchestrator）',resolve:'已裁决，状态机恢复',dismiss:'已忽略'}[action]||'已操作'):((r&&r.error)||'操作失败'));
-    refreshInterjects();refreshWorkbench();refreshSmLight();
+    refreshInterjects();refreshWorkbench();refreshSmLight();refreshResources();wsvRefreshInterjectPanel();
   }catch(e){if(acToast)acToast('操作失败','err');}
 }
 async function refreshWorkbench(){
@@ -2370,6 +2910,172 @@ function startMsgPolling(){
   }, 2500);
 }
 function startLeaderPolling(){ startMsgPolling(); }
+
+/* ══ Harness 监控室（便捷观察窗口 / 多画面 / 小窗投射 / 点击激活软件） ══ */
+let _wsvMonTimer=null;
+window._wsvMonOn=false;
+window._wsvMonFeeds={};
+function _wsvMonSafe(id){return String(id||'').replace(/[^a-zA-Z0-9_-]/g,'_');}
+function _wsvMonEscAttr(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function wsvMonitorToggle(show){
+  const v=document.getElementById('wsvMonitor'); if(!v) return;
+  window._wsvMonOn=!!show;
+  v.classList.toggle('open',window._wsvMonOn);
+  const p=document.getElementById('wsvPanelBox'); if(p&&window._wsvMonOn) p.style.display='none';
+  const d=document.getElementById('wsvWorkflowDrop'); if(d&&window._wsvMonOn) d.style.display='none';
+  if(window._wsvMonOn){
+    wsvMonitorRefresh(true);
+    if(!_wsvMonTimer) _wsvMonTimer=setInterval(()=>wsvMonitorRefresh(false),3000);
+  }else{
+    if(_wsvMonTimer){clearInterval(_wsvMonTimer);_wsvMonTimer=null;}
+  }
+}
+async function wsvMonitorRefresh(showToast){
+  if(!window._wsvMonOn) return;
+  try{
+    const [wsd,hl]=await Promise.all([
+      fetch('/api/workshop/'+encodeURIComponent(wsId)).then(r=>r.json()),
+      fetch('/api/harness/list').then(r=>r.json())
+    ]);
+    const members=Array.isArray(wsd.members)?wsd.members:[];
+    const harnesses=(hl&&hl.harnesses)||[];
+    const hmap={};
+    (harnesses||[]).forEach(h=>{
+      hmap[h.harness_id]=h;
+      if(h.harness_name) hmap[h.harness_name]=h;
+      if(h.agent_id) String(h.agent_id).split(',').forEach(a=>{a=a.trim();if(a)hmap[a]=h;});
+    });
+    // 首次：用讨论历史补齐每口画面最近动态
+    const dl=Array.isArray(wsd.discussion)?wsd.discussion:[];
+    dl.forEach(msg=>{
+      if(msg&&msg.role==='member'){
+        const k=msg.harness_id||msg.member_id||msg.display_name||'';
+        if(k&&!window._wsvMonFeeds[k]) window._wsvMonFeeds[k]={t:Date.now(),c:msg.content||''};
+      }
+    });
+    const grid=document.getElementById('wsvMonGrid'); if(!grid) return;
+    const cells=members.map(m=>{
+      const hid=(m.harness_ids&&m.harness_ids[0])||'';
+      const h=hmap[hid]||hmap[m.display_name]||(hid?hmap[hid]:null)||null;
+      return {m,h,hid};
+    });
+    grid.innerHTML=cells.map(c=>wsvMonCell(c)).join('')
+      || '<div class="wsv-mon-nosig" style="grid-column:1/-1"><div class="bars"><i></i><i></i><i></i></div>NO SIGNAL<br><span style="letter-spacing:.05em;font-weight:500;color:#57606a">暂无车间成员，监控画面待命</span></div>';
+    const meta=document.getElementById('wsvMonMeta');
+    if(meta) meta.textContent=members.length+' 口画面 · 刷新 '+new Date().toLocaleTimeString();
+    // 代码级窗口映射：每口画面并行拉取实时状态（CDP DOM 优先，协议流兜底）
+    const cams=grid.querySelectorAll('.wsv-mon-cam[data-key]');
+    const mtasks=[];
+    cams.forEach(cam=>{
+      const k=cam.getAttribute('data-key'); if(!k) return;
+      mtasks.push(fetch('/api/harness/'+encodeURIComponent(k)+'/mirror')
+        .then(r=>r.json()).then(m=>wsvMonRenderMirror(cam,k,m)).catch(()=>{}));
+    });
+    await Promise.all(mtasks);
+    const host=document.getElementById('wsvMonMiniHost');
+    if(host){Array.prototype.slice.call(host.children).forEach(w=>{const k=w.getAttribute('data-key')||'';if(k)wsvMonMiniUpdate(k);});}
+  }catch(e){
+    if(showToast&&typeof acToast==='function') acToast('监控数据拉取失败','err');
+  }
+}
+function wsvMonCell(c){
+  const m=c.m||{},h=c.h||null,hid=c.hid||'';
+  const status=String(m.status||'');
+  const lamp=status==='working'||status==='entered'?'#3fb950'
+    :(status==='discussing'||status==='reviewing'||status==='review'?'#58a6ff'
+      :(status==='blocked'||status==='paused'||status==='stuck'||status==='timeout'?'#f85149'
+        :(status==='waiting'?'#d29922':'#57606a')));
+  const feed=window._wsvMonFeeds[hid]||window._wsvMonFeeds[m.member_id]||window._wsvMonFeeds[m.display_name]||{};
+  const hmeta=h?(_wsvMonEscAttr(h.harness_id)+' · '+_wsvMonEscAttr((h.ai&&h.ai.model_name)||'模型未知')+' · msg '+String(h.message_count||0))
+               :'未匹配 harness · 仅观察，点击无法激活';
+  const name=_wsvMonEscAttr(m.display_name||'成员');
+  const role=_wsvMonEscAttr(m.role||'员工');
+  const stText=_wsvMonEscAttr(status||'idle');
+  const dKey=_wsvMonSafe(m.display_name||'');
+  const hAttr=_wsvMonEscAttr(hid), midAttr=_wsvMonEscAttr(m.member_id||''), nameAttr=_wsvMonEscAttr(m.display_name||'');
+  return '<div class="wsv-mon-cam'+(hid?'':' off')+'" data-key="'+_wsvMonSafe(hid)+'" data-name="'+dKey+'" onclick="wsvMonActivate(\''+hAttr+'\',\''+midAttr+'\')" title="点击激活对应软件窗口到最上层">'
+    +'<div class="wsv-mon-cam-top"><span class="rec"><i></i>REC</span><span>'+_wsvMonEscAttr(hid||m.member_id||'NO LINK')+'</span></div>'
+    +'<div class="wsv-mon-body">'
+    +'<div class="wsv-mon-name">'+name+'<span class="wsv-mon-role">'+role+'</span></div>'
+    +'<div class="wsv-mon-meta">'+hmeta+'</div>'
+    +'<div class="wsv-mon-msg">'+_wsvMonEscAttr(feed.c||'等待员工活动…')+'</div>'
+    +'</div>'
+    +'<div class="wsv-mon-foot">'
+    +'<span class="st-lamp"><i style="background:'+lamp+';box-shadow:0 0 6px '+lamp+'"></i>'+stText+'</span>'
+    +(hid?'<button class="wsv-mon-mini-btn" onclick="event.stopPropagation();wsvMonMini(\''+hAttr+'\',\''+midAttr+'\')">📌 投射小窗</button>':'')
+    +'</div>'
+    +'<div class="mon-act">🖥 点击激活窗口</div>'
+    +'</div>';
+}
+function wsvMonFeedBump(key){
+  if(!key) return;
+  const c=window._wsvMonFeeds[key]&&window._wsvMonFeeds[key].c;
+  if(c===undefined) return;
+  document.querySelectorAll('#wsvMonGrid .wsv-mon-cam').forEach(cam=>{
+    const k1=cam.getAttribute('data-key')||'', k2=cam.getAttribute('data-name')||'';
+    if(k1===key||k1===_wsvMonSafe(key)||k2===key||k2===_wsvMonSafe(key)){
+      const m=cam.querySelector('.wsv-mon-msg'); if(m) m.textContent=c;
+    }
+  });
+  wsvMonMiniUpdate(key);
+}
+async function wsvMonActivate(hid,mid){
+  if(!hid){if(typeof acToast==='function') acToast('该员工未关联 harness，无法激活窗口','err'); return;}
+  if(typeof acToast==='function') acToast('正在激活 '+hid+' 窗口…');
+  try{
+    const r=await fetch('/api/harness/'+encodeURIComponent(hid)+'/activate',{method:'POST'}).then(x=>x.json());
+    if(r&&r.success){
+      if(typeof acToast==='function') acToast('已激活窗口：'+(r.window_title||hid));
+    }else{
+      if(typeof acToast==='function') acToast((r&&r.error)||'未找到可激活的窗口（该 harness 无主窗口）','err');
+    }
+  }catch(e){ if(typeof acToast==='function') acToast('激活请求失败','err'); }
+}
+function wsvMonMini(hid,mid){
+  if(!hid) return;
+  const key=_wsvMonSafe(hid);
+  const host=document.getElementById('wsvMonMiniHost'); if(!host) return;
+  let w=document.getElementById('wsvMini-'+key);
+  if(w){ w.style.display='block'; w.style.zIndex=(500+Math.floor(Math.random()*400)); wsvMonMiniUpdate(hid); return; }
+  w=document.createElement('div'); w.className='wsv-mon-mini'; w.id='wsvMini-'+key; w.setAttribute('data-key',hid);
+  w.innerHTML='<div class="wsv-mon-mini-head"><span>📺 '+_wsvMonEscAttr(hid)+'</span><span class="close" onclick="event.stopPropagation();this.parentNode.parentNode.remove()">✕</span></div>'
+    +'<div class="wsv-mon-mini-body" onclick="wsvMonActivate(\''+_wsvMonEscAttr(hid)+'\',\''+_wsvMonEscAttr(mid||'')+'\')">'
+    +'<span class="mini-lamp"><i style="background:#d29922"></i><span class="mini-st">waiting</span></span>'
+    +'<div class="mini-msg" style="color:#c9d1d9;line-height:1.5">正在接入实时画面…</div>'
+    +'<span class="mini-hint">▶ 点击本窗口：激活对应软件并置顶</span>'
+    +'</div>';
+  host.appendChild(w);
+  const hd=w.querySelector('.wsv-mon-mini-head');
+  let sx=0,sy=0,ox=0,oy=0,drag=false;
+  hd.addEventListener('mousedown',function(e){drag=true;sx=e.clientX;sy=e.clientY;ox=w.offsetLeft;oy=w.offsetTop;e.preventDefault();});
+  document.addEventListener('mousemove',function(e){if(!drag)return;w.style.left=(ox+e.clientX-sx)+'px';w.style.top=(oy+e.clientY-sy)+'px';w.style.right='auto';w.style.bottom='auto';});
+  document.addEventListener('mouseup',function(){drag=false;});
+  wsvMonMiniUpdate(hid,mid);
+}
+function wsvMonMiniUpdate(hid){
+  const key=_wsvMonSafe(hid);
+  const w=document.getElementById('wsvMini-'+key); if(!w) return;
+  const feed=window._wsvMonFeeds[hid]||{};
+  const msg=w.querySelector('.mini-msg');
+  if(msg&&feed.c) msg.textContent=feed.c;
+}
+function wsvMonRenderMirror(cam,hid,m){
+  if(!cam) return;
+  let mm=cam.querySelector('.wsv-mon-mirror');
+  if(!mm){ mm=document.createElement('div'); mm.className='wsv-mon-mirror'; const body=cam.querySelector('.wsv-mon-body'); if(body) body.appendChild(mm); else return; }
+  const esc=function(s){return _wsvMonEscAttr(String(s==null?'':s));};
+  if(m&&m.ok&&m.mode==='cdp'){
+    mm.style.display='block';
+    const t=(m.text||'').replace(/\r/g,'').split('\n').filter(function(l){return l.trim();}).slice(-22).join('\n')||'(页面内容为空)';
+    mm.innerHTML='<div class="mm-head"><span class="mm-mode">CDP LIVE</span><span class="mm-url" title="'+esc(m.url)+'">'+esc(m.url)+'</span></div><pre class="mm-text">'+esc(t)+'</pre>';
+  }else if(m&&m.ok&&m.mode==='protocol'){
+    mm.style.display='block';
+    const rec=(m.recent&&m.recent.length?m.recent.slice(-12).map(function(r){return esc(r);}).join('\n'):'(暂无消息流)');
+    mm.innerHTML='<div class="mm-head"><span class="mm-mode">PROTO</span><span>'+esc(m.status||'idle')+' · '+esc(m.model||'')+' · msg '+(m.message_count||0)+'</span></div><pre class="mm-text">'+rec+'</pre>';
+  }else{
+    mm.style.display='none';
+  }
+}
 
 </script>
 

@@ -68,7 +68,7 @@ from .ai_external import (
     run_ai_call as ai_external_run_ai_call,
 )
 from ..config import load_config, save_config, mask_api_key
-from .workshop import Workshop, WorkshopMember, write_workspace_files, activate_member
+from .workshop import Workshop, WorkshopMember, write_workspace_files, write_resources_manifest, activate_member
 from .acp_bridge import AcpBridge
 # ── 配置 ──────────────────────────────────────────────────────
 PIPE_DIR = Path(os.environ.get("TEMP", ".")) / "agent_community_pipe"
@@ -122,7 +122,7 @@ async def _app_lifespan(_app):
         stop_harness_bridges()
     except Exception as _be:
         print(f"[shutdown] 回收 harness 桥失败: {_be}", flush=True)
-app = FastAPI(title="外端Agent生产合作社（External Agent Community）v4", default_response_class=Utf8JSONResponse, lifespan=_app_lifespan)
+app = FastAPI(title="外端Agent生产合作社（External Agent Community） Platform v4", default_response_class=Utf8JSONResponse, lifespan=_app_lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1", "http://localhost"],
@@ -1156,6 +1156,20 @@ async def harness_task_result(request: Request):
     ws = workshops.get(body.get("workshop_id", ""))
     if ws:
         mid = body.get("member_id")
+        # ── R3：决策模式回报（组长独裁 decision / 举手表决 vote）──
+        # 仅在 review 态且带明确裁决字段时接管收口；普通回报不受影响
+        _dm = str(body.get("decision") or "").strip().lower()
+        _vt = str(body.get("vote") or "").strip().lower()
+        if ws.status == "review" and mid:
+            if _dm in ("continue", "complete") and _get_decision_mode(ws.workshop_id) == "leader":
+                _append_msg(ws, "notice", f"【组长裁决】组长回报 decision={_dm}，按裁决执行。", zone=3)
+                if _dm == "complete":
+                    _do_complete_workshop(ws, by="leader")
+                else:
+                    _do_continue_workshop(ws, by="leader")
+                save_state()
+            if _vt in ("continue", "complete") and _get_decision_mode(ws.workshop_id) == "vote":
+                _settle_vote(ws, mid, _vt)
         # 通用回报接入：harness 通过 task-result 回报结果/发言，统一接入讨论区
         # （http_api 类 harness 也可通过 HTTP 直接回报到这里）
         result = _sanitize_harness_content(
@@ -1233,7 +1247,7 @@ async def harness_api_message(request: Request):
         return Utf8JSONResponse({"error": f"harness {hid} 的 api_base_url 校验失败: {err}"}, status_code=400)
     from_id = body.get("from_id") or f"agent-community-{hid}"
     ok, detail = send_http_api_message(base_url, content, from_id=from_id, message_path=message_path)
-    return {"success": ok, "harness_id": hid, "detail": detail, "base_url": base_url}
+    return {"success": ok, "ok": ok, "harness_id": hid, "detail": detail, "base_url": base_url}
 @app.post("/api/harness/bridge-test")
 async def harness_bridge_test(request: Request):
     """平台测试桥功能：向指定 harness 的桥发送一条测试消息。
@@ -1348,7 +1362,7 @@ async def harness_bridge_generate(harness_id: str, request: Request):
     try:
         platform_url = str(request.base_url).rstrip("/")
     except Exception:
-        platform_url = "http://127.0.0.1:18920"
+        platform_url = _platform_base_url()
     # 按模板 interface_type 组装参数（模板 required_fields 兜底校验）
     if template == "cli_acp":
         acp_command = (info.acp_command or "").strip()
@@ -1422,7 +1436,7 @@ async def harness_bridge_generate(harness_id: str, request: Request):
         "bridge_file": str(bridge_file),
         "bridge_dir": str(target),
         "bridge_status": sess.info.bridge_status,
-        "launch_hint": f'python -u "{bridge_file}" --url http://127.0.0.1:18920',
+        "launch_hint": f'python -u "{bridge_file}" --url {_platform_base_url()}',
     }
 @app.post("/api/harness/bridge-path")
 async def harness_bridge_path(request: Request):
@@ -1479,6 +1493,243 @@ def _find_bridge_processes(harness_id: str, bridge_dir: str = ""):
         } for p in data]
     except Exception as e:
         return [{"error": str(e)}]
+def _activate_windows_by_pids(pids, hints):
+    """将指定 PID 的进程窗口激活置顶；无窗口则按标题提示词匹配。
+
+    用于 Harness 监控室『点击画面 → 激活对应软件窗口』：
+    1) 优先激活 harness 桥进程的主窗口（若存在）；
+    2) 否则按 harness_id / harness_name 匹配所有进程的窗口标题；
+    3) 全部未命中时返回失败，由前端提示用户。
+    """
+    import subprocess
+    import json as _json
+    def _ps_arr(items):
+        vals = [str(i).replace("'", "''") for i in (items or [])]
+        return "@('" + "','".join(vals) + "')"
+    pid_list = [int(p) for p in (pids or []) if p]
+    hint_list = [str(h) for h in (hints or []) if h]
+    script = r'''
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class WAct {
+  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+}
+"@
+function Try-Activate($proc) {
+  if ($null -eq $proc -or $proc.MainWindowHandle -eq 0) { return $null }
+  $hwnd = $proc.MainWindowHandle
+  # 1) 模拟 ALT 键释放前台锁定限制
+  [WAct]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+  [WAct]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+  # 2) 恢复窗口（若最小化）
+  [WAct]::ShowWindowAsync($hwnd, 9) | Out-Null
+  # 3) 注入前台线程输入再置顶
+  $fgPid = 0
+  $fgThread = [WAct]::GetWindowThreadProcessId([WAct]::GetForegroundWindow(), [ref]$fgPid)
+  $curThread = [WAct]::GetCurrentThreadId()
+  $attached = $false
+  if ($fgThread -ne $curThread) { [WAct]::AttachThreadInput($curThread, $fgThread, $true) | Out-Null; $attached = $true }
+  [WAct]::SetForegroundWindow($hwnd) | Out-Null
+  [WAct]::SwitchToThisWindow($hwnd, $true)
+  if ($attached) { [WAct]::AttachThreadInput($curThread, $fgThread, $false) | Out-Null }
+  Start-Sleep -Milliseconds 200
+  return [PSCustomObject]@{ pid = $proc.Id; title = $proc.MainWindowTitle }
+}
+$pids = @($args_pids)
+$hints = @($args_hints)
+$found = @()
+foreach ($procId in $pids) {
+  try {
+    $p = Get-Process -Id $procId -ErrorAction Stop
+    $r = Try-Activate $p
+    if ($r) { $found += $r }
+  } catch {}
+}
+if ($found.Count -eq 0) {
+  foreach ($hint in $hints) {
+    $hit = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -match [regex]::Escape($hint) } | Select-Object -First 1
+    $r = Try-Activate $hit
+    if ($r) { $found += $r; break }
+  }
+}
+if ($found.Count -eq 0) { '[]' } else { $found | Select-Object -First 1 | ConvertTo-Json -Compress }
+'''
+    script = script.replace("$args_pids", _ps_arr(pid_list)).replace("$args_hints", _ps_arr(hint_list))
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+                           timeout=60, capture_output=True, text=True)
+        out = (r.stdout or "").strip()
+        if not out or out == "[]":
+            return {"success": False, "activated": False, "detail": (r.stderr or "")[:200]}
+        data = json.loads(out)
+        return {"success": True, "activated": True,
+                "pid": data.get("pid"), "window_title": (data.get("title") or "")[:160]}
+    except Exception as e:
+        return {"success": False, "activated": False, "error": str(e)}
+@app.post("/api/harness/{harness_id}/activate")
+async def harness_activate_window(harness_id: str):
+    """Harness 监控室：将指定 harness 对应的软件窗口激活并置顶。"""
+    sess = harness_manager.sessions.get(harness_id)
+    if not sess:
+        return Utf8JSONResponse({"error": f"harness {harness_id} 未注册"}, status_code=404)
+    info = getattr(sess, "info", None)
+    bridge_dir = (getattr(info, "bridge_dir", "") or "") if info else ""
+    hints = [harness_id]
+    if info:
+        hn = (getattr(info, "harness_name", "") or "").strip()
+        if hn and hn != harness_id:
+            hints.append(hn)
+    procs = await asyncio.to_thread(_find_bridge_processes, harness_id, bridge_dir)
+    pids = [p.get("pid") for p in procs if isinstance(p, dict) and p.get("pid")]
+    result = await asyncio.to_thread(_activate_windows_by_pids, pids, hints)
+    result["harness_id"] = harness_id
+    if not result.get("success"):
+        result["hint"] = "未找到该 harness 的可激活窗口（桥进程可能无主窗口）"
+    return result
+
+async def _cdp_probe_targets(debug_ports):
+    """并发探测本机 Chrome/Edge/Electron 的 CDP 调试端口，快速返回可用端口列表。"""
+    import urllib.request
+    async def probe(port):
+        try:
+            loop = asyncio.get_running_loop()
+            def _get():
+                with urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/json/list", timeout=0.8) as resp:
+                    data = json.loads(resp.read().decode("utf-8", "ignore"))
+                return (port, data) if isinstance(data, list) else None
+            return await loop.run_in_executor(None, _get)
+        except Exception:
+            return None
+    results = await asyncio.gather(*(probe(p) for p in debug_ports))
+    return [r for r in results if r]
+
+async def _mirror_by_cdp(harness_id, hints, debug_ports):
+    """代码级窗口映射（无需截图）：通过 CDP 连接宿主浏览器/Electron，
+    定时提取页面实时状态文本（title/url/body 文本流），结构化返回。"""
+    import websockets
+    import websockets.exceptions as ws_exc
+    ports = await _cdp_probe_targets(debug_ports)
+    for port, targets in ports:
+        cands = []
+        for t in targets:
+            url = (t.get("url") or "")
+            title = (t.get("title") or "")
+            for h in hints:
+                if h and (h in url or h in title):
+                    cands.append(t)
+                    break
+        if not cands:
+            # 无精确匹配：作为兜底可看非扩展页面的前台 target（避免误读调试器内部页）
+            cands = [t for t in targets if (t.get("type") or "") == "page"
+                     and not url.startswith("devtools://")
+                     and not url.startswith("chrome://")
+                     and url not in ("about:blank", "")]
+        for t in cands[:3]:
+            ws_url = t.get("webSocketDebuggerUrl") or ""
+            if not ws_url:
+                continue
+            try:
+                async with websockets.connect(ws_url, open_timeout=2, close_timeout=2) as ws:
+                    expr = ("JSON.stringify({t:document.title||'',u:location.href||'',"
+                            "x:(document.body?document.body.innerText:'').slice(0,1200)})")
+                    await ws.send(json.dumps({"id": 1, "method": "Runtime.evaluate",
+                                              "params": {"expression": expr,
+                                                         "returnByValue": True}}))
+                    while True:
+                        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=4))
+                        if msg.get("id") != 1:
+                            continue
+                        result = (msg.get("result") or {}).get("result") or {}
+                        value = result.get("value") or ""
+                        if result.get("exceptionDetails"):
+                            return {"mode": "cdp", "ok": False,
+                                    "error": "页面拒绝执行（异常页面）"}
+                        try:
+                            d = json.loads(value)
+                        except Exception:
+                            d = {"t": "", "u": url, "x": ""}
+                        return {"mode": "cdp", "ok": True, "port": port,
+                                "title": (d.get("t") or title or harness_id)[:160],
+                                "url": (d.get("u") or url or "")[:300],
+                                "text": (d.get("x") or "").strip()[:1000],
+                                "ts": int(asyncio.get_event_loop().time())}
+            except (ws_exc.ConnectionClosed, ws_exc.InvalidStatus,
+                    OSError, asyncio.TimeoutError, Exception):
+                continue
+    return {"mode": "cdp", "ok": False}
+
+def _mirror_by_protocol(harness_id, sess):
+    """协议级映射：无 CDP 时拉 harness 现有状态/消息流渲染员工工作台画面。"""
+    info = getattr(sess, "info", None)
+    ai = (getattr(info, "ai", None) or {}) if info else {}
+    status = getattr(sess, "status", None)
+    if status is None and info:
+        status = getattr(info, "status", None)
+    bridge_status = (getattr(info, "bridge_status", "") or "") if info else ""
+    model = (ai.get("model_name") if isinstance(ai, dict) else getattr(ai, "model_name", "")) or ""
+    recent = []
+    try:
+        hist = getattr(sess, "discussion", None) or getattr(sess, "messages", None) or []
+        for m in list(hist)[-5:]:
+            c = (getattr(m, "content", None) or (m.get("content") if isinstance(m, dict) else ""))
+            if isinstance(c, str) and c.strip():
+                recent.append(c.strip()[:300])
+    except Exception:
+        recent = []
+    return {"mode": "protocol", "ok": True,
+            "status": str(status or "idle"),
+            "bridge_status": bridge_status,
+            "model": model,
+            "message_count": int(getattr(sess, "message_count", 0) or 0),
+            "recent": recent,
+            "ts": int(time.time())}
+
+@app.get("/api/harness/{harness_id}/mirror")
+async def harness_mirror(harness_id: str, debug_port: int = 0):
+    """Harness 监控室实时窗口映射（代码级，无需截图）。
+    优先 CDP DOM 提取（需要宿主浏览器/Electron 开 --remote-debugging-port），
+    探测不到则退回协议级状态/消息流映射。
+    """
+    sess = harness_manager.sessions.get(harness_id)
+    if not sess:
+        return Utf8JSONResponse({"error": f"harness {harness_id} 未注册"}, status_code=404)
+    info = getattr(sess, "info", None)
+    hints = [harness_id]
+    if info:
+        hn = (getattr(info, "harness_name", "") or "").strip()
+        if hn and hn != harness_id:
+            hints.append(hn)
+    debug_ports = []
+    if debug_port:
+        debug_ports.append(int(debug_port))
+    debug_ports += [9222, 9223, 9224, 9225]
+    try:
+        try:
+            cdp = await asyncio.wait_for(
+                _mirror_by_cdp(harness_id, hints, debug_ports), timeout=2.0)
+        except asyncio.TimeoutError:
+            cdp = {"mode": "cdp", "ok": False, "error": "cdp_timeout"}
+        if cdp.get("ok"):
+            cdp["harness_id"] = harness_id
+            return cdp
+        proto = _mirror_by_protocol(harness_id, sess)
+        proto["harness_id"] = harness_id
+        proto["cdp_error"] = cdp.get("error", "")
+        return proto
+    except Exception as e:
+        proto = _mirror_by_protocol(harness_id, sess)
+        proto["harness_id"] = harness_id
+        proto["error"] = str(e)
+        return proto
 @app.post("/api/harness/bridge-verify")
 async def harness_bridge_verify(request: Request):
     """平台级桥验证：综合检查桥坐标、桥进程、历史测试，并实时发测试等待真实回报。
@@ -2145,7 +2396,7 @@ async def api_ai_pending():
     }
 @app.post("/api/ai/reply")
 async def api_ai_reply(request: Request):
-    """外部（如 Marvis）回写 AI 回复，平台按原流程继续。
+    """外部 AI 助手回写 AI 回复，平台按原流程继续。
 
     body: {"request_id": "air_xxx", "reply": "回复文本"}
     幂等：同一 request_id 重复回写不覆盖首次回复；request_id 不存在返回 404。
@@ -2294,13 +2545,199 @@ async def api_command(request: Request):
         asyncio.create_task(_broadcast_and_collect(task.id, command))
         asyncio.create_task(_trigger_wakeup(task.id, command))
     return {"success": True, "task_id": task.id, "title": task.title, "task": task.model_dump()}
+
+# ============ 插件注册表（车间底部插件接口区） ============
+PLUGINS_FILE = DATA_DIR / "plugins.json"
+PLUGIN_MODES_FILE = DATA_DIR / "workshop_modes.json"
+PLUGIN_TYPES = ("http", "cmd")
+
+def _load_plugins() -> dict:
+    try:
+        if PLUGINS_FILE.exists():
+            return json.loads(PLUGINS_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[plugins] 读取失败: {e!r}", flush=True)
+    return {}
+
+def _save_plugins(data: dict):
+    PLUGINS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+@app.get("/api/plugins")
+async def api_plugins_list():
+    return {"plugins": _load_plugins()}
+
+@app.post("/api/plugins")
+async def api_plugins_add(request: Request):
+    body = await request.json()
+    name = str(body.get("name") or "").strip()
+    ptype = str(body.get("type") or "").strip().lower()
+    target = str(body.get("target") or "").strip()
+    if not name or not target:
+        return Utf8JSONResponse({"error": "name 与 target 不能为空"}, status_code=400)
+    if ptype not in PLUGIN_TYPES:
+        return Utf8JSONResponse({"error": f"type 仅支持 {'/'.join(PLUGIN_TYPES)}"}, status_code=400)
+    if ptype == "http" and not target.startswith(("http://", "https://")):
+        return Utf8JSONResponse({"error": "http 类型 target 须为 http(s):// 开头"}, status_code=400)
+    plugs = _load_plugins()
+    if name in plugs:
+        return Utf8JSONResponse({"error": f"插件 [{name}] 已存在"}, status_code=400)
+    plugs[name] = {"type": ptype, "target": target, "created_at": now_iso()}
+    _save_plugins(plugs)
+    return {"success": True, "plugins": plugs}
+
+@app.delete("/api/plugins/{name}")
+async def api_plugins_del(name: str):
+    plugs = _load_plugins()
+    if name not in plugs:
+        return Utf8JSONResponse({"error": f"插件 [{name}] 不存在"}, status_code=404)
+    del plugs[name]
+    _save_plugins(plugs)
+    return {"success": True, "plugins": plugs}
+
+@app.post("/api/plugins/{name}/invoke")
+async def api_plugins_invoke(name: str):
+    plugs = _load_plugins()
+    if name not in plugs:
+        return Utf8JSONResponse({"error": f"插件 [{name}] 不存在"}, status_code=404)
+    plug = plugs[name]
+    try:
+        if plug["type"] == "http":
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                resp = await client.get(plug["target"])
+            text = (resp.text or "")[:500]
+            return {"success": True, "output": f"HTTP {resp.status_code} · {text}"}
+        else:  # cmd
+            import subprocess
+            proc = subprocess.Popen(
+                plug["target"], shell=True, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+            )
+            try:
+                out, _ = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                out, _ = proc.communicate()
+                return {"success": True, "output": f"[已运行超5s被终止] pid={proc.pid} · {(out or '')[:500]}"}
+            return {"success": True, "output": f"[exit {proc.returncode}] {(out or '')[:500]}"}
+    except Exception as e:
+        return Utf8JSONResponse({"error": f"调用失败: {e!r}"}, status_code=500)
+
+# ============ 工作间工作模式（车间底部插件接口区） ============
+def _load_workshop_modes() -> dict:
+    try:
+        if PLUGIN_MODES_FILE.exists():
+            return json.loads(PLUGIN_MODES_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+def _workshop_mode(ws_id: str) -> str:
+    """读工作间模式：standard / parallel / token_save / strict，默认 standard。
+    兼容扁平 key 存储（modes[ws_id]="parallel"）与 dict 存储（modes[ws_id]={"mode":"parallel",...}）。"""
+    modes = _load_workshop_modes()
+    raw = modes.get(ws_id, "")
+    if isinstance(raw, dict):
+        return str(raw.get("mode", "")).strip().lower() or "standard"
+    return str(raw).strip().lower() or "standard"
+
+def _is_parallel_mode(ws_id: str) -> bool:
+    return _workshop_mode(ws_id) == "parallel"
+
+# parallel 调度常量（秒）：批次窗口 / 组长兜底分工超时
+PARALLEL_BATCH_TIMEOUT = 60.0
+PARALLEL_AUTO_ASSIGN_T = 300.0
+
+def _parallel_limit(ws_id: str, member_count: int = 0) -> int:
+    """限量并行上限 N：默认 3，范围 1~max(1, member_count)；用户可调。
+    存于 workshop_modes.json 的扁平 key f"{ws_id}:parallel_limit"，或 dict 存储的 parallel_limit 字段。"""
+    modes = _load_workshop_modes()
+    n = modes.get(f"{ws_id}:parallel_limit")
+    if n is None:
+        raw = modes.get(ws_id)
+        if isinstance(raw, dict):
+            n = raw.get("parallel_limit")
+    try:
+        n = int(n)
+    except Exception:
+        n = 3
+    if n < 1:
+        n = 3
+    if member_count and member_count >= 1:
+        n = min(n, member_count)
+    return n
+
+def _is_silent_mode(ws_id: str) -> bool:
+    """token_save 静默模式判定：读 workshop_modes.json，默认 standard。
+    兼容扁平 key 与 dict 存储（保持与 _workshop_mode 一致）。"""
+    modes = _load_workshop_modes()
+    raw = modes.get(ws_id, "")
+    if isinstance(raw, dict):
+        return str(raw.get("mode", "")).strip().lower() == "token_save"
+    return str(raw).strip().lower() == "token_save"
+
+@app.get("/api/workshop/{ws_id}/mode")
+async def api_workshop_mode_get(ws_id: str):
+    modes = _load_workshop_modes()
+    return {"workshop_id": ws_id, "mode": modes.get(ws_id, "standard")}
+
+@app.post("/api/workshop/{ws_id}/mode")
+async def api_workshop_mode_set(ws_id: str, request: Request):
+    body = await request.json()
+    mode = str(body.get("mode") or "").strip()
+    if not mode:
+        return Utf8JSONResponse({"error": "mode 不能为空"}, status_code=400)
+    modes = _load_workshop_modes()
+    modes[ws_id] = mode
+    PLUGIN_MODES_FILE.write_text(json.dumps(modes, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"success": True, "workshop_id": ws_id, "mode": mode}
+
+# ── parallel 模式：并行度 N 调节 API（3.6）──
+@app.get("/api/workshop/{ws_id}/parallel_limit")
+async def api_workshop_parallel_limit_get(ws_id: str):
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    max_n = max(1, len(ws.members))
+    return {"workshop_id": ws_id, "parallel_limit": _parallel_limit(ws_id, len(ws.members)), "max": max_n}
+
+@app.post("/api/workshop/{ws_id}/parallel_limit")
+async def api_workshop_parallel_limit_set(ws_id: str, request: Request):
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    body = await request.json()
+    try:
+        n = int(body.get("limit") or 0)
+    except Exception:
+        n = 0
+    max_n = max(1, len(ws.members))
+    if n < 1:
+        return Utf8JSONResponse({"error": "并行度需 ≥1"}, status_code=400)
+    n = min(n, max_n)
+    modes = _load_workshop_modes()
+    modes[f"{ws_id}:parallel_limit"] = n
+    PLUGIN_MODES_FILE.write_text(json.dumps(modes, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"success": True, "workshop_id": ws_id, "parallel_limit": n}
+
 async def _orchestrated_flow(task: Task, command: str):
     """v4：通过 Orchestrator 智能调度任务流程。
     Orchestrator 负责：AI 分析拆解 → 信誉匹配 → discussion_engine 创建讨论室 → propose → land。
     若无 Agent 响应，自动降级为 AI 直接回复。
     """
-    # 快速通道：除 Orchestrator 外无任何 Agent 注册（检查完整 agents 字典而非仅 WS）
-    external_online = {aid for aid in agents if aid != orchestrator.AGENT_ID}
+    # 快速通道：除 Orchestrator 外无任何 Agent 在线（检查完整 agents 字典而非仅 WS）
+    # 修复：仅统计 ONLINE 的外部 agent/harness，离线 harness 不得参与任务委托（否则 300s 空等降级）
+    external_online = set()
+    for aid in agents:
+        if aid == orchestrator.AGENT_ID:
+            continue
+        if aid.startswith("harness-"):
+            # 优先用 id_to_harness 精确映射（兼容规范化/历史重复前缀 agent_id）
+            _hid = harness_manager.id_to_harness.get(aid) or aid[len("harness-"):]
+            _sess = harness_manager.sessions.get(_hid)
+            if not _sess or _sess.status != HarnessStatus.ONLINE:
+                continue
+        external_online.add(aid)
     print(f"[Orchestrator] agents={list(agents.keys())} external_online={external_online}", flush=True)
     if not external_online:
         print(f"[Orchestrator] 无任何 Agent 注册，直接走 AI 回复", flush=True)
@@ -2733,7 +3170,10 @@ async def _harness_broadcast(task_id: str, command: str, bridge):
             reply = await bridge.invite_agent(task, [])
             data = json.loads(reply.content) if reply and reply.content.strip().startswith("{") else {}
             if data.get("accept"):
-                agent_id = bridge.session.agent_id or f"harness-{bridge.session.harness_id}"
+                _fallback_hid = bridge.session.harness_id or ""
+                if _fallback_hid.startswith("harness-"):
+                    _fallback_hid = _fallback_hid[len("harness-"):]
+                agent_id = bridge.session.agent_id or f"harness-{_fallback_hid}"
                 hand = BroadcastHandRaise(
                     task_id=task_id,
                     agent_id=agent_id,
@@ -2894,6 +3334,8 @@ async def _handle_wakeup_result(task_id: str, payload: dict):
     # 对于举手者，将其作为 Harness 举手注册到任务中
     for hand in hands:
         hid = hand.get("harness_id", "")
+        if hid.startswith("harness-"):
+            hid = hid[len("harness-"):]
         hname = hand.get("harness_name", hid)
         agent_id = f"harness-{hid}"
         # 如果该 Harness Agent 已注册，添加举手
@@ -3807,13 +4249,18 @@ def _apply_harness_reply(ws_id, member_id, text, harness_id="", source="harness"
         status_norm = (status or "").strip().lower()
         if status_norm not in ("done", "blocked", "progress", "failed", "stuck", "none"):
             status_norm = ""
+        # 静默模式（token_save）：员工回报不唤醒组长 LLM；异常回报改由用户裁决
+        _silent = _is_silent_mode(ws.workshop_id)
+        _silent_member_progress = _silent and role_key == "member" and status_norm in ("done", "progress", "none", "")
+        _silent_member_abnormal = _silent and role_key == "member" and status_norm in ("blocked", "stuck", "failed")
         meta = {}
         if role_key == "member" and status_norm and status_norm != "none":
             meta["status"] = status_norm
         if role_key == "member" and (summary or "").strip():
             meta["summary"] = str(summary).strip()
-        # 失败占位回报 / 非事件回报：标记 system，供事件判定与进度归集过滤（用户仍可在讨论区看到）
-        if not notify_leader or status_norm == "failed":
+        # 失败占位回报 / 非事件回报 / 静默模式异常回报：标记 system，
+        # 供事件判定与进度归集过滤（用户仍可在讨论区看到）
+        if not notify_leader or status_norm == "failed" or _silent_member_abnormal:
             meta["system"] = True
         _msg = _append_msg(
             ws, role_key, text,
@@ -3825,9 +4272,20 @@ def _apply_harness_reply(ws_id, member_id, text, harness_id="", source="harness"
             source=source,
             meta=meta or None,
         )
+        # parallel 模式：员工回报（正常+异常）统一记入并行批次报告并标记批内完成（释放并行名额）。
+        # 批次全部完成时一次性汇总唤醒组长 + 队列补位；异常回报仍由下方状态分支即时升级。
+        if role_key == "member" and _is_parallel_mode(ws.workshop_id):
+            _parallel_record_report(ws, member_id, status_norm, summary, _msg["seq"])
         # 组长回报 = 组长已看到讨论区最新内容；员工回报 = 有进展等待组长知晓（事件驱动唤醒依据）
+        # 静默模式：员工回报一律不推进事件水位（讨论区可见，但不构成唤醒组长的事件）
+        # parallel 模式：员工正常回报不逐条推进水位，记入并行批次报告，批次完成/超时一次性汇总唤醒
         if role_key == "leader":
             ws._leader_ack_seq = _msg["seq"]
+        elif notify_leader and _silent and role_key == "member":
+            print(f"[harness_reply] {harness_id} 静默模式员工回报不推进事件水位: seq={_msg['seq']}", flush=True)
+        elif notify_leader and role_key == "member" and _is_parallel_mode(ws.workshop_id):
+            # 正常回报：已由 _parallel_record_report 记入批次报告，这里不再推进事件水位
+            print(f"[harness_reply] {harness_id} parallel 员工正常回报已记入批次报告、不逐条推进水位: seq={_msg['seq']}", flush=True)
         elif notify_leader:
             ws._worker_last_seq = _msg["seq"]
         else:
@@ -3853,22 +4311,333 @@ def _apply_harness_reply(ws_id, member_id, text, harness_id="", source="harness"
                 member.status = "blocked"
                 # 自治边界：确定性故障（校验失败/缺依赖等）→ 不重试，暂停上报 L1 组长裁决
                 task_state_machine.on_event(ws_id, EV_BLOCK, {"member_id": member_id, "detail": str(text)[:120]})
-                _system_interject(ws_id, f"成员「{member.display_name}」回报卡点(blocked)，升级组长裁决：{str(text)[:120]}", level="L1")
+                if _silent_member_abnormal:
+                    # 静默模式：不唤醒组长（不走 interject_store / 不写 role=user），直接反馈用户裁决
+                    _append_msg(ws, "member", f"成员「{member.display_name}」回报卡点(blocked)，请用户裁决：{str(text)[:120]}", meta={"system": True, "abnormal": status_norm})
+                else:
+                    _system_interject(ws_id, f"成员「{member.display_name}」回报卡点(blocked)，升级组长裁决：{str(text)[:120]}", level="L1")
             elif status_norm == "stuck":
                 member.status = "stuck"
                 # 自治边界：过程性困难 → 组长立即暂停（不进重试），先解决再 resume
                 task_state_machine.on_event(ws_id, EV_STUCK, {"member_id": member_id, "detail": str(text)[:120]})
-                _system_interject(ws_id, f"成员「{member.display_name}」回报过程性困难(stuck)，已暂停待组长裁决：{str(text)[:120]}", level="L1")
+                if _silent_member_abnormal:
+                    # 静默模式：不唤醒组长（不走 interject_store / 不写 role=user），直接反馈用户裁决
+                    _append_msg(ws, "member", f"成员「{member.display_name}」回报过程性困难(stuck)，已暂停，请用户裁决：{str(text)[:120]}", meta={"system": True, "abnormal": status_norm})
+                else:
+                    _system_interject(ws_id, f"成员「{member.display_name}」回报过程性困难(stuck)，已暂停待组长裁决：{str(text)[:120]}", level="L1")
             elif status_norm == "failed":
                 member.status = "failed"
             else:
                 member.status = "entered"
         print(f"[harness_reply] {harness_id} 回报已接入工作间 {ws_id}（{member_id}）: {text[:80]}", flush=True)
         save_state()
+        # 三级讨论自动触发：running 态全员完成回报后，无需用户手动点 review，自动进入复盘
+        if status_norm == "done":
+            _maybe_auto_review(ws)
         return True
     except Exception as _e:
         print(f"[harness_reply] 应用回报失败: {_e}", flush=True)
         return False
+
+
+# ════════════ 三级讨论补齐（V6-2）：自动触发 / 充分性裁决 / 产出物归档 ════════════
+def _review_active_members(ws) -> list:
+    """三级讨论应参与的在线成员：排除尚未激活 / 掉线 / 失败占位。"""
+    return [m for m in ws.members if m.status in ("entered", "working", "idle", "completed")]
+
+
+def _maybe_auto_review(ws) -> bool:
+    """自动触发三级讨论（补齐缺口2）：running 态下所有在线成员均完成回报 → 自动进入 review。
+    纯规则判定，不调 LLM。防重：ws._auto_review_done 标记，review 进入时重置。"""
+    try:
+        if ws.status != "running":
+            return False
+        if getattr(ws, "_auto_review_done", False):
+            return False
+        active = _review_active_members(ws)
+        if not active:
+            return False
+        # 全员完成回报（含组长已汇报过完成）
+        if not all(m.status == "completed" for m in active):
+            return False
+        ws.status = "review"
+        ws._review_notified = False
+        ws._auto_review_done = True
+        task_state_machine.set_state(ws.workshop_id, DISCUSSING, stage="review")
+        _append_msg(
+            ws, "notice",
+            "【自动进入三级讨论】所有成员已完成回报，系统自动进入阶段复盘。规则：① 平台 AI 主持，与用户、组长、员工同台讨论；② 组长转为「汇报+讨论」角色；③ 员工回报实时可见；④ 讨论充分后判定「继续工作」或「任务已完成」。",
+            zone=3,
+        )
+        save_state()
+        print(f"[auto_review] 工作间 {ws.workshop_id} 全员完成回报，自动进入三级讨论", flush=True)
+        return True
+    except Exception as _e:
+        print(f"[auto_review] 自动进入三级讨论失败: {_e}", flush=True)
+        return False
+
+
+def _review_sufficiency_check(ws) -> bool:
+    """讨论充分性判定（补齐缺口1）：三级讨论中，所有在线成员均已参与发言/回报 + 平台 AI 已回复 → 判定讨论充分。
+    纯规则判定，不调 LLM。防重：ws._review_suff_notified 标记。"""
+    try:
+        if ws.status != "review":
+            return False
+        if getattr(ws, "_review_suff_notified", False):
+            return False
+        active = _review_active_members(ws)
+        if not active:
+            return False
+        # 统计 zone=3 中每个成员的参与消息（非 system）
+        z3_ids = set()
+        for m in ws.discussion:
+            if not isinstance(m, dict):
+                continue
+            if m.get("zone") != 3:
+                continue
+            if m.get("meta", {}).get("system"):
+                continue
+            fm = m.get("from_member")
+            if fm:
+                z3_ids.add(fm)
+        # 平台 AI 是否已回复过（orchestrator 在 zone3 有消息）
+        ai_replied = any(
+            isinstance(m, dict) and m.get("zone") == 3 and m.get("role") == "orchestrator"
+            for m in ws.discussion
+        )
+        if not ai_replied:
+            return False
+        # 所有在线成员都已参与
+        missing = [m.display_name for m in active if m.member_id not in z3_ids]
+        if missing:
+            return False
+        ws._review_suff_notified = True
+        _append_msg(
+            ws, "notice",
+            "【讨论充分性判定】所有在线成员均已参与复盘，讨论已充分。" + _decision_mode_hint(ws),
+            zone=3,
+        )
+        # R3：按决策模式分流收口（leader→组长独裁 / vote→举手表决 / user→用户手动）
+        _route_review_verdict(ws)
+        save_state()
+        print(f"[review_suff] 工作间 {ws.workshop_id} 三级讨论充分（全员参与）", flush=True)
+        return True
+    except Exception as _e:
+        print(f"[review_suff] 讨论充分性判定失败: {_e}", flush=True)
+        return False
+
+
+def _write_review_archive(ws, conclusion: str) -> str:
+    """讨论产出物归档（补齐缺口3）：把三级讨论区内容落盘为 REVIEW.md（或 FINAL_SUMMARY.md）。
+    纯规则从 ws.discussion 提取 zone=3 消息，不调 LLM。返回归档文件路径。"""
+    try:
+        from datetime import datetime
+        ws_dir = Path(ws.workspace_dir)
+        ws_dir.mkdir(parents=True, exist_ok=True)
+        fname = "FINAL_SUMMARY.md" if conclusion == "complete" else "REVIEW.md"
+        path = ws_dir / fname
+        lines = [
+            f"# {'任务完成总结' if conclusion == 'complete' else '阶段复盘归档'}",
+            "",
+            f"- 工作间：{ws.name}（{ws.workshop_id}）",
+            f"- 归档时间：{now_iso()}",
+            f"- 结论：{'任务已完成' if conclusion == 'complete' else '继续工作'}",
+            "",
+            f"## 任务（大厅内容）",
+            "",
+            ws.hall_content,
+            "",
+            "## 成员",
+            "",
+        ]
+        for m in ws.members:
+            lines.append(f"- {m.role}（{m.display_name}）：{m.status}")
+        lines += ["", "## 三级讨论记录", ""]
+        z3_msgs = [
+            m for m in ws.discussion
+            if isinstance(m, dict) and m.get("zone") == 3 and not m.get("meta", {}).get("system")
+        ]
+        if not z3_msgs:
+            lines.append("（无讨论记录）")
+        else:
+            for m in z3_msgs:
+                who = m.get("display_name") or m.get("role") or "未知"
+                ts = str(m.get("timestamp") or "")[:19]
+                lines.append(f"- [{ts}] {who}：{str(m.get('content'))[:400]}")
+        lines.append("")
+        path.write_text("\n".join(lines), encoding="utf-8")
+        # 讨论区提示归档产物位置
+        _append_msg(
+            ws, "notice",
+            f"【三级讨论归档】本次{'任务完成总结' if conclusion == 'complete' else '复盘记录'}已落盘：{fname}（工作间目录）",
+            zone=3,
+            meta={"system": True},
+        )
+        print(f"[review_archive] 已归档三级讨论 -> {path}", flush=True)
+        return str(path)
+    except Exception as _e:
+        print(f"[review_archive] 归档失败: {_e}", flush=True)
+        return ""
+
+# ════════════ parallel 并行调度辅助（3.2 / 3.3 / 3.4） ════════════
+def _parallel_mark_done(ws, member_id):
+    """把成员标记为当前批内已完成（释放并行名额）。"""
+    done = getattr(ws, "_parallel_done", None)
+    if done is None:
+        ws._parallel_done = done = []
+    if member_id not in done:
+        done.append(member_id)
+
+def _parallel_batch_summary(ws, reports):
+    """生成并行批次汇总文本。"""
+    lines = []
+    for r in reports:
+        who = next((m.role or m.display_name for m in ws.members if m.member_id == r.get("member_id")), r.get("member_id"))
+        st = r.get("status") or "none"
+        sm = str(r.get("summary") or "")[:120]
+        lines.append(f"- {who}: [{st}] {sm}" if sm else f"- {who}: [{st}]")
+    return "【并行批次汇总】本批成员已全部回报：\n" + ("\n".join(lines) if lines else "（无明细）")
+
+def _parallel_refill(ws, by_platform=False):
+    """队列补位：批内名额释放后，从 _parallel_queue 队头弹 min(N, 空闲名额) 个派发。
+    by_platform=True 时为平台兜底分工广播。幂等：无空闲名额或队列为空直接返回。"""
+    if not _is_parallel_mode(ws.workshop_id):
+        return
+    queue = getattr(ws, "_parallel_queue", None)
+    if not queue:
+        return
+    limit = _parallel_limit(ws.workshop_id, len(ws.members))
+    batch = getattr(ws, "_parallel_batch", None)
+    if batch is None:
+        ws._parallel_batch = batch = []
+    done = getattr(ws, "_parallel_done", None)
+    if done is None:
+        ws._parallel_done = done = []
+    refilled = []
+    while queue and (len(batch) - len(done)) < limit:
+        mid = queue.pop(0)
+        mem = next((m for m in ws.members if m.member_id == mid), None)
+        if not mem:
+            continue
+        hid = (mem.harness_ids or [None])[0]
+        if not hid:
+            continue
+        if mid not in batch:
+            batch.append(mid)
+        tag = "平台兜底分工" if by_platform else "并行补位"
+        payload = {
+            "type": "task",
+            "workshop_id": ws.workshop_id,
+            "member_id": mem.member_id,
+            "role": mem.role,
+            "workspace_dir": ws.workspace_dir,
+            "message": (
+                f"【{tag}】平台已并行派发任务，请查看工作区 hall.md（任务）与讨论区最新消息，开始推进分工。\n"
+                f"当前并行上限 N={limit}；处理完请回报结果到平台（POST /api/harness/task-result，body 带 workshop_id/member_id/harness_id/result）。"
+            ),
+        }
+        _disp_ok, _disp_note = _dispatch_to_harness(hid, payload, kind="task")
+        mem.status = "working" if _disp_ok else mem.status
+        refilled.append(mem)
+    if refilled:
+        _append_msg(ws, "orchestrator", "【" + tag + "】" + "、".join(f"@{m.role or m.display_name}" for m in refilled) + f" 已补位派发（并行上限 N={limit}）", zone=2)
+        if not getattr(ws, "_parallel_batch_start", 0):
+            ws._parallel_batch_start = time.time()
+    ws._parallel_queue = queue
+    ws._parallel_batch = batch
+    ws._parallel_done = done
+
+def _maybe_flush_parallel_batch(ws):
+    """批内成员全部回报（正常或异常）→ 一次性汇总唤醒组长 + 队列补位。"""
+    batch = getattr(ws, "_parallel_batch", None)
+    if not batch:
+        return False
+    done = getattr(ws, "_parallel_done", None) or []
+    if any(mid not in done for mid in batch):
+        # 批未完成：仅尝试补位（已完成成员释放的名额），不生成汇总
+        _parallel_refill(ws)
+        return False
+    reports = getattr(ws, "_parallel_reports", None) or []
+    summary_text = _parallel_batch_summary(ws, reports)
+    _msg = _append_msg(ws, "orchestrator", summary_text, zone=2)
+    ws._worker_last_seq = _msg["seq"]  # 一次性推进水位，唤醒组长
+    ws._parallel_reports = []
+    ws._parallel_batch = []
+    ws._parallel_done = []
+    ws._parallel_batch_start = 0
+    _parallel_refill(ws)
+    print(f"[parallel] 工作间 {ws.workshop_id} 批次完成，一次性汇总唤醒组长 seq={_msg['seq']}", flush=True)
+    return True
+
+def _parallel_record_report(ws, member_id, status, summary, seq):
+    """parallel 员工回报登记：记入批次报告 + 标记批内完成 + 尝试批次收敛/补位。"""
+    reports = getattr(ws, "_parallel_reports", None)
+    if reports is None:
+        ws._parallel_reports = reports = []
+    reports.append({"member_id": member_id, "status": (status or "none"), "summary": (summary or ""), "seq": seq})
+    _parallel_mark_done(ws, member_id)
+    if getattr(ws, "_parallel_batch", None):
+        _maybe_flush_parallel_batch(ws)
+    else:
+        _parallel_refill(ws)
+
+def _parallel_timeout_check(ws):
+    """批次窗口超时（默认 60s）未全完成：把已回报汇总唤醒组长一次 + 补位。"""
+    batch = getattr(ws, "_parallel_batch", None)
+    if not batch:
+        return
+    start = getattr(ws, "_parallel_batch_start", 0)
+    if not start:
+        ws._parallel_batch_start = time.time()
+        return
+    if time.time() - start < PARALLEL_BATCH_TIMEOUT:
+        return
+    ws._parallel_batch_start = 0  # 重置计时，避免每 30s 重复触发
+    reports = getattr(ws, "_parallel_reports", None) or []
+    if reports:
+        lines = []
+        for r in reports:
+            who = next((m.role or m.display_name for m in ws.members if m.member_id == r.get("member_id")), r.get("member_id"))
+            st = r.get("status") or "none"
+            sm = str(r.get("summary") or "")[:120]
+            lines.append(f"- {who}: [{st}] {sm}" if sm else f"- {who}: [{st}]")
+        _msg = _append_msg(ws, "orchestrator", "【并行批次·超时汇总】窗口内已收到回报：\n" + ("\n".join(lines) if lines else "（无明细）"), zone=2)
+        ws._worker_last_seq = _msg["seq"]  # 超时也唤醒组长一次性审阅
+        ws._parallel_reports = []
+        print(f"[parallel] 工作间 {ws.workshop_id} 批次超时({PARALLEL_BATCH_TIMEOUT:.0f}s)汇总唤醒组长 seq={_msg['seq']}", flush=True)
+    # 已完成成员释放名额 → 补位（未完成成员仍占名额继续等）
+    _parallel_refill(ws)
+
+def _parallel_auto_assign(ws):
+    """平台兜底分工（3.4）：组长超时 T 未分工且有空闲成员 + 排队积压 → 自动广播补位。"""
+    if not _is_parallel_mode(ws.workshop_id):
+        return
+    queue = getattr(ws, "_parallel_queue", None)
+    if not queue:
+        return
+    idle = [m for m in ws.members if m.status in ("entered", "pending") and (m.harness_ids or [])]
+    if not idle:
+        return
+    last = getattr(ws, "_auto_assign_at", 0)
+    if last and time.time() - last < PARALLEL_AUTO_ASSIGN_T:
+        return
+    ws._auto_assign_at = time.time()  # 幂等：T 内不重复兜底
+    _parallel_refill(ws, by_platform=True)
+    leader = next((m for m in ws.members if m.role == "组长"), None)
+    if leader and (leader.harness_ids or []):
+        _dispatch_to_harness(leader.harness_ids[0], {
+            "type": "task",
+            "workshop_id": ws.workshop_id,
+            "member_id": leader.member_id,
+            "role": "组长",
+            "workspace_dir": ws.workspace_dir,
+            "message": (
+                f"【平台兜底分工】您在 {PARALLEL_AUTO_ASSIGN_T:.0f}s 内未完成并行分工，平台已自动把排队任务广播给空闲成员"
+                f"（并行上限 N={_parallel_limit(ws.workshop_id, len(ws.members))}）。请查看讨论区最新汇总，继续主裁。"
+            ),
+        }, kind="task")
+    print(f"[parallel] 工作间 {ws.workshop_id} 平台兜底分工已触发", flush=True)
+
 def _apply_api_outbox_reply(rep, harness_id):
     """把一条 outbox 回报接入对应工作间的讨论区（复用通用接入函数）。"""
     try:
@@ -4001,8 +4770,8 @@ async def create_workshop(request: Request):
             WorkshopMember(
                 member_id=f"m{i}",
                 role=m.get("role", "员工"),
-                display_name=m.get("display_name", "harness-a"),
-                harness_ids=m.get("harness_ids", ["harness-a"]),
+                display_name=m.get("display_name", "dsh"),
+                harness_ids=m.get("harness_ids", ["dsh"]),
             )
             for i, m in enumerate(body.get("members") or [])
         ],
@@ -4074,6 +4843,7 @@ async def get_workshop(ws_id: str, after_seq: int = -1):
         "hall_content": ws.hall_content,
         "discussion": _normalize_discussion(ws, after_seq=after_seq),
         "members": [{"member_id": m.member_id, "role": m.role, "display_name": m.display_name, "harness_ids": m.harness_ids, "status": m.status} for m in ws.members],
+        "resources": ws.resources,
     }
 @app.post("/api/workshop/{ws_id}/discuss")
 async def workshop_discuss(ws_id: str, request: Request):
@@ -4110,7 +4880,9 @@ async def workshop_discuss(ws_id: str, request: Request):
         )
         system = (
             "你是 外端Agent生产合作社（External Agent Community） 平台的进度讨论伙伴（Orchestrator）。"
-            "工作已进行一个阶段，现在要和用户依进度讨论：进展如何、有没有卡点、员工状态、下一步方向。"
+            "工作已进行一个阶段，现在进入三级讨论（阶段复盘）：平台 AI 主持，与用户、组长、员工同台讨论。"
+            "组长会以「汇报+讨论」角色实时参与（汇报本阶段进展/卡点/下一步）；员工的回报也会实时出现。"
+            "你负责主持讨论：围绕进展如何、有没有卡点、员工状态、下一步方向与用户自然讨论。"
             "像真同事自然讨论，不要问卷式。用中文，回复简洁但完整。"
             "当你判断可以继续推进时，在回复末尾写一句：可以继续工作；当你判断任务已完成时，写一句：任务已完成。"
             # 服务端依赖上述结尾标记句触发 action 流转（去文本化兼容），AI 回复必须原样保留标记句。
@@ -4133,6 +4905,12 @@ async def workshop_discuss(ws_id: str, request: Request):
     except Exception as e:
         reply = f"[AI 讨论失败: {e}]"
     _append_msg(ws, "orchestrator", reply, zone=user_zone)
+    # 三级讨论同台：平台 AI 回复后，同步把用户消息派发给组长 harness 实时参与讨论
+    # （组长路径转向：二级讨论组长是指挥者；三级讨论组长转为「汇报+讨论」参与者，与平台 AI / 用户 / 员工同台）
+    if ws.status == "review":
+        _dispatch_leader_review_discuss(ws, user_msg)
+        # 讨论充分性判定（补齐缺口1）：全员参与 + AI 已回复 → notice 提示可裁决流转
+        _review_sufficiency_check(ws)
     # 阶段流转去文本化：由服务端按原有关键词判定 action（与 reply 文本并存，前端优先读 action）
     action = "none"
     if "任务已完成" in reply:
@@ -4144,6 +4922,48 @@ async def workshop_discuss(ws_id: str, request: Request):
     elif "需求已明确，可以选定员工" in reply:
         action = "select"
     return {"success": True, "reply": reply, "status": ws.status, "stage": "orchestrator", "zone": user_zone, "action": action}
+
+
+def _dispatch_leader_review_discuss(ws, user_msg):
+    """三级讨论同台：把用户消息派发给组长 harness，让组长以「汇报+讨论」角色实时参与。
+    组长路径转向说明：二级讨论（division/running）组长负责分工指挥；进入三级讨论（review）后，
+    组长转为进度汇报者与讨论参与者——汇报本阶段进展、卡点与下一步，回应平台 AI / 用户 / 员工发言。
+    组长回报经由 /api/harness/task-result 写回三级讨论区（zone=3），前端实时可见。
+    组长未激活/无 harness 时静默跳过，不阻塞平台 AI 回复。"""
+    try:
+        if ws.status != "review":
+            return
+        leader = next((m for m in ws.members if m.role == "组长"), None)
+        if leader is None and ws.members:
+            leader = ws.members[0]
+        if not leader or leader.status not in ("entered", "working", "idle", "completed"):
+            return
+        hid = (leader.harness_ids or [None])[0]
+        if not hid:
+            return
+        summary = _member_progress_summary(ws) or "（暂无成员进度回报）"
+        payload = {
+            "type": "task",
+            "workshop_id": ws.workshop_id,
+            "member_id": leader.member_id,
+            "role": "组长",
+            "workspace_dir": ws.workspace_dir,
+            "message": (
+                "【三级讨论·组长参与】现在处于三级讨论（阶段复盘）。你的角色已从「分工指挥」转向「汇报+讨论参与者」：\n"
+                "1) 先简要汇报你负责部分的阶段进展与卡点；\n"
+                "2) 再针对以下用户/平台发言给出你的看法或下一步建议；\n"
+                "3) 如讨论已充分，可明确提出「可以继续工作」或「任务已完成」。\n\n"
+                f"当前成员进度汇总：\n{summary}\n\n"
+                f"用户/平台最新发言：\n「{user_msg[:300]}」\n\n"
+                "讨论区最近消息：\n" + _discussion_ctx(ws, limit=10)
+                + "\n\n你的回复将实时出现在三级讨论区供全体查看。"
+                "处理完请回报结果到平台（POST /api/harness/task-result，body 带 workshop_id/member_id/harness_id/result）。"
+            ),
+        }
+        _disp_ok, _disp_note = _dispatch_to_harness(hid, payload, kind="task")
+        print(f"[review同台] 已向组长 {leader.display_name} 派发三级讨论参与：{_disp_note}", flush=True)
+    except Exception as _e:
+        print(f"[review同台] 组长讨论派发失败: {_e}", flush=True)
 # ── 消息统一写入口与增量上下文（§4.4 事件驱动）─────────────────
 _ZONE_BY_STATUS = {"draft": 1, "discussing": 1, "selecting": 1, "division": 2, "running": 2, "review": 3}
 
@@ -4316,11 +5136,81 @@ def _detect_hooks(ws: Workshop, text: str):
                 targets.append(mem)
     return targets
 def _activate_by_hooks(ws: Workshop, text: str, by: str):
-    """按钩子激活目标成员：向每个目标派发「查看内容」任务。返回激活说明列表。"""
+    """按钩子激活目标成员：向每个目标派发「查看内容」任务。返回激活说明列表。
+    parallel 模式（3.2）：批量并行派发，限量 N 个入批同时开工，其余进入 _parallel_queue 排队，
+    批内成员回报完成后自动补位；非 parallel 模式保持原逐个派发逻辑不变。"""
     targets = _detect_hooks(ws, text)
     if not targets:
         return []
     notes = []
+    _parallel = _is_parallel_mode(ws.workshop_id)
+    if _parallel:
+        limit = _parallel_limit(ws.workshop_id, len(ws.members))
+        batch = getattr(ws, "_parallel_batch", None)
+        if batch is None:
+            ws._parallel_batch = batch = []
+        done = getattr(ws, "_parallel_done", None)
+        if done is None:
+            ws._parallel_done = done = []
+        queue = getattr(ws, "_parallel_queue", None)
+        if queue is None:
+            ws._parallel_queue = queue = []
+        active = [mid for mid in batch if mid not in done]
+        for mem in targets:
+            hid = (mem.harness_ids or [None])[0]
+            if not hid:
+                continue
+            if mem.member_id in done:
+                # 已完成的成员再次被点名：重新激活并入批（释放原名额）
+                done.remove(mem.member_id)
+            if mem.member_id in active:
+                # 已在批内工作：直接追加派发（同一消息），不占新名额
+                payload = {
+                    "type": "task",
+                    "workshop_id": ws.workshop_id,
+                    "member_id": mem.member_id,
+                    "role": mem.role,
+                    "workspace_dir": ws.workspace_dir,
+                    "message": (
+                        f"【钩子激活】{by} 在讨论区再次提到了你（@唤:{mem.role or mem.display_name}），请查看最新进展并继续推进。\n"
+                        f"平台已并行派发任务，共 {limit} 位成员同时推进；完成后请统一汇总回报到平台（POST /api/harness/task-result，body 带 workshop_id/member_id/harness_id/result）。"
+                    ),
+                }
+                _disp_ok, _disp_note = _dispatch_to_harness(hid, payload, kind="task")
+                notes.append(f"@{mem.role or mem.display_name} 已追加派发（{_disp_note}）")
+                continue
+            if len(active) >= limit:
+                # 并行名额已满：排队等下一批补位
+                if mem.member_id not in queue:
+                    queue.append(mem.member_id)
+                notes.append(f"@{mem.role or mem.display_name} 已排队（并行上限 N={limit}，批内成员完成后自动补位）")
+                continue
+            # 入批并行派发
+            if mem.member_id not in batch:
+                batch.append(mem.member_id)
+            active.append(mem.member_id)
+            payload = {
+                "type": "task",
+                "workshop_id": ws.workshop_id,
+                "member_id": mem.member_id,
+                "role": mem.role,
+                "workspace_dir": ws.workspace_dir,
+                "message": (
+                    f"【钩子激活·并行派发】{by} 在讨论区提到了你（@唤:{mem.role or mem.display_name}）。\n"
+                    f"请查看工作区目录下 hall.md（任务）和讨论区最新消息，开始推进你的分工。\n"
+                    f"平台已并行派发任务，共 {limit} 位成员同时推进；完成后请统一汇总回报到平台（POST /api/harness/task-result，body 带 workshop_id/member_id/harness_id/result）。"
+                ),
+            }
+            _disp_ok, _disp_note = _dispatch_to_harness(hid, payload, kind="task")
+            mem.status = "working" if _disp_ok else mem.status
+            notes.append(f"@{mem.role or mem.display_name} 已并行派发（{_disp_note}）")
+        if batch and not getattr(ws, "_parallel_batch_start", 0):
+            ws._parallel_batch_start = time.time()
+        ws._parallel_batch = batch
+        ws._parallel_done = done
+        ws._parallel_queue = queue
+        return notes
+    # 非 parallel：原逐个派发逻辑
     for mem in targets:
         hid = (mem.harness_ids or [None])[0]
         if not hid:
@@ -4343,17 +5233,23 @@ def _activate_by_hooks(ws: Workshop, text: str, by: str):
     return notes
 def _leader_digest(ws):
     """给组长的事件摘要：自上次 ack 之后讨论区新增内容（增量、截断）。
-    带结构化 status 的员工回报按 [已完成]/[卡点]/[进行中] 加前缀，便于组长一眼识别。"""
+    带结构化 status 的员工回报按 [已完成]/[卡点]/[进行中] 加前缀，便于组长一眼识别。
+    静默模式（token_save）：摘要截断放宽到 [-40:] 带出静默期积压，并返回 silent_pending 积压条数。"""
     ack = getattr(ws, "_leader_ack_seq", -1)
-    unseen = _normalize_discussion(ws, after_seq=ack + 1) if ack >= 0 else _normalize_discussion(ws)[-6:]
+    _silent = _is_silent_mode(ws.workshop_id)
+    if ack >= 0:
+        unseen = _normalize_discussion(ws, after_seq=ack + 1)
+    else:
+        # 从未 ack 过：静默模式放宽初始尾巴，避免积压被 6 条截断吞掉
+        unseen = _normalize_discussion(ws)[-40:] if _silent else _normalize_discussion(ws)[-6:]
     # 系统/失败占位消息不进组长摘要：它们只是给用户看的失败提示，不作为组长待办事件
     unseen = [m for m in unseen if not m.get("system")]
     digest_lines = []
-    for m in unseen[-8:]:
+    for m in (unseen[-40:] if _silent else unseen[-8:]):
         st = m.get("status", "")
         prefix = _STATUS_BADGE.get(st, "") if m.get("role") == "member" else ""
         digest_lines.append(f"{prefix}{_disp_who(ws, m)}: {str(m.get('content',''))[:200]}")
-    return "\n".join(digest_lines), unseen
+    return "\n".join(digest_lines), unseen, (len(unseen) if _silent else 0)
 
 def _leader_has_event(ws):
     """事件驱动判据（零 token）：员工回报/用户发言/卡点新消息 → 组长该看一眼。
@@ -4375,9 +5271,19 @@ def _leader_has_event(ws):
         return False
     ack = getattr(ws, "_leader_ack_seq", -1)
     wseq = getattr(ws, "_worker_last_seq", -1)
+    if _is_silent_mode(ws.workshop_id):
+        # 静默模式保险：水位已不推进（_apply_harness_reply），这里再兜底一层——
+        # 员工消息永不构成唤醒事件，仅保留用户点名/手动操作（role=user）与 review 兜底
+        digest, unseen, _ = _leader_digest(ws)
+        for m in unseen:
+            if m.get("system"):
+                continue  # 系统/失败占位/静默提示：用户可见，不作为唤醒组长的事件
+            if m.get("role") == "user":
+                return True  # 用户在 running 阶段点名组长（显式派遣）
+        return False
     if wseq > ack:
         return True  # 有新员工回报未读
-    digest, unseen = _leader_digest(ws)
+    digest, unseen, _ = _leader_digest(ws)
     for m in unseen:
         if m.get("system"):
             continue  # 系统/失败占位回报：用户可见，但不作为唤醒组长的事件（防「失败→再派发」死循环）
@@ -4403,6 +5309,11 @@ async def _leader_poll_loop():
                     continue
                 # ── 自治边界心跳（V6-1）：超时检测 → L0 重试 / L1 升级（兜底，非轮询扫描） ──
                 _sm_heartbeat(ws)
+                # ── parallel 心跳（3.3/3.4）：批次窗口超时汇总 + 组长超时平台兜底分工 ──
+                # 独立于下方 300s 事件唤醒限频，每轮（30s）检查一次，保证补位/兜底及时
+                if _is_parallel_mode(ws.workshop_id):
+                    _parallel_timeout_check(ws)
+                    _parallel_auto_assign(ws)
                 leader = next((m for m in ws.members if m.role == "组长"), None)
                 if not leader:
                     continue
@@ -4420,10 +5331,11 @@ async def _leader_poll_loop():
                 if leader.status == "working" and getattr(ws, "_leader_ack_seq", -1) >= 0:
                     continue
                 ws._leader_last_check = time.time()
-                digest, _unseen = _leader_digest(ws)
+                digest, _unseen, _silent_pending = _leader_digest(ws)
                 statusline = "；".join(f"{m.role}({m.display_name})={m.status}" for m in ws.members) or "（无员工）"
                 if not digest.strip():
                     digest = "（讨论区暂无新消息）"
+                _silent_note = f"\n「静默期积压 {_silent_pending} 条员工回报，请一次性审阅」" if _silent_pending else ""
                 payload = {
                     "type": "task",
                     "workshop_id": ws.workshop_id,
@@ -4431,8 +5343,10 @@ async def _leader_poll_loop():
                     "role": "组长",
                     "workspace_dir": ws.workspace_dir,
                     "message": (
-                        "【组长事件提醒】讨论区有新进展，请查看并回应：\n"
+                        ("【三级讨论·组长参与】现在处于阶段复盘（三级讨论）。你的角色已从「分工指挥」转向「汇报+讨论参与者」："
+                         "汇报本阶段进展/卡点/下一步，回应讨论区发言。\n" if ws.status == "review" else "【组长事件提醒】讨论区有新进展，请查看并回应：\n")
                         + digest
+                        + _silent_note
                         + "\n当前成员状态：" + statusline
                         + "\n请根据情况回应、点名催办或纠错（@唤:<角色> 激活员工查看内容）。"
                         "处理完请回报结果到平台（POST /api/harness/task-result，body 带 workshop_id/member_id/harness_id/result）。"
@@ -4537,7 +5451,7 @@ async def _leader_division_discuss(ws: Workshop, user_msg: str):
             "回复内容就是用户会看到的话。\n"
             "工作区实时路径：" + ws.workspace_dir + "\n"
             "【回报要求】你的回应必须回报给平台，否则用户看不到：\n"
-            "POST http://127.0.0.1:18920/api/harness/task-result\n"
+            "POST " + _platform_base_url() + "/api/harness/task-result\n"
             "body: {\"workshop_id\":\"" + ws.workshop_id + "\",\"member_id\":\"" + leader.member_id
             + "\",\"harness_id\":\"" + hid + "\",\"ok\":true,\"result\":\"你的完整回复\"}\n"
             "把你要对用户说的话放到 result 字段回报上去。"
@@ -4733,7 +5647,9 @@ async def workshop_review(ws_id: str):
     # 自治边界：进入三级讨论 → discussing 态
     task_state_machine.set_state(ws_id, DISCUSSING, stage="review")
     ws._review_notified = False  # 新进入 review：允许 poll 兜底唤醒组长一次
-    _append_msg(ws, "notice", "【三级讨论】一个阶段工作已告一段落。请说说这一阶段的进展：完成得怎么样、有没有卡点、下一步想怎么走？员工的回报也会实时出现在这里。", zone=3)
+    ws._auto_review_done = False  # 手动进入：重置自动触发防重标记，允许后续阶段再次自动进入
+    ws._review_suff_notified = False  # 重置充分性判定防重标记
+    _append_msg(ws, "notice", "【三级讨论】一个阶段工作已告一段落，进入阶段复盘。规则：① 平台 AI 主持，与用户、组长、员工同台讨论；② 组长转为「汇报+讨论」角色，汇报本阶段进展/卡点/下一步；③ 员工的回报会实时出现在这里；④ 讨论充分后，平台 AI 会判定进入「继续工作」或「任务已完成」。请说说这一阶段的进展：完成得怎么样、有没有卡点、下一步想怎么走？", zone=3)
     save_state()
     return {"success": True, "status": ws.status, "action": "review"}
 @app.post("/api/workshop/{ws_id}/continue")
@@ -4744,6 +5660,8 @@ async def workshop_continue(ws_id: str):
         return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
     ws.status = "running"
     _append_msg(ws, "notice", "【继续工作】已回到工作状态。员工继续执行，进展与回报会实时出现在二级讨论区。", zone=2)
+    # 讨论产出物归档（补齐缺口3）：三级讨论内容落盘 REVIEW.md
+    _write_review_archive(ws, "continue")
     save_state()
     # 三级联动：continue 端点喂组长 harness 的 context 前叠加「当前成员进度汇总」，让组长带进度继续指挥
     _notify_leader_on_continue(ws)
@@ -4757,6 +5675,9 @@ async def workshop_complete(ws_id: str):
     ws.status = "done"
     # 自治边界：全部完成 → done 终态
     task_state_machine.on_event(ws_id, EV_COMPLETE, {"by": "user"})
+    # 讨论产出物归档（补齐缺口3）：三级讨论内容落盘 FINAL_SUMMARY.md
+    _write_review_archive(ws, "complete")
+    save_state()
     return {"success": True, "status": ws.status, "action": "complete"}
 @app.post("/api/workshop/{ws_id}/start")
 async def start_workshop(ws_id: str):
@@ -4770,6 +5691,402 @@ async def start_workshop(ws_id: str):
     task_state_machine.set_state(ws_id, EXECUTING, stage="running")
     asyncio.create_task(_activate_workshop(ws))
     return {"success": True, "status": ws.status, "action": "running"}
+
+# ═══════════════════════════════════════════════════════════════
+# R3：三级讨论收口决策模式（user / leader / vote） + 弯路回收·记忆擦除
+#   决策模式持久化于 workshop_modes.json（key=decision:{ws_id}）
+#   弯路回收：停止任务 → 反思总结入资料库 → 擦除成员/组长记忆 → 从头开始
+# ═══════════════════════════════════════════════════════════════
+DECISION_MODES = ("user", "leader", "vote")
+
+def _get_decision_mode(ws_id: str) -> str:
+    """读取决策模式：user=用户决定（默认）/ leader=组长独裁 / vote=最终方案举手。"""
+    try:
+        modes = _load_workshop_modes()
+        raw = modes.get(f"decision:{ws_id}")
+        if isinstance(raw, str) and raw.strip().lower() in DECISION_MODES:
+            return raw.strip().lower()
+        # 兼容 dict 存储（部分 harness 曾写 dict 结构）
+        raw2 = modes.get(ws_id)
+        if isinstance(raw2, dict):
+            dm = str(raw2.get("decision_mode", "")).strip().lower()
+            if dm in DECISION_MODES:
+                return dm
+    except Exception:
+        pass
+    return "user"
+
+def _set_decision_mode(ws_id: str, mode: str) -> str:
+    """持久化决策模式，非法值回落 user。"""
+    mode = (mode or "").strip().lower()
+    if mode not in DECISION_MODES:
+        mode = "user"
+    try:
+        modes = _load_workshop_modes()
+        modes[f"decision:{ws_id}"] = mode
+        PLUGIN_MODES_FILE.write_text(json.dumps(modes, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as _e:
+        print(f"[decision_mode] 持久化失败: {_e}", flush=True)
+    return mode
+
+@app.get("/api/workshop/{ws_id}/decision-mode")
+async def get_decision_mode_api(ws_id: str):
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    return {"success": True, "workshop_id": ws_id, "decision_mode": _get_decision_mode(ws_id)}
+
+@app.post("/api/workshop/{ws_id}/decision-mode")
+async def set_decision_mode_api(ws_id: str, request: Request):
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    body = await request.json()
+    mode = _set_decision_mode(ws_id, str(body.get("mode") or ""))
+    return {"success": True, "workshop_id": ws_id, "decision_mode": mode}
+
+def _do_continue_workshop(ws, by: str = "user") -> bool:
+    """公共收口：继续工作（continue 端点复用逻辑）。"""
+    try:
+        ws.status = "running"
+        _append_msg(ws, "notice", f"【继续工作·{by}】已回到工作状态。员工继续执行，进展与回报会实时出现在二级讨论区。", zone=2)
+        _write_review_archive(ws, "continue")
+        save_state()
+        _notify_leader_on_continue(ws)
+        return True
+    except Exception as _e:
+        print(f"[decision] 继续工作失败({ws.workshop_id}): {_e}", flush=True)
+        return False
+
+def _do_complete_workshop(ws, by: str = "user") -> bool:
+    """公共收口：任务完成（complete 端点复用逻辑）。"""
+    try:
+        ws.status = "done"
+        task_state_machine.on_event(ws.workshop_id, EV_COMPLETE, {"by": by})
+        _write_review_archive(ws, "complete")
+        save_state()
+        return True
+    except Exception as _e:
+        print(f"[decision] 任务完成失败({ws.workshop_id}): {_e}", flush=True)
+        return False
+
+def _dispatch_leader_decision(ws) -> bool:
+    """组长独裁：充分性判定后，向组长派发裁决任务（继续工作 / 任务已完成）。"""
+    leader = next((m for m in ws.members if m.role == "组长"), None)
+    if leader is None and ws.members:
+        leader = ws.members[0]
+    hid = (leader.harness_ids or [None])[0] if leader else None
+    if not hid:
+        _append_msg(ws, "notice", "【组长独裁】组长未绑定 harness，无法派发裁决，请用户手动裁决。", zone=3)
+        save_state()
+        return False
+    payload = {
+        "type": "task",
+        "workshop_id": ws.workshop_id,
+        "member_id": leader.member_id,
+        "role": "组长",
+        "workspace_dir": ws.workspace_dir,
+        "message": (
+            "【组长裁决】三级讨论已充分，由你独裁作出最终决定。\n"
+            "当前讨论纪要：\n" + _discussion_ctx(ws, limit=12)
+            + "\n请在回报中给出 decision 字段，二选一：\n"
+            "  - decision=continue：继续工作，回到执行；\n"
+            "  - decision=complete：任务已完成，结束任务。\n"
+            "回报方式：POST /api/harness/task-result，body 带 workshop_id/member_id/harness_id/decision/result。"
+        ),
+    }
+    _ok, _note = _dispatch_to_harness(hid, payload, kind="task")
+    print(f"[decision_leader] 工作间 {ws.workshop_id} 已向组长派发裁决任务：{_note}", flush=True)
+    return _ok
+
+def _vote_active_members(ws):
+    """举手投票参与人：在线成员（含组长）。"""
+    return [m for m in ws.members if m.status in ("entered", "working", "idle", "completed")]
+
+def _dispatch_vote_round(ws) -> bool:
+    """最终方案举手：向所有在线成员广播表决邀请。"""
+    ws._vote_tally = {}
+    ws._vote_invited = {}
+    n_ok = 0
+    for m in _vote_active_members(ws):
+        hid = (m.harness_ids or [None])[0] if m else None
+        if not hid:
+            continue
+        payload = {
+            "type": "task",
+            "workshop_id": ws.workshop_id,
+            "member_id": m.member_id,
+            "role": m.role,
+            "workspace_dir": ws.workspace_dir,
+            "message": (
+                "【最终方案举手】三级讨论已充分，请你就最终方案表决（举手）：\n"
+                + _discussion_ctx(ws, limit=12)
+                + "\n请回报 vote 字段，二选一：\n"
+                "  - vote=continue：赞成继续工作；\n"
+                "  - vote=complete：赞成任务完成。\n"
+                "回报方式：POST /api/harness/task-result，body 带 workshop_id/member_id/harness_id/vote/result。"
+            ),
+        }
+        _ok, _note = _dispatch_to_harness(hid, payload, kind="task")
+        ws._vote_invited[m.member_id] = bool(_ok)
+        n_ok += bool(_ok)
+    save_state()
+    if n_ok == 0:
+        _append_msg(ws, "notice", "【举手表决】无在线可派发成员，请用户手动裁决。", zone=3)
+        save_state()
+        return False
+    _append_msg(ws, "notice", f"【举手表决】已向 {n_ok} 名在线成员发起最终方案表决，全员举手后按多数裁决。", zone=3)
+    save_state()
+    print(f"[decision_vote] 工作间 {ws.workshop_id} 发起举手表决，邀请 {n_ok} 名成员", flush=True)
+    return True
+
+def _settle_vote(ws, member_id: str, vote: str) -> bool:
+    """记录一票；全员投齐后裁决（多数/平票默认 continue，保守不擅自终结任务）。"""
+    try:
+        if ws.status != "review":
+            return False
+        tally = getattr(ws, "_vote_tally", None)
+        if tally is None:
+            tally = ws._vote_tally = {}
+        vote = (vote or "").strip().lower()
+        if vote not in ("continue", "complete"):
+            return False
+        if member_id in tally:
+            return False  # 一人一票
+        tally[member_id] = vote
+        invited = getattr(ws, "_vote_invited", {})
+        n_invited = sum(1 for v in invited.values() if v)
+        if n_invited <= 0:
+            n_invited = len(_vote_active_members(ws))
+        done = len(tally)
+        counts = {"continue": 0, "complete": 0}
+        for v in tally.values():
+            counts[v] = counts.get(v, 0) + 1
+        remain = max(0, n_invited - done)
+        _append_msg(
+            ws, "notice",
+            f"【举手表决】收到 {member_id} 举手（{vote}）：{counts['continue']} 票继续 / {counts['complete']} 票完成，剩余 {remain} 票。",
+            zone=3,
+        )
+        if remain > 0:
+            save_state()
+            return False
+        if counts["complete"] > counts["continue"]:
+            verdict = "complete"
+        elif counts["continue"] > counts["complete"]:
+            verdict = "continue"
+        else:
+            verdict = "continue"  # 平票默认继续
+            _append_msg(ws, "notice", "【举手表决】平票，默认按「继续工作」处理；如需终结请用户手动点「任务已完成」。", zone=3)
+        _append_msg(ws, "notice", f"【举手表决】全员举手完毕，裁决：{'任务已完成' if verdict == 'complete' else '继续工作'}（继续 {counts['continue']} : 完成 {counts['complete']}）。", zone=3)
+        if verdict == "complete":
+            _do_complete_workshop(ws, by="vote")
+        else:
+            _do_continue_workshop(ws, by="vote")
+        save_state()
+        return True
+    except Exception as _e:
+        print(f"[decision_vote] 表决结算失败: {_e}", flush=True)
+        return False
+
+def _decision_mode_hint(ws) -> str:
+    """充分性判定通知里的模式提示文案。"""
+    mode = _get_decision_mode(ws.workshop_id)
+    if mode == "leader":
+        return "当前为【组长独裁】模式，等待组长裁决（继续工作 / 任务已完成）。"
+    if mode == "vote":
+        return "当前为【最终方案举手】模式，等待全员表决。"
+    return "可点击「继续工作」回到执行，或点击「任务已完成」结束任务。"
+
+def _route_review_verdict(ws) -> bool:
+    """讨论充分后按决策模式分流收口。返回 True 表示已接管收口流程。"""
+    mode = _get_decision_mode(ws.workshop_id)
+    if mode == "leader":
+        _append_msg(ws, "notice", "【组长独裁模式】讨论已充分，等待组长作出最终裁决。", zone=3)
+        save_state()
+        return _dispatch_leader_decision(ws)
+    if mode == "vote":
+        return _dispatch_vote_round(ws)
+    return False  # user 模式：维持现有「用户点击按钮」流程
+
+@app.post("/api/workshop/{ws_id}/halt-and-reset")
+async def workshop_halt_and_reset(ws_id: str, request: Request):
+    """确认走弯路：停止任务 → 反思总结入资料库 → 擦除成员/组长记忆 → 从头开始。
+
+    body:
+      reason: str         弯路原因（必填，写入复盘文档）
+      summary: str        经验总结（选填）
+      wipe_members: bool  是否擦除员工成员记忆（默认 true）
+      wipe_leader: bool   是否擦除组长记忆（默认 false）
+      restart: bool       是否重置工作间回 draft 可重新开始（默认 true）
+    """
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    body = await request.json()
+    reason = str(body.get("reason") or "").strip()
+    if not reason:
+        return Utf8JSONResponse({"error": "缺少 reason（弯路原因）"}, status_code=400)
+    summary = str(body.get("summary") or "").strip()
+    wipe_members = bool(body.get("wipe_members", True))
+    wipe_leader = bool(body.get("wipe_leader", False))
+    restart = bool(body.get("restart", True))
+
+    results = {"discussion_cleared": False, "task_memory_removed": 0, "harness_index_cleared": []}
+
+    # 1. 停止任务 + 状态机重置
+    ws.status = "draft"
+    task_state_machine.set_state(ws_id, CREATED, stage="halt_reset")
+    for m in ws.members:
+        m.status = "pending"
+    for attr in (
+        "_auto_review_done", "_review_suff_notified", "_assign_dispatched",
+        "_vote_tally", "_vote_invited", "_review_notified", "_leader_ack_seq",
+        "_parallel_done",
+    ):
+        try:
+            if hasattr(ws, attr):
+                delattr(ws, attr)
+        except Exception:
+            pass
+
+    # 2. 反思总结归档（DETOUR_SUMMARY.md）
+    ws_dir = Path(ws.workspace_dir)
+    try:
+        ws_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    detour_path = ws_dir / "DETOUR_SUMMARY.md"
+    try:
+        lines = [
+            "# 弯路复盘总结（纠偏记录）", "",
+            f"- 工作间：{ws.name}（{ws.workshop_id}）",
+            f"- 归档时间：{now_iso()}",
+            "",
+            "## 错误路径（已否定）", "",
+            f"{reason}", "",
+            "## 正确路径（推荐）", "",
+            f"{summary or '（未总结，建议按错误路径反推正确做法）'}", "",
+            "## 重置前最后讨论记录", "",
+        ]
+        recent = [m for m in ws.discussion if isinstance(m, dict) and not m.get("meta", {}).get("system")][-20:]
+        if not recent:
+            lines.append("（无讨论记录）")
+        else:
+            for m in recent:
+                who = m.get("display_name") or m.get("role") or "未知"
+                ts = str(m.get("timestamp") or "")[:19]
+                lines.append(f"- [{ts}] {who}：{str(m.get('content'))[:300]}")
+        detour_path.write_text("\n".join(lines), encoding="utf-8")
+    except Exception as _e:
+        print(f"[halt_reset] 弯路复盘归档失败: {_e}", flush=True)
+
+    # 2b. 任务树落纠偏节点：错误路(dropped) + 正路(active)，复盘资源挂正路
+    wrong_node = {
+        "node_id": f"t_{uuid4().hex[:8]}",
+        "label": f"错误路径（已否定）：{reason[:40]}",
+        "parent_id": "",
+        "kind": "correction",
+        "status": "dropped",
+        "note": reason,
+        "resources": [],
+        "created_at": now_iso(),
+    }
+    right_node = {
+        "node_id": f"t_{uuid4().hex[:8]}",
+        "label": f"正确路径（推荐）：{summary[:40] if summary else '按错误路径反推正确做法'}",
+        "parent_id": "",
+        "kind": "correction",
+        "status": "active",
+        "note": summary or "",
+        "resources": [],
+        "created_at": now_iso(),
+    }
+    ws.task_tree.append(wrong_node)
+    ws.task_tree.append(right_node)
+    results["tree"] = {"wrong_node": wrong_node["node_id"], "right_node": right_node["node_id"]}
+
+    # 3. 入工作间资料库（自动登记，挂正路节点）
+    try:
+        detour_res = {
+            "rid": uuid4().hex[:8],
+            "name": "弯路复盘总结",
+            "kind": "file",
+            "path": str(detour_path),
+            "note": f"确认走弯路后的反思总结：{reason[:60]}",
+            "uploader": "platform",
+            "task_node": right_node["node_id"],
+            "created_at": now_iso(),
+        }
+        ws.resources.append(detour_res)
+        right_node.setdefault("resources", []).append(detour_res["rid"])
+        write_resources_manifest(ws)
+    except Exception as _e:
+        print(f"[halt_reset] 资料库登记失败: {_e}", flush=True)
+
+    # 4. 擦除记忆
+    if wipe_members or wipe_leader:
+        # 4a. 讨论上下文清零（工作间会话记忆）
+        ws.discussion = []
+        results["discussion_cleared"] = True
+        # 4b. 平台历史任务记忆（按工作间 ID / 名称删除）
+        for frag in (ws.workshop_id, ws.name):
+            try:
+                results["task_memory_removed"] += task_memory.remove_by_fragment(frag)
+            except Exception as _e:
+                print(f"[halt_reset] 任务记忆擦除失败: {_e}", flush=True)
+        # 4c. harness 经验索引清零 + 通知成员记忆已重置
+        targets = []
+        if wipe_members:
+            targets += [m for m in ws.members if m.role != "组长"]
+        if wipe_leader:
+            targets += [m for m in ws.members if m.role == "组长"]
+        seen_hid = set()
+        for m in targets:
+            hid = (m.harness_ids or [None])[0] if m else None
+            if not hid or hid in seen_hid:
+                continue
+            seen_hid.add(hid)
+            sess = harness_manager.sessions.get(hid)
+            if sess is not None:
+                cleared = []
+                metas = [getattr(sess, "metadata", None)]
+                if getattr(sess, "info", None):
+                    metas.append(getattr(sess.info, "metadata", None))
+                for meta in metas:
+                    if not isinstance(meta, dict):
+                        continue
+                    for key in _EXPERIENCE_INDEX_KEYS:
+                        if isinstance(meta.get(key), list) and meta.get(key):
+                            meta[key] = []
+                            if key not in cleared:
+                                cleared.append(key)
+                results["harness_index_cleared"].append({"hid": hid, "cleared": cleared})
+            try:
+                _dispatch_to_harness(hid, {
+                    "type": "notice",
+                    "workshop_id": ws_id,
+                    "member_id": m.member_id,
+                    "role": m.role,
+                    "message": "【记忆重置】工作间确认走弯路，你的任务记忆与经验索引已被平台擦除。请忘记本工作间既往结论，等待重新激活后从零开始。",
+                }, kind="notice")
+            except Exception as _e:
+                print(f"[halt_reset] 记忆重置通知派发失败: {_e}", flush=True)
+    save_state()
+
+    # 5. 从头开始
+    if restart:
+        note = "工作间已重置为 draft，可从一级讨论重新开始（点击「开始工作」激活）。"
+    else:
+        note = "工作间已停止并保留在 draft。"
+    print(f"[halt_reset] 工作间 {ws_id} 走弯路重置完成：reason={reason[:40]}", flush=True)
+    return {
+        "success": True,
+        "status": ws.status,
+        "note": note,
+        "results": results,
+        "detour_path": str(detour_path),
+    }
 
 # ═══════════════════════════════════════════════════════════════
 # ── 插话 + 自治边界（V6-1）：辅助函数与 API ─────────────────
@@ -4810,22 +6127,30 @@ def _sm_heartbeat(ws: Workshop) -> None:
         for _key, _ev in task_state_machine.tick():
             _act = _ev.get("action")
             if _act == "auto_retry":
-                _leader = next((m for m in ws.members if m.role == "组长"), None)
-                if _leader and (_leader.harness_ids or []):
-                    _dispatch_to_harness(_leader.harness_ids[0], {
-                        "type": "task",
-                        "workshop_id": ws.workshop_id,
-                        "member_id": _leader.member_id,
-                        "role": "组长",
-                        "workspace_dir": ws.workspace_dir,
-                        "message": (
-                            f"【L0 自动重试】工作循环超时无回报（第{_ev.get('retries')}次），"
-                            "请检查成员状态并重试派发；若连续失败请汇报用户。"
-                        ),
-                    }, kind="task")
+                if _is_silent_mode(ws.workshop_id):
+                    # 静默模式：跳过 auto_retry（不派发给组长重试），改 system 提示反馈用户
+                    _append_msg(ws, "member", f"【静默模式】工作循环超时无回报（第{_ev.get('retries')}次），静默模式未自动重试，请用户裁决", meta={"system": True})
+                else:
+                    _leader = next((m for m in ws.members if m.role == "组长"), None)
+                    if _leader and (_leader.harness_ids or []):
+                        _dispatch_to_harness(_leader.harness_ids[0], {
+                            "type": "task",
+                            "workshop_id": ws.workshop_id,
+                            "member_id": _leader.member_id,
+                            "role": "组长",
+                            "workspace_dir": ws.workspace_dir,
+                            "message": (
+                                f"【L0 自动重试】工作循环超时无回报（第{_ev.get('retries')}次），"
+                                "请检查成员状态并重试派发；若连续失败请汇报用户。"
+                            ),
+                        }, kind="task")
             elif _act == "escalate_l1":
-                _system_interject(ws.workshop_id,
-                    f"执行超时300s：工作循环第{_ev.get('retries')}次失败，升级组长裁决", level="L1")
+                if _is_silent_mode(ws.workshop_id):
+                    # 静默模式：不调 _system_interject 唤醒组长，改带 system 标记的用户可见提示
+                    _append_msg(ws, "member", f"【静默模式】执行超时300s：工作循环第{_ev.get('retries')}次失败，未升级组长，请用户裁决", meta={"system": True})
+                else:
+                    _system_interject(ws.workshop_id,
+                        f"执行超时300s：工作循环第{_ev.get('retries')}次失败，升级组长裁决", level="L1")
     except Exception as _e:
         print(f"[sm_heartbeat] 异常: {_e}", flush=True)
 
@@ -5029,6 +6354,226 @@ async def leader_workbench(ws_id: str):
         "pending_reviews": _pending_reviews(ws),
         "state": task_state_machine.get_state(ws_id),
     }
+
+# ── 工作间资源库：组长上传产出/路径，成员共享查看，可与任务树节点关联 ──
+
+@app.get("/api/workshop/{ws_id}/resources")
+async def list_resources(ws_id: str):
+    """列出工作间资源库（全部成员可读）。"""
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    items = []
+    for r in ws.resources:
+        item = dict(r)
+        item.setdefault("kind", "file")
+        items.append(item)
+    return {"success": True, "workshop_id": ws_id, "resources": items}
+
+@app.post("/api/workshop/{ws_id}/resources")
+async def add_resource(ws_id: str, request: Request):
+    """登记资源到工作间资源库。
+
+    需求：组长生成工作间文件夹/产出后上传登记，供其他成员查看。
+    body: {name, kind(file/dir/link), path, note, task_node, uploader}
+    - path: 资源所在路径（工作区内相对路径或绝对路径均可，记录路径用）
+    - task_node: 关联任务树节点标识（可选，与任务树联系的挂载点）
+    """
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        return Utf8JSONResponse({"error": "资源名称不能为空"}, status_code=400)
+    path = (body.get("path") or "").strip()
+    if not path:
+        return Utf8JSONResponse({"error": "资源路径不能为空"}, status_code=400)
+    kind = (body.get("kind") or "file").strip() or "file"
+    if kind not in ("file", "dir", "link"):
+        kind = "file"
+    res = {
+        "rid": uuid4().hex[:8],
+        "name": name,
+        "kind": kind,
+        "path": path,
+        "note": (body.get("note") or "").strip(),
+        "uploader": (body.get("uploader") or "").strip(),
+        "task_node": (body.get("task_node") or "").strip(),
+        "created_at": now_iso(),
+    }
+    # 可选：登记时直接挂载到任务树节点（node_id 双向关联）
+    node_id = (body.get("node_id") or "").strip()
+    if node_id:
+        node = _tree_find(ws, node_id)
+        if node is None:
+            return Utf8JSONResponse({"error": f"任务树节点不存在：{node_id}"}, status_code=400)
+        res["task_node"] = node_id
+        attached = node.setdefault("resources", [])
+        if res["rid"] not in attached:
+            attached.append(res["rid"])
+    ws.resources.append(res)
+    try:
+        write_resources_manifest(ws)
+    except Exception as _e:
+        print(f"[workshop] 资源清单落盘失败: {_e}", flush=True)
+    _append_msg(ws, "notice", f"组长登记资源「{name}」（{kind}）→ {path}", zone=3)
+    save_state()
+    return {"success": True, "resource": res}
+
+@app.delete("/api/workshop/{ws_id}/resources/{rid}")
+async def remove_resource(ws_id: str, rid: str):
+    """从资源库移除登记（不删除实体文件，仅解除共享）。"""
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    before = len(ws.resources)
+    ws.resources = [r for r in ws.resources if r.get("rid") != rid]
+    if len(ws.resources) == before:
+        return Utf8JSONResponse({"error": "资源不存在"}, status_code=404)
+    try:
+        write_resources_manifest(ws)
+    except Exception as _e:
+        print(f"[workshop] 资源清单落盘失败: {_e}", flush=True)
+    _append_msg(ws, "notice", f"已从资源库移除登记：{rid}", zone=3)
+    save_state()
+    return {"success": True}
+
+# ── 任务树：结构化任务节点（parent/children），资源库可挂载联动 ──
+
+def _tree_find(ws: Workshop, node_id: str) -> Optional[dict]:
+    """按 node_id 查找任务树节点；不存在返回 None。"""
+    for node in ws.task_tree:
+        if node.get("node_id") == node_id:
+            return node
+    return None
+
+
+def _tree_build(ws: Workshop) -> list:
+    """把扁平 task_tree 构造成嵌套树（children 递归展开），资源按 rid 展开。"""
+    by_id = {n["node_id"]: dict(n) for n in ws.task_tree}
+    res_by_rid = {r["rid"]: r for r in ws.resources}
+    roots = []
+    for node in by_id.values():
+        node["resources"] = [
+            res_by_rid[rid] for rid in node.get("resources", [])
+            if rid in res_by_rid
+        ]
+        node["children"] = []
+    for node in by_id.values():
+        pid = node.get("parent_id") or ""
+        if pid and pid in by_id:
+            by_id[pid]["children"].append(node)
+        else:
+            roots.append(node)
+    return roots
+
+
+def _tree_persist(ws: Workshop) -> None:
+    """任务树变化后的落盘：保存状态 + 更新 RESOURCES.md（树摘要）。"""
+    save_state()
+    try:
+        write_resources_manifest(ws)
+    except Exception as _e:
+        print(f"[workshop] 任务树更新后资源清单落盘失败: {_e}", flush=True)
+
+
+@app.get("/api/workshop/{ws_id}/tree")
+async def get_task_tree(ws_id: str):
+    """获取工作间任务树（嵌套结构，含节点挂载的资源明细）。"""
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    return {"success": True, "workshop_id": ws_id, "tree": _tree_build(ws)}
+
+
+@app.post("/api/workshop/{ws_id}/tree/node")
+async def create_tree_node(ws_id: str, request: Request):
+    """创建任务树节点。
+
+    body: {label, parent_id, kind, note, status}
+    - label: 节点名称（必填）
+    - parent_id: 父节点 node_id（可选，空则挂根）
+    - kind: task(任务) / correction(纠偏) / phase(阶段)（默认 task）
+    - note: 说明（可选）
+    - status: active / done / bypassed / dropped（默认 active；纠偏错误路用 dropped）
+    """
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    body = await request.json()
+    label = (body.get("label") or "").strip()
+    if not label:
+        return Utf8JSONResponse({"error": "节点名称不能为空"}, status_code=400)
+    parent_id = (body.get("parent_id") or "").strip()
+    if parent_id and _tree_find(ws, parent_id) is None:
+        return Utf8JSONResponse({"error": f"父节点不存在：{parent_id}"}, status_code=400)
+    kind = (body.get("kind") or "task").strip() or "task"
+    if kind not in ("task", "correction", "phase"):
+        kind = "task"
+    status = (body.get("status") or "active").strip() or "active"
+    if status not in ("active", "done", "bypassed", "dropped"):
+        status = "active"
+    node = {
+        "node_id": f"t_{uuid4().hex[:8]}",
+        "label": label,
+        "parent_id": parent_id,
+        "kind": kind,
+        "status": status,
+        "note": (body.get("note") or "").strip(),
+        "resources": [],
+        "created_at": now_iso(),
+    }
+    ws.task_tree.append(node)
+    _tree_persist(ws)
+    _append_msg(ws, "notice", f"任务树新增节点「{label}」（{kind}/{status}）", zone=3)
+    return {"success": True, "node": node}
+
+
+@app.post("/api/workshop/{ws_id}/tree/node/{node_id}/status")
+async def update_tree_node_status(ws_id: str, node_id: str, request: Request):
+    """更新任务树节点状态（active/done/bypassed/dropped）。"""
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    node = _tree_find(ws, node_id)
+    if node is None:
+        return Utf8JSONResponse({"error": "节点不存在"}, status_code=404)
+    body = await request.json()
+    status = (body.get("status") or "").strip()
+    if status not in ("active", "done", "bypassed", "dropped"):
+        return Utf8JSONResponse({"error": "非法状态，应为 active/done/bypassed/dropped"}, status_code=400)
+    old = node.get("status", "")
+    node["status"] = status
+    _tree_persist(ws)
+    _append_msg(ws, "notice", f"任务树节点「{node.get('label')}」状态 {old} → {status}", zone=3)
+    return {"success": True, "node": node}
+
+
+@app.post("/api/workshop/{ws_id}/tree/node/{node_id}/attach")
+async def attach_resource_to_node(ws_id: str, node_id: str, request: Request):
+    """把资源库资源挂到任务树节点（资源与任务双向关联）。
+
+    body: {rid} 资源库资源 ID（必填，须存在）
+    """
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    node = _tree_find(ws, node_id)
+    if node is None:
+        return Utf8JSONResponse({"error": "节点不存在"}, status_code=404)
+    body = await request.json()
+    rid = (body.get("rid") or "").strip()
+    res = next((r for r in ws.resources if r.get("rid") == rid), None)
+    if res is None:
+        return Utf8JSONResponse({"error": f"资源库中不存在该资源：{rid}"}, status_code=400)
+    attached = node.setdefault("resources", [])
+    if rid not in attached:
+        attached.append(rid)
+    res["task_node"] = node["node_id"]
+    _tree_persist(ws)
+    _append_msg(ws, "notice", f"资源「{res.get('name')}」已挂载到任务树节点「{node.get('label')}」", zone=3)
+    return {"success": True, "node": node, "resource": res}
 
 async def _activate_workshop(ws: Workshop):
     """开工总动员（最小修复，替代原缺失实现）：
@@ -5596,7 +7141,7 @@ def _member_replied_since(ws, member_id, seq0) -> bool:
 def _mark_sim_watch(harness_id, payload, kind):
     """派发成功时登记无回报看护（仅 manual/off 模式且是工作间派发）。
 
-    场景：acp/桥接型 harness（如 harness-web）派发进 pending 队列"成功"了，桥也领走了，
+    场景：acp/桥接型 harness（如 dsh-web）派发进 pending 队列"成功"了，桥也领走了，
     但外端无额度 → 既不回报也不报错，讨论区永久静默。此 watch 交给
     _manual_sim_sweep_once 在超时后补齐，保证交互不中断。
     watch 挂在成员对象上（非 dataclass 字段，不落盘，重启即清空，避免污染 state）。
@@ -5663,7 +7208,7 @@ def _dispatch_to_harness(harness_id, payload, kind="task"):
         base = sess.info.api_base_url.rstrip("/")
         path = getattr(sess.info, "api_message_path", "") or "/message"
         # 强制追加回报指令（含实时 workshop_id/member_id/harness_id），确保外端 agent 处理完回报到平台
-        report_url = "http://127.0.0.1:18920/api/harness/task-result"
+        report_url = _platform_base_url() + "/api/harness/task-result"
         if not content or "task-result" not in content:
             content = content + (
                 "\n\n【回报要求】这是平台派给你的任务/消息。请处理完后，必须把你的回复回报给平台，否则用户看不到。\n"
@@ -5717,6 +7262,17 @@ def _harness_wakeup_method(harness_id: str) -> str:
     if sess and sess.info and sess.info.wakeup_method:
         return sess.info.wakeup_method.value
     return "clipboard"
+
+def _platform_base_url():
+    """平台自身基准地址：优先取 AC_PORT（真实监听端口），默认 18920。
+
+    供模板/回报指令动态填充，避免硬编码地址与真实端口不一致。"""
+    try:
+        port = int(os.environ.get("AC_PORT", "18920"))
+    except Exception:
+        port = 18920
+    return f"http://127.0.0.1:{port}"
+
 def _activation_prompt(hid, role, workspace_dir, workshop_id="", member_id=""):
     """取该 HA 注册时自动生成的激活提示词；未注册/无模板时回退默认模板。
     模板含 {role}/{workspace_dir}/{harness_name}/{model_name}/{capabilities}
@@ -5753,7 +7309,7 @@ def _activation_prompt(hid, role, workspace_dir, workshop_id="", member_id=""):
             "待命第 0 步自查兜底：后续拿到任务指令开工前，先检索你自带的 skill 市场 + "
             "本地知识库，按任务关键词匹配可复用的经验/工具，优先复用，避免重复造轮子；"
             "若平台已下发【经验包】，则按经验包优先执行。\n"
-            "完成后必须回报：POST http://127.0.0.1:18920/api/harness/task-result "
+            "完成后必须回报：POST " + _platform_base_url() + "/api/harness/task-result "
             "body: {\"workshop_id\":\"{workshop_id}\",\"member_id\":\"{member_id}\",\"ok\":true,\"result\":\"你的回复\"}。"
         )
     try:
@@ -5802,7 +7358,7 @@ else:
     print(f"[static] 警告: 前端目录不存在 {STATIC_DIR}", flush=True)
 if __name__ == "__main__":
     import argparse
-    ap = argparse.ArgumentParser(description="外端Agent生产合作社（External Agent Community）v4")
+    ap = argparse.ArgumentParser(description="外端Agent生产合作社（External Agent Community） Platform v4")
     ap.add_argument("--demo", action="store_true", help="演示模式：跳过 Harness 真实连通检查")
     ap.add_argument("--token", action="append", default=[], help="外部访问 Token（可多次指定）")
     ap.add_argument("--port", type=int, default=0, help="监听端口（覆盖 AC_PORT）")

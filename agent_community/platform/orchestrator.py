@@ -110,12 +110,12 @@ class Orchestrator:
         self._stats["tasks_analyzed"] += 1
 
         # 步骤 1: AI 分析任务
-        analysis = await self._analyze_task_full(ai, task, agents)
+        analysis = await self._analyze_task_full(ai, task, agents, harness_mgr=harness_mgr)
         if not analysis:
             return {"error": "AI 分析任务失败，无法自动拆解"}
 
         # 步骤 2: 信誉匹配 Agent → 生成 Assignments
-        assignments = self._build_assignments(analysis, agents, capability_ledger)
+        assignments = self._build_assignments(analysis, agents, capability_ledger, harness_mgr=harness_mgr)
         if not assignments:
             return {"error": "没有匹配到合适的 Agent"}
 
@@ -426,19 +426,47 @@ class Orchestrator:
     #  步骤 1: AI 分析（v4 — 完整拆解）
     # ═══════════════════════════════════════════════════════════════
 
+    @staticmethod
+    def _filter_online_agents(agents: dict, harness_mgr) -> dict:
+        """仅保留在线 Agent（harness- 前缀需 session 为 ONLINE），离线 harness 不参与拆解/委托。"""
+        result = {}
+        for aid, card in agents.items():
+            if not aid.startswith("harness-"):
+                result[aid] = card
+                continue
+            if harness_mgr is None:
+                continue
+            _hid = harness_mgr.id_to_harness.get(aid) or aid[len("harness-"):]
+            _sess = harness_mgr.sessions.get(_hid)
+            print(f"[Orchestrator] filter aid={aid!r} _hid={_hid!r} sess={'None' if _sess is None else getattr(_sess.status,'value',_sess.status)} sessions_keys={list(harness_mgr.sessions.keys())}", flush=True)
+            if not _sess:
+                continue
+            try:
+                from .protocol import HarnessStatus
+                _ok = (_sess.status == HarnessStatus.ONLINE)
+                if _ok:
+                    result[aid] = card
+            except Exception as _e:
+                print(f"[Orchestrator] filter EXC aid={aid!r} err={_e!r}", flush=True)
+                continue
+        return result
+
     async def _analyze_task_full(
         self,
         ai,
         task: Task,
         agents: dict,
+        harness_mgr=None,
     ) -> Optional[dict]:
         """AI 分析任务 → 输出结构化拆解方案"""
+        agents = self._filter_online_agents(agents, harness_mgr)
+        # 精简 Agent 卡片：description 截断、capabilities 限量，防止拆解请求撑爆小上下文模型（llama -c 4096）
         agent_list = [
             {
                 "id": aid,
                 "name": card.name,
-                "capabilities": card.capabilities,
-                "description": card.description,
+                "capabilities": (card.capabilities or [])[:8],
+                "description": str(card.description or "")[:80],
             }
             for aid, card in agents.items()
             if aid != self.AGENT_ID
@@ -481,7 +509,9 @@ class Orchestrator:
             json_start = reply.find("{")
             json_end = reply.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
-                return json.loads(reply[json_start:json_end])
+                parsed = json.loads(reply[json_start:json_end])
+                print(f"[Orchestrator] AI 分析返回: {json.dumps(parsed, ensure_ascii=False)[:2000]}", flush=True)
+                return parsed
         except (json.JSONDecodeError, Exception) as e:
             print(f"[Orchestrator] 任务分析失败: {e}")
 
@@ -496,17 +526,30 @@ class Orchestrator:
         analysis: dict,
         agents: dict,
         capability_ledger,
+        harness_mgr=None,
     ) -> dict[str, SubTaskAssignment]:
         """根据 AI 分析 + 信誉分生成 SubTaskAssignment 字典。
 
         优先用 AI 推荐的 agent_id；若推荐不在线或无信誉，回退到信誉最高者。
         """
+        agents = self._filter_online_agents(agents, harness_mgr)
         assignments: dict[str, SubTaskAssignment] = {}
         subtasks = analysis.get("subtasks", [])
+        print(f"[Orchestrator] _build_assignments agents={ {aid: (c.name, c.capabilities) for aid, c in agents.items()} }", flush=True)
 
         for st in subtasks:
             agent_id = st.get("agent_id", "")
             capability = st.get("capability", "general")
+
+            # AI 常返回纯名称（如"测试甲"）而非规范 agent_id（如"harness-测试甲"），
+            # 先做名称归一化：card.name / harness 后缀 / 直接前缀 三种形式均映射回 agents 的 key。
+            if agent_id not in agents:
+                for aid, card in agents.items():
+                    if aid == self.AGENT_ID:
+                        continue
+                    if card.name == agent_id or aid == agent_id or aid[len("harness-"):] == agent_id:
+                        agent_id = aid
+                        break
 
             # 如果 AI 推荐的 Agent 不存在或信誉太低，用信誉最高者替代
             if agent_id not in agents:

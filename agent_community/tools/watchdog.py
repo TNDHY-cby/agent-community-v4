@@ -1,4 +1,4 @@
-"""watchdog.py — 外端Agent生产合作社（External Agent Community）v4 平台进程看门狗（部署层小工具，R3，2026-09-08）
+"""watchdog.py — 外端Agent生产合作社（External Agent Community） v4 平台进程看门狗（部署层小工具，R3，2026-09-08）
 守护 18920 server 进程与受管桥（桥由 server lifespan 自动拉起，守护 server 即间接守护桥）。
 
 模式：
@@ -262,7 +262,7 @@ def daemon_loop(port: int, interval: float, demo: bool = False) -> None:
 
 # ── 入口 ──────────────────────────────────────────────────────
 def main() -> int:
-    ap = argparse.ArgumentParser(description="外端Agent生产合作社（External Agent Community）v4 平台进程看门狗（R3 部署层工具）")
+    ap = argparse.ArgumentParser(description="外端Agent生产合作社（External Agent Community） v4 平台进程看门狗（R3 部署层工具）")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"监听端口（默认 {DEFAULT_PORT}）")
     ap.add_argument("--check", action="store_true", help="单次健康检查（不触发恢复，exit 0=健康/1=异常）")
     ap.add_argument("--daemon", action="store_true", help="循环守护模式")

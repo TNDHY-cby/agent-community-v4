@@ -158,6 +158,42 @@ class TaskMemory:
                 return t
         return None
 
+    def remove(self, task_id: str) -> int:
+        """按 task_id 删除一条历史任务记忆（弯路回收·记忆擦除用）。返回删除条数。"""
+        before = len(self.tasks)
+        self.tasks = [t for t in self.tasks if t.task_id != task_id]
+        self._embedding_map.pop(task_id, None)
+        if len(self.tasks) != before:
+            self._save()
+        return before - len(self.tasks)
+
+    def remove_by_fragment(self, fragment: str) -> int:
+        """按 task_id / 描述文本包含片段删除历史任务记忆（弯路回收·记忆擦除用）。
+
+        片段不区分大小写；匹配 task_id 或 desc 任意一处即删除。
+        返回删除条数。无匹配时返回 0 且不落盘。
+        """
+        if not fragment:
+            return 0
+        frag = fragment.lower()
+        removed = 0
+        kept = []
+        for t in self.tasks:
+            hit = (
+                fragment in (t.task_id or "")
+                or frag in (t.task_id or "").lower()
+                or frag in (t.description or "").lower()
+            )
+            if hit:
+                removed += 1
+                self._embedding_map.pop(t.task_id, None)
+            else:
+                kept.append(t)
+        if removed:
+            self.tasks = kept
+            self._save()
+        return removed
+
     def stats(self) -> MemoryStats:
         """生成记忆统计"""
         if not self.tasks:

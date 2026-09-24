@@ -1,17 +1,19 @@
-"""ACP 类 harness 桥 — 由平台模板自动生成，独立进程，代表一个真实 harness 接入平台。
+"""ACP 类 harness 桥示例 — 独立进程，代表一个真实 harness 接入平台。
 
-生成来源: agent_community/bridge_templates/cli_acp/bridge.py.tmpl
-生成方式: 平台 API POST /api/harness/{id}/bridge/generate（纯模板渲染，无需手工编写）
+这是一个【参考实现/示例】：默认用虚拟示例名「示例Harness-ACP」注册。
+**请通过 --harness-id 传入你自己的 harness_id**，并在 build_harness_info 里
+改成你自己的 acp_command / acp_cwd / 模型信息，否则不会收到任何任务。
 
-运行后:
-1. 注册自己（POST /api/harness/register，参数已由模板注入）
+运行后：
+1. 注册自己（POST /api/harness/register）
 2. 周期心跳（POST /api/harness/heartbeat），保持在线
-3. 轮询领取激活任务 → 用 ACP 拉起会话 → 读 hall.md → 回「收到」→ 会话持久化待命
-4. 轮询领取工作任务 → 发给对应会话 → harness 用工具真干活 → 回报结果
-5. 响应平台桥测试、登记桥坐标
+3. 轮询领取激活任务 → spawn 会话 → 读 hall.md → 回「收到」→ 会话【持久化不关】
+4. 轮询领取工作任务 → 发给对应会话 → 用自己的工具真干活 → 回报结果
 
-用法:
-    python bridge.py --url http://127.0.0.1:18920
+关键：一个桥连接（一个 harness）维护多个会话（多个员工），会话常驻待命。
+
+用法：
+    python -m agent_community.examples.dsh_harness_bridge --url http://127.0.0.1:18920 --harness-id 你的harness_id
 """
 
 from __future__ import annotations
@@ -24,35 +26,15 @@ import urllib.request
 import urllib.parse
 import os
 import sys
-from pathlib import Path
 
-# ── 以下字段由平台模板渲染注入，请勿手改 ──
-HARNESS_ID = {{HARNESS_ID_LIT}}
-ACP_COMMAND = {{ACP_COMMAND_LIT}}
-ACP_CWD = {{ACP_CWD_LIT}}
-MODEL_NAME = {{MODEL_NAME_LIT}}
-PROVIDER = {{PROVIDER_LIT}}
-DESCRIPTION = {{DESCRIPTION_LIT}}
-
-
-def _find_project_root(start: Path) -> Path:
-    """向上查找 agent_community 包根目录（含 platform/server.py 的祖先目录）。"""
-    cur = start.resolve()
-    for _ in range(8):
-        if (cur / "agent_community" / "platform" / "server.py").exists():
-            return cur
-        if cur.parent == cur:
-            break
-        cur = cur.parent
-    # 兜底：本桥所在目录的上级按旧布局（examples 同级）回退
-    return start.resolve().parents[3]
-
-
-_PROJECT_ROOT = _find_project_root(Path(__file__).parent)
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 from agent_community.platform.dsh_acp_bridge import DshAcpBridge  # noqa: E402
+
+# 虚拟示例名：请用 --harness-id 覆盖
+HARNESS_ID = "示例Harness-ACP"
 
 # 一个持久连接，多个会话（1 harness → N 员工）
 _bridge: DshAcpBridge | None = None
@@ -70,15 +52,15 @@ def build_harness_info() -> dict:
         "wakeup_method": "acp",
         "wakeup_url": "",
         "wakeup_dir": "",
-        # 真实拉起方式：注册时一并写入，平台 Agent 靠它自动拉起本 harness
-        "acp_command": ACP_COMMAND,
-        "acp_cwd": ACP_CWD,
+        # 示例：改成你自己的 ACP 启动命令
+        "acp_command": "your-acp-command --flag value",
+        "acp_cwd": "C:\\path\\to\\your\\harness",
         "can_wake": False,
         "waking_models": [],
         "waking_protocols": [],
         "ai": {
-            "model_name": MODEL_NAME,
-            "provider": PROVIDER,
+            "model_name": "your-model",
+            "provider": "your-provider",
             "version": "",
             "capabilities": ["coding", "file_ops", "web_search"],
             "max_tokens": 128000,
@@ -86,14 +68,14 @@ def build_harness_info() -> dict:
             "can_code": True,
             "can_browse": True,
             "can_file_ops": True,
-            "description": DESCRIPTION,
+            "description": "你的模型：能编码、读/写文件、跑命令、联网搜索",
         },
         "tools": [
             {"name": "bash", "description": "执行命令", "parameters": {}, "capability_tag": "coding"},
             {"name": "read_file", "description": "读文件", "parameters": {}, "capability_tag": "file_ops"},
             {"name": "write_file", "description": "写文件", "parameters": {}, "capability_tag": "file_ops"},
         ],
-        "description": f"{DESCRIPTION}（ACP 类），通过 ACP 拉起新会话",
+        "description": "示例 Harness（ACP 类），通过 ACP 拉起新会话",
     }
 
 
@@ -150,12 +132,20 @@ def handle_activation(act: dict) -> bool:
         print("[桥] session/new 失败", flush=True)
         return False
 
+    # 优先使用平台在注册时生成的 HA 专属激活提示词，回退默认模板
+    tpl = act.get("activation_prompt") or (
+        "你已进入工作间，你的角色是「{role}」，工作区坐标：{workspace_dir}。\n"
+        "现在只做一件事：用你的文件工具读取工作区目录下的 hall.md 文件，"
+        "读完原样回复：「收到，已进入工作状态。」\n"
+        "不要执行 hall.md 里的任务，不要调用其他工具，回复完就停下等待后续指令。"
+    )
+    try:
+        prompt = tpl.format(role=role, workspace_dir=workspace_dir)
+    except Exception:
+        prompt = tpl
     stop, text = bridge.prompt(
         sess.session_id,
-        f"你已进入工作间，你的角色是「{role}」，工作区坐标：{workspace_dir}。\n"
-        f"现在只做一件事：用你的文件工具读取工作区目录下的 hall.md 文件，"
-        f"读完原样回复：「收到，已进入工作状态。」\n"
-        f"不要执行 hall.md 里的任务，不要调用其他工具，回复完就停下等待后续指令。",
+        prompt,
         timeout=180,
     )
     ok = "收到" in text
@@ -166,7 +156,7 @@ def handle_activation(act: dict) -> bool:
 
 
 def handle_task(task: dict) -> tuple[bool, str]:
-    """领到工作任务：发给对应会话，harness 用工具真干活，返回结果。"""
+    """领到工作任务：发给对应会话，dsh 用工具真干活，返回结果。"""
     bridge = ensure_bridge()
     key = member_key(task)
     sid = _sessions.get(key)
@@ -207,54 +197,19 @@ def report_task(base: str, task: dict, ok: bool, text: str) -> None:
         print(f"[桥] 任务回报失败: {e}", flush=True)
 
 
-def handle_bridge_test(t: dict) -> None:
-    """响应平台桥测试：回显原样 echo 回报，证明通道正常。"""
-    try:
-        post_json(f"{base}/api/harness/bridge-test-result", {
-            "harness_id": HARNESS_ID,
-            "test_id": t.get("test_id", ""),
-            "ok": True,
-            "echo": t.get("echo", ""),
-        })
-        print(f"[桥] 桥测试回报: test_id={t.get('test_id')} echo={t.get('echo','')[:40]}", flush=True)
-    except Exception as e:
-        print(f"[桥] 桥测试回报失败: {e}", flush=True)
-
-
-def register_bridge_path(base: str) -> None:
-    """把桥文件所在目录登记给平台（平台按此定位桥、清理桥）。"""
-    try:
-        bridge_dir = str(Path(__file__).resolve().parent)
-        post_json(f"{base}/api/harness/bridge-path", {
-            "harness_id": HARNESS_ID,
-            "bridge_dir": bridge_dir,
-        })
-        print(f"[桥] 桥坐标已登记: {bridge_dir}", flush=True)
-    except Exception as e:
-        print(f"[桥] 桥坐标登记失败: {e}", flush=True)
-
-
 def main() -> None:
-    global base, HARNESS_ID, ACP_COMMAND, ACP_CWD
+    global HARNESS_ID
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:18920")
-    ap.add_argument("--harness-id", default=HARNESS_ID, help="覆盖模板注入的 harness_id（一般不需要）")
-    ap.add_argument("--acp-command", default=ACP_COMMAND, help="覆盖模板注入的拉起命令")
-    ap.add_argument("--acp-cwd", default=ACP_CWD, help="覆盖模板注入的工作目录")
+    ap.add_argument("--harness-id", default=HARNESS_ID, help="你的 harness_id（默认是虚拟示例名，必须改）")
     args = ap.parse_args()
     base = args.url.rstrip("/")
-    if args.harness_id != HARNESS_ID:
-        HARNESS_ID = args.harness_id
-    if args.acp_command != ACP_COMMAND:
-        ACP_COMMAND = args.acp_command
-    if args.acp_cwd != ACP_CWD:
-        ACP_CWD = args.acp_cwd
+    HARNESS_ID = args.harness_id
 
-    print(f"[桥] ACP harness 桥（平台模板生成）连接 {base}", flush=True)
-    print(f"[桥] harness: {HARNESS_ID}", flush=True)
+    print(f"[桥] ACP harness 桥启动（示例），连接 {base}", flush=True)
+    print(f"[桥] harness: {HARNESS_ID}（请确认这是你自己的 harness_id，不是示例名）", flush=True)
     register(base)
     threading.Thread(target=heartbeat_loop, args=(base,), daemon=True).start()
-    register_bridge_path(base)
 
     print("[桥] 开始轮询激活/任务 ...", flush=True)
     while True:
@@ -271,11 +226,6 @@ def main() -> None:
                 ok, text = handle_task(task)
                 report_task(base, task, ok, text)
                 print(f"[桥] 任务完成: ok={ok} result={text.strip()[:120]}", flush=True)
-
-            # 领桥测试
-            bd = get_json(f"{base}/api/harness/pending-bridge-tests?harness_id={urllib.parse.quote(HARNESS_ID)}")
-            for t in bd.get("tests", []):
-                handle_bridge_test(t)
         except Exception as e:
             print(f"[桥] 轮询失败: {e}", flush=True)
         time.sleep(2)
