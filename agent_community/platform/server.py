@@ -1062,7 +1062,7 @@ async def harness_heartbeat(harness_id: str = ""):
     """Harness 心跳保活"""
     # 支持 query param 和 JSON body
     if not harness_id:
-        return Utf8JSONResponse({"error": "harness_id required"}, status_code=400)
+        return Utf8JSONResponse({"error": "harness_id required（请通过 URL query 传入，如 /api/harness/heartbeat?harness_id=xxx）"}, status_code=400)
     harness_manager.heartbeat(harness_id)
     return {"success": True, "harness_id": harness_id}
 @app.post("/api/harness/message")
@@ -4824,7 +4824,10 @@ async def pin_workshop(ws_id: str, request: Request):
     ws = workshops.get(ws_id)
     if not ws:
         return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
     ws.pinned = bool(body.get("pinned", not ws.pinned))
     save_state()
     return {"success": True, "workshop_id": ws_id, "pinned": ws.pinned}
@@ -4904,7 +4907,10 @@ async def recycle_stale_workshops(request: Request):
     移除工作间记录 + 状态机记录清理 + 工作区目录进回收站（可恢复）。
     不终止共享 harness 桥进程（可能被其他工作间复用）。
     """
-    body = await request.json() or {}
+    try:
+        body = await request.json() or {}
+    except Exception:
+        body = {}
     ws_ids = body.get("ws_ids") or []
     all_flag = bool(body.get("all"))
     if not ws_ids and not all_flag:
@@ -5640,12 +5646,14 @@ async def workshop_select_members(ws_id: str):
         for i, m in enumerate(cleaned)
     ]
     ws.status = "selecting"
+    _selected_note = {} if cleaned else {"reason": "AI 未选出合适成员：可能已注册 harness 与任务需求不匹配或 AI 返回空名单，请人工补充名单"}
     return {
         "success": True,
         "members": [
             {"member_id": m.member_id, "role": m.role, "display_name": m.display_name, "harness_ids": m.harness_ids}
             for m in ws.members
         ],
+        **_selected_note,
     }
 @app.post("/api/workshop/{ws_id}/members")
 async def workshop_save_members(ws_id: str, request: Request):
@@ -5722,6 +5730,8 @@ async def workshop_confirm_members(ws_id: str, request: Request):
     body = await request.json()
     members_raw = body.get("members") or []
     if members_raw:
+        if not isinstance(members_raw, list) or not all(isinstance(m, dict) for m in members_raw):
+            return Utf8JSONResponse({"error": "members 需为对象数组（每个元素需含 role/display_name/harness_ids）"}, status_code=400)
         ws.members = [
             WorkshopMember(
                 member_id=f"m{i}",

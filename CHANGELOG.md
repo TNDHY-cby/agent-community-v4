@@ -2,6 +2,18 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.2.2] - 2026-09-24
+
+全功能测试缺陷修复补丁。
+
+### 修复
+- **无 body 请求 500**：`POST /api/workshops/recycle-stale`、`POST /api/workshop/{ws_id}/pin` 在无 body / 空 body 时抛 JSONDecodeError 返回 500，已容错为空对象处理，返回正常语义（recycle-stale 需参数则 400，pin 默认取反）。
+- **confirm-members 类型校验**：`POST /api/workshop/{ws_id}/confirm-members` 的 members 非对象数组（如字符串数组）时遍历抛 AttributeError 500，已在遍历前校验并返回 400 友好提示。
+- **select-members 空名单无提示**：AI 未选出合适成员时返回空 members 无任何说明，已附加 `reason` 字段提示人工补充名单。
+- **heartbeat 提示语**：`harness_id` 缺失时错误信息补充 URL query 传参示例。
+
+---
+
 ## [4.2.1] — 2026-09-24
 
 卡死工作间回收与孤儿残留清理版本。
