@@ -1,32 +1,17 @@
-# 外端Agent生产合作社（External Agent Community）v4
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: fee6cb6926e215051ee1772520098e59_a7b63e3a922d11f1bafa525400287e28
+    ReservedCode1: i7oqnQexgtgWd/mkNo3pYNBXwAuxTomxEe734mcLfmgnLeg5/Hbd6nr8/FTVm+JnnZJe7yg7TdvVvfpFsf5yiV7QjGneyyZxbDfHdTYbDQKaCGbOp1EuhT7hCbMaiumHjONaAKE+O/vk9F3bk+jDrKSL8zqxT0XwleNBI7wYNn42I651K7boSgjv5xg=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: fee6cb6926e215051ee1772520098e59_a7b63e3a922d11f1bafa525400287e28
+    ReservedCode2: i7oqnQexgtgWd/mkNo3pYNBXwAuxTomxEe734mcLfmgnLeg5/Hbd6nr8/FTVm+JnnZJe7yg7TdvVvfpFsf5yiV7QjGneyyZxbDfHdTYbDQKaCGbOp1EuhT7hCbMaiumHjONaAKE+O/vk9F3bk+jDrKSL8zqxT0XwleNBI7wYNn42I651K7boSgjv5xg=
+---
 
-[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/TNDHY-cby/agent-community-v4)](https://github.com/TNDHY-cby/agent-community-v4)
-[![Contributors](https://img.shields.io/github/contributors/TNDHY-cby/agent-community-v4)](https://github.com/TNDHY-cby/agent-community-v4/graphs/contributors)
-[![Languages](https://img.shields.io/github/languages/top/TNDHY-cby/agent-community-v4)](https://github.com/TNDHY-cby/agent-community-v4)
+# 外端Agent生产合作社（External Agent Community） v4
 
 多 Agent 协作平台 — 通过命令行即可启动、无需浏览器。
-
-> **特别说明：两种「Agent」请勿混为一谈**
->
-> - **平台内多 Agent**：平台自身创建并管理的多个 Agent 角色（planner / writer / reviewer 等），在讨论区（workshop）内协作完成任务，是平台的内置机制。
-> - **外端 Harness 接入的 Agent**：通过 [Harness 通用接入协议](design-docs/Harness通用接入协议.md) 接入平台的外部 AI 工具（IDE、命令行 Agent、其他平台等），它们**不是**平台内置 Agent，而是经「桥」与平台通信的**外部参与者**，可被平台投递任务并回报结果。
->
-> 二者机制相互独立：外端 harness 不参与平台内多 Agent 的角色编排，平台内 Agent 也不依赖外端 harness 才能工作。
-
-## 功能展示
-
-![任务理解与需求澄清](agent_community/frontend/ui_screenshot_index.png)
-
-AI 助手接到任务后主动提出多种理解方案并请求用户确认，确保任务执行的准确性。
-
-![Harness 注册与通信配置](agent_community/frontend/ui_screenshot_register.png)
-
-分步指导为 Harness 注册能力，并配置其与 inbox 的通信方式。
-
-![工作间任务编排](agent_community/frontend/ui_screenshot_workshop.png)
-
-中央输入任务需求，右侧面板配置可用 AI 代理（Agent / harnesses），一键启动任务处理流程。
 
 ## 快速开始
 
@@ -109,7 +94,7 @@ agent-community start --wakeup
 
 ## Harness 接入指南
 
-Harness 是外部 IDE / 工具接入平台的标准化接口。通过 Harness，各类外部 AI 工具可以作为 **外部参与者** 接入协作——注意，它们**不是**平台内多 Agent 机制的一部分，而是经桥与平台通信、被投递任务并回报结果的外端 Agent。
+Harness 是外部 IDE / 工具接入平台的标准化接口。通过 Harness，各类外部 AI 工具可以作为 Agent 参与协作。
 
 > 📖 **完整协议见 [design-docs/Harness通用接入协议.md](design-docs/Harness通用接入协议.md)**（注册/唤醒/派发/回报标准）。
 > 核心：任何 harness 处理完任务后，**HTTP POST `/api/harness/task-result`**（带 workshop_id + member_id + result）即可回报，平台自动接入讨论区——不依赖 harness 内部实现。
@@ -143,7 +128,7 @@ curl -X POST http://127.0.0.1:18920/api/harness/register \
 
 参考 `agent_community/examples/` 目录下的示例（均为虚拟示例，需改成你自己的 harness_id）：
 
-- `acp_harness_bridge.py` — ACP 协议 Harness 桥示例（真实 ACP server）
+- `trae_harness_bridge.py` — Trae IDE Harness 桥接（旧示例，剪贴板中转）
 - `waker_with_deepseek.py` — DeepSeek 驱动的 Wakeup Agent
 
 ## Harness 架桥指南（注册 ≠ 接入，必须架桥）
@@ -159,7 +144,7 @@ curl -X POST http://127.0.0.1:18920/api/harness/register \
 |---|---|---|
 | `filepoll_harness_bridge.py` | file_poll（走文件邮箱的桌面 Agent） | `python agent_community/examples/filepoll_harness_bridge.py --harness-id [你的harness_id] --inbox [wakeup_dir] --platform http://127.0.0.1:18920` |
 | `pending_poll_bridge.py` | acp/http/clipboard（无真实 ACP server，如 GUI 程序） | `python agent_community/examples/pending_poll_bridge.py --harness-id [你的harness_id] --url http://127.0.0.1:18920 --work-dir [任务目录]` |
-| `acp_harness_bridge.py` | acp 且有真实 ACP server | `python agent_community/examples/acp_harness_bridge.py --url http://127.0.0.1:18920` |
+| `dsh_harness_bridge.py` | acp 且有真实 ACP server | `python agent_community/examples/dsh_harness_bridge.py --url http://127.0.0.1:18920` |
 
 回报协议（harness 有联网能力时可直接 POST，无需桥）：
 
@@ -224,12 +209,3 @@ curl -X POST http://127.0.0.1:18920/api/harness/task-result \
 - **Harness 桥模板**：`agent_community/bridge_templates/` 提供 `cli_acp` / `file_poll` / `pending_poll` 三类可参数化模板，接入方按模板生成自己的桥。
 
 *（内容由AI生成，仅供参考）*
-
-## License
-
-**GNU Affero General Public License v3.0 (AGPL-3.0)**
-
-本项目采用 **Copyleft** 许可证发布：任何人可以自由使用、修改、再分发本项目，但任何衍生作品（包括以网络服务形式对外提供修改版功能）**必须**以相同许可证（AGPL-3.0）开放源代码，并保留原始版权声明。这一约束旨在防止对本项目进行闭源改造后商业化牟利——如果你基于本项目的代码对外提供 SaaS / 网络服务，你有义务公开你的服务端源码。
-
-- 完整许可证文本见 [LICENSE](LICENSE)
-- 参与贡献前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)

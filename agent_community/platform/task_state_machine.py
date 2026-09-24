@@ -151,6 +151,12 @@ class TaskStateMachine:
         return {"action": action, "state": new_state, "from_state": from_state,
                 "retries": st.get("retries", 0), "note": note}
 
+    def remove(self, key: str) -> bool:
+        """删除指定任务/工作间的状态机记录（回收/清理时调用，彻底退出状态机）。"""
+        existed = key in self._states
+        self._states.pop(key, None)
+        return existed
+
     def tick(self, now: Optional[float] = None) -> list:
         """兜底心跳：executing/waiting_reply/stuck-paused 超时 → timeout 事件。
 

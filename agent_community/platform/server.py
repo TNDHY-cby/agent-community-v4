@@ -502,6 +502,12 @@ def load_state():
     if state_machine_file.exists():
         try:
             task_state_machine.from_dict(json.loads(state_machine_file.read_text(encoding="utf-8")))
+            # 孤儿状态机记录清理：工作间已不存在但状态机残留（旧 DELETE 缺陷遗留），启动即移除防复发
+            orphan_sm = [k for k in list(task_state_machine._states.keys()) if k not in workshops]
+            for _k in orphan_sm:
+                task_state_machine.remove(_k)
+            if orphan_sm:
+                print(f"[persist] 已清理 {len(orphan_sm)} 条孤儿状态机记录: {orphan_sm}")
         except Exception as e:
             print(f"[persist] 加载 state_machine.json 失败: {e}")
     print(f"[persist] 已恢复 {len(tasks)} 个任务, {len(discussion_rooms)} 个讨论室, "
@@ -4824,12 +4830,109 @@ async def pin_workshop(ws_id: str, request: Request):
     return {"success": True, "workshop_id": ws_id, "pinned": ws.pinned}
 @app.delete("/api/workshop/{ws_id}")
 async def delete_workshop(ws_id: str):
-    """删除工作间（含持久化记录）。"""
+    """删除工作间（含持久化记录 + 状态机记录 + 工作区目录进回收站）。
+
+    V-17 增强（2026-09-24）：删除时同步回收——状态机记录移除、工作区目录
+    （data/workshops/ws_xxx）移入回收站（可恢复），避免残留卡死记录与孤儿目录。
+    """
     ws = workshops.pop(ws_id, None)
     if not ws:
         return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    # 1) 状态机记录清理：工作间彻底退出状态机（含 timeout/discussing 卡死残留）
+    sm_removed = task_state_machine.remove(ws_id)
+    # 2) 工作区目录移入回收站（不物理删除，可恢复）
+    trash_result = await asyncio.to_thread(_trash_bridge_dir, ws.workspace_dir) \
+        if ws.workspace_dir and os.path.isdir(ws.workspace_dir) else {"trashed": False, "reason": "目录不存在或未记录"}
     save_state()
-    return {"success": True, "deleted": ws_id}
+    return {"success": True, "deleted": ws_id, "state_machine_removed": sm_removed, "trash": trash_result}
+
+# ── V-17 卡死工作间回收（2026-09-24）────────────────────────────
+_STALE_TERMINAL_STATES = ("timeout", "dropped", "stuck-paused", "blocked-retrying")
+
+def _is_stale_workshop(ws: Workshop) -> dict:
+    """判定工作间是否卡死（未终态 + 状态机终态/超时/失联）。
+
+    规则：
+    - 终态工作间（done/draft 且无卡死状态机）不回收；
+    - 非终态 status 且状态机 state 命中 timeout/dropped/stuck-paused/blocked-retrying → 卡死；
+    - 非终态 status 但状态机长时间无心跳（last_ts 距今 > timeout_sec*3）→ 视为失联卡死；
+    - pinned 工作间永不自动回收（需用户显式删除）。
+    返回 {stale: bool, reason: str}。
+    """
+    if ws.pinned:
+        return {"stale": False, "reason": "pinned"}
+    if ws.status in ("done",):
+        st = task_state_machine.get_state(ws.workshop_id)
+        if st not in _STALE_TERMINAL_STATES:
+            return {"stale": False, "reason": "done"}
+    if ws.status not in ("running", "selecting", "division", "discussing", "review"):
+        return {"stale": False, "reason": f"status={ws.status}"}
+    rec = task_state_machine._states.get(ws.workshop_id, {})
+    state = rec.get("state")
+    if state in _STALE_TERMINAL_STATES:
+        return {"stale": True, "reason": f"state_machine={state}"}
+    if state in ("discussing", "executing", "waiting_reply", "blocked-retrying"):
+        last = rec.get("last_ts") or rec.get("ts") or 0
+        if time.time() - last > task_state_machine.timeout_sec * 3:
+            return {"stale": True, "reason": f"heartbeat_stale({int(time.time()-last)}s)"}
+    return {"stale": False, "reason": f"state_machine={state or 'none'}"}
+
+@app.get("/api/workshops/stale")
+async def list_stale_workshops():
+    """列出卡死工作间候选（不删除，供前端展示确认）。"""
+    cands = []
+    for ws in workshops.values():
+        j = _is_stale_workshop(ws)
+        if j["stale"]:
+            cands.append({
+                "workshop_id": ws.workshop_id,
+                "name": ws.name,
+                "status": ws.status,
+                "created_at": ws.created_at,
+                "reason": j["reason"],
+                "discussion_count": len(ws.discussion),
+                "member_count": len(ws.members),
+            })
+    cands.sort(key=lambda x: x.get("created_at", ""))
+    return {"success": True, "stale_count": len(cands), "stale": cands}
+
+@app.post("/api/workshops/recycle-stale")
+async def recycle_stale_workshops(request: Request):
+    """批量回收卡死工作间：body 传 {"ws_ids": [...]} 或 {"all": true}。
+
+    每个工作间执行与 DELETE /api/workshop/{ws_id} 相同的回收语义：
+    移除工作间记录 + 状态机记录清理 + 工作区目录进回收站（可恢复）。
+    不终止共享 harness 桥进程（可能被其他工作间复用）。
+    """
+    body = await request.json() or {}
+    ws_ids = body.get("ws_ids") or []
+    all_flag = bool(body.get("all"))
+    if not ws_ids and not all_flag:
+        return Utf8JSONResponse({"error": "需传 ws_ids 列表或 all=true"}, status_code=400)
+    targets = list(workshops.keys()) if all_flag else [x for x in ws_ids if x in workshops]
+    if not targets:
+        return {"success": True, "recycled": [], "skipped": ws_ids}
+    recycled, skipped = [], []
+    for wid in targets:
+        ws = workshops.get(wid)
+        if not ws:
+            skipped.append({"workshop_id": wid, "reason": "not_found"})
+            continue
+        if ws.pinned:
+            skipped.append({"workshop_id": wid, "reason": "pinned"})
+            continue
+        j = _is_stale_workshop(ws)
+        if not j["stale"]:
+            skipped.append({"workshop_id": wid, "reason": f"not_stale({j['reason']})"})
+            continue
+        sm_removed = task_state_machine.remove(wid)
+        trash_result = await asyncio.to_thread(_trash_bridge_dir, ws.workspace_dir) \
+            if ws.workspace_dir and os.path.isdir(ws.workspace_dir) else {"trashed": False, "reason": "目录不存在或未记录"}
+        workshops.pop(wid, None)
+        recycled.append({"workshop_id": wid, "name": ws.name,
+                         "state_machine_removed": sm_removed, "trash": trash_result})
+    save_state()
+    return {"success": True, "recycled": recycled, "skipped": skipped}
 @app.get("/api/workshop/{ws_id}")
 async def get_workshop(ws_id: str, after_seq: int = -1):
     ws = workshops.get(ws_id)

@@ -1,8 +1,8 @@
-# Tool Calling 框架设计 — 外端Agent生产合作社（External Agent Community）
+﻿# Tool Calling 框架设计 — agent-community-v4
 
 > 设计日期: 2026-08-08
 > 状态: 已完成
-> 参考: <本地 ReAct 知识库>
+> 参考: D:\O泡知识库\AI_Rust视频笔记\Rust Agent 开发\（ReAct 知识库）
 
 ---
 
@@ -332,6 +332,6 @@ agent_community/platform/
 
 | 资产 | 路径 |
 |------|------|
-| 项目主目录 | `<项目根目录>` |
-| ReAct 理论参考 | `<本地 ReAct 理论参考.md>` |
-| ReAct 实现参考 | `<本地 ReAct 实现参考.md>` |
+| 项目主目录 | `C:\Users\1\AppData\Roaming\Tencent\Marvis\User\oAN1i2c7nvyo0aiI5MP0j80nFLxI\workspace\conv_19fda2bf984_daff50666c61\output\外端Agent生产合作社（External Agent Community）` |
+| ReAct 理论参考 | `D:\O泡知识库\AI_Rust视频笔记\Rust Agent 开发\使用 Rust 开发 AI Agent - 07.1 ReAct.md` |
+| ReAct 实现参考 | `D:\O泡知识库\AI_Rust视频笔记\Rust Agent 开发\使用 Rust 开发 AI Agent - 07.2 ReAct 实现.md` |
