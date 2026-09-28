@@ -2,6 +2,24 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.3.0] - 2026-09-28
+
+V-9 单体渐进式拆分与插件安全拦截修复。
+
+### 重构
+- **server.py 渐进式拆分**：按域拆出 `platform/core/security.py`（危险命令模式/DPAPI 密钥加密/mask/原子写）、`platform/state.py`（共享状态 Store）与 `platform/routers/`（mirror、plugins、config、harness、workshops 五个路由组），主文件由 7500+ 行降至 5100+ 行，119 个路由全部保留并回归通过。
+- **延迟导入避循环**：routers 子模块通过延迟 import server 依赖，避免 package 初始化循环引用。
+
+### 修复
+- **插件 invoke 危险命令拦截失效（安全）**：`POST /api/plugins/{name}/invoke` 此前仅校验注册时 `target`，请求体 `command` 未参与执行与校验，`format` / `net stop` / `rm -rf` 等危险命令可被放行；现改为对实际执行的命令做 `_is_dangerous` 拦截，拦截返回 400。
+- **`--token` 双模块副本失效（安全）**：`python -m agent_community.platform.server` 启动时存在 `__main__` 与 `agent_community.platform.server` 双模块副本，`--token` 仅更新 `__main__` 副本导致 routers 延迟导入读到空 `ALLOWED_TOKENS`（invoke 永远"未配置 Token"）；已在 `__main__` 块同步双副本 Token。
+- **config 保存逻辑回归**：`POST /api/config` 幂等回写通过。
+
+### 安全加固（延续）
+- 密钥经 DPAPI（CryptProtectData）加密后落盘，`dpapi:` 前缀 base64 存储，无 pywin32 依赖。
+- AI Key 读取优先级统一为 环境变量 > 配置文件 > 默认值，env 值永不落盘覆盖。
+- CDP 镜像默认关闭，未启用时返回 `cdp_enabled=False` 并披露状态。
+
 ## [4.2.2] - 2026-09-24
 
 全功能测试缺陷修复补丁。

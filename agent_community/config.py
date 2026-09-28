@@ -5,8 +5,10 @@
 """
 
 from __future__ import annotations
+import base64
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -67,6 +69,9 @@ def load_config() -> dict[str, Any]:
     # 合并默认值（补齐缺失字段）
     merged = dict(DEFAULT_CONFIG)
     merged.update(data)
+    # 解密 API Key：dpapi: 前缀为 DPAPI 密文，否则视为历史明文直接透传
+    if merged.get("ai_api_key"):
+        merged["ai_api_key"] = _decrypt_secret(merged["ai_api_key"])
     return merged
 
 
@@ -77,21 +82,27 @@ def save_config(data: dict[str, Any]) -> None:
     clean: dict[str, Any] = {}
     for key in DEFAULT_CONFIG:
         clean[key] = data.get(key, DEFAULT_CONFIG[key])
+    # V-9 修复：ai_api_key 落盘前加密（Windows DPAPI，当前用户绑定；非 Windows 降级明文并告警）
+    if clean.get("ai_api_key"):
+        clean["ai_api_key"] = _encrypt_secret(clean["ai_api_key"])
     CONFIG_FILE.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
-    # V-8 修复：api_key 明文落盘时打印警示，提示改用环境变量注入
     if clean.get("ai_api_key"):
         print(
-            "[config] 警告: AI API Key 已明文保存到 %s。建议改用环境变量 "
-            "AC_AI_API_KEY 注入，避免 key 随配置文件同步/备份泄露。" % CONFIG_FILE,
+            "[config] 提示: AI API Key 已加密保存到 %s（DPAPI 当前用户绑定）" % CONFIG_FILE,
             flush=True,
         )
 
 
-def mask_api_key(key: str) -> str:
-    """脱敏显示 API Key，只展示前4后4位。"""
-    if not key or len(key) <= 8:
-        return key or ""
-    return key[:4] + "*" * (len(key) - 8) + key[-4:]
+# ── 密钥落盘保护（DPAPI）──
+# V-9 单体拆分：加解密/掩码/危险命令检测统一下沉 platform/core/security.py，此处仅引用
+from .platform.core.security import (
+    _encrypt_secret,
+    _decrypt_secret,
+    _is_windows,
+    _dpapi,
+    _SECRET_PREFIX,
+    mask_api_key,
+)
 
 
 def _ensure_dir() -> None:

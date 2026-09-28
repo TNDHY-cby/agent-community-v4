@@ -2,38 +2,9 @@
 
 from __future__ import annotations
 import asyncio
-import re
 
+from ..core.security import _is_dangerous  # V-9 单体拆分：危险命令检测下沉 core/security.py
 from ..tool_registry import BaseTool, ToolResult, ToolSchema
-
-# ── 危险命令模式（黑名单） ──────────────────────────────────
-_DANGEROUS_PATTERNS: list[re.Pattern] = [
-    re.compile(r"\brm\s+-rf\b", re.IGNORECASE),
-    re.compile(r"\brmdir\b", re.IGNORECASE),
-    re.compile(r"\bdel\s+/[fsq]\b", re.IGNORECASE),
-    re.compile(r"\bformat\b", re.IGNORECASE),
-    re.compile(r"\bdiskpart\b", re.IGNORECASE),
-    re.compile(r"\breg\s+delete\b", re.IGNORECASE),
-    re.compile(r"\breg\s+add\b", re.IGNORECASE),
-    re.compile(r"\bRemove-Item\s+-Recurse\s+-Force\b", re.IGNORECASE),
-    re.compile(r"\bnet\s+stop\b", re.IGNORECASE),
-    re.compile(r"\bstop-service\b", re.IGNORECASE),
-    re.compile(r"\bshutdown\b", re.IGNORECASE),
-    re.compile(r"\brestart-computer\b", re.IGNORECASE),
-    re.compile(r"\bstop-computer\b", re.IGNORECASE),
-    re.compile(r">\\\\.\\[A-Z]:", re.IGNORECASE),  # 直接写磁盘设备
-    re.compile(r":\\Windows\\", re.IGNORECASE),      # 操作系统目录
-    re.compile(r":\\Program Files", re.IGNORECASE),  # 程序目录
-]
-
-
-def _is_dangerous(command: str) -> str | None:
-    """检查命令是否包含危险操作。返回命中的模式描述或 None。"""
-    for pattern in _DANGEROUS_PATTERNS:
-        m = pattern.search(command)
-        if m:
-            return f"检测到危险命令模式: {m.group().strip()}"
-    return None
 
 
 class ShellExecTool(BaseTool):

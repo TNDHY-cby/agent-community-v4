@@ -1,0 +1,114 @@
+"""platform/routers/plugins：插件注册表与执行接口（V-9 自 server.py 拆分）。
+
+含：
+- _load_plugins / _save_plugins：plugins.json 读写（原子写）
+- GET/POST /api/plugins、DELETE /api/plugins/{name}
+- POST /api/plugins/{name}/invoke：http/cmd 插件执行（V-18 强制 Token 鉴权 + 危险命令拦截）
+"""
+from __future__ import annotations
+
+import json
+
+from fastapi import APIRouter, Request
+
+from ..core.security import _is_dangerous  # 共享层，不依赖 server，可顶层导入
+
+router = APIRouter()
+
+
+def _load_plugins() -> dict:
+    from ..server import PLUGINS_FILE  # 延迟引用，避免循环导入
+    try:
+        if PLUGINS_FILE.exists():
+            return json.loads(PLUGINS_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[plugins] 读取失败: {e!r}", flush=True)
+    return {}
+
+
+def _save_plugins(data: dict):
+    from ..server import PLUGINS_FILE, _atomic_write_text  # 延迟引用
+    _atomic_write_text(PLUGINS_FILE, json.dumps(data, ensure_ascii=False, indent=2))
+
+
+@router.get("/api/plugins")
+async def api_plugins_list():
+    return {"plugins": _load_plugins()}
+
+
+@router.post("/api/plugins")
+async def api_plugins_add(request: Request):
+    from ..server import PLUGIN_TYPES, Utf8JSONResponse, now_iso  # 延迟引用
+    body = await request.json()
+    name = str(body.get("name") or "").strip()
+    ptype = str(body.get("type") or "").strip().lower()
+    target = str(body.get("target") or "").strip()
+    if not name or not target:
+        return Utf8JSONResponse({"error": "name 与 target 不能为空"}, status_code=400)
+    if ptype not in PLUGIN_TYPES:
+        return Utf8JSONResponse({"error": f"type 仅支持 {'/'.join(PLUGIN_TYPES)}"}, status_code=400)
+    if ptype == "http" and not target.startswith(("http://", "https://")):
+        return Utf8JSONResponse({"error": "http 类型 target 须为 http(s):// 开头"}, status_code=400)
+    plugs = _load_plugins()
+    if name in plugs:
+        return Utf8JSONResponse({"error": f"插件 [{name}] 已存在"}, status_code=400)
+    plugs[name] = {"type": ptype, "target": target, "created_at": now_iso()}
+    _save_plugins(plugs)
+    return {"success": True, "plugins": plugs}
+
+
+@router.delete("/api/plugins/{name}")
+async def api_plugins_del(name: str):
+    from ..server import Utf8JSONResponse  # 延迟引用
+    plugs = _load_plugins()
+    if name not in plugs:
+        return Utf8JSONResponse({"error": f"插件 [{name}] 不存在"}, status_code=404)
+    del plugs[name]
+    _save_plugins(plugs)
+    return {"success": True, "plugins": plugs}
+
+
+@router.post("/api/plugins/{name}/invoke")
+async def api_plugins_invoke(name: str, request: Request):
+    # V-18：插件执行接口强制鉴权——本地请求同样校验，未配置 Token 时整接口禁用
+    from ..server import ALLOWED_TOKENS, Utf8JSONResponse, _extract_token  # 延迟引用
+    if not ALLOWED_TOKENS:
+        return Utf8JSONResponse({"error": "插件执行接口未配置访问 Token，已禁用"}, status_code=403)
+    if _extract_token(request) not in ALLOWED_TOKENS:
+        return Utf8JSONResponse({"error": "需要有效的 Token 认证（Authorization: Bearer <token> 或 X-API-Key）"}, status_code=401)
+    plugs = _load_plugins()
+    if name not in plugs:
+        return Utf8JSONResponse({"error": f"插件 [{name}] 不存在"}, status_code=404)
+    plug = plugs[name]
+    try:
+        if plug["type"] == "http":
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                resp = await client.get(plug["target"])
+            text = (resp.text or "")[:500]
+            return {"success": True, "output": f"HTTP {resp.status_code} · {text}"}
+        else:  # cmd
+            # V-9c 修复：危险拦截必须作用于"实际执行的命令"。
+            # 之前仅校验注册时 target，body 里的 command 未参与执行与校验，
+            # 导致 format / net stop / rm -rf 等危险命令可经 invoke 放行。
+            _body = await request.json()
+            _cmd = str(_body.get("command") or plug["target"]).strip()
+            if not _cmd:
+                return Utf8JSONResponse({"error": "command 不能为空"}, status_code=400)
+            _hit = _is_dangerous(_cmd)
+            if _hit:
+                return Utf8JSONResponse({"error": f"插件命令被安全策略拦截: {_hit}"}, status_code=400)
+            import subprocess
+            proc = subprocess.Popen(
+                _cmd, shell=True, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+            )
+            try:
+                out, _ = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                out, _ = proc.communicate()
+                return {"success": True, "output": f"[已运行超5s被终止] pid={proc.pid} · {(out or '')[:500]}"}
+            return {"success": True, "output": f"[exit {proc.returncode}] {(out or '')[:500]}"}
+    except Exception as e:
+        return Utf8JSONResponse({"error": f"调用失败: {e!r}"}, status_code=500)
