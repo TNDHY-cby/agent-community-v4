@@ -2,6 +2,19 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.5.0] - 2026-09-29
+
+组长转向/委派细化、能力分级路由、卡死任务批量回收与端到端实测版本。
+
+### 新增
+- **组长转向/委派细化**：新增 `POST /api/workshop/{ws_id}/leader/assign`（任务委派细化）、`POST /api/workshop/{ws_id}/leader/redirect`（任务转向）、`GET /api/workshop/{ws_id}/leader/assignments`（委派记录查询），assignments 字段持久化落盘。
+- **能力分级路由**：新增 `GET /api/capabilities/ledger`（能力账本查询）、`POST /api/capabilities/route`（按能力路由任务）、`POST /api/task/{task_id}/route`（单任务能力路由），综合评分 = 匹配分×0.6 + 信誉分×0.4 加权。
+- **卡死任务批量回收**：新增 `GET /api/tasks/stale`（卡死任务识别）、`POST /api/tasks/recycle-stale`（批量回收），卡死判定为任务处于中间态（broadcasting / in_discussion / delegating / executing）且 `updated_at` 距今超过 `timeout_sec*3`。
+
+### 测试
+- 并行端到端验证通过：创建工作间与并行子任务（parallel 模式、parallel_limit=3），多 harness 成员并行执行、进度更新、结果聚合、讨论区落记录全链路真实可用。
+- 插话机制端到端实测通过：提交插话 → 写入插话池 → 紧急插话注入讨论区 → 目标成员拉取/消费（execute）→ 落讨论区完整链路真实可用（无代码改动）。
+
 ## [4.4.0] - 2026-09-29
 
 V-18 全功能回归：193 项 HTTP 测试通过，4 项缺陷修复。
