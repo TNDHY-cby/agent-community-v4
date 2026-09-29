@@ -47,6 +47,9 @@ from .memory import task_memory, capability_ledger
 from .experience_v2 import (
     apply_completion_rewards as _v2_apply_completion_rewards,
     harness_reputation_bonus as _v2_harness_reputation_bonus,
+    extract_task_keywords as _v2_extract_task_keywords,
+    harness_capabilities as _v2_harness_capabilities,
+    _capability_hit as _v2_capability_hit,
 )
 from .task_state_machine import (
     TaskStateMachine,
@@ -2749,6 +2752,96 @@ async def get_task(task_id: str):
 @app.get("/api/tasks")
 async def list_tasks():
     return {"tasks": [t.model_dump() for t in tasks.values()]}
+
+
+def _route_task_by_capability(task_text: str, harness_ids: list | None = None, online_only: bool = True, top_k: int = 10) -> list[dict]:
+    """按能力分级路由：给定任务文本，对候选 harness 计算能力匹配分与信誉分并降序返回。
+
+    - 能力匹配分 = 任务关键词命中该 harness 注册能力域的覆盖率（无关键词命中视为全能力参与）
+    - 信誉分 = 命中能力在 capability_ledger 的平均信誉（无命中能力时取该 harness 全部能力均值）
+    - 综合分 = 能力匹配分 * 0.6 + 信誉分 * 0.4（对齐 orchestrator.ranked_match 权重）
+    纯只读计算，不派发不落盘，供前端/调用方做能力分级路由决策。
+    """
+    toks = _v2_extract_task_keywords(task_text or "")
+    sessions = getattr(harness_manager, "sessions", {})
+    cand_ids = [hid for hid in harness_ids if hid in sessions] if harness_ids else list(sessions.keys())
+    rows: list[dict] = []
+    for hid in cand_ids:
+        sess = sessions.get(hid)
+        if sess is None:
+            continue
+        if online_only and getattr(sess, "status", None) != HarnessStatus.ONLINE:
+            continue
+        caps = _v2_harness_capabilities(hid, harness_manager)
+        if not caps:
+            continue
+        hit = _v2_capability_hit(caps, toks) if toks else []
+        match_score = len(hit) / len(caps) if caps else 0.0
+        rep_caps = hit if hit else caps
+        reps = [capability_ledger.get_reputation(hid, cap) for cap in rep_caps]
+        avg_rep = (sum(reps) / len(reps)) if reps else 0.5
+        score = round(match_score * 0.6 + avg_rep * 0.4, 4)
+        info = getattr(sess, "info", None)
+        rows.append({
+            "harness_id": hid,
+            "harness_name": getattr(info, "harness_name", "") or hid,
+            "online": bool(getattr(sess, "status", None) == HarnessStatus.ONLINE),
+            "status": getattr(sess, "status", None).value if getattr(sess, "status", None) else "",
+            "capabilities": caps,
+            "hit_capabilities": hit,
+            "match_score": round(match_score, 4),
+            "avg_reputation": round(avg_rep, 4),
+            "score": score,
+        })
+    rows.sort(key=lambda r: r["score"], reverse=True)
+    return rows[:top_k]
+
+
+@app.get("/api/capabilities/ledger")
+async def get_capability_ledger(agent_id: str = "", capability: str = ""):
+    """能力台账查看：按 agent_id / capability 过滤，返回信誉降序列表。"""
+    rows = []
+    for led in capability_ledger.all_ledgers():
+        if agent_id and led.agent_id != agent_id:
+            continue
+        if capability and led.capability != capability:
+            continue
+        rows.append(led.model_dump())
+    return {"ledger": rows, "count": len(rows)}
+
+
+@app.post("/api/capabilities/route")
+async def route_task_by_capability(request: Request):
+    """按能力分级路由任务：body {task_text, harness_ids?, online_only?, top_k?} → 候选 harness 降序列表。"""
+    body = await request.json()
+    task_text = (body.get("task_text") or "").strip()
+    if not task_text:
+        return Utf8JSONResponse({"error": "task_text 不能为空"}, status_code=400)
+    harness_ids = body.get("harness_ids") or None
+    online_only = bool(body.get("online_only", True))
+    try:
+        top_k = max(1, min(int(body.get("top_k", 10) or 10), 50))
+    except Exception:
+        top_k = 10
+    ranked = _route_task_by_capability(task_text, harness_ids=harness_ids, online_only=online_only, top_k=top_k)
+    return {"task_text": task_text, "ranked": ranked, "count": len(ranked)}
+
+
+@app.post("/api/task/{task_id}/route")
+async def route_existing_task(task_id: str, request: Request):
+    """对既有任务按能力分级路由：读取 task.description 计算候选 harness 排序。
+    body {online_only?, top_k?} → 与 GET /api/task/{task_id} 分离，向后兼容。"""
+    task = tasks.get(task_id)
+    if task is None:
+        return Utf8JSONResponse({"error": "task not found"}, status_code=404)
+    body = await request.json()
+    online_only = bool(body.get("online_only", True))
+    try:
+        top_k = max(1, min(int(body.get("top_k", 10) or 10), 50))
+    except Exception:
+        top_k = 10
+    ranked = _route_task_by_capability(task.description or task.title or "", online_only=online_only, top_k=top_k)
+    return {"task_id": task_id, "ranked": ranked, "count": len(ranked)}
 # ═══════════════════════════════════════════════════════════════
 # Agent WS 接入点
 # ═══════════════════════════════════════════════════════════════
