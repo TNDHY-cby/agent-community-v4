@@ -2754,6 +2754,71 @@ async def list_tasks():
     return {"tasks": [t.model_dump() for t in tasks.values()]}
 
 
+# ──── 卡死任务批量回收（V-20，2026-09-29）────
+# 任务级卡死判定：终态(completed/failed)不回收；
+# 中间态(broadcasting/in_discussion/delegating/executing)且 updated_at 距今 > timeout_sec*3 → 视为失联卡死。
+_TASK_STALE_ACTIVE = ("broadcasting", "in_discussion", "delegating", "executing")
+
+def _iso_to_ts(s: str) -> float:
+    """ISO 时间字符串 → epoch 秒；解析失败返回 0。"""
+    try:
+        return datetime.fromisoformat(s).timestamp()
+    except Exception:
+        return 0.0
+
+def _is_stale_task(task) -> dict:
+    """判定任务是否卡死，返回 {stale: bool, reason: str}。"""
+    if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+        return {"stale": False, "reason": f"status={task.status.value}"}
+    if task.status.value not in _TASK_STALE_ACTIVE:
+        return {"stale": False, "reason": f"status={task.status.value}"}
+    ts = _iso_to_ts(task.updated_at or "") or _iso_to_ts(task.created_at or "")
+    if not ts:
+        return {"stale": False, "reason": "no_ts"}
+    age = time.time() - ts
+    if age > task_state_machine.timeout_sec * 3:
+        return {"stale": True, "reason": f"heartbeat_stale({int(age)}s)"}
+    return {"stale": False, "reason": f"age({int(age)}s)"}
+
+@app.get("/api/tasks/stale")
+async def list_stale_tasks():
+    """列出卡死任务（只读扫描，不落盘）。"""
+    stale = []
+    for t in tasks.values():
+        r = _is_stale_task(t)
+        if r["stale"]:
+            stale.append({
+                "task_id": t.id, "title": t.title, "status": t.status.value,
+                "reason": r["reason"], "updated_at": t.updated_at,
+            })
+    return {"success": True, "stale": stale, "stale_count": len(stale)}
+
+@app.post("/api/tasks/recycle-stale")
+async def recycle_stale_tasks(request: Request):
+    """批量回收卡死任务：置为 FAILED 终态 + 标记回收原因，兼容旧接口。"""
+    body = await request.json()
+    task_ids = body.get("task_ids") or []
+    recycled, skipped = [], []
+    now = now_iso()
+    for tid in task_ids:
+        t = tasks.get(tid)
+        if t is None:
+            skipped.append({"task_id": tid, "reason": "not_found"})
+            continue
+        r = _is_stale_task(t)
+        if not r["stale"]:
+            skipped.append({"task_id": tid, "reason": r["reason"]})
+            continue
+        t.status = TaskStatus.FAILED
+        t.completed_at = now
+        t.updated_at = now
+        t.result = f"[平台回收卡死任务] {r['reason']}\n" + (t.result or "")
+        recycled.append({"task_id": tid, "title": t.title, "reason": r["reason"]})
+    if recycled:
+        save_state()
+    return {"success": True, "recycled": recycled, "skipped": skipped}
+
+
 def _route_task_by_capability(task_text: str, harness_ids: list | None = None, online_only: bool = True, top_k: int = 10) -> list[dict]:
     """按能力分级路由：给定任务文本，对候选 harness 计算能力匹配分与信誉分并降序返回。
 
