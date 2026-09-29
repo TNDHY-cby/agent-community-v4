@@ -2,6 +2,20 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.4.0] - 2026-09-29
+
+V-18 全功能回归：193 项 HTTP 测试通过，4 项缺陷修复。
+
+### 修复
+- **AI Provider 配置校验（缺陷 A）**：`POST /api/config` body 显式传空 `ai_provider` 时即使配置存在默认值也拒绝，返回 400 友好提示，不再以 500 掩盖校验意图；provider 属性一律 `getattr` 兜底，避免缺失属性抛 AttributeError。
+- **桥生成参数校验（缺陷 B）**：harness 桥脚本渲染参数校验失败（模板缺失 / 必填字段缺失 / 占位符残留等 `BridgeTemplateError`）时返回 400 明确错误，不再落入 500。
+- **插话池持久化（缺陷 C）**：插话条目存储独立收敛，提交 / 过期回收 / 状态流转回归正常。
+- **工作间删除清理插话池（缺陷 D）**：删除 / 回收工作间时同步清理该工作间全部插话条目（`interject_store.remove_workshop`），不再遗留 `interjects.json` 脏数据。
+
+### 测试
+- 新增 `tests/` 测试套件：`conftest.py`、`test_plugins.py`、`test_routers_smoke.py`、`test_security.py`、`test_state.py`。
+- 全量 193 项 HTTP 测试回归通过（服务 18920 重启复测）。
+
 ## [4.3.0] - 2026-09-28
 
 V-9 单体渐进式拆分与插件安全拦截修复。

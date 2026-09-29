@@ -105,6 +105,13 @@ class InterjectStore:
                 expired.append(it)
         return expired
 
+    # ── 工作间生命周期 ────────────────────────────────────────
+    def remove_workshop(self, ws_id: str) -> int:
+        """移除某工作间的全部插话条目（工作间删除时同步清理，防脏数据残留）。返回移除条数。"""
+        items = self._items.pop(ws_id, [])
+        self._seq.pop(ws_id, None)
+        return len(items)
+
     # ── 持久化 ──────────────────────────────────────────────
     def to_dict(self) -> dict:
         return {"items": self._items, "seq": self._seq,

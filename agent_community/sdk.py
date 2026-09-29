@@ -44,7 +44,7 @@ from datetime import datetime
 import httpx
 
 # ── 协议类型（从共享类型模块导入，与 agent_community.platform.protocol 同源）──
-from agent_community.types import SubTaskAssignment, DelegationRequest, ReviewRequest
+from agent_community.shared_types import SubTaskAssignment, DelegationRequest, ReviewRequest
 
 
 # ═══════════════════════════════════════════════════════════════

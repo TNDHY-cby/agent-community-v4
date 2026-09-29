@@ -226,7 +226,7 @@ class OutputSchema(BaseModel):
 class DelegationRequest(BaseModel):
     """Agent 间委托请求。
 
-    字段定义与 agent_community.types.DelegationRequest 保持同步 — Single Source of Truth。
+    字段定义与 agent_community.shared_types.DelegationRequest 保持同步 — Single Source of Truth。
     """
     id: str = Field(default_factory=lambda: uuid4().hex[:12])
     from_agent: str
@@ -531,7 +531,7 @@ class HarnessMessage(BaseModel):
 class ReviewRequest(BaseModel):
     """收敛驱动审查循环——发起审查请求
     
-    字段定义与 agent_community.types.ReviewRequest 保持同步 — Single Source of Truth。
+    字段定义与 agent_community.shared_types.ReviewRequest 保持同步 — Single Source of Truth。
     """
     request_id: str = Field(default_factory=lambda: uuid4().hex[:12])
     task_id: str

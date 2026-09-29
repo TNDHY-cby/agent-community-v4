@@ -39,21 +39,23 @@ from ..state import agents
 @router.get("/api/ai/providers")
 async def api_ai_providers():
     """v6 新增：返回当前可用的 AI Provider 列表和状态"""
+    _m = _sv()
+    _provider = getattr(_m, "ai_provider", None)
     providers_status = []
-    # 已激活的 provider
-    if _sv().ai_provider:
+    # 已激活的 provider（AI Provider 重建失败为 None 时兜底，不抛 AttributeError）
+    if _provider:
         provider_info = {
-            "type": _sv().ai_provider.provider_type,
+            "type": _provider.provider_type,
             "active": True,
         }
-        if hasattr(_sv().ai_provider, "model"):
-            provider_info["model"] = _sv().ai_provider.model
-        if hasattr(_sv().ai_provider, "base_url"):
-            provider_info["base_url"] = _sv().ai_provider.base_url
-        if hasattr(_sv().ai_provider, "host"):
-            provider_info["host"] = _sv().ai_provider.host
-        if hasattr(_sv().ai_provider, "callback_url"):
-            provider_info["callback_url"] = _sv().ai_provider.callback_url
+        if hasattr(_provider, "model"):
+            provider_info["model"] = _provider.model
+        if hasattr(_provider, "base_url"):
+            provider_info["base_url"] = _provider.base_url
+        if hasattr(_provider, "host"):
+            provider_info["host"] = _provider.host
+        if hasattr(_provider, "callback_url"):
+            provider_info["callback_url"] = _provider.callback_url
         providers_status.append(provider_info)
     # 所有可用类型
     available_types = [
@@ -78,11 +80,12 @@ async def api_ai_providers():
             "requires_callback_url": True,
         },
     ]
-    safe_config = dict(_sv().ai_provider_config)
+    _provider_cfg = getattr(_m, "ai_provider_config", None) or {}
+    safe_config = dict(_provider_cfg)
     if safe_config.get("api_key"):
         safe_config["api_key"] = mask_api_key(safe_config["api_key"])
     return {
-        "ai_provider_enabled": _sv().ai_provider is not None,
+        "ai_provider_enabled": _provider is not None,
         "ai_mode": ai_external_get_mode(),
         "ai_manual_timeout": ai_external_get_timeout(),
         "available_ai_modes": list(AI_MODES),
@@ -139,6 +142,11 @@ async def api_save_config(request: Request):
     wakeup_enabled = body.get("wakeup_enabled", cfg.get("wakeup_enabled", False))
     port = body.get("port", cfg.get("port", 9103))
     # remote 模式必须有 provider 类型；manual / off 为无额度期间的降级通道，不强制
+    # V-18 修复：body 显式传空 ai_provider 时即使 cfg 有默认值也拒绝（防 500 掩盖 400 校验意图）
+    if "ai_provider" in body:
+        _body_provider = str(body.get("ai_provider") or "").strip()
+        if ai_mode == "remote" and not _body_provider:
+            return Utf8JSONResponse({"error": "ai_provider 不能为空"}, status_code=400)
     if ai_mode == "remote" and not provider_type:
         return Utf8JSONResponse({"error": "ai_provider 不能为空"}, status_code=400)
     # 持久化配置
@@ -158,8 +166,11 @@ async def api_save_config(request: Request):
         "port": port,
     })
     # 重新加载 AI Provider
-    _sv().ai_provider_config.clear()
-    _sv().ai_provider_config.update({
+    # V-18 修复：__main__ 副本属性可能缺失/为 None，一律 getattr 兜底，禁止裸访问抛 AttributeError
+    _m = _sv()
+    _provider_cfg = getattr(_m, "ai_provider_config", None) or {}
+    _provider_cfg.clear()
+    _provider_cfg.update({
         "type": provider_type or ai_mode,
         "base_url": base_url,
         "api_key": api_key,
@@ -171,18 +182,19 @@ async def api_save_config(request: Request):
         ai_external_set_mode(ai_mode, manual_timeout)
         # manual/off 接管模式必须覆盖配置里的 provider_type（否则会误走云端真实 API）
         _eff_type = ai_mode if ai_mode in ("manual", "off") else (provider_type or "openai")
-        _sv().ai_provider = create_ai_provider(
+        _new_provider = create_ai_provider(
             provider_type=_eff_type,
             base_url=base_url,
             api_key=api_key,
             model=model,
             manual_timeout=manual_timeout,
         )
-        set_internal_ai_provider(_sv().ai_provider)
-        print(f"[Config] AI Provider 已重新加载: {_sv().ai_provider.provider_type} (ai_mode={ai_mode})")
+        setattr(_m, "ai_provider", _new_provider)
+        set_internal_ai_provider(_new_provider)
+        print(f"[Config] AI Provider 已重新加载: {_new_provider.provider_type} (ai_mode={ai_mode})")
     except Exception as e:
         print(f"[Config] AI Provider 重新加载失败: {e}")
-        _sv().ai_provider = None
+        setattr(_m, "ai_provider", None)
     return {
         "success": True,
         "configured": bool(provider_type and api_key),

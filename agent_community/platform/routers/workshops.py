@@ -190,11 +190,15 @@ async def delete_workshop(ws_id: str):
         return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
     # 1) 状态机记录清理：工作间彻底退出状态机（含 timeout/discussing 卡死残留）
     sm_removed = task_state_machine.remove(ws_id)
-    # 2) 工作区目录移入回收站（不物理删除，可恢复）
+    # 2) 插话池清理：同步移除该工作间全部插话条目（防 interjects.json 脏数据残留）
+    #    V-18 修复（缺陷 D）：删除工作间不再遗留插话池条目
+    it_removed = interject_store.remove_workshop(ws_id)
+    # 3) 工作区目录移入回收站（不物理删除，可恢复）
     trash_result = await asyncio.to_thread(_trash_bridge_dir, ws.workspace_dir) \
         if ws.workspace_dir and os.path.isdir(ws.workspace_dir) else {"trashed": False, "reason": "目录不存在或未记录"}
     save_state()
-    return {"success": True, "deleted": ws_id, "state_machine_removed": sm_removed, "trash": trash_result}
+    return {"success": True, "deleted": ws_id, "state_machine_removed": sm_removed,
+            "interjects_removed": it_removed, "trash": trash_result}
 
 @router.get("/api/workshops/stale")
 async def list_stale_workshops():
@@ -250,11 +254,14 @@ async def recycle_stale_workshops(request: Request):
             skipped.append({"workshop_id": wid, "reason": f"not_stale({j['reason']})"})
             continue
         sm_removed = task_state_machine.remove(wid)
+        # V-18 修复（缺陷 D）：回收卡死工作间同样同步清理插话池
+        it_removed = interject_store.remove_workshop(wid)
         trash_result = await asyncio.to_thread(_trash_bridge_dir, ws.workspace_dir) \
             if ws.workspace_dir and os.path.isdir(ws.workspace_dir) else {"trashed": False, "reason": "目录不存在或未记录"}
         workshops.pop(wid, None)
         recycled.append({"workshop_id": wid, "name": ws.name,
-                         "state_machine_removed": sm_removed, "trash": trash_result})
+                         "state_machine_removed": sm_removed, "interjects_removed": it_removed,
+                         "trash": trash_result})
     save_state()
     return {"success": True, "recycled": recycled, "skipped": skipped}
 

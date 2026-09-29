@@ -590,7 +590,7 @@ async def harness_bridge_generate(harness_id: str, request: Request):
     不依赖 LLM 自由设计。生成后自动登记桥坐标（bridge_dir）。
     body: {"template": "file_poll", "out_dir": "可选输出目录"}
     """
-    from ..bridge_factory import generate, safe_slug, list_templates
+    from ..bridge_factory import generate, safe_slug, list_templates, BridgeTemplateError
     try:
         body = await request.json()
     except Exception:
@@ -617,13 +617,14 @@ async def harness_bridge_generate(harness_id: str, request: Request):
                 {"error": f"harness {harness_id} 未配置 acp_command，无法生成 cli_acp 桥"},
                 status_code=400,
             )
+        ai = info.ai
         params = {
             "HARNESS_ID": harness_id,
             "ACP_COMMAND": acp_command,
-            "ACP_CWD": (info.acp_cwd or "").strip(),
-            "MODEL_NAME": (info.ai.model_name if info.ai else "") or "",
-            "PROVIDER": (info.ai.provider if info.ai else "") or "",
-            "DESCRIPTION": (info.ai.description if info.ai else "") or "",
+            "ACP_CWD": (info.acp_cwd or "").strip() or str(Path(__file__).resolve().parent.parent),
+            "MODEL_NAME": (getattr(ai, "model_name", "") if ai else "") or "unknown-model",
+            "PROVIDER": (getattr(ai, "provider", "") if ai else "") or "unknown",
+            "DESCRIPTION": (getattr(ai, "description", "") if ai else "") or f"agent_community harness {harness_id}",
         }
     elif template == "file_poll":
         wakeup_dir = (info.wakeup_dir or "").strip()
@@ -668,6 +669,8 @@ async def harness_bridge_generate(harness_id: str, request: Request):
         target = bridges_root / safe_slug(harness_id)
     try:
         bridge_file = generate(template, params, target)
+    except BridgeTemplateError as e:
+        return Utf8JSONResponse({"error": f"桥生成参数校验失败: {e}"}, status_code=400)
     except Exception as e:
         return Utf8JSONResponse({"error": f"桥生成失败: {e}"}, status_code=500)
     # 自动登记桥坐标
