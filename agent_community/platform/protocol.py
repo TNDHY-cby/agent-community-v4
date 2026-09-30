@@ -411,6 +411,7 @@ class WakeupMethod(str, Enum):
     CLIPBOARD = "clipboard"  # 剪贴板桥接：写入剪贴板，用户手动粘贴到 Harness 会话
     ACP = "acp"              # ACP（Agent Client Protocol）：平台 spawn 子进程走 JSON-RPC stdio
     HTTP_API = "http_api"    # HTTP API：平台 POST 到 harness 自带的 HTTP API（如示例 3721 /message），harness 自主处理
+    MCP = "mcp"              # MCP 客户端：平台作为 MCP 客户端连接远程 Streamable HTTP MCP 服务器（tools/list 动态发现、tools/call 直调）
 
 
 class WakeupMessage(BaseModel):

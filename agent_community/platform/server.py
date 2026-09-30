@@ -1291,7 +1291,7 @@ async def api_command(request: Request):
 # ============ 插件注册表（车间底部插件接口区） ============
 PLUGINS_FILE = DATA_DIR / "plugins.json"
 PLUGIN_MODES_FILE = DATA_DIR / "workshop_modes.json"
-PLUGIN_TYPES = ("http", "cmd")
+PLUGIN_TYPES = ("http", "cmd", "mcp")
 
 # ============ 工作间工作模式（车间底部插件接口区） ============
 def _load_workshop_modes() -> dict:

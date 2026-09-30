@@ -1468,7 +1468,7 @@ async function wsvPluginLoad(){
     const names=Object.keys(plugs);
     box.innerHTML=names.length?names.map(n=>{
       const p=plugs[n];
-      return `<div class="wsv-plug-item"><b>${esc(n)}</b><span class="pt">${p.type==='http'?'HTTP':'命令'}</span><span class="tg" title="${esc(p.target)}">${esc(p.target)}</span><button class="btn" onclick="wsvPluginInvoke('${esc(n)}')">调用</button><button class="btn" onclick="wsvPluginDel('${esc(n)}')">删除</button></div>`;
+      return `<div class="wsv-plug-item"><b>${esc(n)}</b><span class="pt">${p.type==='http'?'HTTP':(p.type==='mcp'?'MCP':'命令')}</span><span class="tg" title="${esc(p.target)}">${esc(p.target)}</span><button class="btn" onclick="wsvPluginInvoke('${esc(n)}')">调用</button><button class="btn" onclick="wsvPluginDel('${esc(n)}')">删除</button></div>`;
     }).join(''):'<div class="id-empty">暂无插件，注册一个试试</div>';
   }catch(e){box.innerHTML='<div class="id-empty">加载失败</div>';}
 }

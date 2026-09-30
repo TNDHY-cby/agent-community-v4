@@ -47,7 +47,7 @@ async def api_plugins_add(request: Request):
         return Utf8JSONResponse({"error": "name 与 target 不能为空"}, status_code=400)
     if ptype not in PLUGIN_TYPES:
         return Utf8JSONResponse({"error": f"type 仅支持 {'/'.join(PLUGIN_TYPES)}"}, status_code=400)
-    if ptype == "http" and not target.startswith(("http://", "https://")):
+    if ptype in ("http", "mcp") and not target.startswith(("http://", "https://")):
         return Utf8JSONResponse({"error": "http 类型 target 须为 http(s):// 开头"}, status_code=400)
     plugs = _load_plugins()
     if name in plugs:
@@ -87,6 +87,26 @@ async def api_plugins_invoke(name: str, request: Request):
                 resp = await client.get(plug["target"])
             text = (resp.text or "")[:500]
             return {"success": True, "output": f"HTTP {resp.status_code} · {text}"}
+        elif plug["type"] == "mcp":
+            # MCP 工具：连接远程 MCP 服务器，单工具直接调用，多工具返回清单
+            from ..mcp_client import mcp_call_tool, mcp_list_tools
+            _url = plug["target"]
+            try:
+                _tools = await mcp_list_tools(_url)
+            except Exception as e:
+                return {"success": False, "output": f"MCP tools/list 失败: {e}"}
+            if not _tools:
+                return {"success": False, "output": "MCP 服务器未提供工具"}
+            if len(_tools) == 1:
+                _tname = _tools[0].get("name")
+                try:
+                    _res = await mcp_call_tool(_url, _tname, {})
+                except Exception as e:
+                    return {"success": False, "output": f"MCP tools/call 失败: {e}"}
+                return {"success": bool(_res["ok"]), "output": f"[MCP:{_tname}] {str(_res['text'])[:2000]}"}
+            _names = "、".join(str(_t.get("name", "")) for _t in _tools[:20])
+            return {"success": True, "output": f"MCP 服务器有 {len(_tools)} 个工具：{_names}（带参数调用请注册为外端 Agent）"}
+
         else:  # cmd
             # V-9c 修复：危险拦截必须作用于"实际执行的命令"。
             # 之前仅校验注册时 target，body 里的 command 未参与执行与校验，

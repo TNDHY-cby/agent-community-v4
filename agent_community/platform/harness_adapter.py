@@ -349,7 +349,9 @@ class HarnessBridge:
     async def send(self, msg: HarnessMessage) -> tuple[bool, str]:
 
         """向 Harness 发送消息，自动选择最优 transport"""
-
+        # ── MCP 客户端类型：平台以 MCP 客户端身份直调远程工具（同步兑现 future）──
+        if getattr(getattr(self.session, "info", None), "wakeup_method", None) == WakeupMethod.MCP:
+            return await self._send_mcp(msg)
         transport = self.session.transport
 
 
@@ -385,6 +387,71 @@ class HarnessBridge:
         return self._send_pipe(msg)
 
 
+
+    async def _send_mcp(self, msg: HarnessMessage) -> tuple[bool, str]:
+        """MCP 客户端发送：tools/call 直调远程 MCP 服务器，结果立即兑现 pending future。
+
+        工具选择优先级：
+          1) msg.payload.mcp_tool（或嵌套 exec_msg/delegation.payload.mcp_tool）显式指定；
+          2) 注册时动态拉取的 tools 中第一个工具（常见单工具 MCP 服务器）；
+          3) 未注册工具时回退 tools/list 现场拉取。
+        """
+        from .mcp_client import mcp_call_tool, mcp_list_tools
+        info = getattr(self.session, "info", None)
+        url = (getattr(info, "api_base_url", "") or "").strip() if info else ""
+        if not url:
+            return False, "MCP harness 缺少 api_base_url"
+        payload = msg.payload or {}
+        tool_name = ""
+        arguments = None
+        if isinstance(payload, dict):
+            tool_name = str(payload.get("mcp_tool") or "").strip()
+            if isinstance(payload.get("mcp_arguments"), dict):
+                arguments = payload["mcp_arguments"]
+            # 嵌套透传：上层可把工具选择放进 exec_msg/delegation.payload
+            if not tool_name or arguments is None:
+                for key in ("exec_msg", "delegation"):
+                    sub = payload.get(key)
+                    if not isinstance(sub, dict):
+                        continue
+                    sp = sub.get("payload")
+                    if not isinstance(sp, dict):
+                        continue
+                    if not tool_name and sp.get("mcp_tool"):
+                        tool_name = str(sp.get("mcp_tool") or "").strip()
+                    if arguments is None and isinstance(sp.get("mcp_arguments"), dict):
+                        arguments = sp["mcp_arguments"]
+        if not tool_name:
+            tools = list(getattr(info, "tools", []) or [])
+            if tools:
+                tool_name = tools[0].name
+            else:
+                try:
+                    remote = await mcp_list_tools(url)
+                    if remote and remote[0].get("name"):
+                        tool_name = remote[0]["name"]
+                except Exception as e:
+                    return False, f"MCP tools/list 失败: {e}"
+        if not tool_name:
+            return False, "MCP 服务器未提供可用工具"
+        if arguments is None:
+            arguments = {}
+        try:
+            res = await mcp_call_tool(url, tool_name, arguments)
+        except Exception as e:
+            return False, f"MCP tools/call 失败: {e}"
+        result_msg = HarnessMessage(
+            harness_id=self.session.harness_id,
+            direction="from_harness",
+            msg_type=HarnessMessageType.RESULT,
+            content=str(res["text"])[:8000],
+            task_id=msg.task_id or "",
+            delegation_id=msg.delegation_id or "",
+            payload={"ok": bool(res["ok"]), "raw": res["raw"], "mcp_tool": tool_name},
+        )
+        if msg.delegation_id:
+            self.on_harness_reply(result_msg)
+        return True, f"mcp:{tool_name}:{'ok' if res['ok'] else 'err'}"
 
     async def _send_http(self, msg: HarnessMessage) -> tuple[bool, str]:
 

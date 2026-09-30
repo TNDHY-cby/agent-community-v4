@@ -43,6 +43,45 @@ from uuid import uuid4
 
 # ── 共享可变状态（..state 单例，双副本一致）──
 from ..state import _bridge_tests_inflight, agents, assistant_history, assistant_history_max, pending_activations, pending_bridge_tests, pending_pre_register, pending_tasks, workshops
+from ..protocol import HarnessTool
+
+
+async def _maybe_pull_mcp_tools(info: HarnessInfo) -> HarnessInfo:
+    """MCP 客户端类型：注册时 tools 为空则从远程 MCP 服务器 tools/list 动态拉取。
+
+    失败不阻断注册（工具为空时平台按“无工具外端 Agent”对待，调用时仍可回退重拉）。
+    """
+    if getattr(info, "wakeup_method", None) != WakeupMethod.MCP:
+        return info
+    if not (getattr(info, "api_base_url", "") or "").strip():
+        return info
+    if info.tools:
+        return info
+    try:
+        from ..mcp_client import mcp_list_tools
+
+        remote = await mcp_list_tools(info.api_base_url)
+    except Exception as e:
+        print(f"[mcp_client] {info.harness_id} tools/list 拉取失败: {e}", flush=True)
+        return info
+    if not remote:
+        return info
+    tools: list[HarnessTool] = []
+    for t in remote:
+        if not isinstance(t, dict) or not t.get("name"):
+            continue
+        tools.append(
+            HarnessTool(
+                name=str(t["name"]),
+                description=str(t.get("description") or ""),
+                parameters=t.get("inputSchema") or {},
+                capability_tag=str(t.get("capability_tag") or ""),
+            )
+        )
+    if tools:
+        info.tools = tools
+        print(f"[mcp_client] {info.harness_id} 动态拉取 tools/list 共 {len(tools)} 个工具", flush=True)
+    return info
 
 @router.post("/api/harness/pre-register")
 async def harness_pre_register(request: Request):
@@ -109,6 +148,50 @@ async def harness_probe_register(request: Request):
     process_hint = body.get("process_hint") or pre.get("process_hint", "") or hid
     port_hint = body.get("port_hint") or pre.get("port_hint")
     path_hint = body.get("path_hint") or pre.get("path_hint", "")
+    # ── MCP 客户端类型：显式声明 wakeup_method=mcp 时跳过进程/端口探测，直连远程 MCP ──
+    mcp_url = (str(body.get("api_base_url") or "").strip()
+               or str(pre.get("api_base_url") or "").strip())
+    is_mcp = (str(body.get("wakeup_method") or "").strip().lower() == "mcp"
+              or str(pre.get("wakeup_method") or "").strip().lower() == "mcp")
+    if is_mcp and not mcp_url:
+        return Utf8JSONResponse({"error": "mcp 类型需要 api_base_url（远程 MCP 服务器地址，如 http://localhost:9527）"}, status_code=400)
+    if is_mcp:
+        name = pre.get("harness_name", hid)
+        ok, err = validate_harness_api_url(mcp_url)
+        if not ok:
+            return Utf8JSONResponse({"error": f"api_base_url 校验失败: {err}"}, status_code=400)
+        info = HarnessInfo(**{
+            "harness_id": hid,
+            "harness_name": name,
+            "harness_type": pre.get("harness_type", "mcp-server"),
+            "wakeup_method": "mcp",
+            "api_base_url": mcp_url,
+            "ai": pre.get("ai") or {"model_name": "unknown", "provider": "mcp",
+                                    "capabilities": pre.get("capabilities", []), "description": ""},
+            "tools": pre.get("tools", []),
+            "description": pre.get("description", f"{name} MCP 客户端接入"),
+        })
+        info = await _maybe_pull_mcp_tools(info)
+        sess, bridge = harness_manager.register(info)
+        card = harness_to_agent_card(info)
+        agents[card.agent_id] = card
+        sys_msg = Message(
+            type=MessageType.SYSTEM, from_agent="system",
+            content=f"外部 Harness「{info.harness_name}」已接入（MCP 客户端，AI: {info.ai.model_name}）",
+            payload={"harness": info.model_dump(), "agent": card.model_dump()},
+        )
+        _append_hall(sys_msg)
+        await bcast_to_clients(sys_msg)
+        save_state()
+        pending_pre_register.pop(hid, None)
+        return Utf8JSONResponse({
+            "success": True,
+            "harness_id": hid,
+            "agent_id": card.agent_id,
+            "wakeup_method": info.wakeup_method.value,
+            "api_base_url": mcp_url,
+            "probe": "mcp(client):skip-probe",
+        })
     # 用 ProbeHarnessTool 探测
     from ..tools.assistant_tools import ProbeHarnessTool
     probe = ProbeHarnessTool()
@@ -195,14 +278,21 @@ async def register_harness(request: Request):
     if not ok:
         return Utf8JSONResponse({"error": f"wakeup_dir 校验失败: {err}"}, status_code=400)
     # V-4 修复：acp_command 校验（防 cmd /c 等解释器包装导致的 RCE）
-    ok, err = validate_acp_command(info.acp_command or "")
-    if not ok:
-        return Utf8JSONResponse({"error": f"acp_command 校验失败: {err}"}, status_code=400)
+    # MCP 客户端类型不需要本地拉起命令，豁免该校验（api_base_url 已做 SSRF 校验）
+    if getattr(info, "wakeup_method", None) != WakeupMethod.MCP:
+        ok, err = validate_acp_command(info.acp_command or "")
+        if not ok:
+            return Utf8JSONResponse({"error": f"acp_command 校验失败: {err}"}, status_code=400)
     # 注册到 manager
     sess, bridge = harness_manager.register(info)
-    # ── 自动探测 HTTP API（http_api 类）：注册时若带 api_base_url，探测确认可用性
-    #    并自动把 wakeup_method 升级为 http_api（平台就能直接 HTTP 推送唤醒，而非只写文件）
-    if getattr(info, "api_base_url", ""):
+    # ── MCP 客户端类型：tools 为空时从远程 MCP 服务器 tools/list 动态拉取并持久化 ──
+    if getattr(info, "wakeup_method", None) == WakeupMethod.MCP:
+        info = await _maybe_pull_mcp_tools(info)
+        if info.tools:
+            harness_manager.register(info)  # 重新注册以持久化动态 tools
+    elif getattr(info, "api_base_url", ""):
+        # ── 自动探测 HTTP API（http_api 类）：注册时若带 api_base_url，探测确认可用性
+        #    并自动把 wakeup_method 升级为 http_api（平台就能直接 HTTP 推送唤醒，而非只写文件）
         _probe_ok, _probe_detail = probe_http_api(info.api_base_url, info.api_message_path or "/message")
         if _probe_ok:
             info.wakeup_method = WakeupMethod.HTTP_API
