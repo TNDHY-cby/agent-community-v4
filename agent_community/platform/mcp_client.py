@@ -30,6 +30,14 @@ class McpError(Exception):
     """MCP 客户端错误（连接 / 协议 / 工具调用）"""
 
 
+class McpAsyncPendingError(McpError):
+    """MCP 异步调用标记：服务器以 202 Accepted 接受调用但未同步返回结果。
+
+    当前最小实现不回收异步结果，调用方应将此状态显式转成"待确认/未完成"
+    的 task-result，避免把 pending 误判为调用成功。
+    """
+
+
 def validate_mcp_url(url: str) -> tuple[bool, str]:
     """MCP URL 校验：复用平台防 SSRF 思路（允许回环/本机，禁云元数据，域名须解析公网）。"""
     from ..server import validate_harness_api_url  # 延迟导入避免循环
@@ -50,19 +58,35 @@ async def mcp_post_json(url: str, payload: dict, timeout: float = MCP_DEFAULT_TI
         raise McpError(f"MCP 连接失败: {e}") from e
     ctype = (resp.headers.get("content-type") or "").lower()
     if "text/event-stream" in ctype:
-        # SSE：逐行取 data: 开头的 JSON 载荷
+        # SSE：优先按行取完整 JSON（多数服务器单行 data 发送）；
+        # 若单行均非 JSON，再尝试将本事件全部 data 行直接拼接（JSON 拆行场景，
+        # 拼接不引入分隔符，避免字面换行破坏 JSON 文本）。
+        data_lines: list[str] = []
         for line in resp.text.splitlines():
             line = line.strip()
             if line.startswith("data:"):
                 data = line[5:].strip()
                 if data:
-                    try:
-                        return json.loads(data)
-                    except json.JSONDecodeError:
-                        continue
+                    data_lines.append(data)
+        for data in data_lines:
+            try:
+                return json.loads(data)
+            except json.JSONDecodeError:
+                continue
+        if data_lines:
+            joined = "".join(data_lines)
+            try:
+                return json.loads(joined)
+            except json.JSONDecodeError as e:
+                raise McpError(f"MCP SSE data 载荷非 JSON: {joined[:200]}") from e
         raise McpError(f"MCP SSE 响应无有效 data 载荷 (HTTP {resp.status_code})")
     if resp.status_code >= 400:
         raise McpError(f"MCP HTTP {resp.status_code}: {resp.text[:300]}")
+    if resp.status_code in (202, 204) or not resp.content:
+        # 202 Accepted / 空体：服务器已接受请求但结果异步产生（Streamable HTTP pending）
+        raise McpAsyncPendingError(
+            f"MCP HTTP {resp.status_code} 空响应：服务器异步接受（pending），当前最小实现不回收异步结果"
+        )
     try:
         return resp.json()
     except Exception as e:
@@ -124,8 +148,9 @@ async def mcp_call_tool(
 ) -> dict:
     """调用远程工具，返回规范化结果 {ok, text, raw}。
 
-    仅处理同步 content 结果（text / structuredContent）；异步 pending 状态
-    需额外轮询（完整协议能力），当前最小实现不处理，由上层感知超时。
+    同步 content 结果（text / structuredContent）正常返回；服务器返回
+    异步 pending（202 Accepted / 空体 / result.status=="pending"）时，
+    显式标记 ok=False 并附 [MCP async] 说明，避免被上层误判为调用成功。
     """
     await mcp_initialize(url, timeout)
     await mcp_notify_initialized(url, timeout)
@@ -135,9 +160,23 @@ async def mcp_call_tool(
         "method": "tools/call",
         "params": {"name": name, "arguments": arguments or {}},
     }
-    msg = await mcp_post_json(url, payload, timeout)
+    try:
+        msg = await mcp_post_json(url, payload, timeout)
+    except McpAsyncPendingError as e:
+        return {
+            "ok": False,
+            "text": f"[MCP async] {e}",
+            "raw": {"_async_pending": True, "tool": name},
+        }
     _raise_if_error(msg)
     result = msg.get("result")
+    if isinstance(result, dict) and result.get("status") == "pending":
+        # 服务端在 JSON 响应体内声明 pending（未同步完成）
+        return {
+            "ok": False,
+            "text": "[MCP async] 工具调用返回 status=pending（异步执行中），当前最小实现不回收异步结果",
+            "raw": result,
+        }
     is_err = bool(result.get("isError")) if isinstance(result, dict) else False
     text_parts = []
     if isinstance(result, dict):
