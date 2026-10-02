@@ -1,4 +1,4 @@
-﻿"""外端Agent生产合作社（External Agent Community））v4 安全回归测试（黑盒 + 静态断言混合）
+"""外端Agent生产合作社（External Agent Community））v4 安全回归测试（黑盒 + 静态断言混合）
 
 黑盒用例直连运行中的服务（默认 http://127.0.0.1:18920），
 只发会被安全校验拒绝的恶意请求，不产生任何注册/状态副作用；
@@ -135,8 +135,23 @@ def test_ai_pending_redacted():
 
 
 # ── 静态防线断言（防回退）──────────────────────────────────
+def _platform_source() -> str:
+    """把整个 platform 包（server.py + routers/ + core/）拼成一份源码。
+
+    V-9 把单体 server.py 拆成 routers/ 后，防线调用点不再集中在 server.py。
+    静态断言必须扫全包，否则会把「已经接线的防线」误判成缺失
+    —— 这正是 2026-10-02 修这两条断言的原因（它们已红了一段时间没人管）。
+    """
+    parts = [SERVER_PY.read_text(encoding="utf-8")]
+    pkg = REPO_ROOT / "agent_community" / "platform"
+    for sub in ("routers", "core"):
+        for f in sorted((pkg / sub).glob("*.py")):
+            parts.append(f.read_text(encoding="utf-8"))
+    return "\n".join(parts)
+
+
 def test_sanitize_wired_static():
-    src = SERVER_PY.read_text(encoding="utf-8")
+    src = _platform_source()
     assert "_sanitize_harness_content" in src, "提示注入清洗函数缺失"
     # 三个入口必须接入清洗：task-result 委托链、task-result 讨论区、harness message
     assert src.count("_sanitize_harness_content(") >= 4, "清洗函数未覆盖全部外部内容入口"
@@ -149,7 +164,8 @@ def test_limits_static():
 
 
 def test_key_env_warning_static():
-    src = CONFIG_PY.read_text(encoding="utf-8")
+    # V-9 后环境变量提示落在 platform/routers/config.py（不在根 config.py），扫全包
+    src = _platform_source() + (REPO_ROOT / "agent_community" / "config.py").read_text(encoding="utf-8")
     assert "AC_AI_API_KEY" in src, "config.py 缺少环境变量注入提示"
 
 
