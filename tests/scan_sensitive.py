@@ -102,9 +102,14 @@ def main() -> int:
     secrets = [h for h in hits if h[0] == "secret"]
     policy = [h for h in hits if h[0] != "secret"]
 
-    def dump(rows: list[tuple[str, str, int, str, str]]) -> None:
-        for _sev, label, ln, rel, text in rows:
+    MAX_POLICY_LINES = 20
+
+    def dump(rows: list[tuple[str, str, int, str, str]], limit: int | None = None) -> None:
+        shown = rows if limit is None else rows[:limit]
+        for _sev, label, ln, rel, text in shown:
             print(f"  - [{label}] {rel}:{ln}  {text}")
+        if limit is not None and len(rows) > limit:
+            print(f"  ... 另有 {len(rows) - limit} 处同类残留未列出（直接跑 tests/scan_sensitive.py 看全量）")
 
     if secrets:
         print(f"[FAIL] 扫描 {scanned} 个文件：{len(secrets)} 处疑似真实凭据（必须处理）")
@@ -112,9 +117,10 @@ def main() -> int:
     if policy:
         if SECRETS_ONLY:
             print(f"[WARN] 另有 {len(policy)} 处策略类残留（本地路径 / 真实名 / 元数据），未拦截，请人工判断：")
+            dump(policy, MAX_POLICY_LINES)
         else:
             print(f"[FAIL] 另有 {len(policy)} 处策略类残留（本地路径 / 真实名 / 元数据）：")
-        dump(policy)
+            dump(policy)
 
     if secrets or (policy and not SECRETS_ONLY):
         return 1
