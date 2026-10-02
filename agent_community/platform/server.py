@@ -3081,7 +3081,9 @@ def _apply_harness_reply(ws_id, member_id, text, harness_id="", source="harness"
         #   done → completed（工作完成，前端据此放行三级讨论入口）
         #   blocked → blocked（卡点，保持阻塞态）
         #   progress / 无 status 普通回报 → entered（已进入，避免状态停在 completed/failed 导致重复激活）
-        if member and member.status in ("activating", "pending", "completed", "failed", "blocked", "working", "stuck"):
+        # V-25 F1：entered 成员首次 done 回报也必须升级 completed（此前遗漏 entered 导致
+        # entered 状态成员 done 后仍停留 entered，_maybe_auto_review 全员完成判定永不成立）
+        if member and member.status in ("activating", "pending", "entered", "completed", "failed", "blocked", "working", "stuck"):
             if status_norm == "done":
                 if member.status != "completed":
                     # V2-1：首次完成回报 → 经验沉淀 + capability_ledger 信誉加分（重复 done 不重复加分）
@@ -3607,9 +3609,44 @@ def _msg_zone_for(ws):
     """当前阶段默认所属讨论区：1 平台 / 2 组长 / 3 进度。"""
     return _ZONE_BY_STATUS.get(ws.status, 1)
 
+# ════════════════ V-25 敏感数据检测（2026-09-30）════════════════
+# 密钥等敏感数据上传工作间即拦截：命中模式 → 拒绝写入讨论区并返回拦截提示。
+# 高置信度模式，避免误伤正常业务文本；键值对要求值长度 ≥12。
+_SENSITIVE_PATTERNS = [
+    (r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", "私钥块"),
+    (r"\bsk-[A-Za-z0-9]{16,}\b", "API Key（sk- 风格）"),
+    (r"\bghp_[A-Za-z0-9]{20,}\b", "GitHub Token"),
+    (r"\bgithub_pat_[A-Za-z0-9_]{20,}\b", "GitHub PAT"),
+    (r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b", "JWT Token"),
+    (r"\bBearer\s+[A-Za-z0-9._\-]{16,}\b", "Bearer Token"),
+    (r"(?:api[_-]?key|secret|token|passwd|password|access[_-]?key|private[_-]?key|authorization)\s*[:：=]\s*['\"]?[A-Za-z0-9_\-./+]{12,}", "密钥键值对"),
+]
+_SENSITIVE_RE = [(re.compile(p), name) for p, name in _SENSITIVE_PATTERNS]
+
+def _scan_sensitive(text: str):
+    """扫描文本中的敏感数据模式。返回 (命中与否, 命中类型)。"""
+    if not text:
+        return False, ""
+    for rx, name in _SENSITIVE_RE:
+        if rx.search(text):
+            return True, name
+    return False, ""
+
 def _append_msg(ws, role, content, zone=None, display_name="", role_title="", harness_id="", from_member="", source="", meta=None):
     """讨论区消息唯一写入口：分配自增 seq、落 zone、补发言人展示字段。
-    meta: 可选扩展字段 dict（如 role=member 回报的 status/summary），仅在非空时写入消息体。"""
+    meta: 可选扩展字段 dict（如 role=member 回报的 status/summary），仅在非空时写入消息体。
+    V-25：内容命中敏感数据模式（密钥/Token/私钥等）时拒绝写入，改写为系统拦截提示，杜绝密钥经讨论区泄露。"""
+    _hit, _kind = _scan_sensitive(str(content or ""))
+    if _hit:
+        print(f"[secret-guard] 拦截含敏感数据（{_kind}）的讨论区写入: role={role} from={from_member or harness_id or 'unknown'} len={len(str(content or ''))}", flush=True)
+        content = f"【敏感数据拦截】本条内容包含疑似密钥/Token（{_kind}），已拒绝写入工作间。"
+        role = "notice"
+        meta = None
+        display_name = ""
+        role_title = ""
+        harness_id = ""
+        from_member = ""
+        source = "secret-guard"
     if zone is None:
         zone = _msg_zone_for(ws)
     msg = {
@@ -3726,18 +3763,50 @@ def _member_progress_summary(ws: Workshop, maxlen=160):
 _HOOK_RE = re.compile(r"@唤[:：]\s*([^\s，。,!！?？]+)")
 _HOOK_HELP_WORDS = ("求", "请", "支援", "帮忙", "交给你", "你来", "接手", "处理")
 def _find_member_by_hook(ws: Workshop, name: str):
-    """按钩子名匹配成员：角色名 / 员工名 / harness_id。"""
+    """按钩子名匹配成员：member_id（id: 前缀）优先精确，其次角色名 / 员工名 / harness_id。
+    V-25 F2：支持 @唤:id:<member_id> 精确点名，同名成员不再只命中第一个。"""
     name = name.strip()
     if not name:
         return None
+    # 精确 member_id 钩子：@唤:id:xxx 或 @唤:成员ID:xxx（唯一无歧义）
+    low = name.lower()
+    for prefix in ("id:", "成员id:", "memberid:"):
+        if low.startswith(prefix):
+            mid = name.split(":", 1)[1].strip()
+            for m in ws.members:
+                if m.member_id == mid:
+                    return m
+            return None
     for m in ws.members:
         if m.role and m.role == name:
             return m
-        if m.display_name and m.display_name == name:
-            return m
         if name in (m.harness_ids or []):
             return m
+        if m.display_name and m.display_name == name:
+            return m
     return None
+def _find_members_by_hook(ws: Workshop, name: str):
+    """按钩子名匹配成员列表：member_id 精确钩子返回单元素；普通名字返回全部同名成员（消除同名歧义）。"""
+    name = name.strip()
+    if not name:
+        return []
+    low = name.lower()
+    for prefix in ("id:", "成员id:", "memberid:"):
+        if low.startswith(prefix):
+            mid = name.split(":", 1)[1].strip()
+            for m in ws.members:
+                if m.member_id == mid:
+                    return [m]
+            return []
+    out = []
+    for m in ws.members:
+        if m.role and m.role == name:
+            out.append(m)
+        elif name in (m.harness_ids or []):
+            out.append(m)
+        elif m.display_name and m.display_name == name:
+            out.append(m)
+    return out
 def _detect_hooks(ws: Workshop, text: str):
     """检测消息中的钩子，返回需激活的成员列表。
     - L1 显式钩子：末尾单独一段 @唤:<角色/员工名/全体>，命中即激活。
@@ -3758,9 +3827,10 @@ def _detect_hooks(ws: Workshop, text: str):
                     if mem.status not in ("pending", "offline") and mem not in targets:
                         targets.append(mem)
                 continue
-            mem = _find_member_by_hook(ws, name)
-            if mem and mem not in targets:
-                targets.append(mem)
+            # V-25 F2：同名成员全部激活；支持 @唤:id:<member_id> 精确点名
+            for mem in _find_members_by_hook(ws, name):
+                if mem and mem not in targets:
+                    targets.append(mem)
         return targets
     # L2：规则补钩（正文含成员名/角色名 + 求援词）
     for mem in ws.members:
@@ -5297,4 +5367,4 @@ if __name__ == "__main__":
     print(f"Pipe dir: {PIPE_DIR}")
     print(f"CDP mirror: {'enabled (AC_CDP_MIRROR_ENABLED=1, 将探测 9222-9225 浏览器调试端口)' if os.environ.get('AC_CDP_MIRROR_ENABLED', '0') == '1' else 'disabled (默认，仅协议级映射)'}")
     print(f"Registered agents: {list(agents.keys())}")
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

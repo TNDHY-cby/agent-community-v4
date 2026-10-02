@@ -292,6 +292,14 @@ async def workshop_discuss(ws_id: str, request: Request):
     user_msg = (body.get("message") or "").strip()
     if not user_msg:
         return Utf8JSONResponse({"error": "消息不能为空"}, status_code=400)
+    # V-25 F3：用户消息上传工作间前先做敏感数据扫描，命中即报错拒绝写入（不落讨论区）
+    from ..server import _scan_sensitive
+    _hit, _kind = _scan_sensitive(user_msg)
+    if _hit:
+        return Utf8JSONResponse(
+            {"error": f"检测到敏感数据（{_kind}），已拒绝上传工作间", "success": False},
+            status_code=400,
+        )
     if ws.status not in ("division", "review", "running"):
         ws.status = "discussing"
     _u = _append_msg(ws, "user", user_msg)
@@ -342,6 +350,15 @@ async def workshop_discuss(ws_id: str, request: Request):
         )
     except Exception as e:
         reply = f"[AI 讨论失败: {e}]"
+    # V-25 F4：AI key 失效等错误文本（[Error: HTTP 401] / [AI 讨论失败: / [AI 降级]）不再静默写入讨论区
+    # 冒充正常回复（此前返回 200 但流转静默失效）；改为显式报错，由前端展示失败原因，绝不落讨论区。
+    _ai_failed = str(reply or "").startswith(("[Error:", "[AI 讨论失败:", "[AI 降级]"))
+    if _ai_failed:
+        print(f"[discuss] AI 调用失败，已显式报错（不再静默写入讨论区）: {str(reply)[:200]}", flush=True)
+        return Utf8JSONResponse(
+            {"success": False, "error": "AI 服务不可用（密钥失效或后端错误）", "detail": str(reply)[:300], "status": ws.status},
+            status_code=502,
+        )
     _append_msg(ws, "orchestrator", reply, zone=user_zone)
     # 三级讨论同台：平台 AI 回复后，同步把用户消息派发给组长 harness 实时参与讨论
     # （组长路径转向：二级讨论组长是指挥者；三级讨论组长转为「汇报+讨论」参与者，与平台 AI / 用户 / 员工同台）
