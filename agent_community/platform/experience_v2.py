@@ -211,3 +211,88 @@ def harness_reputation_bonus(
         "【信誉加权提示（平台依据 capability_ledger 历史信誉排序，"
         "同能力域信誉高的候选优先承接）】\n" + "\n".join(lines)
     )
+
+
+# ─────────────────────────────────────────────────────────────
+# V2-3：工作间完成评估闭环（观察 → 评估 → 沉淀 → 复用）
+# ─────────────────────────────────────────────────────────────
+
+def evaluate_workshop_completion(
+    ws,
+    *,
+    task_memory,
+    capability_ledger,
+    harness_manager,
+) -> dict:
+    """P1-2：工作间 complete 时自动评估结果质量并沉淀经验。
+
+    - 观察：ws.status == done，统计成员完成回报 / 讨论条数 / 进入工作人数；
+    - 评估：纯规则质量分 quality_score ∈ [0, 2]（完成覆盖 + 讨论活跃 + 全程无阻塞）；
+    - 沉淀：以 ws:{id}:done 为 task_id 写一条工作间级经验，覆盖更新、天然去重；
+    - 复用：capability_ledger 按评估分对全程正常回报的成员加权，供后续选人排序；
+    - 不新建平行结构，任何异常仅打印并返回 {"evaluated": False}，绝不阻塞完成流程。
+    """
+    try:
+        if ws is None:
+            return {"evaluated": False, "reason": "ws is None"}
+        ws_id = getattr(ws, "workshop_id", "") or ""
+        if not ws_id:
+            return {"evaluated": False, "reason": "no workshop_id"}
+        members = list(getattr(ws, "members", []) or [])
+        working = [m for m in members if getattr(m, "status", "") in ("entered", "working", "idle")]
+        covered = [
+            m for m in working
+            if getattr(m, "session", None) is not None and getattr(m.session, "summary", None)
+        ]
+        # 纯规则质量评估（零 LLM）
+        coverage = (len(covered) / len(working)) if working else 0.0
+        n_disc = len(getattr(ws, "discussion", []) or [])
+        active = min(1.0, n_disc / 8.0)
+        score = round(0.5 + coverage * 1.0 + active * 0.5, 3)
+        task_id = f"ws:{ws_id}:done"
+        title = (getattr(ws, "hall_content", None) or "工作间任务").strip()[:120]
+        caps_all = set()
+        hid_scores: dict[str, float] = {}
+        for m in covered:
+            hid = ((getattr(m, "harness_ids", None) or [None])[0]) if getattr(m, "harness_ids", None) else None
+            if not hid:
+                continue
+            caps = member_completion_caps(ws, m, harness_manager)
+            caps_all.update(caps)
+            per_score = 1.0 if coverage >= 0.5 else 0.7
+            hid_scores[hid] = per_score
+            if not task_memory.get(f"ws:{ws_id}:{m.member_id}"):
+                # 该成员此前未单独沉淀 → 完成回报兜底沉淀
+                produced = (getattr(m.session, "summary", None) or "").strip()[:300]
+                task_memory.add(HistoricalTask(
+                    task_id=f"ws:{ws_id}:{m.member_id}",
+                    title=title,
+                    description=produced,
+                    capabilities_used=caps,
+                    agent_executions={hid: produced} if produced else {},
+                    quality_score=per_score,
+                    duration_ms=0,
+                    completed_at=datetime.now().isoformat(),
+                ))
+        task_memory.add(HistoricalTask(
+            task_id=task_id,
+            title=title,
+            description=f"工作间完成评估：成员{len(working)}人，覆盖{len(covered)}人，讨论{n_disc}条，质量分{score}",
+            capabilities_used=sorted(caps_all) or ["general"],
+            agent_executions={},
+            quality_score=score,
+            duration_ms=0,
+            completed_at=datetime.now().isoformat(),
+        ))
+        for hid, per_score in hid_scores.items():
+            for cap in (caps_all or ["general"]):
+                capability_ledger.record(agent_id=hid, capability=cap, success=per_score >= 0.7, score=per_score, duration_ms=0)
+        print(
+            f"[exp-v2] 工作间完成评估已沉淀: ws={ws_id} score={score} "
+            f"members={len(working)} covered={len(covered)} task_memory_size={len(task_memory.tasks)}",
+            flush=True,
+        )
+        return {"evaluated": True, "quality_score": score, "covered": len(covered), "members": len(working)}
+    except Exception as _e:  # noqa: BLE001 - 评估失败不影响完成流程
+        print(f"[exp-v2] 工作间完成评估失败: {_e}", flush=True)
+        return {"evaluated": False, "reason": str(_e)}

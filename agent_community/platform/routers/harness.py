@@ -83,6 +83,33 @@ async def _maybe_pull_mcp_tools(info: HarnessInfo) -> HarnessInfo:
         print(f"[mcp_client] {info.harness_id} 动态拉取 tools/list 共 {len(tools)} 个工具", flush=True)
     return info
 
+# ── P1 身份凭证 / P2-1 审计（自 retired 副本回收）──
+from ..audit import audit_log as _audit_log
+from ..identity import check_request_token as _check_request_token
+from ..identity import issue_agent_token as _issue_agent_token
+
+
+def _harness_identity_check(harness_id: str, headers):
+    """P1 身份凭证：目标 harness 已签发 agent-token 时，校验 X-Agent-Token 头。
+
+    返回 None 表示通过；返回响应对象表示拒绝（401 缺头 / 403 校验失败）。
+    向后兼容：未签发 token 的存量旧 harness 直接放行，不破坏既有桥。
+    """
+    from ..server import Utf8JSONResponse
+    if not harness_id:
+        return None
+    sess = harness_manager.sessions.get(harness_id)
+    if not sess:
+        # 未知 harness：交由后续既有逻辑处理
+        return None
+    verdict = _check_request_token(
+        harness_id, getattr(sess.info, "metadata", None) or {}, headers
+    )
+    if verdict is None:
+        return None
+    _status, _message = verdict
+    return Utf8JSONResponse({"error": _message}, status_code=_status)
+
 @router.post("/api/harness/pre-register")
 async def harness_pre_register(request: Request):
     from ..server import Utf8JSONResponse, now_iso
@@ -320,11 +347,26 @@ async def register_harness(request: Request):
     if len(assistant_history) > assistant_history_max:
         del assistant_history[:-assistant_history_max]
     save_state()
+    # P1 身份凭证：为 Harness 签发 agent-token（幂等：已签发则沿用，不换新）
+    existing_token = (info.metadata or {}).get("agent_token") or ""
+    _token_pre = bool(existing_token)
+    if not existing_token:
+        existing_token = _issue_agent_token(info.harness_id)
+        meta = dict(info.metadata or {})
+        meta["agent_token"] = existing_token
+        info.metadata = meta
+        save_state()
+    # P2-1 审计：harness 注册（含 agent-token 签发）
+    _audit_log.record(
+        "harness.register", actor="system", target=info.harness_id,
+        detail=f"name={getattr(info, 'harness_name', '')} token={'reuse' if _token_pre else 'new'}",
+    )
     return {
         "success": True,
         "harness_id": info.harness_id,
         "agent_id": card.agent_id,
         "card": card.model_dump(),
+        "agent_token": existing_token,
     }
 
 @router.post("/api/harness/launch")
@@ -385,6 +427,10 @@ async def harness_message(request: Request):
         msg = HarnessMessage(**body)
     except Exception as e:
         return Utf8JSONResponse({"error": f"消息格式错误: {e}"}, status_code=400)
+    # P1 身份凭证：目标 harness 已签发 token 时，强制校验 X-Agent-Token 头（向后兼容）
+    _id_resp = _harness_identity_check(msg.harness_id, request.headers)
+    if _id_resp:
+        return _id_resp
     # V-14：外部 harness 主动上报内容做提示注入防护（进 pending futures 前）
     if isinstance(msg.content, str) and msg.content.strip():
         msg.content = _sanitize_harness_content(msg.content)
@@ -434,6 +480,12 @@ async def harness_task_result(request: Request):
     from ..server import _append_msg, _apply_harness_reply, _do_complete_workshop, _do_continue_workshop, _get_decision_mode, _sanitize_harness_content, _settle_vote, save_state
     """harness 桥回报任务结果。"""
     body = await request.json()
+    # P1 身份凭证：若该 harness 已签发 token，强制校验 X-Agent-Token（向后兼容）
+    _hid0 = str(body.get("harness_id") or "").strip()
+    if _hid0:
+        _id_resp = _harness_identity_check(_hid0, request.headers)
+        if _id_resp:
+            return _id_resp
     # ── 委托链结果兑现：无论 ok 真假，都要把回报路由给等待中的 Future ──
     # 否则 bridge.execute_subtask / review_subtask 会空等 300s / 30s 超时，
     # orchestrator.execute_layers 整条任务链表现为“永久卡在 broadcasting”。

@@ -196,7 +196,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:ra
 
       <p>1. 一键复制下面的「请帮我注册」话术，粘贴给<b>任意 AI（或你的 harness 本体）</b>，它会<b>自己收集信息</b>（向 harness 本体探测，而不是向用户问技术细节），再生成注册 JSON 并注册：</p>
 
-      <pre id="aiPrompt">请把我注册为「员工工作间」平台的员工（harness）。接入分两个阶段：
+      <pre id="aiPrompt">请把我注册为「外端Agent生产合作社（External Agent Community）」平台的员工（harness）。接入分两个阶段：
 
 【阶段1：初步消息注册（你只需声明部分信息，不必懂技术细节）】
 POST http://127.0.0.1:{PORT}/api/harness/pre-register
@@ -204,7 +204,8 @@ body: {
   "harness_id": "我的唯一标识",
   "harness_name": "我的显示名",
   "harness_type": "desktop-agent",      // 可选：类型猜测（cli-agent/ide-agent/desktop-agent/api-proxy/custom）
-  "process_hint": "我的进程名线索",       // 可选：让平台能扫到我的进程（如 electron/BaiLongma/python）
+  "transports": ["http"],                // 可选：我支持的通信协议（ws/http/sse/pipe/grpc/mcp/a2a），默认 http
+  "process_hint": "我的进程名线索",       // 可选：让平台能扫到我的进程（如 electron/我的进程名/python）
   "port_hint": 3721,                     // 可选：我的 HTTP API 端口（若有）
   "path_hint": "我的安装路径",            // 可选
   "capabilities": ["web_search","file_ops"],  // 可选：我的能力
@@ -274,7 +275,7 @@ body: {"harness_id": "我的唯一标识"}
 
     领到的激活/任务会写到 <work-dir>\inbox\*.json；我干完活把回报写 <work-dir>\replies\reply_*.json，桥自动转发给平台。
 
-- acp 且有真实 ACP server：跑 dsh_harness_bridge.py 同类的专用桥（示例）。</pre>
+- acp 且有真实 ACP server：跑 acp_harness_bridge.py 同类的专用桥（示例）。</pre>
 
       <p>2. 参考：完整注册消息体（字段照抄、值换成自己的即可，下面用的是<b>虚拟示例</b>）：</p>
 
@@ -285,6 +286,8 @@ body: {"harness_id": "我的唯一标识"}
   "harness_name": "示例Harness-A",
 
   "harness_type": "cli-agent",
+
+  "transports": ["http"],
 
   "wakeup_method": "acp",
 
@@ -357,9 +360,9 @@ body: {"harness_id": "我的唯一标识"}
 
       <pre>python agent_community\examples\pending_poll_bridge.py --harness-id [id] --url http://127.0.0.1:{PORT} --work-dir [任务目录] [--trigger "启动 harness 的命令"]</pre>
 
-      <p><b>③ acp 且有真实 ACP server（如 dsh）</b> — 用 dsh 专用桥：</p>
+      <p><b>③ acp 且有真实 ACP server</b> — 用 ACP 专用桥（示例）：</p>
 
-      <pre>python agent_community\examples\dsh_harness_bridge.py --url http://127.0.0.1:{PORT}</pre>
+      <pre>python agent_community\examples\acp_harness_bridge.py --url http://127.0.0.1:{PORT}</pre>
 
       <p>回报协议（harness 有联网能力时可直接 POST，无需桥）：
 
@@ -379,6 +382,68 @@ body: {"harness_id": "我的唯一标识"}
 
     <button class="btn" onclick="copyBridge()">复制架桥速查（第 2 段：注册后粘贴给 harness/AI 配桥）</button>
 
+  </div>
+
+
+  <div class="panel">
+    <h2>🔌 协议接入方式（多种接口，按需选择）</h2>
+    <div class="tut">
+      <p>平台支持多种通信协议，harness 可按自身能力选择最合适的接入方式。注册时在 <code>transports</code> 字段声明你支持的协议（可多选），平台会按优先级自动选择：</p>
+
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin:12px 0;">
+        <tr style="border-bottom:1px solid var(--border,#2a3444);color:var(--muted);font-size:11.5px;">
+          <td style="padding:6px 8px;">协议</td>
+          <td style="padding:6px 8px;">方向</td>
+          <td style="padding:6px 8px;">适用场景</td>
+          <td style="padding:6px 8px;">状态</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border,#2a3444);">
+          <td style="padding:6px 8px;"><b>HTTP</b></td>
+          <td style="padding:6px 8px;">平台 → harness</td>
+          <td style="padding:6px 8px;">通用默认；平台 POST 任务到 harness</td>
+          <td style="padding:6px 8px;color:var(--green);">✅ 可用</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border,#2a3444);">
+          <td style="padding:6px 8px;"><b>WS</b></td>
+          <td style="padding:6px 8px;">平台 → harness</td>
+          <td style="padding:6px 8px;">长连接实时通信</td>
+          <td style="padding:6px 8px;color:var(--yellow);">⚠️ 部分实现</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border,#2a3444);">
+          <td style="padding:6px 8px;"><b>PIPE</b></td>
+          <td style="padding:6px 8px;">平台 → harness</td>
+          <td style="padding:6px 8px;">本地进程间通信</td>
+          <td style="padding:6px 8px;color:var(--green);">✅ 可用</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border,#2a3444);">
+          <td style="padding:6px 8px;"><b>ACP</b></td>
+          <td style="padding:6px 8px;">平台 → harness</td>
+          <td style="padding:6px 8px;">Agent Client Protocol（拉起 CLI/桌面 Agent）</td>
+          <td style="padding:6px 8px;color:var(--green);">✅ 可用</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border,#2a3444);">
+          <td style="padding:6px 8px;"><b>MCP</b></td>
+          <td style="padding:6px 8px;">双向</td>
+          <td style="padding:6px 8px;">工具服务端（stdio）/ 客户端（Streamable HTTP）</td>
+          <td style="padding:6px 8px;color:var(--green);">✅ 可用</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 8px;"><b>A2A</b></td>
+          <td style="padding:6px 8px;">双向</td>
+          <td style="padding:6px 8px;">Agent-to-Agent 标准协作（外部生态 Agent 发现与派发）</td>
+          <td style="padding:6px 8px;color:var(--green);">✅ 可用</td>
+        </tr>
+      </table>
+
+      <p><b>MCP 接入</b>：平台可作为 MCP 工具服务端（stdio，供 Claude Code / Cursor 等挂载）：</p>
+      <pre>claude --mcp-config '{"servers":{"ac4":{"command":"python","args":["-m","agent_community.mcp_server"]}}}'</pre>
+
+      <p><b>A2A 接入</b>：外部 Agent 可通过标准 A2A 协议发现本平台并派发任务：</p>
+      <pre>GET http://&lt;host&gt;:9104/.well-known/agent-card.json   # Agent Card 发现
+python -m agent_community.a2a_server --port 9104      # 启动 A2A 服务端</pre>
+
+      <p style="color:var(--muted);font-size:11.5px;">注：SSE / GRPC 规划中；注册时声明 <code>transports</code> 数组即可多选，平台按优先级选择实际可用的协议。</p>
+    </div>
   </div>
 
 

@@ -1,0 +1,78 @@
+// agent_community.proto — A2A gRPC 绑定（信封式，与 HTTP 共用数据模型）
+// 生成桩：python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. agent_community.proto
+syntax = "proto3";
+package agent_community.v1;
+
+// 信封式设计：payload_json 承载复杂业务结构，与 HTTP 接口零协议漂移
+service AgentCommunity {
+  // 注册 harness（等价 POST /api/harness/register）
+  rpc RegisterHarness(RegisterRequest) returns (RegisterReply);
+  // 消息入站（带 agent-token，走 P1 身份校验）
+  rpc SendMessage(HarnessMessage) returns (MessageAck);
+  // 任务派发
+  rpc SubmitTask(SubmitTaskRequest) returns (TaskAck);
+  // 任务状态查询
+  rpc GetTask(GetTaskRequest) returns (TaskStatus);
+  // 结果回报（等价 POST /api/harness/task-result）
+  rpc ReportResult(TaskResult) returns (ResultAck);
+  // 列出协议目录（等价 GET /api/protocols）
+  rpc ListProtocols(ProtocolsRequest) returns (ProtocolsReply);
+}
+
+message RegisterRequest {
+  string payload_json = 1;   // 与 HTTP 注册体同构（HarnessInfo JSON）
+}
+
+message RegisterReply {
+  string payload_json = 1;   // 注册结果（含 agent_token）
+}
+
+message HarnessMessage {
+  string payload_json = 1;
+  string agent_token = 2;    // P1 身份凭证
+}
+
+message MessageAck {
+  bool ok = 1;
+  string error = 2;
+}
+
+message SubmitTaskRequest {
+  string task_id = 1;
+  string payload_json = 2;
+  string agent_token = 3;
+  map<string, string> meta = 4;
+}
+
+message TaskAck {
+  bool ok = 1;
+  string task_id = 2;
+  string error = 3;
+}
+
+message GetTaskRequest {
+  string task_id = 1;
+}
+
+message TaskStatus {
+  string task_id = 1;
+  string status = 2;
+  string payload_json = 3;
+}
+
+message TaskResult {
+  string task_id = 1;
+  string payload_json = 2;
+  string agent_token = 3;
+}
+
+message ResultAck {
+  bool ok = 1;
+  string error = 2;
+}
+
+message ProtocolsRequest {}
+
+message ProtocolsReply {
+  string payload_json = 1;   // 协议目录 JSON（与 GET /api/protocols 同源）
+}

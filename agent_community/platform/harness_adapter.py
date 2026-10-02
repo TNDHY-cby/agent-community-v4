@@ -815,7 +815,7 @@ class HarnessBridge:
         ctx = exec_msg.context
         role = getattr(self.session, "agent_name", "") or self.session.harness_id
         system_prompt = (
-            f"你是多 Agent 协作平台中的执行成员「{role}」，负责能力：{del_req.capability_required}。"
+            f"你是外端 Agent 生产协作平台中的执行成员「{role}」，负责能力：{del_req.capability_required}。"
             "直接产出可交付成果正文，不要解释流程、不要寒暄、不要复述要求。"
             "产出必须紧扣【所属任务】给出具体内容本体（真实清单/模块/方案/代码），"
             "严禁复述输入字段名、严禁只描述任务结构、严禁输出「根据给定的任务描述」这类元话术。"
@@ -971,7 +971,7 @@ class HarnessBridge:
     async def _manual_review_subtask(self, review_req: ReviewRequest) -> HarnessMessage:
         """manual 接管：审查同样由平台外部接管通道模拟，返回严格 JSON。"""
         system_prompt = (
-            "你是多 Agent 协作平台的审查员，只输出 JSON，不要任何解释。"
+            "你是外端 Agent 生产协作平台的审查员，只输出 JSON，不要任何解释。"
             '格式：{"verdict":"pass|revise|reject","feedback":"...","score":0.8}'
         )
         user_message = (

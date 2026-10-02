@@ -47,9 +47,6 @@ from .memory import task_memory, capability_ledger
 from .experience_v2 import (
     apply_completion_rewards as _v2_apply_completion_rewards,
     harness_reputation_bonus as _v2_harness_reputation_bonus,
-    extract_task_keywords as _v2_extract_task_keywords,
-    harness_capabilities as _v2_harness_capabilities,
-    _capability_hit as _v2_capability_hit,
 )
 from .task_state_machine import (
     TaskStateMachine,
@@ -73,7 +70,7 @@ from .ai_external import (
 )
 from ..config import load_config, save_config, mask_api_key
 from .workshop import Workshop, WorkshopMember, write_workspace_files, write_resources_manifest, activate_member
-from .acp_bridge import AcpBridge
+from .acp_harness_bridge import AcpHarnessBridge  # noqa: F401  （V-22 同期脱敏：原 .acp_bridge.AcpBridge）
 # ── 配置 ──────────────────────────────────────────────────────
 PIPE_DIR = Path(os.environ.get("TEMP", ".")) / "agent_community_pipe"
 PIPE_TO_AGENT_DIR = PIPE_DIR / "to_agent"
@@ -137,6 +134,10 @@ from .routers.workshops import router as _workshops_router
 app.include_router(_config_router)  # V-9 单体拆分：config 端点组已迁至 routers/config.py
 app.include_router(_harness_router)  # V-9 单体拆分：harness 端点组已迁至 routers/harness.py
 app.include_router(_workshops_router)  # V-9 单体拆分：workshops 端点组已迁至 routers/workshops.py
+from .routers.audit import router as _audit_router
+app.include_router(_audit_router)  # P2-1 审计：GET /api/audit（自 retired 副本回收，落进 routers/audit.py）
+from .routers.protocols import router as _protocols_router
+app.include_router(_protocols_router)  # V-11 协议目录：GET /api/protocols（单一事实源）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1", "http://localhost"],
@@ -640,7 +641,7 @@ async def api_status():
         "agents_registered": len(agents),
         "agents_online": online_agents,
         "tasks_total": len(tasks),
-        "tasks_active": sum(1 for t in tasks.values() if t.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED)),
+        "tasks_active": sum(1 for t in tasks.values() if t.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.ARCHIVED)),
         "harnesses": len(harness_manager.sessions),
         "pipe_dir": str(PIPE_DIR),
     }
@@ -653,7 +654,7 @@ async def bus_stats():
     total_msgs = sum(len(t.messages) for t in tasks.values())
     return {
         "tasks_total": len(tasks),
-        "tasks_active": sum(1 for t in tasks.values() if t.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED)),
+        "tasks_active": sum(1 for t in tasks.values() if t.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.ARCHIVED)),
         "total_messages": total_msgs,
         "rooms_total": len(discussion_rooms),
         "rooms_active": sum(1 for r in discussion_rooms.values() if r.status == DiscussionRoomStatus.NEGOTIATING),
@@ -2749,164 +2750,72 @@ async def get_task(task_id: str):
     if task_id not in tasks:
         return Utf8JSONResponse({"error": "task not found"}, status_code=404)
     return tasks[task_id].model_dump()
+def _task_tree_build(task_list: list[dict]) -> list:
+    """把扁平任务列表构造成嵌套任务树（按 parent_id 组装 children，保持原有字段）。"""
+    by_id = {t["id"]: dict(t) for t in task_list}
+    roots = []
+    for node in by_id.values():
+        node["children"] = []
+    for node in by_id.values():
+        pid = node.get("parent_id") or ""
+        if pid and pid in by_id:
+            by_id[pid]["children"].append(node)
+        else:
+            roots.append(node)
+    return roots
+@app.get("/api/tasks/tree")
+async def list_tasks_tree():
+    """全局任务树：按 parent_id 组装嵌套结构（根任务在前，含 children 子任务）。"""
+    task_list = [t.model_dump() for t in tasks.values()]
+    task_list.sort(key=lambda t: t.get("created_at", ""), reverse=True)
+    return {"success": True, "total": len(task_list), "tree": _task_tree_build(task_list)}
+@app.get("/api/task/{task_id}/tree")
+async def get_task_subtree(task_id: str):
+    """以某任务为根的子树导航：返回该任务及其全部后代（children 嵌套）。"""
+    if task_id not in tasks:
+        return Utf8JSONResponse({"error": "task not found"}, status_code=404)
+    by_id = {t["id"]: dict(t) for t in (x.model_dump() for x in tasks.values())}
+    for node in by_id.values():
+        node["children"] = []
+    for node in by_id.values():
+        pid = node.get("parent_id") or ""
+        if pid and pid in by_id:
+            by_id[pid]["children"].append(node)
+    return {"success": True, "tree": by_id[task_id]}
+@app.post("/api/task/{task_id}/parent")
+async def set_task_parent(task_id: str, request: Request):
+    """设置任务父节点，构建任务树。
+
+    body: {parent_id}
+    - parent_id: 父任务 id（可选；空或省略则把任务设为根任务）
+    - 校验：父任务必须存在；禁止挂到自身或自身子孙之下（防环）
+    """
+    if task_id not in tasks:
+        return Utf8JSONResponse({"error": "task not found"}, status_code=404)
+    body = await request.json()
+    parent_id = (body.get("parent_id") or "").strip()
+    if parent_id:
+        if parent_id == task_id:
+            return Utf8JSONResponse({"error": "任务不能作为自身的父节点"}, status_code=400)
+        if parent_id not in tasks:
+            return Utf8JSONResponse({"error": f"父任务不存在：{parent_id}"}, status_code=400)
+        # 防环：沿 parent 链上溯，若遇到 task_id 说明会成环
+        cur = parent_id
+        seen = set()
+        while cur:
+            if cur == task_id:
+                return Utf8JSONResponse({"error": "不能将任务挂到自身子孙之下（会形成环）"}, status_code=400)
+            if cur in seen:
+                break
+            seen.add(cur)
+            cur = tasks[cur].parent_id
+    tasks[task_id].parent_id = parent_id
+    tasks[task_id].updated_at = datetime.now().isoformat()
+    save_state()
+    return {"success": True, "task_id": task_id, "parent_id": parent_id}
 @app.get("/api/tasks")
 async def list_tasks():
     return {"tasks": [t.model_dump() for t in tasks.values()]}
-
-
-# ──── 卡死任务批量回收（V-20，2026-09-29）────
-# 任务级卡死判定：终态(completed/failed)不回收；
-# 中间态(broadcasting/in_discussion/delegating/executing)且 updated_at 距今 > timeout_sec*3 → 视为失联卡死。
-_TASK_STALE_ACTIVE = ("broadcasting", "in_discussion", "delegating", "executing")
-
-def _iso_to_ts(s: str) -> float:
-    """ISO 时间字符串 → epoch 秒；解析失败返回 0。"""
-    try:
-        return datetime.fromisoformat(s).timestamp()
-    except Exception:
-        return 0.0
-
-def _is_stale_task(task) -> dict:
-    """判定任务是否卡死，返回 {stale: bool, reason: str}。"""
-    if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
-        return {"stale": False, "reason": f"status={task.status.value}"}
-    if task.status.value not in _TASK_STALE_ACTIVE:
-        return {"stale": False, "reason": f"status={task.status.value}"}
-    ts = _iso_to_ts(task.updated_at or "") or _iso_to_ts(task.created_at or "")
-    if not ts:
-        return {"stale": False, "reason": "no_ts"}
-    age = time.time() - ts
-    if age > task_state_machine.timeout_sec * 3:
-        return {"stale": True, "reason": f"heartbeat_stale({int(age)}s)"}
-    return {"stale": False, "reason": f"age({int(age)}s)"}
-
-@app.get("/api/tasks/stale")
-async def list_stale_tasks():
-    """列出卡死任务（只读扫描，不落盘）。"""
-    stale = []
-    for t in tasks.values():
-        r = _is_stale_task(t)
-        if r["stale"]:
-            stale.append({
-                "task_id": t.id, "title": t.title, "status": t.status.value,
-                "reason": r["reason"], "updated_at": t.updated_at,
-            })
-    return {"success": True, "stale": stale, "stale_count": len(stale)}
-
-@app.post("/api/tasks/recycle-stale")
-async def recycle_stale_tasks(request: Request):
-    """批量回收卡死任务：置为 FAILED 终态 + 标记回收原因，兼容旧接口。"""
-    body = await request.json()
-    task_ids = body.get("task_ids") or []
-    recycled, skipped = [], []
-    now = now_iso()
-    for tid in task_ids:
-        t = tasks.get(tid)
-        if t is None:
-            skipped.append({"task_id": tid, "reason": "not_found"})
-            continue
-        r = _is_stale_task(t)
-        if not r["stale"]:
-            skipped.append({"task_id": tid, "reason": r["reason"]})
-            continue
-        t.status = TaskStatus.FAILED
-        t.completed_at = now
-        t.updated_at = now
-        t.result = f"[平台回收卡死任务] {r['reason']}\n" + (t.result or "")
-        recycled.append({"task_id": tid, "title": t.title, "reason": r["reason"]})
-    if recycled:
-        save_state()
-    return {"success": True, "recycled": recycled, "skipped": skipped}
-
-
-def _route_task_by_capability(task_text: str, harness_ids: list | None = None, online_only: bool = True, top_k: int = 10) -> list[dict]:
-    """按能力分级路由：给定任务文本，对候选 harness 计算能力匹配分与信誉分并降序返回。
-
-    - 能力匹配分 = 任务关键词命中该 harness 注册能力域的覆盖率（无关键词命中视为全能力参与）
-    - 信誉分 = 命中能力在 capability_ledger 的平均信誉（无命中能力时取该 harness 全部能力均值）
-    - 综合分 = 能力匹配分 * 0.6 + 信誉分 * 0.4（对齐 orchestrator.ranked_match 权重）
-    纯只读计算，不派发不落盘，供前端/调用方做能力分级路由决策。
-    """
-    toks = _v2_extract_task_keywords(task_text or "")
-    sessions = getattr(harness_manager, "sessions", {})
-    cand_ids = [hid for hid in harness_ids if hid in sessions] if harness_ids else list(sessions.keys())
-    rows: list[dict] = []
-    for hid in cand_ids:
-        sess = sessions.get(hid)
-        if sess is None:
-            continue
-        if online_only and getattr(sess, "status", None) != HarnessStatus.ONLINE:
-            continue
-        caps = _v2_harness_capabilities(hid, harness_manager)
-        if not caps:
-            continue
-        hit = _v2_capability_hit(caps, toks) if toks else []
-        match_score = len(hit) / len(caps) if caps else 0.0
-        rep_caps = hit if hit else caps
-        reps = [capability_ledger.get_reputation(hid, cap) for cap in rep_caps]
-        avg_rep = (sum(reps) / len(reps)) if reps else 0.5
-        score = round(match_score * 0.6 + avg_rep * 0.4, 4)
-        info = getattr(sess, "info", None)
-        rows.append({
-            "harness_id": hid,
-            "harness_name": getattr(info, "harness_name", "") or hid,
-            "online": bool(getattr(sess, "status", None) == HarnessStatus.ONLINE),
-            "status": getattr(sess, "status", None).value if getattr(sess, "status", None) else "",
-            "capabilities": caps,
-            "hit_capabilities": hit,
-            "match_score": round(match_score, 4),
-            "avg_reputation": round(avg_rep, 4),
-            "score": score,
-        })
-    rows.sort(key=lambda r: r["score"], reverse=True)
-    return rows[:top_k]
-
-
-@app.get("/api/capabilities/ledger")
-async def get_capability_ledger(agent_id: str = "", capability: str = ""):
-    """能力台账查看：按 agent_id / capability 过滤，返回信誉降序列表。"""
-    rows = []
-    for led in capability_ledger.all_ledgers():
-        if agent_id and led.agent_id != agent_id:
-            continue
-        if capability and led.capability != capability:
-            continue
-        rows.append(led.model_dump())
-    return {"ledger": rows, "count": len(rows)}
-
-
-@app.post("/api/capabilities/route")
-async def route_task_by_capability(request: Request):
-    """按能力分级路由任务：body {task_text, harness_ids?, online_only?, top_k?} → 候选 harness 降序列表。"""
-    body = await request.json()
-    task_text = (body.get("task_text") or "").strip()
-    if not task_text:
-        return Utf8JSONResponse({"error": "task_text 不能为空"}, status_code=400)
-    harness_ids = body.get("harness_ids") or None
-    online_only = bool(body.get("online_only", True))
-    try:
-        top_k = max(1, min(int(body.get("top_k", 10) or 10), 50))
-    except Exception:
-        top_k = 10
-    ranked = _route_task_by_capability(task_text, harness_ids=harness_ids, online_only=online_only, top_k=top_k)
-    return {"task_text": task_text, "ranked": ranked, "count": len(ranked)}
-
-
-@app.post("/api/task/{task_id}/route")
-async def route_existing_task(task_id: str, request: Request):
-    """对既有任务按能力分级路由：读取 task.description 计算候选 harness 排序。
-    body {online_only?, top_k?} → 与 GET /api/task/{task_id} 分离，向后兼容。"""
-    task = tasks.get(task_id)
-    if task is None:
-        return Utf8JSONResponse({"error": "task not found"}, status_code=404)
-    body = await request.json()
-    online_only = bool(body.get("online_only", True))
-    try:
-        top_k = max(1, min(int(body.get("top_k", 10) or 10), 50))
-    except Exception:
-        top_k = 10
-    ranked = _route_task_by_capability(task.description or task.title or "", online_only=online_only, top_k=top_k)
-    return {"task_id": task_id, "ranked": ranked, "count": len(ranked)}
 # ═══════════════════════════════════════════════════════════════
 # Agent WS 接入点
 # ═══════════════════════════════════════════════════════════════
@@ -3558,6 +3467,161 @@ def _is_stale_workshop(ws: Workshop) -> dict:
         if time.time() - last > task_state_machine.timeout_sec * 3:
             return {"stale": True, "reason": f"heartbeat_stale({int(time.time()-last)}s)"}
     return {"stale": False, "reason": f"state_machine={state or 'none'}"}
+
+
+# ── V-18 卡死任务回收（2026-09-29）────────────────────────────
+# 背景：此前仅 harness 注销时回收桥目录，任务级（Task）无卡死判定/回收端点，
+# broadcasting 等中间态任务无人认领时永久滞留，占用 tasks 槽位。
+# 实现：新增 GET /api/tasks/stale（列卡死）、POST /api/task/{task_id}/recover（单回收）、
+#       POST /api/tasks/recover-stale（批量回收）；持久化沿用 save_state()。
+_TASK_STALE_INTERMEDIATE = (
+    TaskStatus.BROADCASTING,
+    TaskStatus.IN_DISCUSSION,
+    TaskStatus.DELEGATING,
+    TaskStatus.EXECUTING,
+)
+_TASK_TERMINAL = (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.ARCHIVED)
+
+def _is_stale_task(task: Task) -> dict:
+    """判定任务是否卡死（中间态 + 超时无更新）。
+
+    规则：
+    - 终态（completed/failed/archived）不回收；
+    - 中间态（broadcasting/in_discussion/delegating/executing）且 updated_at 距今
+      > task_state_machine.timeout_sec * 3（默认 300*3=900s）→ 视为卡死；
+    - 其余状态（created 等）不回收。
+    返回 {stale: bool, reason: str}。
+    """
+    if task.status in _TASK_TERMINAL:
+        return {"stale": False, "reason": f"terminal={task.status.value}"}
+    if task.status not in _TASK_STALE_INTERMEDIATE:
+        return {"stale": False, "reason": f"status={task.status.value}"}
+    try:
+        last = datetime.fromisoformat(task.updated_at or task.created_at).timestamp()
+    except Exception:
+        last = 0
+    age = time.time() - last
+    if age > task_state_machine.timeout_sec * 3:
+        return {"stale": True, "reason": f"stale({int(age)}s>{int(task_state_machine.timeout_sec*3)}s)"}
+    return {"stale": False, "reason": f"fresh({int(age)}s)"}
+
+
+@app.get("/api/tasks/stale")
+async def list_stale_tasks():
+    """列出所有卡死任务（供前端/批量回收使用）。返回 stale 列表，含判定原因。"""
+    stale = []
+    for t in tasks.values():
+        r = _is_stale_task(t)
+        if r["stale"]:
+            stale.append({
+                "task_id": t.id,
+                "title": t.title,
+                "status": t.status.value,
+                "created_at": t.created_at,
+                "updated_at": t.updated_at,
+                "reason": r["reason"],
+            })
+    return {"success": True, "stale_count": len(stale), "stale": stale}
+
+
+@app.post("/api/task/{task_id}/recover")
+async def recover_task(task_id: str, request: Request):
+    """回收卡死任务（单任务）。
+
+    body: {action: "resume" | "archive"}（可选，默认 archive）
+    - archive：置为 archived 终态（写入 completed_at），任务归档不再参与活跃统计；
+    - resume ：重置为可继续状态——有存活讨论室则回 in_discussion，否则回 broadcasting
+               （可重新广播/继续推进）。
+    - 非卡死/终态任务返回 409，不破坏既有数据。
+    """
+    task = tasks.get(task_id)
+    if not task:
+        return Utf8JSONResponse({"error": "task not found"}, status_code=404)
+    verdict = _is_stale_task(task)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    action = (body.get("action") or "archive").strip().lower()
+    if action not in ("resume", "archive"):
+        return Utf8JSONResponse({"error": f"action 仅支持 resume/archive，收到: {action}"}, status_code=400)
+    if task.status in _TASK_TERMINAL:
+        return Utf8JSONResponse({"error": f"任务已是终态 {task.status.value}，无需回收"}, status_code=409)
+    old_status = task.status.value
+    now = now_iso()
+    if action == "resume":
+        if task.room_id and task.room_id in discussion_rooms:
+            task.status = TaskStatus.IN_DISCUSSION
+            note = f"卡死回收后重置为 in_discussion（保留讨论室 {task.room_id}），可继续讨论"
+        else:
+            task.status = TaskStatus.BROADCASTING
+            note = "卡死回收后重置为 broadcasting，可重新广播/推进"
+    else:
+        task.status = TaskStatus.ARCHIVED
+        task.completed_at = now
+        note = "卡死回收归档"
+    task.updated_at = now
+    task.result = (task.result or "") + f"\n[回收] {note}"
+    save_state()
+    return {
+        "success": True,
+        "task_id": task_id,
+        "old_status": old_status,
+        "new_status": task.status.value,
+        "action": action,
+        "reason": verdict["reason"],
+        "note": note,
+    }
+
+
+@app.post("/api/tasks/recover-stale")
+async def recover_stale_tasks(request: Request):
+    """批量回收全部卡死任务。
+
+    body: {task_ids?: [...], action?: "resume"|"archive"}（可选，默认回收全部卡死任务并归档）
+    - 不传 task_ids：对 GET /api/tasks/stale 判定的全部卡死任务执行回收；
+    - 传入 task_ids：仅对指定 id 中确实卡死的任务执行回收（非卡死/终态计入 skipped）。
+    返回 {recycled: [...], skipped: [...]}。
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    action = (body.get("action") or "archive").strip().lower()
+    if action not in ("resume", "archive"):
+        return Utf8JSONResponse({"error": f"action 仅支持 resume/archive，收到: {action}"}, status_code=400)
+    want_ids = body.get("task_ids")
+    if want_ids is not None and not isinstance(want_ids, list):
+        return Utf8JSONResponse({"error": "task_ids 必须是数组"}, status_code=400)
+    recycled, skipped = [], []
+    for t in tasks.values():
+        if want_ids is not None and t.id not in want_ids:
+            continue
+        verdict = _is_stale_task(t)
+        if not verdict["stale"]:
+            if want_ids is not None:
+                skipped.append({"task_id": t.id, "reason": verdict["reason"]})
+            continue
+        old_status = t.status.value
+        now = now_iso()
+        if action == "resume":
+            if t.room_id and t.room_id in discussion_rooms:
+                t.status = TaskStatus.IN_DISCUSSION
+                note = "卡死回收后重置为 in_discussion，可继续讨论"
+            else:
+                t.status = TaskStatus.BROADCASTING
+                note = "卡死回收后重置为 broadcasting，可重新广播"
+        else:
+            t.status = TaskStatus.ARCHIVED
+            t.completed_at = now
+            note = "卡死回收归档"
+        t.updated_at = now
+        t.result = (t.result or "") + f"\n[回收] {note}"
+        recycled.append({"task_id": t.id, "old_status": old_status, "new_status": t.status.value,
+                         "reason": verdict["reason"]})
+    save_state()
+    return {"success": True, "action": action, "recycled": recycled, "skipped": skipped,
+            "recycled_count": len(recycled), "skipped_count": len(skipped)}
 
 
 
@@ -4992,7 +5056,7 @@ async def _simulate_member_reply(harness_id, payload, kind, reason):
         f"{mm.role}「{mm.display_name}」" for mm in ws.members if mm.member_id != mid
     ) or "（无）"
     system_prompt = (
-        f"你是多 Agent 协作平台工作间「{ws.name}」中的{role}「{name}」。"
+        f"你是外端 Agent 生产协作平台工作间「{ws.name}」中的{role}「{name}」。"
         f"同工作间其他成员：{_others}。"
         "请以团队成员身份用中文发言：只从你自己的职责视角给出回应、进度或建议，"
         "不要代其他成员汇报他们的工作，不要复述他人原话，不要重复已说过的内容。"
@@ -5367,4 +5431,6 @@ if __name__ == "__main__":
     print(f"Pipe dir: {PIPE_DIR}")
     print(f"CDP mirror: {'enabled (AC_CDP_MIRROR_ENABLED=1, 将探测 9222-9225 浏览器调试端口)' if os.environ.get('AC_CDP_MIRROR_ENABLED', '0') == '1' else 'disabled (默认，仅协议级映射)'}")
     print(f"Registered agents: {list(agents.keys())}")
+    # V-26 修复: 外部 API 接入失效——host 写死 127.0.0.1 导致仅本机可访问
+    # 改为 0.0.0.0, 非本地访问由 security_middleware 的 ALLOWED_TOKENS 闸门保护
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

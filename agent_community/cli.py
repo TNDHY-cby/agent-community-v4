@@ -30,6 +30,13 @@ PID_FILE = PID_DIR / "server.pid"
 DEFAULT_PORT = 9103
 BASE_URL = f"http://127.0.0.1:{DEFAULT_PORT}"
 
+# 日志目录：与 server.py 的 DATA_DIR（agent_community/data）保持一致。
+# 历史写法把服务日志写到 D:/server_out.log、D:/server_err.log —— 日志散落在
+# 盘符根目录，既不符合「权威日志在 data/logs/」的项目约定，也让桌面的
+# .vbs 启动器在失败提示里把用户引到一个不该存在的位置。
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+LOG_DIR = PROJECT_ROOT / "agent_community" / "data" / "logs"
+
 
 def _get_base_url() -> str:
     """从 PID 文件读取端口号"""
@@ -101,7 +108,7 @@ def _table(headers: list[str], rows: list[list[str]]):
 
 @click.group()
 def main():
-    """外端Agent生产合作社（External Agent Community） Platform — 多 Agent 协作平台 CLI"""
+    """外端Agent生产合作社（External Agent Community） Platform — 外端 Agent 生产协作平台 CLI"""
     pass
 
 
@@ -127,21 +134,26 @@ def start(port, wakeup, gui):
     env = os.environ.copy()
     env["AC_PORT"] = str(port)
 
+    # 日志统一写项目内 agent_community/data/logs（与 server.py 的 DATA_DIR 对齐）
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    _stdout_log = open(LOG_DIR / "server_stdout.log", "a", encoding="utf-8")
+    _stderr_log = open(LOG_DIR / "server_stderr.log", "a", encoding="utf-8")
+
     # 后台启动（用 -m 模块方式避免相对导入问题）
     if sys.platform == "win32":
         proc = subprocess.Popen(
             [sys.executable, "-m", "agent_community.platform.server"],
             env=env,
-            stdout=open("D:/server_out.log", "a"),
-            stderr=open("D:/server_err.log", "a"),
+            stdout=_stdout_log,
+            stderr=_stderr_log,
             creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
         )
     else:
         proc = subprocess.Popen(
             [sys.executable, "-m", "agent_community.platform.server"],
             env=env,
-            stdout=open("D:/server_out.log", "a") if sys.platform == "win32" else subprocess.DEVNULL,
-            stderr=open("D:/server_err.log", "a") if sys.platform == "win32" else subprocess.DEVNULL,
+            stdout=_stdout_log,
+            stderr=_stderr_log,
             start_new_session=True,
         )
 

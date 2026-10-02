@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .acp_bridge import AcpBridge, AcpSession
+from .acp_harness_bridge import AcpHarnessBridge, AcpSession
 
 
 # ── 数据模型（§4，最小子集）────────────────────────────────
@@ -45,6 +45,7 @@ class Workshop:
     status: str = "draft"      # draft / discussing(一级讨论) / selecting(选定员工) / division(二级讨论) / running(工作) / review(三级讨论) / done
     pinned: bool = False       # 是否置顶（大厅侧边栏）
     created_at: str = ""       # 创建时间 ISO（侧边栏排序）
+    assignments: dict = field(default_factory=dict)  # 组长委派细化/转向记录 {member_id: [{kind,instruction,note,at,by,dispatched}]}
 
     def to_dict(self) -> dict:
         """序列化为 dict（持久化 + 列表 API 用）。"""
@@ -69,6 +70,7 @@ class Workshop:
             "discussion": self.discussion,
             "resources": self.resources,
             "task_tree": self.task_tree,
+            "assignments": self.assignments,
         }
 
     @classmethod
@@ -96,6 +98,7 @@ class Workshop:
             status=d.get("status", "draft"),
             pinned=d.get("pinned", False),
             created_at=d.get("created_at", ""),
+            assignments=d.get("assignments", {}),
         )
 
 
@@ -152,7 +155,7 @@ def write_workspace_files(workshop: Workshop) -> None:
 
 # ── 最小竖切流程 ────────────────────────────────────────────
 
-def activate_member(bridge: AcpBridge, workshop: Workshop, member: WorkshopMember,
+def activate_member(bridge: AcpHarnessBridge, workshop: Workshop, member: WorkshopMember,
                      activation_prompt: str = "") -> str:
     """激活一个员工：开 HA 会话（cwd=工作区），按注册时生成的 HA 专属提示词让它读 hall.md 并回「收到」。
 
@@ -201,7 +204,7 @@ def run_minimal_flow(hall_content: str, workspace_dir: str) -> Workshop:
 
     write_workspace_files(workshop)
 
-    bridge = AcpBridge()
+    bridge = AcpHarnessBridge()
     bridge.start()
     try:
         bridge.initialize()

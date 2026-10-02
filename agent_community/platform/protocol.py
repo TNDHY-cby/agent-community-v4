@@ -23,6 +23,20 @@ class TransportType(str, Enum):
     SSE = "sse"
     PIPE = "pipe"
     GRPC = "grpc"
+    MCP = "mcp"   # MCP 客户端：平台作为 MCP 客户端连接远程 Streamable HTTP MCP 服务器
+    A2A = "a2a"   # A2A：平台通过 A2A 协议与外部 Agent 协作
+
+
+# 哪些传输协议是真实现了的（选择时跳过未实现，不选到空实现）
+IMPLEMENTED_TRANSPORTS = frozenset({
+    TransportType.HTTP,
+    TransportType.PIPE,
+    TransportType.WS,    # 半实现：WS 有占位端口和 fallback，见 waker_protocol
+    TransportType.MCP,
+    TransportType.A2A,
+    # TransportType.SSE  —— 未实现
+    # TransportType.GRPC —— 未实现
+})
 
 
 # ── 消息类型 ──────────────────────────────────────────────────
@@ -310,6 +324,7 @@ class TaskStatus(str, Enum):
     EXECUTING = "executing"
     COMPLETED = "completed"
     FAILED = "failed"
+    ARCHIVED = "archived"               # V-18 卡死回收归档（终态）
 
 class Task(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex[:8])
@@ -318,6 +333,7 @@ class Task(BaseModel):
     status: TaskStatus = TaskStatus.CREATED
     created_by: str = "user"
     room_id: str = ""                   # v3.1 新增：关联讨论室
+    parent_id: str = ""                 # v4.1 新增：全局任务树父任务 id（空为根任务）
     hand_raises: list[BroadcastHandRaise] = Field(default_factory=list)
     messages: list[Message] = Field(default_factory=list)
     delegations: list[DelegationRequest] = Field(default_factory=list)
@@ -436,6 +452,7 @@ class HarnessInfo(BaseModel):
 
     # 接入方式（声明自己能用的 transport）
     transports: list[TransportType] = Field(default_factory=lambda: [TransportType.HTTP])
+    preferred_transport: Optional[TransportType] = None   # 显式偏好：平台优先用这个（可选，不填则按 priority）
     callback_url: str = ""        # HTTP 回调地址（如果有）
 
     # ── 接入/激活配置（平台如何拉起该 harness 的新对话）────────

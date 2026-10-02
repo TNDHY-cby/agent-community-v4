@@ -349,7 +349,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
   </div>
   <div class="main">
     <div class="col-left">
-      <div class="col-header"><span class="nav-title">工作间</span><span class="ch-count" id="workshopCount">0</span><button class="nav-toggle" id="navToggle" onclick="toggleNav()" title="折叠/展开侧边栏">◀</button><button class="wi-act" style="margin-left:auto;font-size:12px" title="回收卡死任务" onclick="event.stopPropagation();recycleStaleTasks()">♻️</button></div>
+      <div class="col-header"><span class="nav-title">工作间</span><span class="ch-count" id="workshopCount">0</span><button class="nav-toggle" id="navToggle" onclick="toggleNav()" title="折叠/展开侧边栏">◀</button><button class="wi-act" style="margin-left:auto;font-size:12px" title="回收卡死工作间" onclick="event.stopPropagation();recycleStaleWorkshops()">♻️</button></div>
       <div class="workshop-list" id="workshopList"><div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无工作间<br><span style="font-size:11px">在大厅发布任务后自动创建</span></div></div>
     </div>
     <div class="col-center">
@@ -430,6 +430,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
       <div class="setup-sidebar">
         <div class="setup-menu-item active" data-tab="llm" onclick="switchSettingsTab('llm')">LLM 模型</div>
         <div class="setup-menu-item" data-tab="advanced" onclick="switchSettingsTab('advanced')">高级功能</div>
+        <div class="setup-menu-item" data-tab="protocol" onclick="switchSettingsTab('protocol')">协议与端点</div>
         <div class="setup-menu-item" data-tab="about" onclick="switchSettingsTab('about')">关于</div>
       </div>
       <div class="setup-content">
@@ -508,12 +509,22 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
           </div>
           <div class="setup-error" id="setupAdvError" style="display:none"></div>
         </div>
+        <!-- 协议与端点面板 -->
+        <div class="setup-panel" id="settingsPanelProtocol">
+          <h3>协议与端点</h3>
+          <p class="sp-desc">平台对外暴露的接入方式；外端 harness 可按需选择</p>
+          <div id="protocolList" style="display:flex;flex-direction:column;gap:10px;">
+            <div style="color:var(--muted);font-size:12px;padding:12px;text-align:center;">加载中…</div>
+          </div>
+        </div>
         <!-- 关于面板 -->
         <div class="setup-panel" id="settingsPanelAbout">
           <h3>关于</h3>
           <div class="setup-about-ver">外端Agent生产合作社（External Agent Community） v4.0.0</div>
           <div class="setup-about-desc">
-            多 Agent 协作平台，支持任务广播、讨论室协商分工、共识投票与委托执行。<br><br>
+            外端 Agent 生产协作平台 —— 让接入不同 harness 的外端 Agent 协同生产。<br>
+            同一个 AI 接入不同 harness 后表现不同，平台按各 harness 的框架能力编排协作。<br><br>
+            支持任务广播、讨论室协商分工、共识投票与委托执行。<br><br>
             基于 FastAPI + WebSocket 构建，前端采用原生 HTML/CSS/JS 实现。
           </div>
         </div>
@@ -538,7 +549,7 @@ function initNav(){try{if(localStorage.getItem('navCollapsed')==='1'){document.b
 function openWorkshopPage(wid){location.href='/workshop.html?ws_id='+wid}
 async function togglePin(wid, pinned){try{await fetch('/api/workshop/'+wid+'/pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pinned})});refreshWorkshops()}catch(e){}}
 async function renameWs(wid){const w=workshops.find(x=>x.workshop_id===wid);acModal.show({title:'重命名工作间',message:'输入工作间新名称：',input:(w&&w.name)||'',placeholder:'输入新名称',onSubmit:async n=>{if(!n||!n.trim())return;try{await fetch('/api/workshop/'+wid,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.trim()})});refreshWorkshops()}catch(e){}}})}
-async function recycleStaleTasks(){try{const r=await fetch('/api/tasks/stale');const d=await r.json();if(!d.success){acToast(d.error||'查询失败',true);return}if(!d.stale||d.stale.length===0){acToast('暂无卡死任务');return}const list=d.stale.map(s=>`「${esc(s.title||s.task_id)}」(${s.reason})`).join('<br>');acModal.show({title:'回收卡死任务',message:`检测到 ${d.stale_count} 个卡死任务，确认回收？<br><small>回收 = 将卡死任务置为失败终态并标记回收原因（保留记录可追溯）</small><br><br>${list}`,danger:true,onConfirm:async()=>{try{const rr=await fetch('/api/tasks/recycle-stale',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task_ids:d.stale.map(x=>x.task_id)})});const dd=await rr.json();acToast(`已回收 ${(dd.recycled||[]).length} 个，跳过 ${(dd.skipped||[]).length} 个`);refreshTasks()}catch(e){acToast('回收失败: '+e.message,true)}}})}catch(e){acToast('查询失败: '+e.message,true)}}
+async function recycleStaleWorkshops(){try{const r=await fetch('/api/workshops/stale');const d=await r.json();if(!d.success){acToast(d.error||'查询失败',true);return}if(!d.stale||d.stale.length===0){acToast('暂无卡死工作间');return}const list=d.stale.map(s=>`「${esc(s.name||s.workshop_id)}」(${s.reason})`).join('<br>');acModal.show({title:'回收卡死工作间',message:`检测到 ${d.stale_count} 个卡死工作间，确认回收？<br><small>回收 = 删除工作间记录 + 清理状态机残留 + 工作区目录移入回收站（可恢复）</small><br><br>${list}`,danger:true,onConfirm:async()=>{try{const rr=await fetch('/api/workshops/recycle-stale',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ws_ids:d.stale.map(x=>x.workshop_id)})});const dd=await rr.json();acToast(`已回收 ${(dd.recycled||[]).length} 个，跳过 ${(dd.skipped||[]).length} 个`);refreshWorkshops()}catch(e){acToast('回收失败: '+e.message,true)}}})}catch(e){acToast('查询失败: '+e.message,true)}}
 async function deleteWs(wid){const w=workshops.find(x=>x.workshop_id===wid);acModal.show({title:'删除工作间',message:'确定删除工作间「'+(w?w.name:'')+'」？此操作不可恢复。',danger:true,onConfirm:async()=>{try{await fetch('/api/workshop/'+wid,{method:'DELETE'});refreshWorkshops()}catch(e){}}})}
 async function refreshWorkshops(){try{const r=await fetch('/api/workshops');const d=await r.json();workshops=d.workshops||[];renderWorkshops()}catch(e){}}
 async function sendCommand(){const inp=document.getElementById('cmdInput'),btn=document.getElementById('sendBtn'),text=inp.value.trim();if(!text||isExecuting)return;isExecuting=true;btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';inp.value='';autoResize(inp);document.getElementById('lastAction').textContent='拉入工作间...';try{const r=await fetch('/api/workshop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hall_content:text})});const d=await r.json();if(d.success&&d.workshop_id){location.href='/workshop.html?ws_id='+d.workshop_id;return}else{appendMessage({from_agent:'system',to_agent:'user',content:d.error||'创建失败',message_type:'text',timestamp:new Date().toISOString()})}}catch(e){appendMessage({from_agent:'system',to_agent:'user',content:'请求失败: '+e.message,message_type:'text',timestamp:new Date().toISOString()})}isExecuting=false;btn.disabled=false;btn.textContent='发布'}
@@ -651,6 +662,34 @@ function switchSettingsTab(tabName){
   document.querySelectorAll('.setup-panel').forEach(el=>el.classList.remove('active'));
   const panel=document.getElementById('settingsPanel'+(tabName.charAt(0).toUpperCase()+tabName.slice(1)));
   if(panel) panel.classList.add('active');
+  if(tabName==='protocol') loadProtocols();
+}
+
+async function loadProtocols(){
+  const box=document.getElementById('protocolList');
+  if(!box) return;
+  try{
+    const r=await fetch('/api/protocols');
+    const d=await r.json();
+    const protos=d.protocols||[];
+    const statusMap={available:['✅ 可用','var(--green)'],partial:['⚠️ 部分实现','var(--yellow)'],not_implemented:['🔒 规划中','var(--muted)'],disabled:['⏸ 已禁用','var(--muted)']};
+    box.innerHTML=protos.map(p=>{
+      const [label,color]=statusMap[p.status]||[p.status,'var(--muted)'];
+      return `<div style="border:1px solid var(--border,#2a3444);border-radius:8px;padding:12px 14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <b style="font-size:13px;">${p.name}</b>
+          <span style="font-size:11px;color:${color};font-weight:700;">${label}</span>
+        </div>
+        <div style="font-size:11.5px;color:var(--muted);line-height:1.6;">
+          <span style="display:inline-block;min-width:52px;color:var(--dim);">方向</span>${p.direction}<br>
+          <span style="display:inline-block;min-width:52px;color:var(--dim);">适用</span>${p.best_for}<br>
+          ${p.endpoint?`<span style="display:inline-block;min-width:52px;color:var(--dim);">端点</span><code style="font-size:11px;">${p.endpoint}</code><br>`:''}
+          ${p.requires?`<span style="display:inline-block;min-width:52px;color:var(--dim);">前置</span>${p.requires}`:''}
+        </div>
+        ${p.example?`<div style="margin-top:8px;background:var(--panel-bg,#151a22);border-radius:4px;padding:8px 10px;font-size:11px;font-family:monospace;color:var(--muted);word-break:break-all;">${p.example}</div>`:''}
+      </div>`;
+    }).join('');
+  }catch(e){box.innerHTML='<div style="color:var(--red);font-size:12px;padding:12px;">加载失败：'+e.message+'</div>';}
 }
 
 async function checkConfigStatus(){

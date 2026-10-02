@@ -36,6 +36,8 @@ from ..protocol import TaskStatus
 from ..workshop import Workshop
 from ..workshop import WorkshopMember
 from ..experience_v2 import harness_reputation_bonus as _v2_harness_reputation_bonus
+from ..experience_v2 import evaluate_workshop_completion as _v2_evaluate_workshop_completion
+from ..audit import audit_log as _audit_log
 from ..ai_external import run_ai_call as ai_external_run_ai_call
 import asyncio
 from ..memory import capability_ledger
@@ -134,6 +136,8 @@ async def create_workshop(request: Request):
         write_workspace_files(ws)
     except Exception as _e:
         print(f"[workshop] 工作区文件写入失败: {_e}", flush=True)
+    # P2-1 审计：工作间创建
+    _audit_log.record("workshop.create", actor="user", target=ws.workshop_id, detail=ws.name)
     save_state()
     return {"success": True, "workshop_id": ws.workshop_id, "workspace_dir": ws.workspace_dir}
 
@@ -391,6 +395,192 @@ async def workshop_leader_status(ws_id: str):
     ]
     return {"success": True, "members": status}
 
+
+# ── 组长转向 / 委派细化能力（V-19）──────────────────────────────
+# 背景缺口：review 态已实现组长同台派发，但组长「将任务转向其他成员 / 细化派发指令 /
+# 调整成员任务」无专属端点，前端亦无入口。以下端点最小侵入补齐：
+# - POST /api/workshop/{ws_id}/leader/assign   组长向指定成员细化/调整派发指令
+# - POST /api/workshop/{ws_id}/leader/redirect 组长将任务从一名成员转向另一名成员
+# - GET  /api/workshop/{ws_id}/leader/assignments 查看组长派发指令/转向记录
+# 实现复用既有 _dispatch_to_harness（HTTP/file_poll/pending 统一派发）与 _append_msg
+# （讨论区唯一写入口），持久化沿用 save_state（ws.assignments 落 workshops.json）。
+
+def _leader_pick_member(ws, member_id: str):
+    """按 member_id 从工作间中取成员，找不到返回 None。"""
+    if not member_id:
+        return None
+    for m in ws.members:
+        if m.member_id == member_id:
+            return m
+    return None
+
+
+def _leader_member_hid(member) -> str:
+    """取成员首个 harness_id；未绑定返回空串。"""
+    return (member.harness_ids or [None])[0] or ""
+
+
+def _leader_build_assign_payload(ws, member, instruction: str, note: str, kind: str) -> dict:
+    """构造组长委派/转向 payload（与 _leader_division_discuss 同构，供 _dispatch_to_harness 使用）。"""
+    hid = _leader_member_hid(member)
+    if kind == "redirect":
+        label = "任务转向·承接"
+        body = (
+            "你是本工作间的员工，组长刚把一项任务转交给你承接，请立即接手并推进。\n"
+            "【转向指令】" + instruction + ("\n【组长备注】" + note if note else "") + "\n\n"
+            "工作区实时路径：" + ws.workspace_dir + "\n"
+            "任务（大厅内容）：\n" + ws.hall_content
+        )
+    else:
+        label = "组长委派细化"
+        body = (
+            "你是本工作间的员工，组长刚给你下发/调整了细化工作指令，请按指令执行或调整当前工作。\n"
+            "【细化指令】" + instruction + ("\n【组长备注】" + note if note else "") + "\n\n"
+            "工作区实时路径：" + ws.workspace_dir + "\n"
+            "任务（大厅内容）：\n" + ws.hall_content
+        )
+    return {
+        "type": "leader_assign" if kind == "assign" else "leader_redirect",
+        "kind": kind,
+        "workshop_id": ws.workshop_id,
+        "member_id": member.member_id,
+        "role": member.role,
+        "workspace_dir": ws.workspace_dir,
+        "instruction": instruction,
+        "report_endpoint": "/api/harness/task-result",
+        "message": body + (
+            "\n\n【回报要求】处理完必须把结果回报给平台，否则用户看不到：\n"
+            "POST " + _platform_base_url_safe() + "/api/harness/task-result\n"
+            "body: {\"workshop_id\":\"" + ws.workshop_id + "\",\"member_id\":\"" + member.member_id
+            + "\",\"harness_id\":\"" + hid + "\",\"ok\":true,\"result\":\"你的完整回复/结果\"}\n"
+            "把你的回复内容放进 result 字段回报上去。"
+        ),
+    }
+
+
+def _platform_base_url_safe() -> str:
+    """取平台基准地址，避免重复 import 冲突（函数体内延迟导入）。"""
+    from ..server import _platform_base_url
+    try:
+        return _platform_base_url()
+    except Exception:
+        return "http://127.0.0.1:18920"
+
+
+@router.post("/api/workshop/{ws_id}/leader/assign")
+async def workshop_leader_assign(ws_id: str, request: Request):
+    """组长向指定成员细化/调整派发指令：校验成员与 harness 绑定后，
+    复用 _dispatch_to_harness 派发「组长委派细化」任务，并写入讨论区 + assignments 持久化。"""
+    from ..server import Utf8JSONResponse, _append_msg, _dispatch_to_harness, now_iso, save_state
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    body = await request.json()
+    member_id = (body.get("member_id") or "").strip()
+    instruction = (body.get("instruction") or "").strip()
+    note = (body.get("note") or "").strip()
+    if not member_id or not instruction:
+        return Utf8JSONResponse({"error": "member_id 与 instruction 不能为空"}, status_code=400)
+    member = _leader_pick_member(ws, member_id)
+    if not member:
+        return Utf8JSONResponse({"error": f"成员不存在: {member_id}"}, status_code=404)
+    hid = _leader_member_hid(member)
+    if not hid:
+        return Utf8JSONResponse({"error": f"成员 {member.display_name} 未绑定 harness，无法派发"}, status_code=400)
+    payload = _leader_build_assign_payload(ws, member, instruction, note, kind="assign")
+    disp_ok, disp_note = _dispatch_to_harness(hid, payload, kind="task")
+    ws.assignments.setdefault(member_id, []).append({
+        "kind": "assign",
+        "instruction": instruction,
+        "note": note,
+        "at": now_iso(),
+        "by": "组长",
+        "dispatched": disp_ok,
+    })
+    _append_msg(
+        ws, "leader", f"【组长委派细化】给 {member.role}（{member.display_name}）：{instruction}"
+        + (f"\n备注：{note}" if note else "") + f"\n（派发：{'成功' if disp_ok else '失败'}）",
+        zone=2, display_name="组长",
+    )
+    save_state()
+    return {"success": True, "member_id": member_id, "dispatched": disp_ok, "dispatch_note": disp_note}
+
+
+@router.post("/api/workshop/{ws_id}/leader/redirect")
+async def workshop_leader_redirect(ws_id: str, request: Request):
+    """组长将任务从一名成员转向另一名成员：目标成员派发承接指令，
+    原成员如有 harness 则派发移交通知，讨论区记录流转，assignments 持久化。"""
+    from ..server import Utf8JSONResponse, _append_msg, _dispatch_to_harness, now_iso, save_state
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    body = await request.json()
+    from_member_id = (body.get("from_member_id") or "").strip()
+    to_member_id = (body.get("to_member_id") or "").strip()
+    instruction = (body.get("instruction") or "").strip()
+    note = (body.get("note") or "").strip()
+    if not from_member_id or not to_member_id:
+        return Utf8JSONResponse({"error": "from_member_id 与 to_member_id 不能为空"}, status_code=400)
+    if from_member_id == to_member_id:
+        return Utf8JSONResponse({"error": "转向对象不能与原成员相同"}, status_code=400)
+    src = _leader_pick_member(ws, from_member_id)
+    dst = _leader_pick_member(ws, to_member_id)
+    if not src or not dst:
+        return Utf8JSONResponse({"error": f"转向成员不存在: {from_member_id if not src else to_member_id}"}, status_code=404)
+    dst_hid = _leader_member_hid(dst)
+    if not dst_hid:
+        return Utf8JSONResponse({"error": f"目标成员 {dst.display_name} 未绑定 harness，无法承接"}, status_code=400)
+    # 1) 向目标成员派发承接任务
+    payload = _leader_build_assign_payload(ws, dst, instruction or "请承接并推进该任务。", note, kind="redirect")
+    disp_ok, disp_note = _dispatch_to_harness(dst_hid, payload, kind="task")
+    # 2) 原成员如有 harness，派发移交通知（不阻断主流程）
+    src_hid = _leader_member_hid(src)
+    src_note = ""
+    if src_hid:
+        _src_payload = _leader_build_assign_payload(
+            ws, src, "你负责的这项任务已由组长转交给其他成员，请停止当前工作并等待新指令。", note, kind="assign"
+        )
+        _src_ok, _src_note = _dispatch_to_harness(src_hid, _src_payload, kind="task")
+        src_note = f"；原成员通知：{'成功' if _src_ok else '失败'}"
+    ws.assignments.setdefault(to_member_id, []).append({
+        "kind": "redirect",
+        "from_member_id": from_member_id,
+        "instruction": instruction,
+        "note": note,
+        "at": now_iso(),
+        "by": "组长",
+        "dispatched": disp_ok,
+    })
+    _append_msg(
+        ws, "leader", f"【组长任务转向】{src.role}（{src.display_name}）→ {dst.role}（{dst.display_name}）："
+        + (instruction or "承接并推进该任务。") + (f"\n备注：{note}" if note else "")
+        + f"\n（承接派发：{'成功' if disp_ok else '失败'}{src_note}）",
+        zone=2, display_name="组长",
+    )
+    save_state()
+    return {"success": True, "from_member_id": from_member_id, "to_member_id": to_member_id,
+            "dispatched": disp_ok, "dispatch_note": disp_note, "src_notified": bool(src_hid)}
+
+
+@router.get("/api/workshop/{ws_id}/leader/assignments")
+async def workshop_leader_assignments(ws_id: str):
+    """查看组长派发指令/转向记录（供前端组长工作台展示）。"""
+    from ..server import Utf8JSONResponse
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    recs = []
+    for mid, items in (ws.assignments or {}).items():
+        m = _leader_pick_member(ws, mid)
+        recs.append({
+            "member_id": mid,
+            "role": m.role if m else "",
+            "display_name": m.display_name if m else mid,
+            "items": items[-10:],
+        })
+    return {"success": True, "assignments": recs}
+
+
 @router.post("/api/workshop/{ws_id}/select-members")
 async def workshop_select_members(ws_id: str):
     from ..server import Utf8JSONResponse, _discussion_ctx
@@ -576,6 +766,8 @@ async def workshop_review(ws_id: str):
     ws._auto_review_done = False  # 手动进入：重置自动触发防重标记，允许后续阶段再次自动进入
     ws._review_suff_notified = False  # 重置充分性判定防重标记
     _append_msg(ws, "notice", "【三级讨论】一个阶段工作已告一段落，进入阶段复盘。规则：① 平台 AI 主持，与用户、组长、员工同台讨论；② 组长转为「汇报+讨论」角色，汇报本阶段进展/卡点/下一步；③ 员工的回报会实时出现在这里；④ 讨论充分后，平台 AI 会判定进入「继续工作」或「任务已完成」。请说说这一阶段的进展：完成得怎么样、有没有卡点、下一步想怎么走？", zone=3)
+    # P2-1 审计：进入三级讨论
+    _audit_log.record("workshop.review", actor="user", target=ws_id, detail="进入三级讨论")
     save_state()
     return {"success": True, "status": ws.status, "action": "review"}
 
@@ -607,6 +799,13 @@ async def workshop_complete(ws_id: str):
     task_state_machine.on_event(ws_id, EV_COMPLETE, {"by": "user"})
     # 讨论产出物归档（补齐缺口3）：三级讨论内容落盘 FINAL_SUMMARY.md
     _write_review_archive(ws, "complete")
+    # V2-3：完成评估闭环（观察 → 评估 → 沉淀 → 复用，失败不阻塞完成）
+    _v2_evaluate_workshop_completion(
+        ws, task_memory=task_memory, capability_ledger=capability_ledger,
+        harness_manager=harness_manager,
+    )
+    # P2-1 审计：工作间完成
+    _audit_log.record("workshop.complete", actor="user", target=ws_id, detail="complete")
     save_state()
     return {"success": True, "status": ws.status, "action": "complete"}
 

@@ -2763,12 +2763,55 @@ async function refreshWorkbench(){
       const itms=(pr.pending_interjects||[]).map(it=>`<div class="wb-item"><span>${esc(it.content)}</span><button class="btn" style="font-size:11px;padding:2px 6px" onclick="interjectAct('${it.id}','resolve')">裁决</button></div>`).join('');
       pendingHtml=itms||`<div class="id-empty">状态机：${esc(pr.state||'-')}</div>`;
     }
+    // V-19：组长委派细化/转向区块（并行拉成员 + 派发记录）
+    let assignHtml='<div class="id-empty">加载中…</div>';
+    try{
+      const [wd,ad]=await Promise.all([
+        fetch(`/api/workshop/${wsId}`).then(x=>x.json()),
+        fetch(`/api/workshop/${wsId}/leader/assignments`).then(x=>x.json()),
+      ]);
+      const mems=(wd&&wd.members)||[];
+      const opts=mems.map(m=>`<option value="${esc(m.member_id)}">${esc(m.role)}·${esc(m.display_name||m.member_id)}</option>`).join('')||'<option value="">（无成员）</option>';
+      const recs=(ad&&ad.assignments)||[];
+      assignHtml=
+        `<div style="margin:6px 0"><b>委派细化指令</b><div style="display:flex;gap:4px;margin-top:4px"><select id="ldAssignSel" style="flex:1;min-width:0">${opts}</select></div>`+
+        `<div style="display:flex;gap:4px;margin-top:4px"><input id="ldAssignInp" placeholder="细化/调整指令…" style="flex:2;min-width:0"/><button class="btn" style="font-size:11px;padding:2px 6px" onclick="leaderAssign()">派发</button></div></div>`+
+        `<div style="margin:6px 0"><b>任务转向</b><div style="display:flex;gap:4px;margin-top:4px"><select id="ldFromSel" style="flex:1;min-width:0">${opts}</select><span style="align-self:center">→</span><select id="ldToSel" style="flex:1;min-width:0">${opts}</select></div>`+
+        `<div style="display:flex;gap:4px;margin-top:4px"><input id="ldRedirectInp" placeholder="转向说明…" style="flex:2;min-width:0"/><button class="btn" style="font-size:11px;padding:2px 6px" onclick="leaderRedirect()">转向</button></div></div>`+
+        (recs.length?`<div style="margin-top:4px"><b>派发记录</b>${recs.map(r=>(r.items||[]).map(it=>`<div class="wb-item"><span>${esc(r.display_name||r.member_id)} · ${it.kind==='redirect'?'转向':'细化'}</span><span style="color:${it.dispatched?'var(--green)':'var(--red)'}">${it.dispatched?'已派发':'派发失败'}</span></div>`).join('')).join('')}</div>`:'');
+    }catch(e){assignHtml='<div class="id-empty">记录加载失败</div>';}
     box.innerHTML=
       `<div class="id-wb-block"><h4>暂停列表（stuck/blocked）</h4>${paused||'<div class="id-empty">无</div>'}</div>`+
       `<div class="id-wb-block"><h4>点子袋（灵感待处理）</h4>${ideas||'<div class="id-empty">无</div>'}</div>`+
       `<div class="id-wb-block"><h4>待裁决队列</h4>${pendingHtml}</div>`+
-      `<div class="id-wb-block"><h4>自治边界状态</h4><span class="sm-lamp ${esc(d.state||'created')}"><i></i>${esc(SM_LABEL[d.state]||d.state||'-')}</span> <button class="btn" style="font-size:11px;padding:2px 6px;margin-left:6px" onclick="smAct('resume')">恢复</button> <button class="btn" style="font-size:11px;padding:2px 6px" onclick="smAct('drop')">放弃</button></div>`;
+      `<div class="id-wb-block"><h4>自治边界状态</h4><span class="sm-lamp ${esc(d.state||'created')}"><i></i>${esc(SM_LABEL[d.state]||d.state||'-')}</span> <button class="btn" style="font-size:11px;padding:2px 6px;margin-left:6px" onclick="smAct('resume')">恢复</button> <button class="btn" style="font-size:11px;padding:2px 6px" onclick="smAct('drop')">放弃</button></div>`+
+      `<div class="id-wb-block"><h4>组长委派 / 转向（V-19）</h4>${assignHtml}</div>`;
   }catch(e){box.innerHTML='<div class="id-empty">加载失败</div>';}
+}
+async function leaderAssign(){
+  if(!wsId)return;
+  const sel=document.getElementById('ldAssignSel'),inp=document.getElementById('ldAssignInp');
+  if(!sel||!inp)return;
+  const member_id=sel.value,instruction=(inp.value||'').trim();
+  if(!member_id||!instruction){if(acToast)acToast('请选择成员并填写指令');return;}
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/leader/assign`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member_id,instruction})}).then(x=>x.json());
+    if(acToast)acToast(r&&r.success?('已派发'+(r.dispatched?'':'（派发失败）')):((r&&r.error)||'操作失败'));
+    inp.value='';refreshWorkbench();
+  }catch(e){if(acToast)acToast('操作失败','err');}
+}
+async function leaderRedirect(){
+  if(!wsId)return;
+  const fs=document.getElementById('ldFromSel'),ts=document.getElementById('ldToSel'),inp=document.getElementById('ldRedirectInp');
+  if(!fs||!ts||!inp)return;
+  const from_member_id=fs.value,to_member_id=ts.value,instruction=(inp.value||'').trim();
+  if(!from_member_id||!to_member_id){if(acToast)acToast('请选择来源与目标成员');return;}
+  if(from_member_id===to_member_id){if(acToast)acToast('来源与目标不能相同');return;}
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/leader/redirect`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from_member_id,to_member_id,instruction})}).then(x=>x.json());
+    if(acToast)acToast(r&&r.success?('已转向'+(r.dispatched?'':'（派发失败）')):((r&&r.error)||'操作失败'));
+    inp.value='';refreshWorkbench();
+  }catch(e){if(acToast)acToast('操作失败','err');}
 }
 async function smAct(action){
   if(!wsId)return;

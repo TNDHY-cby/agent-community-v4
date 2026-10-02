@@ -156,7 +156,7 @@ def handle_activation(act: dict) -> bool:
 
 
 def handle_task(task: dict) -> tuple[bool, str]:
-    """领到工作任务：发给对应会话，harness 用工具真干活，返回结果。"""
+    """领到工作任务：发给对应会话，dsh 用工具真干活，返回结果。"""
     bridge = ensure_bridge()
     key = member_key(task)
     sid = _sessions.get(key)

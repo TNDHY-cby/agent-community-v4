@@ -48,6 +48,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "budget_monthly": 20.0,       # 月花费阈值（元）
     "ai_price_per_1k": 0.0,       # 单价（元/1K tokens），0 表示仅计数不估费
     "data_dir": "",               # 运行数据目录（缓存/用量落盘），空则用 ~/.agent_community/data
+    # ── P1 身份凭证 Agent-Token（HMAC-SHA256 签名密钥）──
+    # 空则表示尚未生成；platform/identity.py 首次使用时会生成 secrets.token_hex(32)
+    # 并写回本文件持久化（幂等，已存在则沿用）。
+    "agent_token_secret": "",
 }
 
 

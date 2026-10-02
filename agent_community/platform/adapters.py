@@ -15,6 +15,7 @@ from fastapi import WebSocket
 
 from .protocol import (
     AgentCard, AgentEndpoint, Message, MessageType,
+    IMPLEMENTED_TRANSPORTS,
     PipeRequest, PipeResponse, TransportType,
 )
 
@@ -22,18 +23,28 @@ from .protocol import (
 # ── 端点选择 ──────────────────────────────────────────────────
 
 def select_endpoint(card: AgentCard, preferred: TransportType | None = None) -> AgentEndpoint | None:
-    """从多端点中选择最优接入点"""
+    """从多端点中选择最优接入点。
+
+    选择顺序：preferred（若已实现）→ 端点 priority 降序 → 声明顺序。
+    未实现的传输协议（sse/grpc）自动跳过，绝不选到空实现。
+    """
     if not card.endpoints:
         return None
 
-    # 优先选择 preferred 类型
+    # 只考虑已实现的协议，未实现的不进选择池
+    candidates = [ep for ep in card.endpoints if ep.transport in IMPLEMENTED_TRANSPORTS]
+    if not candidates:
+        # 全部未实现 → 返回 None 让调用方走 fallback
+        return None
+
+    # 1. preferred（若已实现）
     if preferred:
-        for ep in card.endpoints:
+        for ep in candidates:
             if ep.transport == preferred:
                 return ep
 
-    # 按优先级排序，选最高的
-    sorted_eps = sorted(card.endpoints, key=lambda x: x.priority, reverse=True)
+    # 2. 按 priority 降序；同 priority 保持声明顺序（stable sort）
+    sorted_eps = sorted(candidates, key=lambda x: x.priority, reverse=True)
     return sorted_eps[0]
 
 
