@@ -1,5 +1,0 @@
-<frozen runpy>:128: RuntimeWarning: 'agent_community.platform.server' found in sys.modules after import of package 'agent_community.platform', but prior to execution of 'agent_community.platform.server'; this may result in unpredictable behaviour
-INFO:     Started server process [12932]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://127.0.0.1:18920 (Press CTRL+C to quit)
