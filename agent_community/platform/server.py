@@ -138,6 +138,8 @@ from .routers.audit import router as _audit_router
 app.include_router(_audit_router)  # P2-1 审计：GET /api/audit（自 retired 副本回收，落进 routers/audit.py）
 from .routers.protocols import router as _protocols_router
 app.include_router(_protocols_router)  # V-11 协议目录：GET /api/protocols（单一事实源）
+from .routers.protocol_brief import router as _brief_router
+app.include_router(_brief_router)  # V-12 协作协议简报：GET /api/protocol-brief（外端 AI onboarding）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1", "http://localhost"],

@@ -1169,6 +1169,122 @@ async def get_peer_route(request: Request):
         "harness_name": sess.info.harness_name,
     }
 
+@router.post("/api/harness/auto-connect")
+async def harness_auto_connect(request: Request):
+    from ..server import Utf8JSONResponse
+    """一键自动架桥：按 wakeup_method 自动生成并启动桥进程（用户不当信息中转）。
+
+    http_api  → 平台直接推送，无需桥，直接返回就绪
+    file_poll → 后台启动 filepoll_harness_bridge.py
+    acp       → 后台启动 acp_harness_bridge.py（需 acp_command 真实可执行）
+    clipboard → 不能全自动，返回 manual + 粘贴提示（不阻塞）
+    其他      → 后台启动 pending_poll_bridge.py（兜底）
+    """
+    import os as _os
+    import subprocess as _sp
+    from ..protocol import WakeupMethod
+
+    body = await request.json()
+    hid = str(body.get("harness_id") or "").strip()
+    if not hid:
+        return Utf8JSONResponse({"error": "缺少 harness_id"}, status_code=400)
+
+    sess = harness_manager.sessions.get(hid)
+    if not sess:
+        return Utf8JSONResponse({"error": f"harness {hid} 未注册"}, status_code=404)
+    info = sess.info
+
+    # 幂等：桥已在跑就直接返回
+    existing = harness_manager.bridges.get(hid)
+    if existing and getattr(existing, "proc", None) and existing.proc.poll() is None:
+        return {"success": True, "harness_id": hid, "status": "connected",
+                "bridge_type": "already-running", "pid": existing.proc.pid,
+                "note": "桥已在运行"}
+
+    wm = getattr(info, "wakeup_method", None)
+    base_url = "http://127.0.0.1:18920"
+    # __file__ = .../agent_community/platform/routers/harness.py
+    # _routers = .../agent_community/platform/routers
+    # _pkg     = .../agent_community          (= _routers/../..)
+    # _ex      = .../agent_community/examples
+    _here = _os.path.dirname(_os.path.abspath(__file__))          # .../platform/routers
+    _pkg = _os.path.dirname(_os.path.dirname(_here))              # .../agent_community
+    _ex = _os.path.join(_pkg, "examples")                         # .../agent_community/examples
+
+    # 选桥脚本 + 参数
+    bridge_cmd: list[str] | None = None
+    bridge_type = ""
+    if wm == WakeupMethod.HTTP_API:
+        return {"success": True, "harness_id": hid, "status": "ready",
+                "bridge_type": "http_api", "note": "http_api 类由平台直接推送，无需桥"}
+    elif wm == WakeupMethod.FILE_POLL:
+        script = _os.path.join(_ex, "filepoll_harness_bridge.py")
+        inbox = (getattr(info, "wakeup_dir", "") or "").strip()
+        if not _os.path.isfile(script):
+            return Utf8JSONResponse({"error": f"桥脚本不存在: {script}"}, status_code=500)
+        if not inbox:
+            return {"success": True, "harness_id": hid, "status": "manual",
+                    "bridge_type": "file_poll",
+                    "note": "file_poll 需要 wakeup_dir（inbox 目录），注册时未填，请手动架桥"}
+        bridge_cmd = ["-u", script, "--harness-id", hid, "--inbox", inbox, "--platform", base_url]
+        bridge_type = "file_poll"
+    elif wm == WakeupMethod.ACP:
+        script = _os.path.join(_ex, "acp_harness_bridge.py")
+        if not _os.path.isfile(script):
+            return Utf8JSONResponse({"error": f"桥脚本不存在: {script}"}, status_code=500)
+        if not (getattr(info, "acp_command", "") or "").strip():
+            return {"success": True, "harness_id": hid, "status": "manual",
+                    "bridge_type": "acp",
+                    "note": "acp 类需要 acp_command，注册时未填，请手动架桥"}
+        bridge_cmd = ["-u", script, "--harness-id", hid, "--url", base_url]
+        bridge_type = "acp"
+    elif wm == WakeupMethod.CLIPBOARD:
+        return {"success": True, "harness_id": hid, "status": "manual",
+                "bridge_type": "clipboard",
+                "note": "clipboard 类需在 harness 侧手动粘贴激活提示词，无法全自动。请在 harness 输入框粘贴内容（见激活提示）"}
+    else:
+        # 兜底：pending_poll
+        script = _os.path.join(_ex, "pending_poll_bridge.py")
+        if not _os.path.isfile(script):
+            return Utf8JSONResponse({"error": f"桥脚本不存在: {script}"}, status_code=500)
+        work_dir = (getattr(info, "wakeup_dir", "") or "").strip() or _os.path.join(_pkg, "data", "bridges", hid)
+        bridge_cmd = ["-u", script, "--harness-id", hid, "--url", base_url, "--work-dir", work_dir]
+        bridge_type = "pending_poll"
+
+    # 后台启动桥进程（DETACHED，父进程退出不带走）
+    if bridge_cmd is None:
+        return Utf8JSONResponse({"error": "未能确定桥脚本"}, status_code=500)
+    py_exe = _os.environ.get("AC_PYTHON") or _os.sys.executable
+    full_cmd = [py_exe] + bridge_cmd
+    try:
+        env = dict(_os.environ)
+        env["DSH_SUPERVISOR_PID"] = str(_os.getpid())
+        if bridge_type == "pending_poll":
+            _os.makedirs(work_dir, exist_ok=True)
+        proc = _sp.Popen(
+            full_cmd,
+            stdout=_sp.DEVNULL,
+            stderr=_sp.DEVNULL,
+            creationflags=_sp.CREATE_NEW_PROCESS_GROUP,
+            env=env,
+        )
+    except Exception as e:
+        return Utf8JSONResponse({"error": f"桥启动失败: {e}"}, status_code=500)
+
+    # 等 2 秒验证存活
+    import time as _time
+    _time.sleep(2.0)
+    alive = proc.poll() is None
+    return {
+        "success": True,
+        "harness_id": hid,
+        "status": "connected" if alive else "failed",
+        "bridge_type": bridge_type,
+        "pid": proc.pid if alive else None,
+        "cmd": " ".join(full_cmd),
+        "note": "" if alive else "桥进程启动后立即退出，请检查 harness 配置",
+    }
+
 @router.websocket("/ws/harness/{harness_id}")
 async def harness_ws(ws: WebSocket, harness_id: str):
     from ..server import _ws_auth_ok

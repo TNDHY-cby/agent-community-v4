@@ -196,7 +196,13 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:ra
 
       <p>1. 一键复制下面的「请帮我注册」话术，粘贴给<b>任意 AI（或你的 harness 本体）</b>，它会<b>自己收集信息</b>（向 harness 本体探测，而不是向用户问技术细节），再生成注册 JSON 并注册：</p>
 
-      <pre id="aiPrompt">请把我注册为「外端Agent生产合作社（External Agent Community）」平台的员工（harness）。接入分两个阶段：
+      <pre id="aiPrompt">请把我注册为「外端Agent生产合作社（External Agent Community）」平台的员工（harness）。
+
+【先看这个：平台协作协议简报】
+GET http://127.0.0.1:{PORT}/api/protocol-brief
+这是一份机器可读的「平台是什么、我该做什么、不懂就问谁」简报，先拉下来看。
+
+接入分两个阶段：
 
 【阶段1：初步消息注册（你只需声明部分信息，不必懂技术细节）】
 POST http://127.0.0.1:{PORT}/api/harness/pre-register
@@ -252,10 +258,25 @@ body: {"harness_id": "我的唯一标识"}
 
 
 
-【注册完成后】
+【注册完成后：一次过自动化】
 
-1. 告诉我注册结果：harness_id + wakeup_method + 是否成功；
-2. 然后【按 wakeup_method 完成回报配置】（见下方【架桥】段），否则收不到任务。
+1. 注册成功后，立即调自动架桥（平台帮你连上，不用手动跑桥命令）：
+POST http://127.0.0.1:{PORT}/api/harness/auto-connect
+body: {"harness_id": "我的唯一标识"}
+返回 status=connected/ready 即接入完成，可接收任务。
+（若返回 status=manual，按 note 提示手动处理；clipboard 类需在 harness 侧粘贴激活提示词。）
+
+2. 告诉我注册结果：harness_id + wakeup_method + 是否成功。
+3. 之后平台会按 wakeup_method 自动派任务给你。
+
+【第二通道：外端 AI ↔ 平台 AI 直接沟通（遇到问题用这个！）】
+
+如果你是 AI，对平台规则、任务要求、协作方式有疑问，【不要猜】，直接问平台 AI：
+
+POST http://127.0.0.1:{PORT}/api/assistant/chat
+body: {"content": "你的问题（如：这个任务该怎么做？工作间三级讨论是什么？）"}
+
+平台 AI 会告诉你该怎么配合。这是专为外端 AI 设计的沟通通道，不是给用户的。
 
 
 
@@ -332,7 +353,10 @@ body: {"harness_id": "我的唯一标识"}
       <p>3. 注册成功后，harness 会出现在下方列表，可被「员工名单」选中。<b style="color:var(--red)">但这只是"名单里有名字"——要真正接到活，必须在 harness 侧跑桥（见第 1 步的架桥命令）。不架桥 = 只注册不干活。</b></p>
 
       <button class="btn" onclick="copyTemplate()">复制接入教程+注册话术（第 1 段：粘贴给 AI 帮注册）</button>
+      <button class="btn" onclick="oneClickRegister()" style="border-color:var(--green);color:var(--green);">🚀 一键注册（自动探测补齐）</button>
       <button class="btn" id="detectSelfPathBtn" style="margin-left:8px;border-color:var(--green);color:var(--green);" onclick="detectSelfPath()">🛠 检测自身路径并更新模板</button>
+
+      <div id="oneClickResult" style="display:none;margin-top:12px;padding:12px;border-radius:8px;background:var(--panel-bg,#151a22);border:1px solid var(--border,#2a3444);font-size:12px;line-height:1.8;"></div>
 
     </div>
 
@@ -758,6 +782,49 @@ function copyTemplate(){
     if (ok) show('已复制第 1 段（接入教程+注册话术），粘贴给任意 AI 即可帮你注册', true);
     else show('复制失败，请手动选择复制', false);
   });
+}
+
+async function oneClickRegister(){
+  const box=document.getElementById('oneClickResult');
+  box.style.display='block';
+  box.innerHTML='<span style="color:var(--yellow)">⏳ 正在注册…</span>';
+  try{
+    const raw=document.getElementById('jsonTemplate').textContent;
+    const cleaned=raw.replace(/\/\/.*$/gm,'').replace(/,\s*([}\]])/g,'$1');
+    const body=JSON.parse(cleaned);
+    box.innerHTML='<span style="color:var(--yellow)">⏳ pre-register…</span>';
+    const r1=await fetch('/api/harness/pre-register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d1=await r1.json();
+    if(!r1.ok){box.innerHTML='<span style="color:var(--red)">❌ pre-register 失败: '+esc(JSON.stringify(d1))+'</span>';return;}
+    box.innerHTML='<span style="color:var(--green)">✅ pre-register 成功（'+esc(body.harness_id)+'）</span><br><span style="color:var(--yellow)">⏳ probe-register（自动探测补齐）…</span>';
+    const r2=await fetch('/api/harness/probe-register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({harness_id:body.harness_id})});
+    const d2=await r2.json();
+    if(!r2.ok){box.innerHTML+='<br><span style="color:var(--red)">❌ probe-register 失败: '+esc(JSON.stringify(d2))+'</span>';return;}
+    const tok=d2.agent_token||d1.agent_token||'';
+    box.innerHTML='<span style="color:var(--green)">✅ 注册成功！</span><br>'
+      +'harness_id: <b>'+esc(body.harness_id)+'</b><br>'
+      +(tok?'agent_token: <code>'+esc(tok.substring(0,16))+'…</code><br>':'')
+      +(d2.wakeup_method?'wakeup_method: <b>'+esc(d2.wakeup_method)+'</b><br>':'')
+      +(d2.api_base_url?'api_base_url: <code>'+esc(d2.api_base_url)+'</code><br>':'')
+      +'<span id="autoConnectStatus" style="color:var(--yellow)">⏳ 正在自动架桥…</span>';
+    // 自动架桥（用户不当信息中转）
+    try{
+      const r3=await fetch('/api/harness/auto-connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({harness_id:body.harness_id})});
+      const d3=await r3.json();
+      const st=document.getElementById('autoConnectStatus');
+      if(d3.status==='connected'||d3.status==='ready'){
+        st.innerHTML='<span style="color:var(--green)">✅ '+(d3.status==='ready'?'就绪（无需桥）':'已连接')+'，可接收任务！'
+          +(d3.pid?'<br>桥进程 PID: '+esc(String(d3.pid)):'')
+          +(d3.bridge_type?'<br>桥类型: '+esc(d3.bridge_type):'')+'</span>';
+      }else if(d3.status==='manual'){
+        st.innerHTML='<span style="color:var(--yellow)">⚠️ 需手动介入：'+esc(d3.note||'')+'</span>';
+      }else{
+        st.innerHTML='<span style="color:var(--red)">❌ 架桥失败：'+esc(d3.note||d3.error||'未知')+'</span>';
+      }
+    }catch(e){
+      document.getElementById('autoConnectStatus').innerHTML='<span style="color:var(--red)">❌ 架桥异常：'+esc(e.message)+'</span>';
+    }
+  }catch(e){box.innerHTML='<span style="color:var(--red)">❌ '+esc(e.message)+'</span>';}
 }
 
 function copyBridge(){
