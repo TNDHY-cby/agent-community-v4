@@ -1,0 +1,12 @@
+{
+  "name": "dsh-mode-ac-dev-cloud",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "合作社开发模式（ac-dev，云端 Linux 实例版）：为开发「外端Agent生产合作社」准备的 DeepSeek Harness agent preset",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

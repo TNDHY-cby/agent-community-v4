@@ -1,0 +1,5 @@
+# 强制 shell 脚本用 LF 行尾。
+# Windows 侧 git 若开了 core.autocrlf，会把 .sh 转成 CRLF，
+# 到 Linux 上一执行就报 "bad interpreter" / 语法错。这里钉死。
+*.sh text eol=lf
+*.bash text eol=lf
