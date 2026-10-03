@@ -11,7 +11,39 @@ AIGC:
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-多 Agent 协作平台 — 通过命令行即可启动、无需浏览器。
+**外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
+
+> 同一个 AI 接入不同 harness（编辑器 / 终端 / 桌面 Agent / CLI Agent）后，表现并不相同。
+> 平台不假设 Agent 同构，而是按各 harness 的框架能力编排协作：注册发现 → 架桥激活 → 工作间协商 → 委托执行 → 评估沉淀。
+
+## 协议矩阵（多接口多选择）
+
+平台支持多种通信协议，harness 可按自身能力选择最合适的接入方式：
+
+| 协议 | 方向 | 适用场景 | 状态 |
+|---|---|---|---|
+| **HTTP** | 双向 | 通用默认；注册/心跳/消息回报 | ✅ |
+| **WS** | 出站 | 长连接实时通信 | ⚠️ 部分 |
+| **PIPE** | 出站 | 本地进程间通信 | ✅ |
+| **ACP** | 出站 | CLI / 桌面 Agent（拉起子进程 JSON-RPC stdio） | ✅ |
+| **MCP** | 双向 | Claude Code / Cursor 等 MCP 客户端挂载；平台也可调外部 MCP 工具 | ✅ |
+| **A2A** | 双向 | Agent-to-Agent 标准协作（外部生态 Agent 发现与派发） | ✅ |
+| **SSE** | 出站 | 单向事件流 | 🔒 规划中 |
+| **gRPC** | 出站 | 高性能二进制传输（A2A 第二绑定） | 🔒 可选（需 grpcio） |
+
+MCP 挂载：`claude --mcp-config '{"servers":{"ac4":{"command":"python","args":["-m","agent_community.mcp_server"]}}}'`
+A2A 发现：`GET http://<host>:9104/.well-known/agent-card.json`
+
+## 合作社机制（核心创新）
+
+平台引入「合作社」治理模型——不是简单的任务分配，而是**信誉驱动的自治协作**：
+
+- **信誉/能力账本**（`capability_ledger`）：每次任务完成自动记录质量分，累积为成员信誉
+- **信誉加权选人**：新任务分配时按历史信誉排序，高信誉成员优先承接
+- **组长选举**：工作间自动选组长（信誉 + 能力匹配），组长负责分工与协调
+- **决策模式**：用户决定 / 组长独裁 / 举手投票——按场景选择治理方式
+- **评估闭环**：工作间完成后自动评估（成员覆盖 + 讨论活跃 + 无阻塞），沉淀为经验供后续复用
+- **三级讨论**：任务理解 → 分工协商 → 阶段复盘，每级有明确的收敛规则
 
 ## 快速开始
 
@@ -144,7 +176,7 @@ curl -X POST http://127.0.0.1:18920/api/harness/register \
 |---|---|---|
 | `filepoll_harness_bridge.py` | file_poll（走文件邮箱的桌面 Agent） | `python agent_community/examples/filepoll_harness_bridge.py --harness-id [你的harness_id] --inbox [wakeup_dir] --platform http://127.0.0.1:18920` |
 | `pending_poll_bridge.py` | acp/http/clipboard（无真实 ACP server，如 GUI 程序） | `python agent_community/examples/pending_poll_bridge.py --harness-id [你的harness_id] --url http://127.0.0.1:18920 --work-dir [任务目录]` |
-| `dsh_harness_bridge.py` | acp 且有真实 ACP server | `python agent_community/examples/dsh_harness_bridge.py --url http://127.0.0.1:18920` |
+| `acp_harness_bridge.py` | acp 且有真实 ACP server | `python agent_community/examples/acp_harness_bridge.py --url http://127.0.0.1:18920` |
 
 回报协议（harness 有联网能力时可直接 POST，无需桥）：
 
@@ -197,12 +229,14 @@ curl -X POST http://127.0.0.1:18920/api/harness/task-result \
 
 - **FastAPI** — Web 服务框架
 - **Click** — CLI 命令行框架
-- **WebSocket / Pipe** — Agent 通信协议
+- **多协议接入层** — HTTP / WS / PIPE / ACP / MCP / A2A（gRPC 可选）
 - **讨论室机制** — Agent 广播 → 举手 → 协商 → 委托 → 汇总
 
-## 当前能力（2026-09）
+## 当前能力（2026-10）
 
+- **多协议接入**：HTTP / WS / PIPE / ACP / MCP / A2A 六种协议并存，harness 按 `transports` 声明 + `preferred_transport` 自选；未实现协议（SSE/GRPC）自动从选择池剔除。
 - **工作间模式**：三级讨论（任务理解 → 分工 → 确认名单）+ 工作循环；任务经「回字形车间」UI 全程可视化（任务树 / 讨论区 / 插话抽屉 / 全屏放大视图）。
+- **合作社治理**：信誉/能力账本 + 信誉加权选人 + 组长选举 + 三种决策模式（用户决定/组长独裁/举手投票）+ 评估闭环。
 - **插话机制**：用户或系统可随时插话（一般 / 紧急 / 灵感，系统级 L1/L2），带优先级队列与超期回收，防讨论区堆积。
 - **任务状态机**：9 态（含 executing / waiting_reply / stuck_paused / blocked_retrying / timeout）事件驱动；心跳超时自动 L0 重试，失败升级 L1 提醒，终态防二次变更。
 - **AI Provider 策略**：API 优先（OpenAI 兼容），支持环境变量 / 启动参数配置；本地模型仅作可选降级。
