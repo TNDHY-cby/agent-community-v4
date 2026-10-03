@@ -12,26 +12,15 @@ from ..protocol import HarnessMessage
 from ..protocol import HarnessStatus
 from ..protocol import Message
 from ..protocol import MessageType
-from pathlib import Path
 from ..protocol import WakeupMethod
 from fastapi import WebSocketDisconnect
-from ..ai_external import run_ai_call as ai_external_run_ai_call
-import asyncio
 from datetime import datetime
-from .. import harness_launcher
 from ..harness_adapter import harness_manager
-from ..harness_adapter import harness_to_agent_card
 import json
-import os
-from ..api_wakeup import probe_http_api
-from ..api_wakeup import send_http_api_message
-import time
-from uuid import uuid4
 from ..state import _bridge_tests_inflight, agents, assistant_history, assistant_history_max, pending_activations, pending_bridge_tests, pending_pre_register, pending_tasks, workshops
 from ..protocol import HarnessTool
-from ..audit import audit_log as _audit_log
 from ..identity import check_request_token as _check_request_token
-from ..identity import issue_agent_token as _issue_agent_token
+from ..audit import audit_log as _audit_log
 
 router = APIRouter()
 
@@ -100,6 +89,7 @@ def _harness_identity_check(harness_id: str, headers):
 
 @router.patch("/api/harness/{harness_id}/capabilities")
 async def update_harness_capabilities(harness_id: str, request: Request):
+    _audit_log.record("harness.capabilities", actor="user", target=harness_id, detail="更新能力")
     from ..server import Utf8JSONResponse, _append_hall, bcast_to_clients, save_state
     """精化外端 Harness 的能力标签列表（更新注册信息 + 平台 AgentCard）"""
     body = await request.json()
@@ -125,6 +115,7 @@ async def update_harness_capabilities(harness_id: str, request: Request):
 
 @router.patch("/api/harness/{harness_id}/activation_prompt")
 async def update_harness_activation_prompt(harness_id: str, request: Request):
+    _audit_log.record("harness.activation_prompt", actor="user", target=harness_id, detail="更新激活提示")
     from ..server import Utf8JSONResponse, save_state
     """修改外端 Harness 的唤醒提示词模板（同步持久化，注册时不再被自动生成覆盖）。"""
     body = await request.json()
@@ -142,6 +133,7 @@ async def update_harness_activation_prompt(harness_id: str, request: Request):
 
 @router.patch("/api/harness/{harness_id}/experience-index")
 async def update_harness_experience_index(harness_id: str, request: Request):
+    _audit_log.record("harness.experience_index", actor="user", target=harness_id, detail="更新经验索引")
     from ..server import Utf8JSONResponse, _merge_experience_index, save_state
     """登记/更新该 Harness 的经验包索引（skill_index / knowledge_index）。
 

@@ -110,6 +110,28 @@ def auth_headers(token="test-tok"):
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture(autouse=True)
+def permissive_policy(tmp_path, monkeypatch):
+    """V-14：把策略引擎换成「全放行且无规则」，让本文件的测试继续验证**端点自身**逻辑。
+
+    为什么需要：V-14 给 plugins 端点加了策略闸门，出厂策略下
+    `shell.exec` / `plugin.install` 都是 ASK —— 会让本文件原有的
+    「鉴权 / 黑名单 / 真执行」单元测试全部走到待审批分支（9 个用例失败）。
+    本 fixture 让这些测试聚焦在端点自身行为上；
+    **策略闸门本身的行为由 test_policy_wiring_tools.py 覆盖**
+    （那里用出厂策略断言 ASK 不入队不执行、危险命令 403）。
+    """
+    from agent_community.platform import policy as policy_mod
+    from agent_community.platform.policy import PolicyEngine
+
+    eng = PolicyEngine(
+        data_dir=tmp_path / "_policy",
+        config={"version": 1, "default_by_op": {}, "actor_overrides": {}, "rules": []},
+    )
+    monkeypatch.setattr(policy_mod, "policy_engine", eng)
+    return eng
+
+
 def run(coro):
     return asyncio.run(coro)
 

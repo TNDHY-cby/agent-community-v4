@@ -1,7 +1,7 @@
 # Harness 通用接入协议 v1（2026-08-29）
 
 > 目的：任何外部 Agent / 工具（harness）都能按统一协议接入平台，被唤醒、干活、回报。
-> 不依赖 harness 的内部实现（小白龙、Trae、Claude Code、任意 CLI/桌面/API 程序都适用）。
+> 不依赖 harness 的内部实现（任意 CLI / 桌面 / API 程序都适用）。
 
 ---
 
@@ -28,7 +28,7 @@ harness 声明身份 + 能力 + **唤醒方式**。关键字段：
   "wakeup_method": "http_api",          // 见下方「唤醒方式」
   "api_base_url": "http://127.0.0.1:3721",   // http_api 用：harness 自带 HTTP API 地址
   "api_message_path": "/message",            // http_api 用：消息推送端点
-  "api_outbox_dir": "D:\\我的目录\\outbox",    // 回报目录（可选：若 harness 写文件回报）
+  "api_outbox_dir": "D:\\示例目录\\outbox",    // 回报目录（可选：若 harness 写文件回报）
   "callback_url": "",
   "wakeup_dir": "",                     // file_poll 用：任务文件目录
   "acp_command": "",                    // acp 用：拉起命令

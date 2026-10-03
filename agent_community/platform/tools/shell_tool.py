@@ -38,13 +38,37 @@ class ShellExecTool(BaseTool):
         if not command:
             return ToolResult(tool_name="shell_exec", success=False, content="缺少参数: command")
 
-        # 安全检查
+        # ── 第一道：危险命令黑名单（不可移除的底线）────────────────
+        # V-14 起黑名单**同时**作为策略引擎的 builtin.danger 规则存在，这里保留原样
+        # 是为了纵深防御：即使策略配置被改坏/被删规则，黑名单仍然拦得住
+        # （设计稿 §二「不改现有 _is_dangerous 的黑名单语义」）。
         danger = _is_dangerous(command)
         if danger:
             return ToolResult(
                 tool_name="shell_exec",
                 success=False,
                 content=f"安全拦截: {danger}\n如需执行此操作，请通过本地终端手动处理。",
+            )
+
+        # ── 第二道：策略闸门 ALLOW / DENY / ASK（V-14）──────────────
+        # 工具层的唯一调用方是 react_loop（平台 AI），故 actor 固定为 platform_ai。
+        from ..policy import (
+            SHELL_EXEC,
+            blocked_message,
+            check,
+            pending_message,
+        )
+        ev, pending = check(SHELL_EXEC, target=command)
+        if ev.blocked:
+            return ToolResult(
+                tool_name="shell_exec", success=False,
+                content=f"{blocked_message(ev)}\n规则: {ev.rule_id}",
+            )
+        if ev.needs_approval:
+            # ASK：**绝不执行**，把待办 id 交回，等人批
+            return ToolResult(
+                tool_name="shell_exec", success=False,
+                content=pending_message(ev, pending),
             )
 
         try:

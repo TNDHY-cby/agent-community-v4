@@ -4,38 +4,25 @@
 拆分纪律：路由路径、参数、响应体与拆分前逐字一致（纯搬迁，零行为变更）。
 """
 from __future__ import annotations
-import sys
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from ..protocol import HarnessInfo
-from ..protocol import HarnessMessage
-from ..protocol import HarnessStatus
 from ..protocol import Message
 from ..protocol import MessageType
-from pathlib import Path
 from ..protocol import WakeupMethod
-from fastapi import WebSocketDisconnect
-from ..ai_external import run_ai_call as ai_external_run_ai_call
 import asyncio
-from datetime import datetime
 from .. import harness_launcher
 from ..harness_adapter import harness_manager
 from ..harness_adapter import harness_to_agent_card
-import json
-import os
 from ..api_wakeup import probe_http_api
-from ..api_wakeup import send_http_api_message
-import time
-from uuid import uuid4
 from ..state import _bridge_tests_inflight, agents, assistant_history, assistant_history_max, pending_activations, pending_bridge_tests, pending_pre_register, pending_tasks, workshops
-from ..protocol import HarnessTool
 from ..audit import audit_log as _audit_log
-from ..identity import check_request_token as _check_request_token
 from ..identity import issue_agent_token as _issue_agent_token
 
 router = APIRouter()
 
 @router.post("/api/harness/pre-register")
 async def harness_pre_register(request: Request):
+    _audit_log.record("harness.pre_register", actor="user", target="", detail="初步注册")
     from ..server import Utf8JSONResponse, now_iso
     """阶段1：外端 Agent 初步消息注册 —— 向平台声明自己的部分信息（不必完整技术字段）。
     外端 Agent 主动告知平台「我要接入，我叫什么、大概是什么类型、有什么线索」，
@@ -83,6 +70,7 @@ async def harness_pre_register(request: Request):
 
 @router.post("/api/harness/probe-register")
 async def harness_probe_register(request: Request):
+    _audit_log.record("harness.probe_register", actor="user", target="", detail="探测注册")
     from ..server import Utf8JSONResponse, _append_hall, bcast_to_clients, save_state, validate_harness_api_url
     """阶段2：平台基于初步注册信息探测对象，补齐技术配置，完成正式注册。
     body: {"harness_id": "示例Harness-X", "process_hint": "...", "port_hint": 3721, ...}
@@ -295,6 +283,7 @@ async def register_harness(request: Request):
 
 @router.post("/api/harness/launch")
 async def api_harness_launch(request: Request):
+    _audit_log.record("harness.launch", actor="user", target="", detail="启动 harness 进程")
     from ..server import Utf8JSONResponse
     """v1 新增：手动拉起 harness 进程（平台 Agent 学会「出去启动 harness」的入口）。
     body: {"harness_id": "示例Harness-X", "wait_online": true, "timeout": 60}
@@ -334,6 +323,7 @@ async def api_harness_launch_log():
 
 @router.post("/api/harness/heartbeat")
 async def harness_heartbeat(harness_id: str = ""):
+    _audit_log.record("harness.heartbeat", actor="user", target="", detail="心跳")
     from ..server import Utf8JSONResponse
     """Harness 心跳保活"""
     # 支持 query param 和 JSON body
@@ -344,6 +334,7 @@ async def harness_heartbeat(harness_id: str = ""):
 
 @router.post("/api/harness/activation-result")
 async def harness_activation_result(request: Request):
+    _audit_log.record("harness.activation_result", actor="user", target="", detail="激活回报")
     from ..server import _assign_tasks
     """harness 桥回报激活结果。"""
     body = await request.json()
@@ -361,6 +352,7 @@ async def harness_activation_result(request: Request):
 
 @router.delete("/api/harness/{harness_id}")
 async def unregister_harness(harness_id: str):
+    _audit_log.record("harness.unregister", actor="user", target=harness_id, detail="注销 harness")
     from ..server import Utf8JSONResponse, _append_hall, _stop_bridge_processes, _trash_bridge_dir, bcast_to_clients, save_state
     """注销 Harness（删除注册信息 + 桥坐标 + 队列残留 + 终止桥进程 + 桥目录进回收站）"""
     sess = harness_manager.sessions.get(harness_id)

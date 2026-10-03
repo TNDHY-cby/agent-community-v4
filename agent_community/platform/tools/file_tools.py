@@ -144,6 +144,16 @@ class WriteFileTool(BaseTool):
         if _is_sensitive(path):
             return ToolResult(tool_name="write_file", success=False, content="安全限制: 无法写入敏感路径")
 
+        # ── V-14 策略闸门（file.write 出厂 ALLOW，但每次判定都进审计）──
+        from ..policy import FILE_WRITE, blocked_message, check, pending_message
+        ev, pending = check(FILE_WRITE, target=path)
+        if ev.blocked:
+            return ToolResult(tool_name="write_file", success=False,
+                              content=f"{blocked_message(ev)}\n规则: {ev.rule_id}")
+        if ev.needs_approval:
+            return ToolResult(tool_name="write_file", success=False,
+                              content=pending_message(ev, pending))
+
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
             with open(p, "w", encoding="utf-8") as f:

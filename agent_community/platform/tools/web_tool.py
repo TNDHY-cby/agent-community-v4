@@ -36,6 +36,16 @@ class WebFetchTool(BaseTool):
         if not url.startswith(("http://", "https://")):
             return ToolResult(tool_name="web_fetch", success=False, content=f"URL 必须以 http:// 或 https:// 开头: {url}")
 
+        # ── V-14 策略闸门（network.egress 出厂 ALLOW；可配 DENY 规则拦外泄域名）──
+        from ..policy import NETWORK_EGRESS, blocked_message, check, pending_message
+        ev, pending = check(NETWORK_EGRESS, target=url)
+        if ev.blocked:
+            return ToolResult(tool_name="web_fetch", success=False,
+                              content=f"{blocked_message(ev)}\n规则: {ev.rule_id}")
+        if ev.needs_approval:
+            return ToolResult(tool_name="web_fetch", success=False,
+                              content=pending_message(ev, pending))
+
         try:
             import httpx
 

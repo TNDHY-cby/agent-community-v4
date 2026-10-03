@@ -140,6 +140,8 @@ from .routers.protocols import router as _protocols_router
 app.include_router(_protocols_router)  # V-11 协议目录：GET /api/protocols（单一事实源）
 from .routers.protocol_brief import router as _brief_router
 app.include_router(_brief_router)  # V-12 协作协议简报：GET /api/protocol-brief（外端 AI onboarding）
+from .routers.policy import router as _policy_router
+app.include_router(_policy_router)  # V-14 策略自省与待审批：GET /api/policy、/api/policy/pending（人工审批）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1", "http://localhost"],
@@ -786,7 +788,12 @@ async def api_assistant_chat(request: Request):
     返回 {"reply": "...", "steps": [...]}。
     """
     body = await request.json()
-    message = (body.get("message") or "").strip()
+    # V-14 修正：兼容 content 别名。
+    # 2026-10-03 实测发现：V-12 的 protocol_brief.py 与 register.html 第二通道示例
+    # 把入参写成了 {"content": "..."}，而本端点只认 message —— 外部 AI 照着平台
+    # 自己发的简报调用会直接 400。既有对外文档已发布，故此处**兼容两种键名**，
+    # 而不是只改文档（避免已按旧文档接入的一方踩坑）。
+    message = (body.get("message") or body.get("content") or "").strip()
     if not message:
         return Utf8JSONResponse({"error": "message required"}, status_code=400)
     from .react_loop import ReActLoop

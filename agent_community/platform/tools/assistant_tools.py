@@ -18,6 +18,12 @@ from uuid import uuid4
 from ..tool_registry import BaseTool, ToolSchema, ToolResult
 from ..harness_adapter import harness_manager
 from .. import harness_launcher
+from ..policy import (
+    HARNESS_LAUNCH,
+    blocked_message,
+    check,
+    pending_message,
+)
 
 
 class ListHarnessTool(BaseTool):
@@ -107,6 +113,13 @@ class LaunchHarnessTool(BaseTool):
         # 已在线则直接报告
         if getattr(sess, "online", False):
             return ToolResult("launch_harness", True, f"harness {harness_id} 已在线，无需启动")
+
+        # ── V-14 策略闸门：拉起 harness 进程 = 真启动子进程，属最严档 ──
+        ev, pending = check(HARNESS_LAUNCH, target=harness_id)
+        if ev.blocked:
+            return ToolResult("launch_harness", False, f"{blocked_message(ev)}\n规则: {ev.rule_id}")
+        if ev.needs_approval:
+            return ToolResult("launch_harness", False, pending_message(ev, pending))
 
         ok, msg = await harness_launcher.ensure_harness_online(harness_id, timeout=timeout)
         if ok:

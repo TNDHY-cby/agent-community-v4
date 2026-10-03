@@ -431,6 +431,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
         <div class="setup-menu-item active" data-tab="llm" onclick="switchSettingsTab('llm')">LLM 模型</div>
         <div class="setup-menu-item" data-tab="advanced" onclick="switchSettingsTab('advanced')">高级功能</div>
         <div class="setup-menu-item" data-tab="protocol" onclick="switchSettingsTab('protocol')">协议与端点</div>
+        <div class="setup-menu-item" data-tab="policy" onclick="switchSettingsTab('policy')">安全策略</div>
         <div class="setup-menu-item" data-tab="about" onclick="switchSettingsTab('about')">关于</div>
       </div>
       <div class="setup-content">
@@ -515,6 +516,18 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
           <p class="sp-desc">平台对外暴露的接入方式；外端 harness 可按需选择</p>
           <div id="protocolList" style="display:flex;flex-direction:column;gap:10px;">
             <div style="color:var(--muted);font-size:12px;padding:12px;text-align:center;">加载中…</div>
+          </div>
+        </div>
+        <!-- 安全策略与待审批面板（V-14）-->
+        <div class="setup-panel" id="settingsPanelPolicy">
+          <h3>安全策略与待审批</h3>
+          <p class="sp-desc">执行命令 / 安装插件 / 架桥等高危操作需人工审批后才放行；审批权仅限人工</p>
+          <div id="policySummary" style="font-size:12px;color:var(--muted);margin-bottom:10px;">加载中…</div>
+          <div id="policyPendingList" style="display:flex;flex-direction:column;gap:10px;">
+            <div style="color:var(--muted);font-size:12px;padding:12px;text-align:center;">加载中…</div>
+          </div>
+          <div style="margin-top:12px;">
+            <button class="btn-secondary" onclick="reloadPolicy()" style="font-size:12px;">重读策略配置</button>
           </div>
         </div>
         <!-- 关于面板 -->
@@ -663,6 +676,72 @@ function switchSettingsTab(tabName){
   const panel=document.getElementById('settingsPanel'+(tabName.charAt(0).toUpperCase()+tabName.slice(1)));
   if(panel) panel.classList.add('active');
   if(tabName==='protocol') loadProtocols();
+  if(tabName==='policy') loadPolicy();
+}
+
+// ═══ 安全策略与待审批（V-14）═══════════════════════════════════════
+// 审批权仅限人工：本面板走后端 /api/policy/pending/{id}/resolve，
+// 后端对带 X-Agent-Token 的调用方一律 403（外端 AI 无决定权）。
+function _esc(s){
+  return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function loadPolicy(){
+  const sum=document.getElementById('policySummary');
+  const box=document.getElementById('policyPendingList');
+  if(!sum||!box) return;
+  try{
+    const info=await (await fetch('/api/policy')).json();
+    const defs=info.default_by_op||{};
+    const highRisk=Object.keys(defs).filter(k=>defs[k]==='ask');
+    sum.innerHTML='配置来源：<b>'+_esc(info.config_source)+'</b> ｜ 规则 '+((info.rules||[]).length)+' 条'
+      +' ｜ 待审批 <b>'+_esc(info.pending_count)+'</b> 项<br>'
+      +'默认需审批：'+_esc(highRisk.join(' / ')||'（无）');
+    const pend=await (await fetch('/api/policy/pending')).json();
+    const list=pend.pending||[];
+    if(!list.length){
+      box.innerHTML='<div style="color:var(--muted);font-size:12px;padding:12px;text-align:center;">暂无待审批项</div>';
+      return;
+    }
+    box.innerHTML=list.map(p=>{
+      const t=new Date((p.created||0)*1000).toLocaleString();
+      return '<div style="border:1px solid var(--border);border-radius:8px;padding:10px;">'
+        +'<div style="font-size:12px;margin-bottom:4px;"><b>'+_esc(p.op)+'</b>'
+        +' <span style="color:var(--muted);">by '+_esc(p.actor)+' · '+_esc(t)+'</span></div>'
+        +'<div style="font-size:12px;color:var(--muted);word-break:break-all;margin-bottom:6px;">'
+        +_esc(String(p.target||'').slice(0,300))+'</div>'
+        +'<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">'+_esc(p.reason||'')+'</div>'
+        +'<button class="btn-secondary" style="font-size:12px;" onclick="resolvePending(\''+_esc(p.id)+'\',true)">批准</button> '
+        +'<button class="btn-secondary" style="font-size:12px;" onclick="resolvePending(\''+_esc(p.id)+'\',false)">拒绝</button>'
+        +'</div>';
+    }).join('');
+  }catch(e){
+    sum.textContent='加载失败：'+e;
+    box.innerHTML='';
+  }
+}
+
+async function resolvePending(id,approve){
+  const note=prompt(approve?'批准理由（可留空）：':'拒绝理由（可留空）：','')||'';
+  try{
+    const r=await fetch('/api/policy/pending/'+encodeURIComponent(id)+'/resolve',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({approve:approve,note:note})
+    });
+    const d=await r.json();
+    if(!r.ok){ alert('操作失败：'+(d.detail||d.error||r.status)); return; }
+    loadPolicy();
+  }catch(e){ alert('操作失败：'+e); }
+}
+
+async function reloadPolicy(){
+  try{
+    const r=await fetch('/api/policy/reload',{method:'POST',headers:{'Content-Type':'application/json'}});
+    const d=await r.json();
+    if(!r.ok){ alert('重读失败：'+(d.detail||d.error||r.status)); return; }
+    alert('已重读策略配置（来源：'+d.config_source+'，规则 '+d.rules+' 条）');
+    loadPolicy();
+  }catch(e){ alert('重读失败：'+e); }
 }
 
 async function loadProtocols(){

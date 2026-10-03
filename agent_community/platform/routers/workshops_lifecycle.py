@@ -4,36 +4,14 @@
 拆分纪律：路由路径、参数、响应体与拆分前逐字一致（纯搬迁，零行为变更）。
 """
 from __future__ import annotations
-import sys
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from ..task_state_machine import CREATED
-from ..task_state_machine import DISCUSSING
-from ..task_state_machine import EV_COMPLETE
-from ..task_state_machine import EV_DROP
-from ..task_state_machine import EV_RESOLVE
-from ..task_state_machine import EV_RESUME
-from ..task_state_machine import EV_TIMEOUT
-from ..task_state_machine import EXECUTING
-from ..protocol import Message
-from ..protocol import MessageType
-from pathlib import Path
-from ..protocol import Task
-from ..protocol import TaskStatus
 from ..workshop import Workshop
 from ..workshop import WorkshopMember
-from ..experience_v2 import harness_reputation_bonus as _v2_harness_reputation_bonus
-from ..experience_v2 import evaluate_workshop_completion as _v2_evaluate_workshop_completion
 from ..audit import audit_log as _audit_log
-from ..ai_external import run_ai_call as ai_external_run_ai_call
 import asyncio
-from ..memory import capability_ledger
-from ..harness_adapter import harness_manager
 import json
 import os
-from ..task_state_machine import should_interject
-from ..memory import task_memory
 from uuid import uuid4
-from ..workshop import write_resources_manifest
 from ..workshop import write_workspace_files
 from ..state import interject_store, pending_activations, task_state_machine, tasks, workshops
 
@@ -47,6 +25,7 @@ async def api_workshop_mode_get(ws_id: str):
 
 @router.post("/api/workshop/{ws_id}/mode")
 async def api_workshop_mode_set(ws_id: str, request: Request):
+    _audit_log.record("workshop.mode", actor="user", target=ws_id, detail="设置模式")
     from ..server import PLUGIN_MODES_FILE, Utf8JSONResponse, _load_workshop_modes
     body = await request.json()
     mode = str(body.get("mode") or "").strip()
@@ -68,6 +47,7 @@ async def api_workshop_parallel_limit_get(ws_id: str):
 
 @router.post("/api/workshop/{ws_id}/parallel_limit")
 async def api_workshop_parallel_limit_set(ws_id: str, request: Request):
+    _audit_log.record("workshop.parallel_limit", actor="user", target=ws_id, detail="设置并发上限")
     from ..server import PLUGIN_MODES_FILE, Utf8JSONResponse, _load_workshop_modes
     ws = workshops.get(ws_id)
     if not ws:
@@ -139,6 +119,7 @@ async def list_workshops():
 
 @router.patch("/api/workshop/{ws_id}")
 async def rename_workshop(ws_id: str, request: Request):
+    _audit_log.record("workshop.rename", actor="user", target=ws_id, detail="重命名")
     from ..server import Utf8JSONResponse, save_state
     """重命名工作间。"""
     ws = workshops.get(ws_id)
@@ -154,6 +135,7 @@ async def rename_workshop(ws_id: str, request: Request):
 
 @router.post("/api/workshop/{ws_id}/pin")
 async def pin_workshop(ws_id: str, request: Request):
+    _audit_log.record("workshop.pin", actor="user", target=ws_id, detail="置顶")
     from ..server import Utf8JSONResponse, save_state
     """置顶/取消置顶工作间。"""
     ws = workshops.get(ws_id)
@@ -169,6 +151,7 @@ async def pin_workshop(ws_id: str, request: Request):
 
 @router.delete("/api/workshop/{ws_id}")
 async def delete_workshop(ws_id: str):
+    _audit_log.record("workshop.delete", actor="user", target=ws_id, detail="删除工作间")
     from ..server import Utf8JSONResponse, _trash_bridge_dir, save_state
     """删除工作间（含持久化记录 + 状态机记录 + 工作区目录进回收站）。
 
@@ -212,6 +195,7 @@ async def list_stale_workshops():
 
 @router.post("/api/workshops/recycle-stale")
 async def recycle_stale_workshops(request: Request):
+    _audit_log.record("workshop.recycle_stale", actor="user", target="", detail="回收过期工作间")
     from ..server import Utf8JSONResponse, _is_stale_workshop, _trash_bridge_dir, save_state
     """批量回收卡死工作间：body 传 {"ws_ids": [...]} 或 {"all": true}。
 
@@ -282,6 +266,7 @@ async def get_decision_mode_api(ws_id: str):
 
 @router.post("/api/workshop/{ws_id}/decision-mode")
 async def set_decision_mode_api(ws_id: str, request: Request):
+    _audit_log.record("workshop.decision_mode", actor="user", target=ws_id, detail="设置决策模式")
     from ..server import Utf8JSONResponse, _set_decision_mode
     ws = workshops.get(ws_id)
     if not ws:

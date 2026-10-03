@@ -4,38 +4,25 @@
 拆分纪律：路由路径、参数、响应体与拆分前逐字一致（纯搬迁，零行为变更）。
 """
 from __future__ import annotations
-import sys
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from ..protocol import HarnessInfo
-from ..protocol import HarnessMessage
 from ..protocol import HarnessStatus
-from ..protocol import Message
-from ..protocol import MessageType
 from pathlib import Path
-from ..protocol import WakeupMethod
-from fastapi import WebSocketDisconnect
 from ..ai_external import run_ai_call as ai_external_run_ai_call
 import asyncio
 from datetime import datetime
-from .. import harness_launcher
 from ..harness_adapter import harness_manager
-from ..harness_adapter import harness_to_agent_card
 import json
 import os
-from ..api_wakeup import probe_http_api
-from ..api_wakeup import send_http_api_message
 import time
 from uuid import uuid4
 from ..state import _bridge_tests_inflight, agents, assistant_history, assistant_history_max, pending_activations, pending_bridge_tests, pending_pre_register, pending_tasks, workshops
-from ..protocol import HarnessTool
 from ..audit import audit_log as _audit_log
-from ..identity import check_request_token as _check_request_token
-from ..identity import issue_agent_token as _issue_agent_token
 
 router = APIRouter()
 
 @router.post("/api/harness/bridge-test")
 async def harness_bridge_test(request: Request):
+    _audit_log.record("harness.bridge.test", actor="user", target="", detail="桥通道测试")
     from ..server import Utf8JSONResponse, _file_poll_send, _harness_wakeup_method, _pending_push, _register_bridge_test_inflight
     """平台测试桥功能：向指定 harness 的桥发送一条测试消息。
     分发按 wakeup_method：
@@ -79,6 +66,7 @@ async def harness_pending_bridge_tests(harness_id: str):
 
 @router.post("/api/harness/bridge-test-result")
 async def harness_bridge_test_result(request: Request):
+    _audit_log.record("harness.bridge.test_result", actor="user", target="", detail="桥测试回报")
     from ..server import Utf8JSONResponse, save_state
     """harness 桥回报测试结果（对象侧确认桥通道正常）。"""
     body = await request.json()
@@ -131,6 +119,7 @@ async def harness_bridge_templates():
 
 @router.post("/api/harness/{harness_id}/bridge/generate")
 async def harness_bridge_generate(harness_id: str, request: Request):
+    _audit_log.record("harness.bridge.generate", actor="user", target=harness_id, detail="生成桥脚本（落盘）")
     from ..server import Utf8JSONResponse, _platform_base_url, save_state
     """平台标准构桥 API：按 harness 注册信息渲染内置模板生成桥脚本。
     治本设计：平台内置桥模板库（cli_acp / file_poll / pending_poll 等），此处只做模板复制+配置注入的机械操作，
@@ -214,6 +203,33 @@ async def harness_bridge_generate(harness_id: str, request: Request):
         target = p
     else:
         target = bridges_root / safe_slug(harness_id)
+    # ── V-14 策略闸门（必须在 generate 之前：它会真的 write_text 落盘）──
+    # 实测依据：bridge_factory.generate() 内部 `bridge_file.write_text(text)`，
+    # 端点函数体里看不到写操作 —— 只看端点体会误判成「仅返回数据」。
+    # 行为是「写盘但不启动」→ 按拍板口径取严，出厂 ASK；AI 发起时同样要人批。
+    from ..policy import (
+        BRIDGE_WRITE,
+        actor_from_request,
+        blocked_message,
+        check,
+        pending_message,
+    )
+    _ev, _pending = check(
+        BRIDGE_WRITE,
+        target=f"{harness_id}:{template}",
+        actor=actor_from_request(request),
+    )
+    if _ev.blocked:
+        return Utf8JSONResponse(
+            {"error": blocked_message(_ev), "rule_id": _ev.rule_id}, status_code=403
+        )
+    if _ev.needs_approval:
+        return Utf8JSONResponse(
+            {"status": "pending_approval", "op": _ev.op,
+             "message": pending_message(_ev, _pending), "pending": _pending},
+            status_code=202,
+        )
+
     try:
         bridge_file = generate(template, params, target)
     except BridgeTemplateError as e:
@@ -237,6 +253,7 @@ async def harness_bridge_generate(harness_id: str, request: Request):
 
 @router.post("/api/harness/bridge-path")
 async def harness_bridge_path(request: Request):
+    _audit_log.record("harness.bridge.path", actor="user", target="", detail="登记桥路径")
     from ..server import Utf8JSONResponse, save_state
     """对象建好桥、平台测试通过后，对象告知桥文件路径，平台记录到 harness 信息。
     body: {"harness_id": "...", "bridge_dir": "桥文件所在文件夹路径"}
@@ -260,6 +277,7 @@ async def harness_bridge_path(request: Request):
 
 @router.post("/api/harness/{harness_id}/activate")
 async def harness_activate_window(harness_id: str):
+    _audit_log.record("harness.bridge.activate", actor="user", target=harness_id, detail="激活 harness 窗口")
     from ..server import Utf8JSONResponse, _activate_windows_by_pids, _find_bridge_processes
     """Harness 监控室：将指定 harness 对应的软件窗口激活并置顶。"""
     sess = harness_manager.sessions.get(harness_id)
@@ -282,6 +300,7 @@ async def harness_activate_window(harness_id: str):
 
 @router.post("/api/harness/bridge-verify")
 async def harness_bridge_verify(request: Request):
+    _audit_log.record("harness.bridge.verify", actor="user", target="", detail="校验桥")
     from ..server import Utf8JSONResponse, _file_poll_send, _find_bridge_processes, _harness_wakeup_method, _pending_push, _register_bridge_test_inflight, save_state
     """平台级桥验证：综合检查桥坐标、桥进程、历史测试，并实时发测试等待真实回报。
     判定标准：实时通道检查必须收到对象侧回报（test_id 匹配且 ok=true）才算通过，
@@ -373,6 +392,7 @@ async def harness_bridge_verify(request: Request):
 
 @router.post("/api/harness/prefill")
 async def harness_prefill(request: Request):
+    _audit_log.record("harness.prefill", actor="user", target="", detail="预填注册信息")
     from ..server import Utf8JSONResponse, validate_acp_command, validate_callback_url, validate_harness_api_url, validate_wakeup_dir
     """AI 识别智能填入：根据自然语言描述提取 harness 结构化字段。"""
     body = await request.json()
@@ -435,6 +455,7 @@ async def harness_prefill(request: Request):
 
 @router.post("/api/harness/peer-route")
 async def get_peer_route(request: Request):
+    _audit_log.record("harness.peer_route", actor="user", target="", detail="点对点转交")
     from ..server import Utf8JSONResponse
     """查询目标 Harness Agent 的路由信息，供直连委托/审查使用。
     平台退为路由注册中心：当双 Harness 均在线时，

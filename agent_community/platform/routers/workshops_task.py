@@ -4,43 +4,21 @@
 拆分纪律：路由路径、参数、响应体与拆分前逐字一致（纯搬迁，零行为变更）。
 """
 from __future__ import annotations
-import sys
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from ..task_state_machine import CREATED
-from ..task_state_machine import DISCUSSING
-from ..task_state_machine import EV_COMPLETE
-from ..task_state_machine import EV_DROP
-from ..task_state_machine import EV_RESOLVE
-from ..task_state_machine import EV_RESUME
-from ..task_state_machine import EV_TIMEOUT
-from ..task_state_machine import EXECUTING
-from ..protocol import Message
-from ..protocol import MessageType
 from pathlib import Path
-from ..protocol import Task
-from ..protocol import TaskStatus
-from ..workshop import Workshop
-from ..workshop import WorkshopMember
-from ..experience_v2 import harness_reputation_bonus as _v2_harness_reputation_bonus
-from ..experience_v2 import evaluate_workshop_completion as _v2_evaluate_workshop_completion
-from ..audit import audit_log as _audit_log
-from ..ai_external import run_ai_call as ai_external_run_ai_call
-import asyncio
-from ..memory import capability_ledger
 from ..harness_adapter import harness_manager
-import json
-import os
-from ..task_state_machine import should_interject
 from ..memory import task_memory
 from uuid import uuid4
 from ..workshop import write_resources_manifest
-from ..workshop import write_workspace_files
 from ..state import interject_store, pending_activations, task_state_machine, tasks, workshops
+from ..audit import audit_log as _audit_log
 
 router = APIRouter()
 
 @router.post("/api/workshop/{ws_id}/halt-and-reset")
 async def workshop_halt_and_reset(ws_id: str, request: Request):
+    _audit_log.record("workshop.halt_and_reset", actor="user", target=ws_id, detail="中止并重置工作间")
     from ..server import Utf8JSONResponse, _EXPERIENCE_INDEX_KEYS, _dispatch_to_harness, now_iso, save_state
     """确认走弯路：停止任务 → 反思总结入资料库 → 擦除成员/组长记忆 → 从头开始。
 
@@ -235,6 +213,7 @@ async def list_resources(ws_id: str):
 
 @router.post("/api/workshop/{ws_id}/resources")
 async def add_resource(ws_id: str, request: Request):
+    _audit_log.record("workshop.resource.add", actor="user", target=ws_id, detail="添加资源")
     from ..server import Utf8JSONResponse, _append_msg, _tree_find, now_iso, save_state
     """登记资源到工作间资源库。
 
@@ -287,6 +266,7 @@ async def add_resource(ws_id: str, request: Request):
 
 @router.delete("/api/workshop/{ws_id}/resources/{rid}")
 async def remove_resource(ws_id: str, rid: str):
+    _audit_log.record("workshop.resource.remove", actor="user", target=ws_id, detail="移除资源")
     from ..server import Utf8JSONResponse, _append_msg, save_state
     """从资源库移除登记（不删除实体文件，仅解除共享）。"""
     ws = workshops.get(ws_id)
@@ -315,6 +295,7 @@ async def get_task_tree(ws_id: str):
 
 @router.post("/api/workshop/{ws_id}/tree/node")
 async def create_tree_node(ws_id: str, request: Request):
+    _audit_log.record("workshop.tree.create", actor="user", target=ws_id, detail="建任务树节点")
     from ..server import Utf8JSONResponse, _append_msg, _tree_find, _tree_persist, now_iso
     """创建任务树节点。
 
@@ -358,6 +339,7 @@ async def create_tree_node(ws_id: str, request: Request):
 
 @router.post("/api/workshop/{ws_id}/tree/node/{node_id}/status")
 async def update_tree_node_status(ws_id: str, node_id: str, request: Request):
+    _audit_log.record("workshop.tree.status", actor="user", target=ws_id, detail="更新节点状态")
     from ..server import Utf8JSONResponse, _append_msg, _tree_find, _tree_persist
     """更新任务树节点状态（active/done/bypassed/dropped）。"""
     ws = workshops.get(ws_id)
@@ -378,6 +360,7 @@ async def update_tree_node_status(ws_id: str, node_id: str, request: Request):
 
 @router.post("/api/workshop/{ws_id}/tree/node/{node_id}/attach")
 async def attach_resource_to_node(ws_id: str, node_id: str, request: Request):
+    _audit_log.record("workshop.tree.attach", actor="user", target=ws_id, detail="资源挂到节点")
     from ..server import Utf8JSONResponse, _append_msg, _tree_find, _tree_persist
     """把资源库资源挂到任务树节点（资源与任务双向关联）。
 

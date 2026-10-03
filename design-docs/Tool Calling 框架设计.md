@@ -2,7 +2,7 @@
 
 > 设计日期: 2026-08-08
 > 状态: 已完成
-> 参考: D:\O泡知识库\AI_Rust视频笔记\Rust Agent 开发\（ReAct 知识库）
+> 参考: D:\示例知识库\Rust Agent 开发\（ReAct 知识库）
 
 ---
 
@@ -156,15 +156,15 @@ class ReActLoop:
 ## 三、消息流示例（前端可见）
 
 ```
-用户: "帮我统计 D:\Downloads 下有多少文件"
+用户: "帮我统计 D:\示例下载目录 下有多少文件"
 
-  TOOL_CALL  → shell_exec {"command": "Get-ChildItem D:\\Downloads | Measure-Object"}
+  TOOL_CALL  → shell_exec {"command": "Get-ChildItem D:\\示例下载目录 | Measure-Object"}
   TOOL_RESULT → "Count: 152"
 
   TOOL_CALL  → shell_exec {"command": "...分类统计各扩展名..."}
   TOOL_RESULT → ".pdf: 30, .zip: 45, .exe: 20, ..."
 
-  FINAL      → "D:\\Downloads 共有 152 个文件，其中 PDF 30 个、压缩包 45 个..."
+  FINAL      → "D:\\示例下载目录 共有 152 个文件，其中 PDF 30 个、压缩包 45 个..."
 ```
 
 前端通过 `MessageType.EVENT` + `payload.event` 区分：
@@ -332,6 +332,6 @@ agent_community/platform/
 
 | 资产 | 路径 |
 |------|------|
-| 项目主目录 | `C:\Users\1\AppData\Roaming\Tencent\Marvis\User\oAN1i2c7nvyo0aiI5MP0j80nFLxI\workspace\conv_19fda2bf984_daff50666c61\output\外端Agent生产合作社（External Agent Community）` |
-| ReAct 理论参考 | `D:\O泡知识库\AI_Rust视频笔记\Rust Agent 开发\使用 Rust 开发 AI Agent - 07.1 ReAct.md` |
-| ReAct 实现参考 | `D:\O泡知识库\AI_Rust视频笔记\Rust Agent 开发\使用 Rust 开发 AI Agent - 07.2 ReAct 实现.md` |
+| 项目主目录 | `<项目主目录>` |
+| ReAct 理论参考 | `D:\示例知识库\Rust Agent 开发\使用 Rust 开发 AI Agent - 07.1 ReAct.md` |
+| ReAct 实现参考 | `D:\示例知识库\Rust Agent 开发\使用 Rust 开发 AI Agent - 07.2 ReAct 实现.md` |

@@ -5,37 +5,14 @@ select-members / members / confirm-members / leader-workbench 等端点。
 拆分纪律：路由路径、参数、响应体与拆分前逐字一致（纯搬迁，零行为变更）。
 """
 from __future__ import annotations
-import sys
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from ..task_state_machine import CREATED
 from ..task_state_machine import DISCUSSING
-from ..task_state_machine import EV_COMPLETE
-from ..task_state_machine import EV_DROP
-from ..task_state_machine import EV_RESOLVE
-from ..task_state_machine import EV_RESUME
-from ..task_state_machine import EV_TIMEOUT
-from ..task_state_machine import EXECUTING
-from ..protocol import Message
-from ..protocol import MessageType
-from pathlib import Path
-from ..protocol import Task
-from ..protocol import TaskStatus
-from ..workshop import Workshop
 from ..workshop import WorkshopMember
 from ..experience_v2 import harness_reputation_bonus as _v2_harness_reputation_bonus
-from ..experience_v2 import evaluate_workshop_completion as _v2_evaluate_workshop_completion
-from ..audit import audit_log as _audit_log
 from ..ai_external import run_ai_call as ai_external_run_ai_call
-import asyncio
 from ..memory import capability_ledger
 from ..harness_adapter import harness_manager
 import json
-import os
-from ..task_state_machine import should_interject
-from ..memory import task_memory
-from uuid import uuid4
-from ..workshop import write_resources_manifest
-from ..workshop import write_workspace_files
 from ..state import interject_store, pending_activations, task_state_machine, tasks, workshops
 
 router = APIRouter()

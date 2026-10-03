@@ -35,6 +35,7 @@ from ..harness_adapter import set_internal_ai_provider
 
 # ── 共享可变状态（..state 单例，双副本一致）──
 from ..state import agents
+from ..audit import audit_log as _audit_log
 
 @router.get("/api/ai/providers")
 async def api_ai_providers():
@@ -122,6 +123,7 @@ async def api_get_config():
 
 @router.post("/api/config")
 async def api_save_config(request: Request):
+    _audit_log.record("config.save", actor="user", target="", detail="保存平台配置")
     from ..server import Utf8JSONResponse
     """接收配置并保存，保存后重新加载 AI Provider。"""
     body = await request.json()
@@ -233,6 +235,7 @@ async def api_ai_pending():
 
 @router.post("/api/ai/reply")
 async def api_ai_reply(request: Request):
+    _audit_log.record("config.ai_reply", actor="user", target="", detail="人工代答 AI 回复")
     from ..server import Utf8JSONResponse
     """外部 AI 助手回写 AI 回复，平台按原流程继续。
 

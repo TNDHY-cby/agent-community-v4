@@ -4,38 +4,21 @@
 拆分纪律：路由路径、参数、响应体与拆分前逐字一致（纯搬迁，零行为变更）。
 """
 from __future__ import annotations
-import sys
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from ..protocol import HarnessInfo
 from ..protocol import HarnessMessage
-from ..protocol import HarnessStatus
-from ..protocol import Message
-from ..protocol import MessageType
-from pathlib import Path
 from ..protocol import WakeupMethod
-from fastapi import WebSocketDisconnect
-from ..ai_external import run_ai_call as ai_external_run_ai_call
-import asyncio
 from datetime import datetime
-from .. import harness_launcher
 from ..harness_adapter import harness_manager
-from ..harness_adapter import harness_to_agent_card
-import json
-import os
 from ..api_wakeup import probe_http_api
 from ..api_wakeup import send_http_api_message
-import time
-from uuid import uuid4
 from ..state import _bridge_tests_inflight, agents, assistant_history, assistant_history_max, pending_activations, pending_bridge_tests, pending_pre_register, pending_tasks, workshops
-from ..protocol import HarnessTool
 from ..audit import audit_log as _audit_log
-from ..identity import check_request_token as _check_request_token
-from ..identity import issue_agent_token as _issue_agent_token
 
 router = APIRouter()
 
 @router.post("/api/harness/message")
 async def harness_message(request: Request):
+    _audit_log.record("harness.message", actor="user", target="", detail="harness 消息")
     from ..server import Utf8JSONResponse, _sanitize_harness_content
     """接收来自 Harness 的消息回复"""
     body = await request.json()
@@ -76,6 +59,7 @@ async def harness_pending_tasks(harness_id: str):
 
 @router.post("/api/harness/task-result")
 async def harness_task_result(request: Request):
+    _audit_log.record("harness.task_result", actor="user", target="", detail="任务回报")
     from ..server import _append_msg, _apply_harness_reply, _do_complete_workshop, _do_continue_workshop, _get_decision_mode, _sanitize_harness_content, _settle_vote, save_state
     """harness 桥回报任务结果。"""
     body = await request.json()
@@ -171,6 +155,7 @@ async def harness_task_result(request: Request):
 
 @router.post("/api/harness/api-probe")
 async def harness_api_probe(request: Request):
+    _audit_log.record("harness.api_probe", actor="user", target="", detail="探测 HTTP API")
     from ..server import Utf8JSONResponse, save_state, validate_harness_api_url
     """探测 harness 自带 HTTP API 是否可用（http_api 类唤醒）。
     body: {"harness_id": "..."} 或 {"base_url": "...", "message_path": "/message"}
@@ -204,6 +189,7 @@ async def harness_api_probe(request: Request):
 
 @router.post("/api/harness/api-message")
 async def harness_api_message(request: Request):
+    _audit_log.record("harness.api_message", actor="user", target="", detail="HTTP API 消息")
     from ..server import Utf8JSONResponse, validate_harness_api_url
     """向 harness 的 HTTP API 推送一条测试消息（验证 http_api 唤醒链路）。
     body: {"harness_id": "...", "content": "...", "from_id": "..."}
@@ -242,6 +228,7 @@ async def get_harness_activation_prompt(harness_id: str):
 
 @router.post("/api/harness/auto-connect")
 async def harness_auto_connect(request: Request):
+    _audit_log.record("harness.auto_connect", actor="user", target="", detail="自动架桥（启进程）")
     from ..server import Utf8JSONResponse
     """一键自动架桥：按 wakeup_method 自动生成并启动桥进程（用户不当信息中转）。
 
@@ -325,6 +312,34 @@ async def harness_auto_connect(request: Request):
     # 后台启动桥进程（DETACHED，父进程退出不带走）
     if bridge_cmd is None:
         return Utf8JSONResponse({"error": "未能确定桥脚本"}, status_code=500)
+
+    # ── V-14 策略闸门：这里是真 subprocess.Popen 启动进程（拍板口径的最严档）──
+    # actor 分级是关键：operator（人从本机 UI 点一键注册）走 actor_override 放行，
+    # 不堵 V-12 的主流程；external_ai / harness（AI 自主架桥）出厂 ASK，需人批后才启动。
+    # 威胁模型是「AI 驱动的代码执行」，不是「操作者自己点按钮」。
+    from ..policy import (
+        BRIDGE_LAUNCH,
+        actor_from_request,
+        blocked_message,
+        check,
+        pending_message,
+    )
+    _ev, _pending = check(
+        BRIDGE_LAUNCH,
+        target=f"{hid}:{bridge_type}",
+        actor=actor_from_request(request),
+    )
+    if _ev.blocked:
+        return Utf8JSONResponse(
+            {"error": blocked_message(_ev), "rule_id": _ev.rule_id}, status_code=403
+        )
+    if _ev.needs_approval:
+        return Utf8JSONResponse(
+            {"status": "pending_approval", "op": _ev.op,
+             "message": pending_message(_ev, _pending), "pending": _pending},
+            status_code=202,
+        )
+
     py_exe = _os.environ.get("AC_PYTHON") or _os.sys.executable
     full_cmd = [py_exe] + bridge_cmd
     try:
