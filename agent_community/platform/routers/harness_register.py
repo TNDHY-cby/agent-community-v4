@@ -334,21 +334,73 @@ async def harness_heartbeat(harness_id: str = ""):
 
 @router.post("/api/harness/activation-result")
 async def harness_activation_result(request: Request):
-    _audit_log.record("harness.activation_result", actor="user", target="", detail="激活回报")
     from ..server import _assign_tasks
-    """harness 桥回报激活结果。"""
+    """harness 桥回报激活结果。
+
+    V-15 步骤1 增量：回执契约新增三个字段，进 session_registry ——
+      session_id     平台据此认得会话（原先收到就丢弃 → 负责人说的"失忆"）
+      context_turns  可审计自述，新会话应为 1；若远大于 1 说明复用了旧上下文
+      source         来源标识，区分**人报**（§11.1 人工按钮）与**机器报**
+    三者都是可选的 —— 向后兼容：老桥/老脚本不带也能照常工作。
+    """
     body = await request.json()
-    ws = workshops.get(body.get("workshop_id", ""))
+    wid = str(body.get("workshop_id") or "")
+    mid = str(body.get("member_id") or "")
+    status = str(body.get("status") or "entered")
+    sid = str(body.get("session_id") or "").strip()
+    ctx_turns = body.get("context_turns")
+    if not isinstance(ctx_turns, int):
+        ctx_turns = None
+    source = str(body.get("source") or "").strip()
+    hid = str(body.get("harness_id") or "").strip()
+
+    # 审计：带 workshop:member 与来源，便于回溯（验证矩阵 #18）
+    _audit_log.record(
+        "harness.activation_result",
+        actor=source or "bridge",
+        target=f"{wid}:{mid}" if wid or mid else "",
+        detail=f"status={status} source={source or '未声明'}"
+               f" session_id={sid or '(合成)'} context_turns={ctx_turns}",
+    )
+
+    # 登记 / 更新会话（失败不阻塞业务）
+    rec = None
+    if hid or sid or source:
+        try:
+            from ..session_registry import SRC_HUMAN, session_registry
+            rec = session_registry.register(
+                harness_id=hid or (f"human::{wid}" if source == SRC_HUMAN else "unknown"),
+                session_id=sid,
+                workshop_id=wid,
+                member_id=mid,
+                source=source or ("human" if not sid else "unknown"),
+                context_turns=ctx_turns,
+            )
+            # context_turns 远大于 1 = 复用旧上下文，理由1（隔离）未达成 → 记录但不阻断
+            if isinstance(rec.get("context_turns"), int) and rec["context_turns"] > 1:
+                try:
+                    _audit_log.record(
+                        "session.context_reused",
+                        actor=source or "bridge",
+                        target=f"{wid}:{mid}",
+                        detail=f"session_id={rec.get('session_id')} "
+                               f"context_turns={rec['context_turns']}（新会话应为 1）",
+                    )
+                except Exception:
+                    pass
+        except Exception as _e:
+            print(f"[session_registry] 登记失败（不阻断）: {_e}", flush=True)
+
+    ws = workshops.get(wid)
     if ws:
-        mid = body.get("member_id")
         for m in ws.members:
             if m.member_id == mid:
-                m.status = body.get("status", "entered")
+                m.status = status
                 break
         # 全部进入后，自动派发工作任务
         if ws.members and all(m.status == "entered" for m in ws.members):
             asyncio.create_task(_assign_tasks(ws))
-    return {"success": True}
+    return {"success": True, "session": rec}
 
 @router.delete("/api/harness/{harness_id}")
 async def unregister_harness(harness_id: str):
