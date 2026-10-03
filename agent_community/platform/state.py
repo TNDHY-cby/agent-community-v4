@@ -53,3 +53,68 @@ _r2_handled_at: dict = {}
 _R2_HANDLE_GAP: float = 300.0        # 组长补激活限频（秒）
 # 待探测的初步注册：harness_id → 初步声明（阶段1 pre-register 写入，阶段2 probe-register 消费）
 pending_pre_register: dict = {}
+
+
+# ── V-13：命名空间包装 + 测试隔离（2026-10-03）──────────────────
+# 设计稿：design-docs/V13_Router拆分与状态注入设计.md §四
+#
+# 决策（实测 285 处直接符号使用点后调整，见该稿 §10）：
+#   285 处 `tasks` → `S.tasks` 的机械改名**推迟**——diff 大、零行为变更、当前收益低；
+#   先交付两样真正解锁后续能力的东西：S 命名空间 + reset()/snapshot()。
+#   reset() 是「可测试性」的唯一前置，没有它就写不了并发/故障注入测试。
+
+class _Namespace:
+    """state 命名空间代理：`S.tasks is tasks` 恒为 True。
+
+    __getattr__ 每次读取本模块**当前**的全局，因此：
+    - 永远返回与直接写 `tasks` 完全相同的对象引用（不是拷贝）
+    - reset() 就地清空后，S 与直接引用同步（指向同一容器）
+    - 新代码推荐 `from ..state import S`（1 个入口 vs 9 个符号）；旧代码无需改动
+    """
+
+    def __getattr__(self, name: str):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        import sys as _sys
+        mod = _sys.modules[__name__]
+        try:
+            return object.__getattribute__(mod, name)
+        except AttributeError:
+            raise AttributeError(f"state 没有符号 {name!r}") from None
+
+
+S = _Namespace()
+
+# 可就地清空的容器。
+# reset 只 clear()，**绝不 `x = {}` 重新绑定** —— 本模块的双副本语义依赖
+# 「所有持有者看到同一个对象」，重新绑定会让已持有旧引用的模块与本模块走向分裂，
+# 重蹈 --token 双副本 ALLOWED_TOKENS 分裂的覆辙（见文首背景）。
+_CLEARABLE = (
+    "tasks", "discussion_rooms", "agents", "workshops",
+    "pending_activations", "pending_tasks", "pending_bridge_tests",
+    "_bridge_tests_inflight", "_wakeup_inflight", "_offline_redispatch",
+    "_r2_handled_at", "pending_pre_register", "assistant_history",
+)
+
+
+def reset() -> None:
+    """就地清空全部可变状态（测试隔离 / 进程重启前清场）。
+
+    - 只对 _CLEARABLE 里的 dict/list 调 clear()，**不重新绑定**（保双副本语义）
+    - 对象型状态（interject_store / task_state_machine）有自身生命周期，
+      不在自动清理范围；测试需要时各自 reset
+    """
+    import sys as _sys
+    mod = _sys.modules[__name__]
+    for name in _CLEARABLE:
+        obj = getattr(mod, name, None)
+        if obj is not None and hasattr(obj, "clear"):
+            obj.clear()
+
+
+def snapshot() -> dict:
+    """返回可变状态的**深拷贝**快照，供测试断言与故障恢复对比。"""
+    import copy as _copy
+    import sys as _sys
+    mod = _sys.modules[__name__]
+    return {name: _copy.deepcopy(getattr(mod, name, None)) for name in _CLEARABLE}
