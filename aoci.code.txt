@@ -2,7 +2,7 @@
 
 ===D:/外端Agent生产合作社（External Agent Community）-oss/===
 .gitattributes[FV3T]: F:Git属性规则（LF/CRLF归一化、二进制标记、语言统计） | R:code:.gitignore | A:仓库根级声明配置，无代码入口 | S:换行符策略影响全部文本文件
-.gitignore[FV4T]: F:忽略规则（pycache/venv/日志/凭据/构建产物/各类备份） | R:code:.gitattributes | A:仓库根级声明配置 | S:备份忽略须覆盖 .bak_*/.bak-*/.backup.* 三形态；规则曾与注释同行而完全失效
+.gitignore[FV4T]: F:忽略规则（pycache/venv/日志/凭据/构建产物/各类备份/测试产物） | R:code:.gitattributes | A:仓库根级声明配置 | S:备份忽略须覆盖 .bak_*/.bak-*/.backup.*；平台 bridges 下只忽略测试用的 h1/ 与 *.tmp
 AGENTS.md[SG8S]: F:项目工作指引：铁律、副本地图、启动与测试命令、路由分组规则、AOCI 认知层接入协议 | R:code:HANDOVER.md | A:项目根级 Agent 指令入口 | S:接力先读 HANDOVER；本文件与代码不符时以代码实测为准并当次修正
 CHANGELOG.md[SV6S]: F:v4 版本演进变更记录（新增/修复/破坏性变更） | R:code:agent_community/cli.py | A:发布与追溯阅读入口 | S:变更记录需与发布版本保持对齐
 CONTRIBUTING.md[SQ5T]: F:贡献指南（开发流程、提交规范、社区协作方式） | R:- | A:贡献者流程入口 | S:约束外部贡献流程与代码质量门槛
