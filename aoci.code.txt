@@ -2,7 +2,7 @@
 
 ===D:/外端Agent生产合作社（External Agent Community）-oss/===
 .gitattributes[FV3T]: F:Git属性规则（LF/CRLF归一化、二进制标记、语言统计） | R:code:.gitignore | A:仓库根级声明配置，无代码入口 | S:换行符策略影响全部文本文件
-.gitignore[FV4T]: F:忽略规则（pycache/venv/日志/凭据/构建产物） | R:code:.gitattributes | A:仓库根级声明配置 | S:忽略规则直接决定版本控制收录范围
+.gitignore[FV4T]: F:忽略规则（pycache/venv/日志/凭据/构建产物/各类备份） | R:code:.gitattributes | A:仓库根级声明配置 | S:备份忽略须覆盖 .bak_*/.bak-*/.backup.* 三形态；规则曾与注释同行而完全失效
 AGENTS.md[SG8S]: F:平台内 AI Agent 协作规则与行为约束文档（任务执行/通信/安全边界） | R:- | A:项目根级 Agent 指令入口 | S:约束 Agent 行为边界，误读可能造成越权操作
 CHANGELOG.md[SV6S]: F:v4 版本演进变更记录（新增/修复/破坏性变更） | R:code:agent_community/cli.py | A:发布与追溯阅读入口 | S:变更记录需与发布版本保持对齐
 CONTRIBUTING.md[SQ5T]: F:贡献指南（开发流程、提交规范、社区协作方式） | R:- | A:贡献者流程入口 | S:约束外部贡献流程与代码质量门槛
@@ -10,7 +10,7 @@ LICENSE[SV9L]: F:AGPL-3.0 许可证全文，授权范围与义务声明 | R:- | 
 README.md[SG8M]: F:项目总览、功能特性、快速开始、架构说明与使用指引 | R:code:agent_community/cli.py | A:项目文档入口 | S:文档需与当前功能保持一致，避免误导新用户
 config.example.json[FC3T]: F:配置文件示例：平台启动参数与端口模板 | R:code:agent_community/platform/config.py | A:配置键名（示例） | S:示例配置仅模板，缺省值由代码默认兜底
 harnesses.example.json[FC3S]: F:harness 注册示例：ACP 类与文件轮询类两份完整模板 | R:code:config.example.json | A:harness-a；harness-b | S:示例仅模板，wakeup_dir/api 字段为占位不可直接使用
-requirements.txt[FC4T]: F:运行时依赖声明：FastAPI/uvicorn/httpx/pydantic/click | R:code:agent_community/gui.py | A:依赖列表 | S:pywebview 为可选注释，不装也能用 CLI 与 Web
+requirements.txt[FC4T]: F:运行时依赖声明（强制纯 ASCII，pip 按 OS 首选编码解码） | R:code:agent_community/cli.py | A:依赖列表 | S:中文注释会让 pip 在 cp936 下直接解码失败，故强制纯 ASCII、无 BOM
 start.py[EA6M]: F:一键启动器：参数解析、端口检查、GUI/后台模式、Ollama/Wakeup Agent 子进程拉起 | R:code:agent_community/platform/server.py | A:main；parse_args；check_port_available | S:默认端口 9103，GUI 默认开启，端口被占先报错退出
 工作间模式设计V5.md[SD8M]: F:V5 工作间设计：三级讨论、钩子协议、会话模型、唤醒专员与组长机制 | R:code:agent_community/platform/workshop.py | A:- | S:V5 与 v4 并行共存不动 orchestrator.handle_task，老板 6 项决策已确认
 
