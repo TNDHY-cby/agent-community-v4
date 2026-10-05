@@ -64,13 +64,36 @@ class TestRequirementsEncoding:
         assert not req_bytes.startswith(b"\xef\xbb\xbf"), \
             "requirements.txt 不应带 UTF-8 BOM（再生时会丢失，问题会复发）"
 
-    def test_pip_can_decode(self, req_bytes):
-        """直接用 pip 自己的解码函数验证（它就是真实的故障点）。"""
-        enc = pytest.importorskip("pip._internal.utils.encoding")
+    def test_pip_can_decode(self, req_bytes, tmp_path):
+        """用 **pip 自己的加载路径**验证（它就是真实的故障点）。
+
+        ⚠️ 2026-10-05 修正：原实现是
+            `enc = pytest.importorskip("pip._internal.utils.encoding")`
+        而该模块在 **pip 26.2.1 里已被整个移除**（实测全仓无 `def auto_decode`）——
+        于是这条基座守卫在**新 pip 上被静默跳过**：明明自称"就是真实的故障点"，
+        却根本没跑（覆盖率静默消失，正是本项目"验证工具本身有盲区"那类坑）。
+
+        改为走 pip 现存的加载入口 `pip._internal.req.req_file.get_file_content()`
+        （定义仍在，且"文件不可解码即抛 UnicodeDecodeError"的语义不变）；
+        真遇到入口整体缺失（未来再改名）就 **fail 而非 skip** —— 守卫宁红不默。
+        """
         try:
-            enc.auto_decode(req_bytes)
+            from pip._internal.req.req_file import get_file_content
         except Exception as e:  # noqa: BLE001
-            pytest.fail(f"pip 无法解码 requirements.txt：{type(e).__name__}: {e}")
+            pytest.fail(
+                "pip 的 requirements 加载入口不可用，这条基座守卫无法执行 —— "
+                f"{type(e).__name__}: {e}\n"
+                "请改用当前 pip 版本的等价公开入口后更新本用例；"
+                "**不要改回 importorskip**（那会让守卫静默失效）。"
+            )
+        f = tmp_path / "requirements.txt"
+        f.write_bytes(req_bytes)
+        try:
+            _loc, content = get_file_content(str(f), session=None)
+        except Exception as e:  # noqa: BLE001
+            pytest.fail(f"pip 无法加载 requirements.txt：{type(e).__name__}: {e}")
+        # 附带守住"读出来的内容与原文一致"，防入口行为漂移
+        assert content == req_bytes.decode("ascii")
 
 
 # ══════════════════════════════════════════════════════════════════

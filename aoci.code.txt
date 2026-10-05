@@ -82,7 +82,7 @@ local_ai.py[RR4M]: F:本地推理兜底通道（已废弃）：端点探测/自�
 mcp_client.py[IN6S]: F:MCP 客户端适配层：URL 校验、JSON-RPC POST、工具列表与工具调用封装 | R:code:agent_community/platform/orchestrator.py | A:McpError；validate_mcp_url；mcp_call_tool | S:URL 非 http(s) 或校验失败抛 McpError 拒绝，不静默降级
 memory.py[PA7M]: F:任务记忆与能力台账：TaskMemory 向量检索存取、CapabilityLedgerManager 信誉统计与最优 Agent 选择 | R:code:agent_community/platform/orchestrator.py | A:TaskMemory；search_by_text；CapabilityLedgerManager；get_best_agents | S:记忆持久化到本地文件，检索无命中返回空列表不抛异常
 orchestrator.py[AB9L]: F:任务编排核心：任务分析、在线过滤、能力匹配分配、执行记录与审查直连 | R:code:agent_community/platform/policy.py | A:Orchestrator；_analyze_task_full；_build_assignments；ranked_match | S:分配结果按评分降序，无在线 Agent 直接返回失败不重试
-policy.py[DS8L]: F:策略引擎：危险操作评估、审批队列、规则解析、底线钳制与审计记录 | R:code:agent_community/platform/orchestrator.py | A:PolicyEngine；evaluate；request；resolve；ALLOW/DENY/ASK | S:危险规则命中即拦截；底线钳制不可被配置绕过；无响应按默认放行或拒绝需查表
+policy.py[DS8L]: F:策略引擎：危险操作评估、审批队列、规则解析、底线钳制与审计记录 | R:code:agent_community/platform/orchestrator.py | A:PolicyEngine；evaluate；request；resolve；ALLOW/DENY/ASK | S:种子仅在首次运行落盘（有测试锁定的契约）；危险规则命中即拦截，底线不可绕过
 protocol.py[LN9L]: F:平台核心协议模型：传输/消息/AgentCard/讨论室/任务与执行结果等 dataclass 定义 | R:code:agent_community/platform/orchestrator.py | A:TransportType；AgentCard；DiscussionRoom；Task；ExecutionResult | S:dataclass 输出固定字段、未知字段静默丢弃；对外示例一律用虚拟名
 protocol_catalog.py[LN4S]: F:协议目录：可用协议清单与 gRPC 可用性探测 | R:code:agent_community/platform/routers/protocols.py | A:get_protocol_catalog；get_available_protocol_ids | S:目录基于静态定义，gRPC 项按导入是否成功动态标记可用
 react_loop.py[KA6M]: F:ReAct 循环推理引擎：思考-行动-观察步骤循环、系统提示构建与 JSON 解析 | R:code:agent_community/platform/ai_provider.py | A:ReActLoop；LoopStep；LoopResult | S:超过最大步数强制终止，JSON 输出解析失败重试受限次数后退出

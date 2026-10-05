@@ -46,3 +46,11 @@ config.local.json
 # AOCI agent host integration (machine-bound; do not commit)
 opencode.json
 opencode.json.backup.*
+
+# 2026-10-05: test artifacts are NOT repo content.
+# agent_community/tests/test_policy_wiring_bridge.py writes a stub into the REAL
+# agent_community/platform/bridges/h1/ dir (root cause: HANDOVER 13.8), which used
+# to trip the publish preflight 'working tree must be clean' gate. Only the
+# test-only h1/ and *.tmp are ignored; real bridges stay versioned.
+agent_community/platform/bridges/h1/
+agent_community/platform/bridges/**/*.tmp

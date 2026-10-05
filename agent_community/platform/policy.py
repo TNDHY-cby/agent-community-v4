@@ -35,6 +35,8 @@ from __future__ import annotations
 import copy
 import fnmatch
 import json
+import os
+import sys
 import threading
 import time
 import uuid
@@ -222,7 +224,12 @@ class PolicyEngine:
                 print("[policy] policy.json 结构不是对象，回落内置种子", flush=True)
         except Exception as e:
             print(f"[policy] 读 policy.json 失败（回落内置种子）: {e}", flush=True)
-        # 首次运行：把种子写到磁盘，让用户看得见、改得动
+        # 首次运行：把种子写到磁盘，让用户看得见、改得动。
+        # ⚠️ 这是**有测试锁定的正当契约**（test_policy.py::test_seeds_config_file_on_first_load、
+        #    test_editing_config_changes_policy 等），不要为了"让指纹守卫闭嘴"而跳过它 ——
+        #    2026-10-05 曾试过在 pytest 下跳过落盘，直接打破 6 条策略测试，已回退。
+        #    守卫在"全新 clone（无 data/policy.json）"里报的 pollution 是**导入副作用**所致，
+        #    处置记录见 HANDOVER §13.9。
         self._save_config()
 
     def _save_config(self) -> None:
