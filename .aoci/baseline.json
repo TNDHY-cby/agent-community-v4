@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-04T15:04:59Z",
-  "updated_at": "2026-10-05T11:15:42Z",
+  "updated_at": "2026-10-05T11:22:08Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -810,6 +810,24 @@
       "size": 8722,
       "normalized_sha256": "861094658862fe8ec49e56739a247d9acc609da72fad7a8557380c465fbedecb"
     },
+    "agent_community/tests/test_workshops_assign.py": {
+      "role": "observe",
+      "sha256": "7da82d2394f1e7518fde9c2ef7a2ca2ec808f5a166f8f0498b5a13bc995e74a4",
+      "size": 38680,
+      "normalized_sha256": "7da82d2394f1e7518fde9c2ef7a2ca2ec808f5a166f8f0498b5a13bc995e74a4"
+    },
+    "agent_community/tests/test_workshops_discuss.py": {
+      "role": "observe",
+      "sha256": "9b249a8201e9f75ac8cfa8228ac23e6bd85f792d07c6b8101edd2de9705b396e",
+      "size": 27696,
+      "normalized_sha256": "9b249a8201e9f75ac8cfa8228ac23e6bd85f792d07c6b8101edd2de9705b396e"
+    },
+    "agent_community/tests/test_workshops_task.py": {
+      "role": "observe",
+      "sha256": "4fdad7b6f38eabc1cd4fb4a4ea7d3696299c7c01675fe1c13358f2c33523a447",
+      "size": 17638,
+      "normalized_sha256": "4fdad7b6f38eabc1cd4fb4a4ea7d3696299c7c01675fe1c13358f2c33523a447"
+    },
     "agent_community/tools/watchdog.py": {
       "role": "index",
       "sha256": "662fdb7cf280894c80c5bd1c32b19d8e3e91d28e1a84203c403cf2059e2e05fa",
@@ -818,9 +836,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "03f6e2b64aa57ec20584d2e40ede8d8b1200d7aecc1a792c249846fe28c79c4a",
-      "size": 36675,
-      "normalized_sha256": "03f6e2b64aa57ec20584d2e40ede8d8b1200d7aecc1a792c249846fe28c79c4a"
+      "sha256": "76fda1ef9f5f0946969ca34113ecfe0dc43e7352cebf37fa15eaeb39ef4d8bd8",
+      "size": 36710,
+      "normalized_sha256": "76fda1ef9f5f0946969ca34113ecfe0dc43e7352cebf37fa15eaeb39ef4d8bd8"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -890,15 +908,15 @@
     },
     "design-docs/V16_API接入完善设计.md": {
       "role": "index",
-      "sha256": "5107b674b5853c64eff00cf43643721bf8ff668faa19363a17754a7724a3ba3d",
-      "size": 7348,
-      "normalized_sha256": "5107b674b5853c64eff00cf43643721bf8ff668faa19363a17754a7724a3ba3d"
+      "sha256": "62e3f12162eaab0890fdf5e59bcebe6ee0dee70a7c6c80a37759515881bdaf56",
+      "size": 16422,
+      "normalized_sha256": "a6afefb07f134bc280530d4f0a1e98ae35824c723efe335f01f0ce1750c6d2d4"
     },
     "design-docs/V17_会话关闭兜底设计.md": {
       "role": "index",
-      "sha256": "b29ef2009bc564ba597f51e34126b31ddc4dcaa8c6f2bbca95ba83e91116006f",
-      "size": 8036,
-      "normalized_sha256": "b29ef2009bc564ba597f51e34126b31ddc4dcaa8c6f2bbca95ba83e91116006f"
+      "sha256": "2a52e67a44b57b979e858db6d785d0afb7a6572edccaff18d392feccdf165501",
+      "size": 19274,
+      "normalized_sha256": "fbd288c7b32a47fcf09de9d4a4ae93bccb4c9c26dce7534a2ff45549001ae02f"
     },
     "design-docs/取长补短成果回收设计.md": {
       "role": "index",

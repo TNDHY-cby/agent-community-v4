@@ -155,8 +155,8 @@ V15_工作间会话联动与三层桥设计.md[SD7M]: F:V15 设计稿：工作�
 安全披露_CDP镜像与密钥存储.md[SD5T]: F:安全披露：CDP 镜像与密钥存储风险说明 | R:code:agent_community/platform/core/security.py | A:- | S:披露文档描述风险与缓解，不承诺已全量修复
 工作间模式-parallel并行落地设计.md[SD6S]: F:工作间 parallel 并行模式落地设计：多会话并行分工方案 | R:code:agent_community/platform/workshop.py | A:- | S:设计定稿，parallel 模式实现遵循本稿
 平台设计总纲.md[SD8M]: F:平台设计总纲：架构分层、路由与设计稿索引的唯一权威汇总 | R:code:agent_community/platform/server.py | A:- | S:总纲为平台设计唯一权威汇总，冲突以总纲为准
-V16_API接入完善设计.md[SD6M]: F:V16 设计稿：远端模型清单、失败回落与手动输入出口、连通性自检待拍板 | R:code:agent_community/platform/routers/config.py | A:- | S:§三已实施，§四连通性自检会真发一次计费调用，未拍板前不实施
-V17_会话关闭兜底设计.md[SD6M]: F:V17 设计稿：close_requested 宽限期惰性收敛（纯规则事件触发，不轮询） | R:code:agent_community/platform/session_registry.py | A:- | S:宽限期走满即到期；idle 属保留待复用一律不动；记录只改状态不删除
+V16_API接入完善设计.md[SD6M]: F:V16 设计稿：远端模型清单（已实施）与连通性自检（待拍板） | R:code:agent_community/platform/routers/config.py | A:GET /api/ai/models | S:实测路径是 {归一后 base}/v1/models；§四自检会真发一次计费调用，未拍板不实施
+V17_会话关闭兜底设计.md[SD6M]: F:V17 设计稿：close_requested 宽限期惰性收敛（已实施）与验证矩阵覆盖度 | R:code:agent_community/platform/session_registry.py | A:- | S:idle 保留待复用不动、记录只改状态不删；矩阵 #10 并发未覆盖；未同步进 V-15 §12.2
 
 ===D:/外端Agent生产合作社/docs/===
 roadmap.md[SD5S]: F:项目路线图：阶段计划与未完成项清单 | R:code:docs/ | A:- | S:未完成项不可按已实施引用，状态以代码为准
