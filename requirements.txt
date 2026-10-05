@@ -1,6 +1,13 @@
-# 外端Agent生产合作社（External Agent Community）v4 — 运行时依赖
-# 安装：pip install -r requirements.txt
-# 环境：Python >= 3.10
+# External Agent Community (agent_community) v4 - runtime dependencies
+# Install:  pip install -r requirements.txt
+# Requires: Python >= 3.10
+#
+# ASCII-ONLY ON PURPOSE (2026-10-05):
+#   pip decodes this file with the OS preferred encoding. On a Chinese Windows
+#   install (cp936/GBK) non-ASCII bytes here abort `pip install -r` with
+#   UnicodeDecodeError before a single requirement is parsed -- the project was
+#   effectively not installable for those users. Keep this file pure ASCII and
+#   BOM-free. Do not add localized comments here; put notes in README instead.
 
 fastapi>=0.110,<1.0
 uvicorn[standard]>=0.27
@@ -8,6 +15,7 @@ httpx>=0.27
 pydantic>=2.5
 click>=8.1
 
-# 可选依赖：桌面 GUI 启动器（agent_community/gui.py）
-# 不安装也能正常使用 CLI 与 Web 服务；Windows 上安装需 WebView2 运行时。
+# Optional: desktop GUI launcher (agent_community/gui.py).
+# The CLI and the Web server work fine without it.
+# On Windows it needs the WebView2 runtime.
 # pip install pywebview
