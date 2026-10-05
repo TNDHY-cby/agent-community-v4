@@ -14,7 +14,7 @@ description: 升级 DeepSeek Harness 自身时加载——新建/修改 agent pr
 
 ```powershell
 # 判断办法 1：看 profile 目录的最近修改时间 —— 只有活着的那个会被写
-Get-ChildItem "C:\Users\1\.dsh\profiles" -Directory | ForEach-Object {
+Get-ChildItem "$env:USERPROFILE\.dsh\profiles" -Directory | ForEach-Object {
   "{0,-12} {1}" -f $_.Name, (Get-Item $_.FullName).LastWriteTime }
 # → 改一次配置后，时间变的就是当前 profile
 
@@ -109,8 +109,8 @@ node <asar-scan.mjs> "D:\DSH\resources\app.asar" cat "dsh/node_modules/@deepseek
 | 100 | project-dsh | `<项目根>/.dsh/skills` |
 | 200 | project-agents | `<项目根>/.agents/skills` |
 | 300 | custom | 预设里配的 `customSkillDirs` |
-| 400 | user-dsh | `C:\Users\1\.dsh\skills` |
-| 500 | user-agents | `C:\Users\1\.agents\skills` |
+| 400 | user-dsh | `$env:USERPROFILE\.dsh\skills` |
+| 500 | user-agents | `$env:USERPROFILE\.agents\skills` |
 | 600 | bundled | 预设里配的 `bundledSkillDir` |
 
 **"项目根" = 最近一个含 `.git` 的祖先目录；没有 `.git` 就用当前 cwd。**
@@ -183,7 +183,7 @@ plugin_manager set_plugin  target=include:skill-filesystem  enabled=true
 # ① 手工备份 profile（零依赖，最可靠）
 $bk = "D:\DSH工作区1\dsh-modes\_backup\profile-<name>-$(Get-Date -f yyyyMMdd-HHmmss)"
 New-Item -ItemType Directory -Force -Path $bk | Out-Null
-Copy-Item "C:\Users\1\.dsh\profiles\<name>\*" $bk -Force
+Copy-Item "$env:USERPROFILE\.dsh\profiles\<name>\*" $bk -Force
 ```
 ② 装了 `dsh-undo-savepoint` 后，配置改动会**自动快照**；说一句「撤销上一步」即可回退，
    崩溃到起不来时用它的 `undo_safe_mode` / 离线 CLI。
