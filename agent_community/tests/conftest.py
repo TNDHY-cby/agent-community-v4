@@ -72,6 +72,36 @@ def _fp_one(p: Path) -> tuple:
         return (False, 0, 0)
 
 
+def _is_seed_write_only(before: dict, after: dict) -> bool:
+    """唯一的**窄豁免**：`data/policy.json` 由「不存在」变为「恰好等于出厂种子」。
+
+    背景（HANDOVER §13.9）：`policy.py` 末尾 `policy_engine = PolicyEngine()` 是**模块级单例**，
+    导入即 `_load_config()` —— 文件不存在时无条件落盘种子。于是**全新 clone** 里跑 pytest，
+    会在真实 `data/` 造出该文件，被本守卫判成"测试污染真实数据"
+    （实测：干净 clone 21 passed / 1 error，开源用户按 README 跑测试就会撞上）。
+
+    为什么可以豁免：这不是测试写坏的，是**生产代码的导入副作用**，文件内容就是出厂种子、无数据损失。
+    为什么豁免必须这么窄：比对的是**出厂种子的真实落盘字节**，不是文件名 ——
+    用户改过的 policy.json 绝不豁免；除该文件外的任何变化也绝不豁免。
+    """
+    key = "policy.json"
+    if before.get(key) is not None:
+        return False                      # 原本就存在 -> 不是"首次生成"
+    if after.get(key) is None:
+        return False
+    try:
+        from agent_community.platform import policy as _pol
+        seeded = (_pol._SEED_CONFIG)
+        import copy as _copy
+        import json as _json
+        expect = _json.dumps(_copy.deepcopy(seeded), ensure_ascii=False, indent=2)
+        actual = (REAL_DATA_DIR / key).read_text(encoding="utf-8")
+        return actual == expect
+    except Exception as _e:   # 读不到/导入失败 -> 不豁免（宁红不默）
+        print(f"[guard] 种子豁免判定失败，按污染处理: {_e}", flush=True)
+        return False
+
+
 @pytest.fixture(scope="session", autouse=True)
 def guard_real_data_dir():
     """会话前后对比真实 data/ **与用户级 config.json** 的指纹；被改动就 fail。
@@ -82,6 +112,13 @@ def guard_real_data_dir():
     before_cfg = _fp_one(REAL_USER_CONFIG)
     yield
     after = _fingerprint(REAL_DATA_DIR)
+    # 窄豁免：policy.json 首次生成出厂种子（导入副作用，非测试污染）—— 见 _is_seed_write_only。
+    # ⚠️ 必须在下面比对循环**之前**摘掉，否则 changed 已经填好、豁免等于没加（本补丁首版就踩了）。
+    if _is_seed_write_only(before, after):
+        import copy as _c
+        after = _c.deepcopy(after)
+        after.pop("policy.json", None)
+
     changed = []
     for k in sorted(set(before) | set(after)):
         if before.get(k) != after.get(k):
