@@ -361,6 +361,17 @@ async def harness_auto_connect(request: Request):
     import time as _time
     _time.sleep(2.0)
     alive = proc.poll() is None
+
+    # ── V-15 步骤2：把 proc 登记进存活表 ──────────────────────
+    # 原实现的 proc 是**局部变量，函数返回即丢** —— 平台事后完全不知道这个桥活着没活着，
+    # 于是 `_dispatch_to_harness` 只能无条件说"已入队（等桥领取）"（假成功）。
+    # 现登记进 bridge_procs，让队列分支有非阻塞、零 I/O 的存活源可查。
+    from .. import bridge_procs as _bp
+    if alive:
+        _bp.record(hid, proc, cmd=" ".join(full_cmd))
+    else:
+        _bp.forget(hid)          # 启动即退，别在存活表里留脏记录
+
     return {
         "success": True,
         "harness_id": hid,

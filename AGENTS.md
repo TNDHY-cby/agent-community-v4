@@ -3,6 +3,17 @@
 > 无论你用哪个 AI / 哪个模式进来，先读这一页。更详细的项目手册在 DSH 技能
 > `ac-project-dev`（若你的环境支持技能，直接加载它；不支持就读
 > `docs/` 与 `design-docs/平台设计总纲.md`）。
+>
+> 🔖 **接力/新会话先读 [`HANDOVER.md`](./HANDOVER.md)** ——
+> 当前进度（V-15 九步全部完成且**步骤8/9 已补测**）、未提交改动清单、
+> 待拍板事项、关键文件地图、高频坑与汇报约定，全在那里。
+
+> ⚠️ **2026-10-05 实测警告**：本机 fastapi 0.141.1 / starlette 1.7.0，
+> `app.include_router()` 往 `app.routes` 放的是 **`_IncludedRouter`（`.path is None`）**，
+> 真实路由在 **`.original_router.routes`**。**只遍历 `app.routes` 取 `.path` 会漏掉
+> 全部 include_router 端点**（`/api/sessions` `/api/policy` … 都看不到），
+> 但服务其实是好的。写"端点已挂载"断言请用
+> `agent_community/tests/test_sessions_v15.py::_mounted_paths()` 的展开写法。
 
 ## 铁律（违反即为错）
 
@@ -25,7 +36,11 @@
 
 - ⚠️ `publish_acv4.ps1` **只同步 `agent_community` 一个子目录**；根文档与 `design-docs/` 不进发布副本，要单独处理。
 - ⚠️ 发布脚本已带**反向分叉闸**（oss 独有代码文件 → 中止），防止 robocopy 静默摧毁 oss 上的独有成果。
-- ⚠️ 开发副本**缺 `requirements.txt`**（oss 有），环境不可复现——接手请先补。
+- ⚠️ 开发副本**曾有缺 `requirements.txt`** 的问题，已于 `7c99828` 补上；
+  **2026-10-05 又修了一次**：原文件末尾被粘了 AIGC 尾注（无 `#`）且含中文，
+  本机 pip（cp936/GBK 首选编码）连**解码**都过不去 → `pip install -r` 完全不可用。
+  现已改为**纯 ASCII**，并由 `agent_community/tests/test_foundation_base.py` 守卫。
+  **以后往 requirements.txt 里加中文，pytest 会直接变红。**
 
 ## 最快上手
 
@@ -39,7 +54,10 @@ python -m pytest tests/security_regression.py -v       # 安全回归（需服�
 
 必须**在项目根目录**（即 `agent_community` 包的父目录）跑 `python -m agent_community.*`，否则包解析失败。
 
-`agent_community/platform/server.py` 是 **271 KB / 5438 行**，但**已不含任何路由**（只剩 `include_router` 与编排）。HTTP 端点全在 `platform/routers/`：
+`agent_community/platform/server.py` 是 **269 KB / 5498 行**（2026-10-03 实测），**仍挂着 46 个 `@app.*` 端点**（44 HTTP + 2 WS：`/api/assistant/chat`、`/api/command`、`/ws`、`/api/room/*`、`/api/wakeup/*` 等）。
+> ⚠️ 本文件旧版曾写「已不含任何路由（只剩 `include_router` 与编排）」—— **实测为误**，`server.py` 自己的路由一直都在。
+> **「新端点加到 `routers/` 对应端点组」这条规矩不变**，只是别再当作"server 已经没有路由"来理解。
+> HTTP 业务端点在 `platform/routers/`：
 
 | 端点组 | 结构（V-13 拆分后，每个 ≤500 行） |
 |---|---|
@@ -54,6 +72,8 @@ python -m pytest tests/security_regression.py -v       # 安全回归（需服�
 `design-docs/取长补短成果回收设计.md`（V-10，已实施）、`design-docs/多协议接入与前端落地设计.md`（V-11）、`design-docs/V13_Router拆分与状态注入设计.md`（V-13，已实施）。
 
 > 本文件由 AI 维护。发现哪条与事实不符，**当次任务就改**。
+
+---
 
 <!-- aoci:begin -->
 ## AOCI 仓库认知

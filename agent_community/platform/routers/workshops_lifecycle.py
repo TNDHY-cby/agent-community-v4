@@ -14,6 +14,7 @@ import os
 from uuid import uuid4
 from ..workshop import write_workspace_files
 from ..state import interject_store, pending_activations, task_state_machine, tasks, workshops
+from ..harness_adapter import harness_manager   # 与其余 8 个 router 同范式（本文件此前未导入）
 
 router = APIRouter()
 
@@ -169,9 +170,25 @@ async def delete_workshop(ws_id: str):
     # 3) 工作区目录移入回收站（不物理删除，可恢复）
     trash_result = await asyncio.to_thread(_trash_bridge_dir, ws.workspace_dir) \
         if ws.workspace_dir and os.path.isdir(ws.workspace_dir) else {"trashed": False, "reason": "目录不存在或未记录"}
+    # 4) 会话关闭联动（V-15 步骤8）：工作区已进回收站 → cwd 失效 → 会话成孤儿，必须发起 close（§九 + §12.2）
+    sessions_close_requested = 0
+    try:
+        from ..session_registry import session_registry, sweep_and_audit
+        # V-17 触发时机②：回收时机天然适合先收敛上一批到期未自述的会话
+        sweep_and_audit()
+        _closed = session_registry.on_workshop_deleted(ws_id)
+        sessions_close_requested = len(_closed)
+        if _closed:
+            _audit_log.record(
+                "session.close", actor="user", target=ws_id,
+                detail=f"工作间删除（工作区进回收站），发起关闭 {len(_closed)} 个会话（close_requested，等 harness 自述）",
+            )
+    except Exception as _e:
+        print(f"[workshops_lifecycle] 会话关闭联动失败（不阻断）: {_e}", flush=True)
     save_state()
     return {"success": True, "deleted": ws_id, "state_machine_removed": sm_removed,
-            "interjects_removed": it_removed, "trash": trash_result}
+            "interjects_removed": it_removed, "trash": trash_result,
+            "sessions_close_requested": sessions_close_requested}
 
 @router.get("/api/workshops/stale")
 async def list_stale_workshops():
@@ -232,12 +249,159 @@ async def recycle_stale_workshops(request: Request):
         it_removed = interject_store.remove_workshop(wid)
         trash_result = await asyncio.to_thread(_trash_bridge_dir, ws.workspace_dir) \
             if ws.workspace_dir and os.path.isdir(ws.workspace_dir) else {"trashed": False, "reason": "目录不存在或未记录"}
+        # V-15 步骤8：回收语义与 DELETE 一致 —— 会话关闭联动（cwd 失效 → 发起 close）
+        sess_closed = 0
+        try:
+            from ..session_registry import session_registry, sweep_and_audit
+            # V-17 触发时机②（回收路径与 DELETE 同语义）
+            sweep_and_audit()
+            _closed = session_registry.on_workshop_deleted(wid)
+            sess_closed = len(_closed)
+            if _closed:
+                _audit_log.record(
+                    "session.close", actor="user", target=wid,
+                    detail=f"stale 回收（工作区进回收站），发起关闭 {len(_closed)} 个会话（close_requested）",
+                )
+        except Exception as _e:
+            print(f"[workshops_lifecycle] 会话关闭联动失败（不阻断）: {_e}", flush=True)
         workshops.pop(wid, None)
         recycled.append({"workshop_id": wid, "name": ws.name,
                          "state_machine_removed": sm_removed, "interjects_removed": it_removed,
+                         "sessions_close_requested": sess_closed,
                          "trash": trash_result})
     save_state()
     return {"success": True, "recycled": recycled, "skipped": skipped}
+
+
+def _member_wakeup(m) -> str:
+    """成员所用 harness 的唤醒方式 —— 前端据此显示该档「最高可达」（V-15 §11）。
+
+    取不到（未指定 harness / 读取异常）返回空串，前端按「未知档」处理，
+    不猜；`entry_state.max_reachable` 会给保守值。
+    """
+    try:
+        from ..server import _harness_wakeup_method
+        hid = (getattr(m, "harness_ids", None) or [None])[0]
+        return _harness_wakeup_method(hid) if hid else ""
+    except Exception:
+        return ""
+
+
+@router.post("/api/workshop/{ws_id}/connect-artifact")
+async def workshop_connect_artifact(ws_id: str, request: Request):
+    """V-15 步骤5：生成 L3 接入产物，落进**本工作间的工作区**。
+
+    ── §八 安全边界（这个端点存在的根本原因）──────────────────
+    ❌ caller 传 out_dir  → 调用方定路径 ≈ 任意文件写入
+                           （`/api/harness/{id}/bridge/generate` 的 V-6 护栏拦它，
+                             **原样保留、不动**）
+    ✅ 本端点            → 路径只由 `ws.workspace_dir` 派生（建间期平台生成的 ws_<hex8>）
+    **请求体不接受任何路径字段**，只接受 `member_id` 这类逻辑 id；
+    即便调用方塞了 `out_dir` / `target_dir`，也**根本没人读它**（并直接 400）。
+
+    按唤醒方式派生产物（§5.3）：script / contract / prompt ——
+    对 http_api 型要求"生成脚本"这个要求本身就是错的，故给连接契约 JSON。
+    """
+    from ..server import Utf8JSONResponse
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body if isinstance(body, dict) else {}
+
+    # 安全：**只取逻辑 id，绝不取任何看起来像路径的字段**（§八）
+    for _danger in ("out_dir", "target_dir", "path", "dir", "workspace_dir"):
+        if _danger in body:
+            return Utf8JSONResponse(
+                {"error": f"本端点不接受路径字段 {_danger!r} —— 路径由平台按 "
+                          f"workshop_id 派生（V-15 §八）"},
+                status_code=400,
+            )
+    member_id = str(body.get("member_id") or "").strip()
+
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    if not (ws.workspace_dir or "").strip():
+        return Utf8JSONResponse({"error": "工作间无 workspace_dir，无处落产物"}, status_code=400)
+
+    member = None
+    if member_id:
+        member = next((m for m in ws.members if m.member_id == member_id), None)
+        if member is None:
+            return Utf8JSONResponse({"error": f"成员 {member_id} 不在该工作间"}, status_code=404)
+    elif ws.members:
+        member = ws.members[0]
+
+    hid = ((getattr(member, "harness_ids", None) or [None])[0] if member else None)
+    if not hid:
+        return Utf8JSONResponse(
+            {"error": "该工作间没有已指定 harness 的成员，无法生成接入产物"}, status_code=400)
+    sess = harness_manager.sessions.get(hid)
+    if not sess or not sess.info:
+        return Utf8JSONResponse({"error": f"harness {hid} 未注册"}, status_code=404)
+
+    from ..connect_artifact import plan as _plan, render as _render
+    pl = _plan(ws, sess.info,
+               member_id=(getattr(member, "member_id", "") if member else ""))
+    if not pl.get("complete"):
+        return Utf8JSONResponse({"error": "产物计划不完整（无工作区坐标）", "plan": pl},
+                                status_code=400)
+
+    # ── V-14 策略闸门：本端点会真的 write_text 落盘，必须在 render **之前** ──
+    # （与 /bridge/generate 同口径：写盘但不启动 -> 出厂 ASK）
+    from ..policy import (BRIDGE_WRITE, actor_from_request, blocked_message,
+                          check, pending_message)
+    _ev, _pending = check(
+        BRIDGE_WRITE,
+        target=f"{hid}:{pl['artifact_kind']}:{ws_id}",
+        actor=actor_from_request(request),
+    )
+    if _ev.blocked:
+        return Utf8JSONResponse(
+            {"error": blocked_message(_ev), "rule_id": _ev.rule_id}, status_code=403)
+    if _ev.needs_approval:
+        return Utf8JSONResponse(
+            {"status": "pending_approval", "op": _ev.op,
+             "message": pending_message(_ev, _pending), "pending": _pending},
+            status_code=202)
+
+    try:
+        out = _render(pl)
+    except Exception as e:
+        return Utf8JSONResponse({"error": f"产物生成失败: {e}"}, status_code=500)
+
+    try:
+        _audit_log.record(
+            "artifact.render",
+            actor=actor_from_request(request),
+            target=f"{ws_id}:{hid}",
+            detail=f"kind={out.get('artifact_kind')} "
+                   f"path={out.get('path') or out.get('error')}",
+        )
+    except Exception:
+        pass
+
+    # ── V-15 步骤6：建间后的提醒（§10.1 时机2）──
+    #  产物路径 + 启动方式；C 档必须给「请建会话，cwd=工作区」+ 回执契约（§10.2）
+    _g = {}
+    try:
+        from ..tier_guidance import guidance_at_artifact
+        _g = guidance_at_artifact(
+            info,
+            workspace_dir=ws.workspace_dir,
+            workshop_id=ws_id,
+            member_id=pl.get("member_id", ""),
+            platform_url=pl.get("params", {}).get("PLATFORM_URL", ""),
+            artifact_path=out.get("path", ""),
+            artifact_kind=out.get("artifact_kind") or pl.get("artifact_kind", ""),
+        )
+    except Exception as _e:
+        _g = {"error": f"提醒生成失败（产物已生成，不影响）: {_e}"}
+
+    return {"success": bool(out.get("ok")), "plan": pl,
+            "artifact": out, "harness_id": hid, "guidance": _g}
+
 
 @router.get("/api/workshop/{ws_id}")
 async def get_workshop(ws_id: str, after_seq: int = -1):
@@ -252,7 +416,21 @@ async def get_workshop(ws_id: str, after_seq: int = -1):
         "workspace_dir": ws.workspace_dir,
         "hall_content": ws.hall_content,
         "discussion": _normalize_discussion(ws, after_seq=after_seq),
-        "members": [{"member_id": m.member_id, "role": m.role, "display_name": m.display_name, "harness_ids": m.harness_ids, "status": m.status} for m in ws.members],
+        # V-15 步骤3：entry_state / entry_reason 必须显式列出 ——
+        # 这里是**逐字段映射**，不加这两个键前端就拿不到，等于后端白做。
+        "members": [
+            {
+                "member_id": m.member_id,
+                "role": m.role,
+                "display_name": m.display_name,
+                "harness_ids": m.harness_ids,
+                "status": m.status,
+                "entry_state": getattr(m, "entry_state", "pending"),
+                "entry_reason": getattr(m, "entry_reason", ""),
+                "wakeup_method": _member_wakeup(m),
+            }
+            for m in ws.members
+        ],
         "resources": ws.resources,
     }
 

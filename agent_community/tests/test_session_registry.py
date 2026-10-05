@@ -198,6 +198,36 @@ class TestPersistence:
         r.register(harness_id="h1", session_id="s1")
         assert len(r.list()) == 1
 
+    def test_utf8_bom_tolerated(self, tmp_path):
+        """PowerShell `Set-Content -Encoding UTF8` 会写 **BOM** —— 读侧必须容忍。
+
+        回归现场：真实 `data/sessions.json` 就是被这么清空过的（BOM + `[]`），
+        `read_text(encoding="utf-8")` 不剥 BOM -> json.loads 抛 -> 被 except 吞掉
+        -> **静默回落空表** —— 文件里一旦真有会话，重启就等于全丢，只留一行日志。
+        """
+        d = tmp_path / "_p5"
+        d.mkdir()
+        payload = [{"harness_id": "h1", "session_id": "s1", "workshop_id": "w1",
+                    "status": "active"}]
+        # 带 BOM 写（模拟 PowerShell 的输出）
+        (d / "sessions.json").write_bytes(
+            b"\xef\xbb\xbf" + json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+
+        r = SessionRegistry(data_dir=d)
+        got = r.get("h1", "s1")
+        assert got is not None, "**BOM 导致会话数据被静默丢弃**（重启即丢）"
+        assert got["workshop_id"] == "w1"
+
+    def test_load_without_bom_still_works(self, tmp_path):
+        """utf-8-sig 对「无 BOM」输入也要正确（不能只修了有 BOM 的那半边）。"""
+        d = tmp_path / "_p6"
+        d.mkdir()
+        payload = [{"harness_id": "h2", "session_id": "s2"}]
+        (d / "sessions.json").write_text(json.dumps(payload, ensure_ascii=False),
+                                         encoding="utf-8")
+        r = SessionRegistry(data_dir=d)
+        assert r.get("h2", "s2") is not None
+
     def test_unwritable_dir_does_not_raise(self, tmp_path, monkeypatch):
         """纪律3：写盘异常只打印，不冒泡。"""
         r = SessionRegistry(data_dir=tmp_path / "_p4")

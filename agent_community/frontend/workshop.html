@@ -953,6 +953,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
           <div id="manualActBox" style="display:none;margin-top:8px"></div>
 
 
+          <div id="sessionCountLine" style="margin-top:8px;font-size:11px;color:var(--muted)"></div>
           <div id="workStatus" style="margin-top:8px"></div>
 
 
@@ -2360,12 +2361,23 @@ function pollWorkStatus(){
 
 
     const d=await fetch(`/api/workshop/${wsId}`).then(x=>x.json());
+    /* V-15 步骤8：会话可见性 —— 并行拉取 GET /api/sessions，计数 + 每成员「会话活跃」标记（§12.2.1） */
+    const ss=await fetch(`/api/sessions?workshop_id=${wsId}`).then(x=>x.json()).catch(()=>({sessions:[]}));
+    const sessMap={};(ss.sessions||[]).forEach(s=>{if(s.status==='active')sessMap[s.member_id]=s.status;});
+    const sessCount=(ss.sessions||[]).filter(s=>s.status==='active').length;
+    const scLine=document.getElementById('sessionCountLine');
+    if(scLine)scLine.innerHTML=`<span style="opacity:.9">活跃会话 <b style="color:var(--green)">${sessCount}</b> · 全部 <b>${(ss.sessions||[]).length}</b></span>`;
 
 
     const st={pending:'待激活',activating:'激活中',entered:'已进入',working:'工作中',blocked:'失败',completed:'已完成'};
+    /* V-15 步骤3：进入状态（派发进度）—— 与 status（生命周期）正交。
+       status 的 activating 分不清「推都推出去没」，前一页那种「已派发 N 名」可能全是假的；
+       entry_state + entry_reason 才能看出真相。 */
+    const ENTRY={pending:'待派发',dispatched:'已派发',acked:'已送达',entered:'已进入',blocked:'受阻',timeout:'无回应',needs_human:'待人工'};
+    const MAXR={acp:'entered',http_api:'acked',http:'acked',file_poll:'dispatched',clipboard:'entered'};
 
 
-    el.innerHTML=(d.members||[]).map(m=>`<div class="h-card" style="margin-bottom:4px"><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:${m.status==='entered'?'var(--green)':m.status==='blocked'?'var(--red)':'var(--yellow)'}"></span>${esc(m.role)}：${st[m.status]||m.status}</div>`).join('');
+    el.innerHTML=(d.members||[]).map(m=>{const est=m.entry_state||'pending';const lab=ENTRY[est]||est;const wm=m.wakeup_method||'';const cap=MAXR[wm]||'dispatched';const bg=est==='entered'?'var(--green)':(est==='blocked'||est==='timeout')?'var(--red)':'var(--yellow)';const reason=(est==='blocked'&&m.entry_reason)?`<div style="font-size:11px;color:var(--red);opacity:.85;margin-top:1px">原因：${esc(m.entry_reason)}</div>`:'';const tier=(est!=='entered')?`<span style="font-size:10px;color:var(--dim);opacity:.7">（${esc(wm||'未知档')} 上限 ${ENTRY[cap]||cap}）</span>`:'';const sessTag=(sessMap[m.member_id]==='active')?`<span style="font-size:10px;color:var(--green);opacity:.9">· 会话活跃</span>`:'';const btn=(est==='entered')?'':(CONFIRMING.has(m.member_id)?`<button class="mini-btn" data-mid="${esc(m.member_id)}" onclick="confirmHumanEnter(this)" disabled style="margin-left:2px;padding:1px 9px;font-size:10.5px;border-radius:6px;background:var(--green-soft);color:var(--green);border:1px solid var(--green);opacity:.65;cursor:wait">确认中...</button>`+`<span id="confirming-${esc(m.member_id)}" style="display:inline-block;margin-left:6px;font-size:10.5px;color:var(--dim);vertical-align:middle;animation:monBlink 1s ease-in-out infinite"><span class="spinner" style="width:11px;height:11px;border-width:2px;margin-right:4px;vertical-align:-2px"></span>确认请求提交中...</span>`:`<button class="mini-btn" data-mid="${esc(m.member_id)}" onclick="confirmHumanEnter(this)" style="margin-left:2px;padding:1px 9px;font-size:10.5px;border-radius:6px;background:var(--green-soft);color:var(--green);border:1px solid var(--green);cursor:pointer">确认已进入</button>`);return `<div class="h-card" style="margin-bottom:4px"><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:${bg}"></span>${esc(m.role)}：<b>${lab}</b> <span style="font-size:11px;color:var(--dim);opacity:.7">· ${st[m.status]||m.status}</span> ${sessTag}${tier}${reason}${btn}</div>`}).join('');
 
 
     if(d.status==='running' && (d.members||[]).length>0 && (d.members||[]).every(m=>m.status==='completed'||m.status==='blocked'||m.status==='entered')){
@@ -2392,6 +2404,38 @@ function pollWorkStatus(){
   pollWorkStatus._t=setInterval(draw,3000);
 
 
+}
+
+/* V-15 步骤9：每成员「确认已进入」按钮 —— 复用 activation-result，source=human（§11.1）
+   人工确认 = 该成员已真实进入工作区；成功即标 entered 并落会话登记（含 session.open 审计）。 */
+/* 正在确认中的成员登记表：pollWorkStatus 重建 DOM 时据此保留「确认中...」按钮态，防止轮询冲掉加载动画 */
+const CONFIRMING=new Set();
+async function confirmHumanEnter(btn){
+  if(!wsId)return acToast&&acToast('请先打开工作间');
+  const mid=(btn&&btn.dataset&&btn.dataset.mid)||'';if(!mid)return;
+  /* V-15 补丁：点击即反馈 —— 按钮态+气泡双保险加载动画（成功才置换为「已确认 ✓」，失败恢复可点） */
+  CONFIRMING.add(mid);
+  const card=btn.closest('.h-card');
+  const bid='confirming-'+mid;
+  let bubble=null;
+  if(btn){ btn.textContent='确认中...'; btn.disabled=true; btn.style.opacity='.65'; btn.style.cursor='wait'; }
+  if(card&&!document.getElementById(bid)){
+    bubble=document.createElement('span');
+    bubble.id=bid;
+    bubble.style.cssText='display:inline-block;margin-left:6px;font-size:10.5px;color:var(--dim);vertical-align:middle;animation:monBlink 1s ease-in-out infinite';
+    bubble.innerHTML='<span class="spinner" style="width:11px;height:11px;border-width:2px;margin-right:4px;vertical-align:-2px"></span>确认请求提交中...';
+    card.appendChild(bubble);
+  }
+  try{
+    const wd=await fetch(`/api/workshop/${wsId}`).then(x=>x.json()).catch(()=>({}));
+    const m=(wd.members||[]).find(x=>x.member_id===mid)||{};
+    const r=await fetch('/api/harness/activation-result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workshop_id:wsId,member_id:mid,role:m.role||'',status:'entered',source:'human'})}).then(x=>x.json()).catch(()=>({success:false,error:'网络错误'}));
+    if(r&&r.success){ if(acToast)acToast('已确认「'+mid+'」人工进入'); if(btn)btn.outerHTML='<span style="font-size:10.5px;color:var(--green);font-weight:700">已确认 ✓</span>'; }
+    else { if(acToast)acToast('确认失败：'+((r&&r.error)||'未知')); if(btn){ btn.textContent='确认已进入'; btn.disabled=false; btn.style.opacity=''; btn.style.cursor=''; } }
+  } finally {
+    CONFIRMING.delete(mid);
+    if(bubble&&bubble.parentNode)bubble.parentNode.removeChild(bubble);
+  }
 }
 
 
@@ -2533,12 +2577,19 @@ function loadWorkshop(id){
 
 
       addMsg('user', d.hall_content, 1);
-
-
-      const r=await fetch(`/api/workshop/${id}/discuss`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:d.hall_content})}).then(x=>x.json());
-
-
-      if(r.reply) addMsg('ai', r.reply, (typeof r.zone==='number')?r.zone:1);
+      /* V-15 补丁：大厅广播拉入工作间后，平台AI回复前显示「思考中...」加载动画 */
+      const think=document.createElement('div');
+      think.className='msg ai';
+      think.id='thinking';
+      think.innerHTML='<span class="spinner"></span>平台AI思考中...';
+      const dEl=document.getElementById('discussion1');
+      if(dEl){ dEl.appendChild(think); dEl.scrollTop=dEl.scrollHeight; }
+      try{
+        const r=await fetch(`/api/workshop/${id}/discuss`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:d.hall_content})}).then(x=>x.json());
+        if(r.reply) addMsg('ai', r.reply, (typeof r.zone==='number')?r.zone:1);
+      } finally {
+        const t=document.getElementById('thinking'); if(t)t.remove();
+      }
 
 
       // 后端已持久化 hall_content+回复，建立 seq 基线，避免轮询重复渲染

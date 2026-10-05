@@ -239,6 +239,33 @@ async def register_harness(request: Request):
             harness_manager.register(info)  # 重新注册以持久化更新
         else:
             print(f"[api_wakeup] {info.harness_id} HTTP API 探测失败：{_probe_detail}", flush=True)
+
+    # ── V-15 步骤4：生成 L2 具体桥模板 ──────────────────────────
+    # 必须放在 wakeup_method 探测/升级**之后** —— 放前面会按探测前的档位生成模板，
+    # 比如 http_api 探测成功前按 "http" 或默认档建，模板就与实际不符。
+    # 幂等：参数没变就不覆盖（保留用户手工改过的模板与原 created_at）。
+    try:
+        from ..bridge_template import ensure as _ensure_l2
+        _l2 = _ensure_l2(info)
+        if _l2 and not _l2.get("complete"):
+            print(f"[L2] {info.harness_id} 桥模板参数不全，缺 {_l2.get('missing')}",
+                  flush=True)
+    except Exception as _e:
+        print(f"[L2] 桥模板生成失败（不阻断注册）: {_e}", flush=True)
+
+    # ── V-15 步骤6：接入档位 + 提醒（§10.1 时机1「注册后」）──
+    #  平台不再替外端架桥，就必须把话说清；
+    #  D 档按 §6.3 **表达需求、不指定实现**（不为每个 harness 写安装步骤）。
+    _tier = None
+    try:
+        from ..tier_guidance import apply_needs_protocol, guidance_at_register
+        _tier = guidance_at_register(info)
+        if apply_needs_protocol(info):
+            save_state()          # needs_protocol / access_tier / 引导文案 落盘
+    except Exception as _e:
+        _tier = {"error": f"档位判定失败（不影响注册）: {_e}"}
+        print(f"[tier] {info.harness_id} 判定失败: {_e}", flush=True)
+
     # 映射为 AgentCard 并注册到平台
     card = harness_to_agent_card(info)
     agents[card.agent_id] = card
@@ -273,12 +300,22 @@ async def register_harness(request: Request):
         "harness.register", actor="system", target=info.harness_id,
         detail=f"name={getattr(info, 'harness_name', '')} token={'reuse' if _token_pre else 'new'}",
     )
+    # V-15 步骤4：L2 具体桥模板摘要 —— 注册响应直接告诉用户"差什么才能架桥"，
+    # 比等到建工作间时才报错早一步（注册/UX 目标：用户不用当信息中转）。
+    try:
+        from ..bridge_template import status_of as _l2_status
+        _l2 = _l2_status(info)
+    except Exception:
+        _l2 = {"has_template": False, "note": "模板摘要读取失败（不影响注册）"}
     return {
         "success": True,
         "harness_id": info.harness_id,
         "agent_id": card.agent_id,
         "card": card.model_dump(),
         "agent_token": existing_token,
+        "bridge_template": _l2,
+        # V-15 步骤6：接入档位 + 引导（§10.1 时机1）。D 档含 §6.3 插件引导文案。
+        "access_tier": _tier,
     }
 
 @router.post("/api/harness/launch")
@@ -368,6 +405,14 @@ async def harness_activation_result(request: Request):
     if hid or sid or source:
         try:
             from ..session_registry import SRC_HUMAN, session_registry
+            # V-15 步骤8：审计 session.open —— 该成员当前无活跃会话 = 首次进入/新会话。
+            # 只对「新登记」记 open，更新（复用旧会话）不重复记，避免审计噪音。
+            # 注意：list 无 member_id 参数，复用 find（非 closed 的最新会话）判断。
+            is_new = False
+            try:
+                is_new = not session_registry.find(workshop_id=wid, member_id=mid)
+            except Exception:
+                pass
             rec = session_registry.register(
                 harness_id=hid or (f"human::{wid}" if source == SRC_HUMAN else "unknown"),
                 session_id=sid,
@@ -376,6 +421,11 @@ async def harness_activation_result(request: Request):
                 source=source or ("human" if not sid else "unknown"),
                 context_turns=ctx_turns,
             )
+            if is_new and rec and not rec.get("error"):
+                _audit_log.record(
+                    "session.open", actor=source or "bridge", target=f"{wid}:{mid}",
+                    detail=f"session_id={rec.get('session_id')} source={rec.get('source')}",
+                )
             # context_turns 远大于 1 = 复用旧上下文，理由1（隔离）未达成 → 记录但不阻断
             if isinstance(rec.get("context_turns"), int) and rec["context_turns"] > 1:
                 try:
@@ -391,11 +441,24 @@ async def harness_activation_result(request: Request):
         except Exception as _e:
             print(f"[session_registry] 登记失败（不阻断）: {_e}", flush=True)
 
+    from .. import entry_state as _es          # V-15 步骤3
     ws = workshops.get(wid)
     if ws:
         for m in ws.members:
             if m.member_id == mid:
                 m.status = status
+                # 进入状态机推进：回报 entered -> 终点；否则记受阻原因
+                if status == "entered":
+                    m.entry_state = _es.ENTERED
+                    m.entry_reason = ""
+                    # V-15 步骤7：成功回报即开新周期，重派计数归零
+                    # （否则上次卡住攒下的计数会让下次一超时就直接 needs_human）
+                    m._activate_retries = 0
+                elif status == "blocked":
+                    m.entry_state = _es.BLOCKED
+                    m.entry_reason = (
+                        str(body.get("reason") or "") or _es.REASON_DISPATCH_FAIL
+                    )[:160]
                 break
         # 全部进入后，自动派发工作任务
         if ws.members and all(m.status == "entered" for m in ws.members):
@@ -421,6 +484,21 @@ async def unregister_harness(harness_id: str):
     # 清理桥：终止桥进程（后台线程），桥目录移入回收站
     bridge_cleanup = await asyncio.to_thread(_stop_bridge_processes, harness_id, bridge_dir)
     trash_result = await asyncio.to_thread(_trash_bridge_dir, bridge_dir)
+    # V-15 步骤8：注销 harness → 宿主没了 → 该 harness 全部会话全关 + 移出注册表（§12.2）
+    sessions_closed = 0
+    try:
+        from ..session_registry import session_registry, sweep_and_audit
+        # V-17 触发时机③：宿主消失前，先把到期未自述的 close_requested 标掉，
+        # 让审计里"兜底关闭"与"随注销移除"两类事件都留痕。
+        sweep_and_audit()
+        sessions_closed = session_registry.on_harness_unregistered(harness_id)
+        if sessions_closed:
+            _audit_log.record(
+                "session.close", actor="user", target=harness_id,
+                detail=f"harness 注销（宿主消失），全关并移除 {sessions_closed} 个会话",
+            )
+    except Exception as _e:
+        print(f"[harness_register] 会话全关联动失败（不阻断）: {_e}", flush=True)
     sys_msg = Message(
         type=MessageType.SYSTEM, from_agent="system",
         content=f"Harness「{harness_id}」已注销（注册信息与桥信息已删除，桥进程已终止，桥目录已清理）",
@@ -431,5 +509,6 @@ async def unregister_harness(harness_id: str):
     return {
         "success": True, "deleted": harness_id,
         "bridge_cleanup": bridge_cleanup, "trash": trash_result,
+        "sessions_closed": sessions_closed,
     }
 

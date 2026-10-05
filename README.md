@@ -181,7 +181,7 @@ curl -X POST http://127.0.0.1:18920/api/harness/register \
 回报协议（harness 有联网能力时可直接 POST，无需桥）：
 
 ```bash
-# 激活回报
+# 激活回报 —— 平台要等全员 status=entered 才开始派任务，不回报 = 工作间不开工
 curl -X POST http://127.0.0.1:18920/api/harness/activation-result \
   -H "Content-Type: application/json" \
   -d '{"workshop_id":"ws_xxx","member_id":"m_xxx","status":"entered"}'
@@ -191,6 +191,17 @@ curl -X POST http://127.0.0.1:18920/api/harness/task-result \
   -H "Content-Type: application/json" \
   -d '{"workshop_id":"ws_xxx","member_id":"m_xxx","ok":true,"result":"完成了..."}'
 ```
+
+**激活回报的可选三字段**（V-15 新增，向后兼容，不发也行、发了更准确）：
+
+| 字段 | 作用 |
+|---|---|
+| `session_id` | 本次会话 id。**缺了平台无法跨重启记住会话**（重启即失忆） |
+| `context_turns` | 会话已有上下文轮数，新会话应为 1；`>1` 平台记一条「上下文复用」审计但**不阻断** |
+| `source` | `acp` / `mcp` / `plugin` = 机器报，`human` = 人工点击进入。平台据此**区分人报与机器报**，避免冒充 |
+
+无 `session_id` 时平台会合成 `human:{workshop}:{member}:{ts}` 并标 `source=human`。
+`status=blocked` 时另可带 `reason`，会直接显示给用户。
 
 桥的统一职责：注册 + 心跳保活 + 轮询领取激活/任务 + 回报结果。详细协议见各桥文件头部注释。
 

@@ -51,6 +51,23 @@ ST_STALE = "stale"                   # 长时间无回报（只影响可见性�
 SOURCES = (SRC_ACP, SRC_MCP, SRC_PLUGIN, SRC_HUMAN, SRC_UNKNOWN)
 STATUSES = (ST_ACTIVE, ST_IDLE, ST_CLOSED, ST_CLOSE_REQ, ST_STALE)
 
+# ── V-17 关闭兜底：宽限期（秒）────────────────────────────────────
+# `close_requested` 是**两段式关闭**的中间态（等 harness 自述确认）。此前没有出口：
+# 对面不来消息就永远停在这里（实测 18 个会话里 17 个卡住）。
+#
+# 取值依据（锚定平台既有常量，不拍脑袋）：
+#   waker_protocol.WAKER_TIMEOUT       = 30s   单次唤醒投递
+#   harness_adapter.heartbeat_timeout  = 60s   心跳超时 → **判 harness 离线**
+# 判据：平台已认定"60s 无心跳 = 离线"，那么一个连心跳都没有的 harness，再给
+# **10 倍心跳窗（600s）** 仍不自述关闭，就不该继续占着"等待中"的名分。
+# 反过来 600s 远大于任何单次调用上限（AI 120s / MCP 120s），足够覆盖一次收尾。
+# 可用配置键 `session_close_grace_seconds` 覆盖。
+CLOSE_GRACE_SECONDS = 600.0
+
+# 兜底关闭的原因标记（与"harness 自述关闭"区分，便于审计统计）
+CLOSE_REASON_GRACE = "grace_expired"
+CLOSE_REASON_SELF = "self_reported"
+
 
 def _now() -> float:
     return time.time()
@@ -72,7 +89,13 @@ class SessionRegistry:
         try:
             import json
             if self.path.exists():
-                data = json.loads(self.path.read_text(encoding="utf-8"))
+                # ⚠️ 必须用 **utf-8-sig** 而不是 utf-8：
+                # PowerShell 的 `Set-Content -Encoding UTF8` 会写入 **UTF-8 BOM**，
+                # 而 `read_text(encoding="utf-8")` 不剥 BOM -> json.loads 得到
+                # "\ufeff[...]" -> **直接抛** -> 被 except 吞掉 -> **静默回落空表**。
+                # 文件里**一旦真的有会话数据，重启就等于全丢**，且只留一行日志。
+                # utf-8-sig 对「有 BOM」和「无 BOM」两种输入都正确。
+                data = json.loads(self.path.read_text(encoding="utf-8-sig"))
                 if isinstance(data, list):
                     self._records = [r for r in data if isinstance(r, dict)]
         except Exception as e:
@@ -113,7 +136,16 @@ class SessionRegistry:
     def _ensure_session_id(
         session_id: str, workshop_id: str, member_id: str, source: str
     ) -> str:
-        """人工进入没有 session_id → 合成一个，但标 source 以示区别。"""
+        """人工进入没有 session_id → 合成一个，但标 source 以示区别。
+
+        **同秒重复点击 = 合并为同一会话**：合成 id 带 `int(_now())`（秒级），
+        同一 (workshop, member) 在同一秒内点两次，会合成**同一个 id** →
+        `register()` 走幂等更新分支，**不会产生两条记录**。这是有意的：
+        重复点击本就是同一个逻辑会话，不该裂开。
+
+        跨秒再点则是**另一条**记录（见 `find()` 按 last_seen 降序，
+        复用时取最新那条）。
+        """
         if session_id:
             return session_id
         return f"human:{workshop_id or '-'}:{member_id or '-'}:{int(_now())}"
@@ -207,6 +239,10 @@ class SessionRegistry:
                     r["last_seen"] = _now()
                     if status in (ST_CLOSED, ST_CLOSE_REQ):
                         r["close_requested_at"] = _now()
+                    if status == ST_CLOSED:
+                        # V-17：区分"对面自述关闭"与"平台兜底关闭"（审计可统计比例）
+                        r["close_reason"] = CLOSE_REASON_SELF
+                        r["closed_at"] = _now()
                     if note:
                         r["note"] = note
                     self._persist()
@@ -224,15 +260,21 @@ class SessionRegistry:
         return None
 
     def find(self, workshop_id: str, member_id: str) -> list[dict]:
-        """按 (workshop, member) 找会话 —— 复用判定用（拍板 #4）。"""
+        """按 (workshop, member) 找会话 —— 复用判定用（拍板 #4）。
+
+        **按 last_seen 降序**（最新的在前）：人工进入跨秒重复点击会留下多条记录，
+        调用方直接取 `[0]` 即为"当前那条"，语义确定、不依赖遍历顺序。
+        """
         with self._lock:
-            return [
+            out = [
                 dict(r)
                 for r in self._records
                 if r.get("workshop_id") == workshop_id
                 and r.get("member_id") == member_id
                 and r.get("status") != ST_CLOSED
             ]
+        out.sort(key=lambda r: r.get("last_seen") or 0, reverse=True)
+        return out
 
     def list(
         self,
@@ -309,6 +351,53 @@ class SessionRegistry:
                 self._persist()
             return removed
 
+    def sweep_expired_close_requests(
+        self, now: float | None = None, grace_seconds: float | None = None
+    ) -> list[dict]:
+        """惰性收敛：把超过宽限期的 `close_requested` 置为 `closed`（V-17）。
+
+        设计稿：`design-docs/V17_会话关闭兜底设计.md`
+
+        **纯规则、事件触发**：不启线程、不注册定时器、不发网络、不调 LLM。
+        调用方只在"资源被访问 / 回收"的时机调它（`GET /api/sessions`、
+        工作间删除·stale 回收、harness 注销前）。
+
+        语义（逐条对应设计稿 §4）：
+        - 只处理 `close_requested`；`closed` / `active` / `idle` / `stale` **一律不碰**
+          （`idle` 是拍板 #4 的"保留待复用"，不得被收敛）；
+        - `close_requested_at + grace < now` → `closed` + `closed_at` + `close_reason`；
+        - **记录保留、不删除**：晚到的 harness 自述仍能更新它，也留住审计轨迹；
+        - 老记录缺 `close_requested_at`（V-17 之前落盘的）→ **补记当前时间**，
+          宽限期从此刻起算，**不立即关闭** —— 避免上线瞬间把历史数据成批误清。
+
+        返回**本次真正被关闭**的记录（补记起算点的不算关闭，不返回）。
+        """
+        if now is None:
+            now = _now()
+        if grace_seconds is None:
+            grace_seconds = _close_grace_seconds()
+
+        closed: list[dict] = []
+        backfilled = False
+        with self._lock:
+            for r in self._records:
+                if r.get("status") != ST_CLOSE_REQ:
+                    continue
+                started = r.get("close_requested_at")
+                if not started:
+                    r["close_requested_at"] = now
+                    backfilled = True
+                    continue
+                if now - started < grace_seconds:
+                    continue
+                r["status"] = ST_CLOSED
+                r["closed_at"] = now
+                r["close_reason"] = CLOSE_REASON_GRACE
+                closed.append(dict(r))
+            if closed or backfilled:
+                self._persist()
+        return closed
+
     def clear(self) -> int:
         """清空（测试用）。就地清空，不重新绑定。"""
         with self._lock:
@@ -329,3 +418,61 @@ class SessionRegistry:
 
 # 模块级单例（同 audit.py / policy.py 约定）
 session_registry = SessionRegistry()
+
+
+def _close_grace_seconds() -> float:
+    """读配置里的关闭宽限期；缺失 / 非法 / 读取失败都回退常量（失败不阻断）。"""
+    try:
+        from ..config import load_config
+
+        raw = load_config().get("session_close_grace_seconds")
+        val = float(raw)
+        if val > 0:
+            return val
+    except Exception:
+        pass
+    return CLOSE_GRACE_SECONDS
+
+
+def sweep_and_audit(
+    now: float | None = None, grace_seconds: float | None = None
+) -> list[dict]:
+    """惰性收敛 + 审计 —— **三个调用点共用这一个入口**，避免三处逻辑漂移。
+
+    V-17 设计稿 §3.3 的三个触发时机（都用本函数）：
+    1. `GET /api/sessions`：人来看的那一刻必须是真相，而不是陈旧等待态；
+    2. 工作间删除 / stale 回收：回收时机天然适合收敛上一批遗留；
+    3. harness 注销前：宿主消失前先把到期项标掉，审计更完整。
+
+    **绝不抛异常**：收敛或审计失败都只打印并继续 —— 它挂在可见性查询这类
+    只读链路上，绝不能因为兜底逻辑把主流程搞崩（同 audit.py 的纪律）。
+    """
+    try:
+        closed = session_registry.sweep_expired_close_requests(
+            now=now, grace_seconds=grace_seconds
+        )
+    except Exception as e:  # noqa: BLE001
+        print(f"[session_registry] 关闭兜底收敛失败（不阻断）: {e}", flush=True)
+        return []
+
+    for rec in closed:
+        try:
+            from .audit import audit_log
+
+            waited = ""
+            started = rec.get("close_requested_at")
+            if started and rec.get("closed_at"):
+                waited = f" 等待 {rec['closed_at'] - started:.0f}s"
+            audit_log.record(
+                "session.close",
+                actor="system",
+                target=str(rec.get("harness_id") or ""),
+                detail=(
+                    f"宽限期到期（harness 未自述），强制置 closed；"
+                    f"session_id={rec.get('session_id')} workshop_id={rec.get('workshop_id')}"
+                    f"{waited}"
+                ),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    return closed

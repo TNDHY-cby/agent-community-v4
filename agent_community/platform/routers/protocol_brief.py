@@ -32,9 +32,33 @@ async def protocol_brief(request: Request):
         "lifecycle": [
             "1. 注册：POST /api/harness/register（声明身份、能力、通信协议）",
             "2. 连接：平台自动架桥，或你按 wakeup_method 自己连",
-            "3. 领任务：平台派活给你（HTTP 推送 / 文件轮询 / ACP 子进程）",
-            "4. 执行 + 回报：POST /api/harness/task-result（body: workshop_id/member_id/ok/result）",
+            "3. **激活回报（不能跳过）**：被指派进工作间后，回报 "
+            "POST /api/harness/activation-result —— "
+            "body: {workshop_id, member_id, status:'entered'}；"
+            "平台要等**全员 entered** 才开始派任务，你不回报 = 工作间不开工",
+            "   可选三字段（向后兼容，不发也行，发了更准确）：\n"
+            "     session_id     本次会话 id —— 平台据此**记住你的会话**（缺了会失忆）\n"
+            "     context_turns  会话已存在的上下文轮数，新会话应为 1；"
+            "                    若远大于 1，平台会记一条「上下文复用」审计但**不阻断**\n"
+            "     source         来源：acp/mcp/plugin=机器报，human=人工点击进入"
+            "（平台区分人报与机器报，避免冒充）",
+            "4. 领任务：平台派活给你（HTTP 推送 / 文件轮询 / ACP 子进程）",
+            "5. 执行 + 回报：POST /api/harness/task-result（body: workshop_id/member_id/ok/result）",
         ],
+        "activation_result": {
+            "endpoint": f"{base}/api/harness/activation-result",
+            "method": "POST",
+            "required": {"workshop_id": "工作间 id", "member_id": "成员 id",
+                         "status": "entered / blocked / 其它"},
+            "optional": {
+                "session_id": "本次会话 id（缺则平台无法跨重启记住会话）",
+                "context_turns": "上下文轮数，新会话应为 1；>1 会被记审计但不阻断",
+                "source": "acp / mcp / plugin / human（无 session_id 时平台会合成 id 并标 human）",
+                "reason": "status=blocked 时的原因，会显示给用户",
+                "harness_id": "你的 harness_id（用于平台登记会话归属）",
+            },
+            "note": "三字段均为可选；老版本不发也能正常工作（向后兼容）。",
+        },
         "how_to_behave": {
             "when_task_arrives": "按角色要求完成任务，直接产出可交付成果正文，不要寒暄/解释流程。",
             "when_confused": "不要猜。调 /api/assistant/chat 问平台 AI，它会告诉你该怎么配合。",

@@ -52,6 +52,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # 空则表示尚未生成；platform/identity.py 首次使用时会生成 secrets.token_hex(32)
     # 并写回本文件持久化（幂等，已存在则沿用）。
     "agent_token_secret": "",
+    # ── V-17 会话关闭兜底 ──
+    # close_requested 超过该秒数仍未等到 harness 自述 → 平台兜底置 closed（惰性收敛，不轮询）。
+    # 默认 600s = 10 × harness 心跳超时窗（60s）。设计稿：design-docs/V17_会话关闭兜底设计.md
+    "session_close_grace_seconds": 600,
 }
 
 

@@ -22,6 +22,7 @@ from ..ai_external import run_ai_call as ai_external_run_ai_call
 import asyncio
 from ..memory import capability_ledger
 from ..harness_adapter import harness_manager
+from .workshops_common import _sv
 from ..task_state_machine import should_interject
 from ..memory import task_memory
 from ..state import interject_store, pending_activations, task_state_machine, tasks, workshops

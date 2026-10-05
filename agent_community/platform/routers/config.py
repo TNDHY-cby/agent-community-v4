@@ -96,6 +96,80 @@ async def api_ai_providers():
         "wakeup_agent_registered": "wakeup-agent" in agents,
     }
 
+@router.get("/api/ai/models")
+async def api_ai_models(request: Request, base_url: str = ""):
+    """V-16 §3.1：拉远端模型清单 —— 设置页「模型」下拉的数据源。
+
+    **为什么必须有它**：下拉原先只读前端硬编码 `presets`，
+    接新服务（如 mimo）时必然空清单，用户没有任何可选项。
+    实测 mimo 的 `GET /v1/models` 返回标准 OpenAI 格式，完全可用。
+
+    设计要点：
+    - **用服务端已存的解密 key** —— 前端拿到的只是 `mask_api_key` 掩码，
+      由它来发请求只会 401；这也顺带避免密钥出现在前端。
+    - **归一化 base_url**（同 P0-1 修复），否则 `/v1` 重复 -> 404。
+    - **失败也返回 200** + `fallback:true`：设置页的唯一目标是让用户能选到模型，
+      拉不到时回落内置清单 + 给可读原因，比抛错让下拉空着更符合用途。
+    - 走 V-14 `network.egress` 闸门（出厂 ALLOW，不造成 UI 摩擦）。
+    """
+    from ..server import Utf8JSONResponse
+    import httpx as _httpx
+
+    from ..ai_provider import _normalize_base_url as _norm
+    # ⚠️ 三个点：本文件在 platform/routers/ 下，`..` 是 platform，
+    #   agent_community.config 要用 `...`（两个点会解析成 platform.config -> 500）
+    from ...config import _decrypt_secret, load_config
+
+    cfg = load_config()
+    _base = str(base_url or "").strip() or str(cfg.get("ai_base_url") or "")
+    if not _base:
+        return {"ok": False, "models": [], "source": "builtin",
+                "fallback": True, "error": "未配置 base_url"}
+    norm = _norm(_base)
+
+    # ── V-14 出网闸门 ──
+    from ..policy import (NETWORK_EGRESS, actor_from_request, blocked_message,
+                          check, pending_message)
+    _ev, _pending = check(NETWORK_EGRESS, target=norm,
+                          actor=actor_from_request(request))
+    if _ev.blocked:
+        return Utf8JSONResponse({"ok": False, "models": [], "source": "builtin",
+                                 "fallback": True, "error": blocked_message(_ev)},
+                                status_code=403)
+    if _ev.needs_approval:
+        return Utf8JSONResponse({"ok": False, "models": [], "source": "builtin",
+                                 "fallback": True,
+                                 "error": pending_message(_ev, _pending)},
+                                status_code=202)
+
+    # ── key：只在服务端解密，不回传 ──
+    _enc = str(cfg.get("ai_api_key") or "")
+    _key = _decrypt_secret(_enc) if _enc else ""
+
+    try:
+        async with _httpx.AsyncClient(timeout=8.0) as c:
+            r = await c.get(f"{norm}/v1/models",
+                            headers=({"Authorization": f"Bearer {_key}"} if _key else {}))
+        if r.status_code != 200:
+            return {"ok": False, "models": [], "source": "builtin", "fallback": True,
+                    "error": f"GET {norm}/v1/models -> HTTP {r.status_code}"}
+        ids = [str(m.get("id") or "") for m in
+               (r.json().get("data") or []) if isinstance(m, dict)]
+        ids = [x for x in ids if x]
+        if not ids:
+            return {"ok": False, "models": [], "source": "builtin", "fallback": True,
+                    "error": "服务返回空模型清单"}
+        try:
+            _audit_log.record("ai.models_fetch", actor=actor_from_request(request),
+                              target=norm, detail=f"models={len(ids)}")
+        except Exception:
+            pass
+        return {"ok": True, "models": ids, "source": "remote", "fallback": False}
+    except Exception as e:
+        return {"ok": False, "models": [], "source": "builtin", "fallback": True,
+                "error": f"{type(e).__name__}: {e}"}
+
+
 @router.get("/api/config/status")
 async def api_config_status():
     """返回当前配置状态：是否已配置、provider 类型、模型。"""
@@ -137,7 +211,21 @@ async def api_save_config(request: Request):
     manual_timeout = body.get("ai_manual_timeout", cfg.get("ai_manual_timeout", 120))
     base_url = body.get("ai_base_url") or cfg.get("ai_base_url", "")
     # V-9 修复：运行时 key 统一 env > body > cfg（env 永不落盘覆盖）
-    api_key = body.get("ai_api_key") or os.environ.get("AC_AI_API_KEY") or cfg.get("ai_api_key", "")
+    # ── V-16 修复（P0：会摧毁密钥）────────────────────────────────────
+    # `GET /api/config` 返回的是 **mask_api_key 后的掩码**，前端把它回填进
+    # API KEY 输入框 -> 用户看到 `sk-c****…****njzs`、点眼睛也只是把 type 改成
+    # text（**值本来就是掩码**，看不出问题）-> 一旦点「保存」，
+    # `body["ai_api_key"]` 就是这段掩码 -> **真 key 被掩码覆盖**，永久丢失。
+    #
+    # 判定：提交值含 '*' 即视为掩码（OpenAI/DeepSeek/mimo 系 key 由字母数字
+    # 与 `-`/`_` 组成，不会含 `*`）-> 忽略它，保留已存 key。
+    _in_key = str(body.get("ai_api_key") or "")
+    _key_was_masked = "*" in _in_key
+    if _key_was_masked:
+        api_key = (os.environ.get("AC_AI_API_KEY", "")
+                   or cfg.get("ai_api_key", ""))
+    else:
+        api_key = _in_key or os.environ.get("AC_AI_API_KEY", "") or cfg.get("ai_api_key", "")
     model = body.get("ai_model") or cfg.get("ai_model", "")
     temperature = body.get("ai_temperature", cfg.get("ai_temperature", 1.0))
     thinking = body.get("ai_thinking", cfg.get("ai_thinking", False))
@@ -180,6 +268,8 @@ async def api_save_config(request: Request):
         "mode": ai_mode,
         "manual_timeout": manual_timeout,
     })
+    _new_provider = None
+    _provider_error = ""
     try:
         ai_external_set_mode(ai_mode, manual_timeout)
         # manual/off 接管模式必须覆盖配置里的 provider_type（否则会误走云端真实 API）
@@ -196,7 +286,22 @@ async def api_save_config(request: Request):
         print(f"[Config] AI Provider 已重新加载: {_new_provider.provider_type} (ai_mode={ai_mode})")
     except Exception as e:
         print(f"[Config] AI Provider 重新加载失败: {e}")
+        _provider_error = str(e)
         setattr(_m, "ai_provider", None)
+
+    # ── 诚实回报（V-16 审查 P1-4 / P1-5）──────────────────────────
+    # 原实现：失败也返回 `success:true` 且**没有任何错误字段** ——
+    # 用户点保存看到成功，实际 `ai_provider` 已是 None，**收不到一丝提示**，
+    # 于是"接了 X 就不行了"而界面一切正常。
+    # 这里**不动** `configured` 的既有语义（会牵动未追完的前端分支），
+    # 改用几个增量字段，前端据此如实显示。
+    #
+    # P1-5 修正：`load_config()` 会合并 `DEFAULT_CONFIG`（ai_model 默认
+    # deepseek-v4-flash），所以**生效 model 永远非空**，按生效值判 model_missing
+    # 几乎不可达。真正有意义的是「**用户本次有没有真选**」——
+    # 下拉停在"请选择模型"时提交的是空值，此时虽有默认兜底，也该告诉用户
+    # 「你没选，实际用的是 XXX」，而不是让他以为自己选上了。
+    _model_selected = bool(str(body.get("ai_model") or "").strip())
     return {
         "success": True,
         "configured": bool(provider_type and api_key),
@@ -204,6 +309,15 @@ async def api_save_config(request: Request):
         "model": model,
         "ai_mode": ai_mode,
         "ai_manual_timeout": manual_timeout,
+        # provider 是否真的起来了（失败时 False）
+        "provider_loaded": _new_provider is not None,
+        "provider_error": _provider_error,
+        # 本次提交是否选了模型（空 -> 已回退到 model 字段的实际值）
+        "model_missing": bool(ai_mode == "remote" and not _model_selected),
+        "model_effective": model,
+        "base_url": base_url,
+        # 提交的 key 是否是掩码（已忽略、保留原 key）—— 前端据此提示
+        "api_key_masked_ignored": _key_was_masked,
     }
 
 @router.get("/api/ai/pending")

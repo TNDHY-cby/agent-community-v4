@@ -15,6 +15,7 @@ import json
 import os
 import time
 from uuid import uuid4
+from .workshops_common import _sv
 from ..state import _bridge_tests_inflight, agents, assistant_history, assistant_history_max, pending_activations, pending_bridge_tests, pending_pre_register, pending_tasks, workshops
 from ..audit import audit_log as _audit_log
 

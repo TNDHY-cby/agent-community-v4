@@ -12,6 +12,7 @@ from ..experience_v2 import harness_reputation_bonus as _v2_harness_reputation_b
 from ..ai_external import run_ai_call as ai_external_run_ai_call
 from ..memory import capability_ledger
 from ..harness_adapter import harness_manager
+from .workshops_common import _sv
 import json
 from ..state import interject_store, pending_activations, task_state_machine, tasks, workshops
 

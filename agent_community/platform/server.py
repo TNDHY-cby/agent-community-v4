@@ -124,6 +124,25 @@ async def _app_lifespan(_app):
     except Exception as _be:
         print(f"[shutdown] 回收 harness 桥失败: {_be}", flush=True)
 app = FastAPI(title="外端Agent生产合作社（External Agent Community） Platform v4", default_response_class=Utf8JSONResponse, lifespan=_app_lifespan)
+
+
+@app.middleware("http")
+async def _no_cache_dev_static(request, call_next):
+    """静态资源一律 no-cache —— 否则**改动要靠用户强刷才生效**。
+
+    实测：StaticFiles 默认**不发** Cache-Control / ETag / Last-Modified，
+    浏览器便走启发式缓存（按文件时间估），于是改了前端却始终看到旧页面，
+    负责人多次反馈「完全没有变化」，排查耗时全花在"是不是没刷"上。
+    本地开发工具宁可每次都拿新文件（多几十 KB 而已），也不要静默给旧页面。
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith((".html", ".js", ".css", ".svg", ".png")):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 from .routers.mirror import router as _mirror_router
 app.include_router(_mirror_router)  # V-9 单体拆分：mirror 端点组已迁至 routers/mirror.py
 from .routers.plugins import router as _plugins_router
@@ -142,6 +161,8 @@ from .routers.protocol_brief import router as _brief_router
 app.include_router(_brief_router)  # V-12 协作协议简报：GET /api/protocol-brief（外端 AI onboarding）
 from .routers.policy import router as _policy_router
 app.include_router(_policy_router)  # V-14 策略自省与待审批：GET /api/policy、/api/policy/pending（人工审批）
+from .routers.sessions import router as _sessions_router
+app.include_router(_sessions_router)  # V-15 步骤8：会话可见性：GET /api/sessions（§12.2.1 保留待复用必配可见性）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1", "http://localhost"],
@@ -4188,12 +4209,30 @@ def _activate_leader_if_needed(ws: Workshop):
     )
     if _rep_bonus:
         act_payload["message"] = act_payload["message"] + "\n\n" + _rep_bonus
+    # V-15 步骤2：消费返回值。原先 `_disp_ok` 收了没用 —— 桥死了也照样回"已向组长派发"，
+    # 假成功从队列分支转移到这里，组长永远停在 activating。
+    # V-15 步骤3：同步推进进入状态机（entry_state），供前端显示真实进度与受阻原因。
+    from . import entry_state as _es
+    leader.entry_state = _es.PENDING
     _disp_ok, _disp_note = _dispatch_to_harness(hid, act_payload, kind="activation")
-    act_note = "已向组长 " + leader.display_name + " 派发激活任务：" + _disp_note
+    if not _disp_ok:
+        leader.status = "blocked"
+        leader.entry_state = _es.BLOCKED
+        leader.entry_reason = (_disp_note or _es.REASON_DISPATCH_FAIL)[:160]
+        act_note = f"向组长 {leader.display_name} 派发激活任务**失败**：{_disp_note}"
+    else:
+        leader.entry_state = (_es.ACKED if method in ("http_api", "http")
+                              else _es.DISPATCHED)
+        leader.entry_reason = ""
+        act_note = "已向组长 " + leader.display_name + " 派发激活任务：" + _disp_note
+    _hint = "" if _disp_ok else (
+        "\n该 harness 当前收不到激活指令，请先恢复其桥进程后重试。"
+    )
     reply = (
         f"【组长接管二级讨论】\n"
         f"{act_note}。\n"
         f"当前员工激活状态：{member_status}\n\n"
+        f"{_hint}"
         f"组长激活后将主动说话：（检查完其他员工的状态后）汇报各个员工的激活状态，"
         f"然后说「我们来深入讨论吧」，确定后进入初步工作，接着深入引导讨论分工。"
     )
@@ -4841,9 +4880,7 @@ async def _autonomy_recovery_loop():
                     if m.status == "pending":
                         last_at = getattr(m, "_last_activate_at", 0) or 0
                         if last_at and now - last_at > 90:
-                            print(f"[recover] 工作间 {ws.workshop_id} 成员 {m.member_id}({m.role}) 激活超时(>{90}s)未回报，重新派发", flush=True)
-                            _activate_single(ws, m)
-                            m._last_activate_at = time.time()
+                            _handle_activation_timeout(ws, m)
                 if ws.members and all(m.status == "entered" for m in ws.members):
                     await _assign_tasks(ws)  # 幂等：已派发过则跳过
         except Exception as _e:
@@ -5253,12 +5290,26 @@ def _dispatch_to_harness(harness_id, payload, kind="task"):
             _mark_sim_watch(harness_id, payload, kind)  # 投递成功但外端不回报时兜底
         return ok, "已写入 inbox" if ok else "写入 inbox 失败"
     # 其它：进 pending 队列
+    # ── V-15 步骤2：去假成功 ────────────────────────────────────
+    # 原实现无条件 return True, "已入 pending 队列（等桥领取）" —— 桥没跑也这么说。
+    # 现改为按 bridge_procs 的**三态**如实回答；关键是：平台**只对它自己启动的进程下结论**，
+    # 用户手动起的桥无从得知，只能标注"存活未知"，不能假装知道。
+    # （判存活必须零 I/O —— `_find_bridge_processes()` 是同步 subprocess(timeout=60)，
+    #   放这里会阻塞事件循环；`harness_manager.bridges[hid]` 恒存在，判不了。）
+    from . import bridge_procs as _bp   # 与本文件同目录（platform/），一个点
+    _st = _bp.status(harness_id)
+    if _st == "dead":
+        return False, ("桥进程已退出，**本条未入队**（不会被任何人领取）。"
+                       "请先 POST /api/harness/auto-connect 或手动重启桥后重试")
     if kind == "activation":
         _pending_push(pending_activations, harness_id, payload)
     else:
         _pending_push(pending_tasks, harness_id, payload)
     _mark_sim_watch(harness_id, payload, kind)  # 桥领走后若无回报，由看护补齐
-    return True, "已入 pending 队列（等桥领取）"
+    if _st == "alive":
+        return True, "已入 pending 队列（桥进程在跑，等它领取）"
+    return True, ("已入 pending 队列（**桥存活未知**：该桥未经平台启动，"
+                  "是否有人领取无法确认）")
 def _file_poll_send(harness_id: str, payload: dict) -> bool:
     """把消息写入 file_poll 类 harness 的 inbox（wakeup_dir），由 harness 侧桥/agent 读取。
     文件约定：`task_<时间戳>.json`，内容含 type/workshop_id/member_id/任务等；
@@ -5333,32 +5384,81 @@ def _activation_prompt(hid, role, workspace_dir, workshop_id="", member_id=""):
             "完成后必须回报：POST " + _platform_base_url() + "/api/harness/task-result "
             "body: {\"workshop_id\":\"{workshop_id}\",\"member_id\":\"{member_id}\",\"ok\":true,\"result\":\"你的回复\"}。"
         )
-    try:
-        return tpl.format(
-            role=role, workspace_dir=workspace_dir,
-            harness_name=harness_name or hid,
-            model_name=model_name or "?",
-            capabilities=", ".join(capabilities) if capabilities else "（未声明）",
-            workshop_id=workshop_id or "",
-            member_id=member_id or "",
-        )
-    except Exception:
-        # 兜底：只填能填的，保留其它占位符不影响主要信息
-        try:
-            return tpl.format(role=role, workspace_dir=workspace_dir)
-        except Exception:
-            return tpl
+    # ⚠️ 不能用 `tpl.format(...)` —— 模板里有**字面量 JSON 花括号**
+    #   （回报指令 `body: {"workshop_id":"{workshop_id}"}`）。
+    #   实测：format 会把 `{"workshop_id"...}` 当字段名解析 -> KeyError
+    #   -> 外层 except 吞掉 -> 内层 format 同样失败 -> **原样返回未填占位符**，
+    #   结果 {role} / {workspace_dir} / {workshop_id} 全部原样输出、真实路径不出现。
+    #   （这在 _activate_single 的真实派发路径上，不是理论问题。）
+    # 改用逐键 replace：字面量花括号完全不受影响，也不会抛异常，整个 try 链可以去掉。
+    _fields = {
+        "role": role,
+        "workspace_dir": workspace_dir,
+        "harness_name": harness_name or hid,
+        "model_name": model_name or "?",
+        "capabilities": ", ".join(capabilities) if capabilities else "（未声明）",
+        "workshop_id": workshop_id or "",
+        "member_id": member_id or "",
+    }
+    out = tpl
+    for _k, _v in _fields.items():
+        out = out.replace("{" + _k + "}", str(_v))
+    return out
+def _handle_activation_timeout(ws: Workshop, m: WorkshopMember) -> str:
+    """V-15 步骤7：激活超时分档（§10.2 + 验证矩阵 #6）。
+
+    设计要求「未回报 -> 标 needs_human，**不继续派活**」。
+    原实现是**无上限重派**（每 90s 一次、无限）—— 外端真没接时会一直循环，
+    而用户完全看不出卡在哪一层。
+
+    返回：``"retry"``（已重派）或 ``"needs_human"``（已停手）。
+    成功回报（activation-result status=entered）会把计数归零，开启新周期。
+    """
+    from . import entry_state as _es
+    _tries = (getattr(m, "_activate_retries", 0) or 0) + 1
+    m._activate_retries = _tries
+    if _tries <= 2:
+        _activate_single(ws, m)
+        # ⚠️ 顺序：_activate_single 会把 entry_state 写成 dispatched/blocked 并
+        # **清空 entry_reason** —— 必须在它之后重设，否则超时信息彻底丢失。
+        # blocked 比 timeout 更具体、更严重，故让 blocked 胜出，只在非 blocked 时标 TIMEOUT。
+        if m.entry_state != _es.BLOCKED:
+            m.entry_state = _es.TIMEOUT
+            m.entry_reason = (f"派发后 90s 无回应（第 {_tries}/2 次重派，已重新派发）"
+                              if _tries < 2 else
+                              f"派发后 90s 无回应（第 {_tries}/2 次重派，最后一次）")
+        m._last_activate_at = time.time()
+        return "retry"
+
+    m.entry_state = _es.NEEDS_HUMAN
+    m.entry_reason = f"多次激活无回应（{_tries} 次），停止派发，需人工介入"
+    m.status = "blocked"      # 退出 pending —— 恢复循环不再命中它，也不会再派活
+    print(f"[recover] 工作间 {ws.workshop_id} 成员 {m.member_id}({m.role}) "
+          f"激活 {_tries} 次无回应 -> needs_human，停止派活（§10.2）", flush=True)
+    return "needs_human"
+
+
 def _activate_single(ws: Workshop, m: WorkshopMember) -> None:
     """激活单个成员：file_poll 类 HA 写 inbox 文件，其余进队列由桥轮询领取。
     激活提示词取该 HA 注册时自动生成的模板（按角色/工作区坐标填充）。
+
+    **V-15 步骤2**：这里原先是**裸调用**（返回值完全丢弃）——
+    于是 `_dispatch_to_harness` 的假成功会从队列分支**原地转移到这里**，
+    成员永远停在 activating、用户永远看到"已派发"。
+    现改为消费返回值：派发失败（桥进程已退出 / 推送失败）→ 成员标 `blocked`，
+    前端才能显示真实状态（矩阵 #3「桥不在场 → 不产生假成功」）。
     """
     hid = (m.harness_ids or [None])[0]
+    from . import entry_state as _es          # V-15 步骤3
     if not hid:
         m.status = "blocked"
+        m.entry_state = _es.BLOCKED
+        m.entry_reason = _es.REASON_NO_HARNESS
         return
     method = _harness_wakeup_method(hid)
+    m.entry_state = _es.PENDING               # 起点（此前可能卡在上一轮）
     # 统一派发：http_api 用 HTTP 推送，file_poll 写 inbox，其它进队列
-    _dispatch_to_harness(hid, {
+    _ok, _note = _dispatch_to_harness(hid, {
         "type": "activate",
         "workshop_id": ws.workshop_id,
         "member_id": m.member_id,
@@ -5367,6 +5467,17 @@ def _activate_single(ws: Workshop, m: WorkshopMember) -> None:
         "activation_prompt": _activation_prompt(hid, m.role, ws.workspace_dir, ws.workshop_id, m.member_id),
         "message": _activation_prompt(hid, m.role, ws.workspace_dir, ws.workshop_id, m.member_id),
     }, kind="activation")
+    if not _ok:
+        m.status = "blocked"
+        m.entry_state = _es.BLOCKED
+        m.entry_reason = (_note or _es.REASON_DISPATCH_FAIL)[:160]
+        print(f"[activate] 成员 {m.member_id}({m.display_name}) 激活派发失败：{_note}",
+              flush=True)
+    else:
+        # 推送成功即送达：http_api 拿到 200 -> acked；其余到「已派发」为止
+        m.entry_state = (_es.ACKED if method in ("http_api", "http")
+                         else _es.DISPATCHED)
+        m.entry_reason = ""
     m._last_activate_at = time.time()  # 恢复循环据此判定激活超时（>90s 无回报则重派）
 def register_builtin_agents():
     """仅注册内置 Orchestrator，其余 Agent 由外部 Harness 动态接入"""

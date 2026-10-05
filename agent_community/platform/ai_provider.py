@@ -111,6 +111,46 @@ class AIProvider(ABC):
         """返回 provider 类型标识，子类应覆盖。"""
         return self.__class__.__name__
 
+    def __getattr__(self, name):
+        """**属性透传**：包装层未定义的属性转发给 `self._inner`。
+
+        为什么需要：`create_ai_provider` 返回的是
+        `GateProvider(CacheProvider(UsageProvider(inner)))` 包装链，三个包装类
+        只定义了 `provider_type` —— 于是 `hasattr(实例, "base_url")` **恒为 False**，
+        `GET /api/ai/providers` 里那句 `if hasattr(_provider, "base_url")` 永不生效，
+        **界面上看不到当前真正生效的 base_url**，排障无从下手。
+
+        实现要点（避免自引用递归）：
+        - `__getattr__` 只在**常规查找失败**时才被调用；
+          `_inner` 存在 `__dict__` 里，常规查找就命中，不会再次进入本方法。
+        - 只读 `__dict__.get("_inner")`，**不走 `self._inner`**（那会再次触发本方法）。
+        - `__dunder__` 与基类自身（无 `_inner`）一律抛 AttributeError，
+          维持 Python 语义（否则 `copy`/`pickle` 等会拿到假属性）。
+        """
+        if name.startswith("__") or name in ("_inner", "_cache", "_usage", "_gate"):
+            raise AttributeError(name)
+        inner = self.__dict__.get("_inner")
+        if inner is None:
+            raise AttributeError(name)
+        return getattr(inner, name)
+
+
+def _normalize_base_url(u: str) -> str:
+    """把 base_url 归一成「**不含**尾部 /v1 与 /」的根地址。
+
+    本文件所有请求都固定拼 ``{base_url}/v1/chat/completions``。
+    而**各家官方文档普遍把 base_url 写成 `https://xxx/v1`** ——
+    不剥就会得到 `https://xxx/v1/v1/chat/completions` -> **404**，
+    而且是静默 404（用户在设置界面看不到任何提示）。
+
+    实测现场：填 `https://api.xiaomimimo.com/v1` 就是这么挂的。
+    （同文件 L832 的本机端点分支早有 `endswith("/v1")` 剥离，只是这里漏了。）
+    """
+    u = (u or "").strip().rstrip("/")
+    while u.endswith("/v1"):
+        u = u[:-3].rstrip("/")
+    return u
+
 
 # ═══════════════════════════════════════════════════════════════
 # OpenAI 兼容 Provider（DeepSeek / OpenAI / Claude / Gemini 等）
@@ -132,7 +172,7 @@ class OpenAICompatibleProvider(AIProvider):
         model: str = "",
         reasoning_effort: str = "",
     ):
-        self.base_url = (
+        self.base_url = _normalize_base_url(
             base_url
             or os.environ.get("AC_AI_BASE_URL", "")
             or "https://api.deepseek.com"

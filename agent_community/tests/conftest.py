@@ -39,6 +39,8 @@ if str(_PARENT) not in sys.path:
     sys.path.append(str(_PARENT))
 
 REAL_DATA_DIR = _PKG_ROOT / "data"
+# 用户级配置（DPAPI 加密的 AI API Key 等）——**在 data/ 之外，原先不在守卫范围内**
+REAL_USER_CONFIG = Path.home() / ".agent_community" / "config.json"
 
 
 # ── 第二层：真实数据目录指纹守卫（会话级）──────────────────────────
@@ -61,13 +63,23 @@ def _fingerprint(root: Path) -> dict:
     return fp
 
 
+def _fp_one(p: Path) -> tuple:
+    """单文件指纹 (存在, 大小, mtime_ns)。"""
+    try:
+        st = p.stat()
+        return (True, st.st_size, st.st_mtime_ns)
+    except OSError:
+        return (False, 0, 0)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def guard_real_data_dir():
-    """会话前后对比真实 data/ 指纹；被改动就 fail，并列出是哪些文件。
+    """会话前后对比真实 data/ **与用户级 config.json** 的指纹；被改动就 fail。
 
     这是「无论什么机制、只要碰了真实数据就必须暴露」的安全网。
     """
     before = _fingerprint(REAL_DATA_DIR)
+    before_cfg = _fp_one(REAL_USER_CONFIG)
     yield
     after = _fingerprint(REAL_DATA_DIR)
     changed = []
@@ -76,10 +88,18 @@ def guard_real_data_dir():
             b = before.get(k)
             a = after.get(k)
             changed.append(f"    {k}: {b} -> {a}")
+
+    after_cfg = _fp_one(REAL_USER_CONFIG)
+    if before_cfg != after_cfg and before_cfg[0]:
+        changed.append(
+            f"    [用户配置] {REAL_USER_CONFIG}: {before_cfg} -> {after_cfg}"
+        )
+
     if changed:
         pytest.fail(
-            "测试污染了真实数据目录 "
-            f"{REAL_DATA_DIR}（这是 2026-10-03 数据丢失事故的同类风险）：\n"
+            "测试污染了真实数据 "
+            f"{REAL_DATA_DIR} 或 {REAL_USER_CONFIG}"
+            "（2026-10-03 数据丢失 / 2026-10-04 API Key 被覆写，均为同类风险）：\n"
             + "\n".join(changed)
             + "\n\n修法：让被测代码走隔离后的路径（见 conftest.isolate_data_dirs），"
               "或在测试里显式 monkeypatch 掉落盘函数。"
@@ -147,5 +167,16 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     hl = _mod("agent_community.platform.harness_launcher")
     if hl is not None:
         monkeypatch.setattr(hl, "DATA_DIR", tmp, raising=False)
+
+    # 6) **用户级配置** ~/.agent_community/config.json
+    #    （2026-10-04 事故：测试调 POST /api/config 直接把真实配置覆写，
+    #      连 DPAPI 加密的 AI API Key 一起换成测试值 `"k"`，**不可恢复**。
+    #      它不在 agent_community/data/ 下，所以原两层防护都拦不住。）
+    ucfg = _mod("agent_community.config")
+    if ucfg is not None:
+        for _attr in ("CONFIG_FILE", "_CONFIG_FILE", "CONFIG_PATH", "_CONFIG_PATH"):
+            if hasattr(ucfg, _attr):
+                monkeypatch.setattr(ucfg, _attr, tmp / "user_config.json",
+                                    raising=False)
 
     return tmp

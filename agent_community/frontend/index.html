@@ -452,9 +452,10 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
           </div>
           <div class="setup-field">
             <label>模型</label>
-            <select id="setupModel">
+            <select id="setupModel" onchange="onModelChange()">
               <option value="">-- 请选择模型 --</option>
             </select>
+            <div id="modelListHint" style="font-size:11px;margin-top:4px;color:var(--dim);display:none"></div>
           </div>
           <div class="setup-field">
             <label>API Key</label>
@@ -465,7 +466,11 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
           </div>
           <div class="setup-field">
             <label>Base URL</label>
-            <input type="text" id="setupBaseUrl" placeholder="https://api.deepseek.com">
+            <input type="text" id="setupBaseUrl" placeholder="https://api.deepseek.com"
+                   onblur="loadRemoteModels()">
+            <div style="font-size:11px;margin-top:4px;color:var(--dim)">
+              失焦后自动拉取该服务的模型清单；拉不到时仍可手动输入模型名。
+            </div>
           </div>
           <div class="setup-slider-field">
             <div class="ssf-label-row"><span class="ssf-label">模型温度</span><span class="ssf-value" id="tempValue">1.0</span></div>
@@ -566,7 +571,23 @@ async function recycleStaleWorkshops(){try{const r=await fetch('/api/workshops/s
 async function deleteWs(wid){const w=workshops.find(x=>x.workshop_id===wid);acModal.show({title:'删除工作间',message:'确定删除工作间「'+(w?w.name:'')+'」？此操作不可恢复。',danger:true,onConfirm:async()=>{try{await fetch('/api/workshop/'+wid,{method:'DELETE'});refreshWorkshops()}catch(e){}}})}
 async function refreshWorkshops(){try{const r=await fetch('/api/workshops');const d=await r.json();workshops=d.workshops||[];renderWorkshops()}catch(e){}}
 async function sendCommand(){const inp=document.getElementById('cmdInput'),btn=document.getElementById('sendBtn'),text=inp.value.trim();if(!text||isExecuting)return;isExecuting=true;btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';inp.value='';autoResize(inp);document.getElementById('lastAction').textContent='拉入工作间...';try{const r=await fetch('/api/workshop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hall_content:text})});const d=await r.json();if(d.success&&d.workshop_id){location.href='/workshop.html?ws_id='+d.workshop_id;return}else{appendMessage({from_agent:'system',to_agent:'user',content:d.error||'创建失败',message_type:'text',timestamp:new Date().toISOString()})}}catch(e){appendMessage({from_agent:'system',to_agent:'user',content:'请求失败: '+e.message,message_type:'text',timestamp:new Date().toISOString()})}isExecuting=false;btn.disabled=false;btn.textContent='发布'}
-async function sendDiscussMessage(){const inp=document.getElementById('discussInput');if(!inp)return;const text=inp.value.trim();if(!text||!currentWorkshopId)return;inp.value='';autoResize(inp);addToDiscussion({from_agent:'user',content:text,timestamp:new Date().toISOString()});const l=document.getElementById('discussionList');const think=document.createElement('div');think.className='ds-item';think.id='dsThinking';think.innerHTML='<span class="dsi-from">agent</span><span class="dsi-time">思考中...</span><div><span class="spinner" style="display:inline-block;width:14px;height:14px;vertical-align:middle"></span> 正在思考...</div>';l.appendChild(think);l.scrollTop=l.scrollHeight;try{const r=await fetch(`/api/task/${currentWorkshopId}/discuss`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,from_agent:'user'})});const d=await r.json();const t=document.getElementById('dsThinking');if(t)t.remove();if(d.reply){addToDiscussion({from_agent:d.from_agent||'agent',content:d.reply,timestamp:new Date().toISOString()})}else if(d.messages&&Array.isArray(d.messages)){d.messages.forEach(m=>addToDiscussion(m))}}catch(e){const t=document.getElementById('dsThinking');if(t)t.remove();console.error('讨论发送失败',e)}}
+async function sendDiscussMessage(){const inp=document.getElementById('discussInput');if(!inp)return;const text=inp.value.trim();if(!text)return;
+/* V-16 修复：原先 `if(!text||!currentWorkshopId)return` 是**静默返回** ——
+   没选工作间时点发送，既无动画、也无回复、也无提示（"什么都没发生"）。 */
+if(!currentWorkshopId){addToDiscussion({from_agent:'system',content:'请先在左侧选择一个工作间，再与平台 AI 讨论。',timestamp:new Date().toISOString()});return;}
+inp.value='';autoResize(inp);addToDiscussion({from_agent:'user',content:text,timestamp:new Date().toISOString()});const l=document.getElementById('discussionList');const think=document.createElement('div');think.className='ds-item';think.id='dsThinking';think.innerHTML='<span class="dsi-from">agent</span><span class="dsi-time">思考中...</span><div><span class="spinner" style="display:inline-block;width:14px;height:14px;vertical-align:middle"></span> 正在思考...</div>';l.appendChild(think);l.scrollTop=l.scrollHeight;
+/* 超时看护：否则一旦拿不到回复，用户就永远面对一个不存在的等待状态 */
+const _wd=setTimeout(()=>{const t=document.getElementById('dsThinking');if(t)t.remove();addToDiscussion({from_agent:'system',content:'等待回复超时（20 秒）——AI 可能调用失败，或该讨论未接入 AI。请检查设置里的模型是否可用。',timestamp:new Date().toISOString()});},20000);
+try{
+/* V-16 修复：原 `/api/task/{id}/discuss` **只存消息、不调 AI、立刻返回 success** ——
+   既无 reply 也无 error，而原代码**没有 else 分支**，于是"没有回复也没有提示"。
+   改打工作间讨论端点（真正调平台 AI、失败返回 502 + error）。 */
+const r=await fetch(`/api/workshop/${currentWorkshopId}/discuss`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,from_agent:'user'})});clearTimeout(_wd);const d=await r.json();const t=document.getElementById('dsThinking');if(t)t.remove();
+if(d.reply){addToDiscussion({from_agent:d.from_agent||'agent',content:d.reply,timestamp:new Date().toISOString()})}
+else if(d.messages&&Array.isArray(d.messages)){d.messages.forEach(m=>addToDiscussion(m))}
+else{/* 原实现缺这一支：失败/404/空结果一律被静默吞掉 */
+addToDiscussion({from_agent:'system',content:'讨论未获得回复：'+(d.error||('HTTP '+r.status))||'服务未返回内容',timestamp:new Date().toISOString()})}
+}catch(e){clearTimeout(_wd);const t=document.getElementById('dsThinking');if(t)t.remove();console.error('讨论发送失败',e);addToDiscussion({from_agent:'system',content:'讨论请求失败：'+e.message,timestamp:new Date().toISOString()})}}
 async function confirmStartTask(){if(!currentWorkshopId)return;const btn=document.getElementById('dsConfirmBtn');if(!btn)return;btn.textContent='启动中...';btn.style.opacity='0.6';btn.onclick=null;try{const r=await fetch(`/api/task/${currentWorkshopId}/start`,{method:'POST'});const d=await r.json();if(d.success){btn.textContent='✓ 已开始';btn.style.background='var(--green)';btn.style.color='#fff';document.getElementById('lastAction').textContent='任务已启动';if(d.result){appendMessage({from_agent:d.agents?.[0]?.agent_id||'agent',to_agent:'user',content:d.result,message_type:'result',task_id:currentWorkshopId,timestamp:new Date().toISOString()})}}else{btn.textContent='✓ 确认开始';btn.style.opacity='1';btn.onclick=confirmStartTask;appendMessage({from_agent:'system',to_agent:'user',content:d.error||d.result||'启动失败',message_type:'text',timestamp:new Date().toISOString()})}await refreshTasks()}catch(e){btn.textContent='✓ 确认开始';btn.style.opacity='1';btn.onclick=confirmStartTask;console.error('启动失败',e)}}
 function handleDiscussKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendDiscussMessage()}}
 function initDsResizer(){const resizer=document.getElementById('dsResizer');const ds=document.querySelector('.discussion-section');let isDragging=false,startY=0,startH=0;if(!resizer||!ds)return;resizer.addEventListener('mousedown',e=>{isDragging=true;startY=e.clientY;startH=ds.offsetHeight;resizer.classList.add('dragging');document.body.style.cursor='ns-resize';document.body.style.userSelect='none';e.preventDefault()});window.addEventListener('mousemove',e=>{if(!isDragging)return;const dy=e.clientY-startY;const newH=Math.max(100,Math.min(startH-dy,window.innerHeight*0.8));ds.style.height=newH+'px';ds.style.flex='none'});window.addEventListener('mouseup',()=>{if(isDragging){isDragging=false;resizer.classList.remove('dragging');document.body.style.cursor='';document.body.style.userSelect=''}})}
@@ -610,6 +631,62 @@ function onProviderChange(){
   if(curVal&&pre.models.includes(curVal)) sel.value=curVal;
 }
 
+function _keepModel(sel, saved){
+  /* 已保存/已选的模型若不在清单里，补一个选项（同 P0-3 的修法），
+     否则 .value 赋值会静默失败、下拉停在"请选择模型"。 */
+  if(!saved) return;
+  if(!Array.from(sel.options).some(o=>o.value===saved)){
+    const o=document.createElement('option'); o.value=saved; o.textContent=saved+'（已保存）';
+    sel.appendChild(o);
+  }
+  sel.value=saved;
+}
+function _appendManual(sel){
+  if(!Array.from(sel.options).some(o=>o.value==='__manual__')){
+    const o=document.createElement('option'); o.value='__manual__'; o.textContent='手动输入…';
+    sel.appendChild(o);
+  }
+}
+async function loadRemoteModels(){
+  /* V-16：拉远端模型清单，取代"只认前端硬编码 presets"。
+     失败时回落内置清单并给出可读原因 —— **手动输入永远是出口**。 */
+  const sel=document.getElementById('setupModel');
+  const hint=document.getElementById('modelListHint');
+  const base=document.getElementById('setupBaseUrl').value.trim();
+  if(!base){ if(hint) hint.style.display='none'; return; }
+  if(hint){ hint.style.display=''; hint.style.color='var(--dim)'; hint.textContent='正在拉取模型清单…'; }
+  let d=null;
+  try{
+    const r=await fetch('/api/ai/models?base_url='+encodeURIComponent(base));
+    d=await r.json();
+  }catch(e){ d={ok:false,error:String(e)}; }
+  const saved=(sel.dataset&&sel.dataset.saved)||sel.value||'';
+  if(d && d.ok && d.models && d.models.length){
+    sel.innerHTML='<option value="">-- 请选择模型 --</option>'
+      +d.models.map(m=>'<option value="'+m+'">'+m+'</option>').join('');
+    _appendManual(sel);
+    if(saved && d.models.indexOf(saved)<0) _keepModel(sel, saved);
+    else if(saved) sel.value=saved;
+    if(hint){ hint.style.color='var(--green)'; hint.textContent='已加载 '+d.models.length+' 个模型（远端清单）'; }
+  }else{
+    onProviderChange();            // 回落内置 presets 清单
+    _appendManual(sel);
+    _keepModel(sel, saved);
+    if(hint){ hint.style.color='var(--yellow)';
+      hint.textContent='清单获取失败：'+((d&&d.error)||'未知')+' —— 可手动输入模型名'; }
+  }
+}
+function onModelChange(){
+  const sel=document.getElementById('setupModel');
+  if(sel.value!=='__manual__') return;
+  const v=(window.prompt('输入模型名（远端清单里没有的也可以）','')||'').trim();
+  if(!v){ sel.value=''; return; }
+  if(!Array.from(sel.options).some(o=>o.value===v)){
+    const o=document.createElement('option'); o.value=v; o.textContent=v+'（手输）';
+    sel.appendChild(o);
+  }
+  sel.value=v;
+}
 function updateTempDisplay(){
   const v=document.getElementById('setupTemperature').value;
   document.getElementById('tempValue').textContent=parseFloat(v).toFixed(1);
@@ -636,13 +713,43 @@ async function openSettings(){
     if(cfg.ai_provider) document.getElementById('setupProvider').value=cfg.ai_provider;
     if(cfg.ai_base_url) document.getElementById('setupBaseUrl').value=cfg.ai_base_url;
     onProviderChange();
-    if(cfg.ai_model) document.getElementById('setupModel').value=cfg.ai_model;
-    if(cfg.ai_api_key){
-      document.getElementById('setupApiKey').value=cfg.ai_api_key;
-      document.getElementById('setupApiKey').type='password';
-      document.getElementById('apiKeyEye').textContent='👁';
+    if(cfg.ai_model){
+      const ms=document.getElementById('setupModel');
+      // ⚠️ 已保存的模型未必在 presets 硬编码清单里（如 deepseek-v4-flash 不在
+      // presets.openai.models，那里只有 gpt-*）—— 此时 `.value=` 赋值会**静默失败**，
+      // 下拉停在"-- 请选择模型 --"，而顶部 updateModelStatusDisplay 又显示着旧模型，
+      // 两者对不上；用户此时点保存，ai_model 取到空值，**把原本好好的配置冲掉**。
+      // 故：清单里没有就补一个选项，保证已保存的模型可见、可选、不会被冲。
+      if(!Array.from(ms.options).some(o=>o.value===cfg.ai_model)){
+        const o=document.createElement('option');
+        o.value=cfg.ai_model;
+        o.textContent=cfg.ai_model+'（已保存）';
+        ms.appendChild(o);
+      }
+      ms.value=cfg.ai_model;
+      ms.dataset.saved=cfg.ai_model;   // 供 loadRemoteModels 在重建后保住它
+    }
+    const keyInput=document.getElementById('setupApiKey');
+    const eye=document.getElementById('apiKeyEye');
+    if(cfg.ai_api_key && cfg.ai_api_key.indexOf('*')>=0){
+      // 返回的是 **掩码**（mask_api_key 的产物）。**绝不能回填成输入框的值** ——
+      // 否则用户一点「保存」，提交的就是 `sk-c****…njzs`，真 key 被掩码覆盖。
+      // 改为：输入框留空（留空=不修改），用 placeholder 显示"已配置"状态。
+      keyInput.value='';
+      keyInput.type='password';
+      keyInput.placeholder='已配置（'+cfg.ai_api_key.slice(0,4)+'…'+cfg.ai_api_key.slice(-4)
+        +'）· 留空保持不变，要更换请粘贴新 key';
+      eye.textContent='👁';
+    }else if(cfg.ai_api_key){
+      // 真明文（历史版本或环境变量场景）—— 原样回填
+      keyInput.value=cfg.ai_api_key;
+      keyInput.type='password';
+      eye.textContent='👁';
     }else{
-      document.getElementById('setupApiKey').value='';
+      keyInput.value='';
+      keyInput.type='password';
+      keyInput.placeholder='粘贴你的 API KEY';
+      eye.textContent='👁';
     }
     const temp=cfg.ai_temperature!==undefined?parseFloat(cfg.ai_temperature):1.0;
     document.getElementById('setupTemperature').value=temp;
@@ -654,6 +761,8 @@ async function openSettings(){
     document.getElementById('setupWakeup').checked=!!cfg.wakeup_enabled;
     switchSettingsTab('llm');
     document.getElementById('setupError').style.display='none';
+    // V-16：打开设置即拉一次远端模型清单（否则新服务永远只有内置的几个模型）
+    loadRemoteModels();
   }catch(e){}
   document.getElementById('setupOverlay').classList.add('show');
 }

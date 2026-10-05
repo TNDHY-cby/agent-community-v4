@@ -392,6 +392,14 @@ body: {"message": "你的问题（如：这个任务该怎么做？工作间三�
       <p>回报协议（harness 有联网能力时可直接 POST，无需桥）：
 
         激活 <code>POST /api/harness/activation-result</code> body: <code>{"workshop_id","member_id","status":"entered"}</code>；
+        <b>平台要等全员 <code>entered</code> 才开始派任务</b>，不回报 = 工作间不开工。
+
+        <b>可选三字段</b>（V-15 新增，向后兼容，不发也行、发了更准确）：
+        <code>session_id</code>（本次会话 id，缺了平台无法跨重启记住会话）、
+        <code>context_turns</code>（上下文轮数，新会话应为 1；&gt;1 平台记一条「上下文复用」审计但<b>不阻断</b>）、
+        <code>source</code>（<code>acp</code>/<code>mcp</code>/<code>plugin</code>=机器报、<code>human</code>=人工点击进入；
+        平台据此<b>区分人报与机器报</b>，无 <code>session_id</code> 时会合成 id 并标 <code>human</code>）。
+        <code>status=blocked</code> 时另可带 <code>reason</code>，会直接显示给用户。
 
         任务 <code>POST /api/harness/task-result</code> body: <code>{"workshop_id","member_id","ok":true,"result":"..."}</code>。</p>
 

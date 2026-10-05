@@ -31,6 +31,13 @@ class WorkshopMember:
     session: Optional[AcpSession] = None
     status: str = "pending"  # pending / activating / entered / working / idle / blocked / offline
 
+    # ── V-15 步骤3：进入状态机 ────────────────────────────────────
+    # 与 status **正交**：status 是成员生命周期，entry_state 是**派发进度**。
+    # 合一的代价是 `activating` 分不清「推都推出去没」—— 前端看不出假成功。
+    # 取值与转移见 platform/entry_state.py（含各唤醒方式的最高可达表）。
+    entry_state: str = "pending"   # pending/dispatched/acked/entered/blocked/timeout/needs_human
+    entry_reason: str = ""         # 受阻/超时原因（如「桥进程未运行」），前端据此显示原因
+
 
 @dataclass
 class Workshop:

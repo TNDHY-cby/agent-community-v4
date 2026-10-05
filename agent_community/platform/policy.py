@@ -151,14 +151,33 @@ class Evaluation:
         }
 
 
+_UNAVAILABLE = "__unavailable__"      # 检查器坏了的哨兵，区别于「查了，不危险」(None)
+
+
 def _dangerous(command: str) -> Optional[str]:
-    """惰性调用现有黑名单（避免模块级循环导入）。返回命中的模式或 None。"""
+    """惰性调用现有黑名单（避免模块级循环导入）。
+
+    返回三态：
+      命中字符串      -> 有危险
+      None            -> 查了，不危险
+      _UNAVAILABLE    -> **查不了**（黑名单不可用）
+
+    V-14 原实现查不了时返回 None —— 与「不危险」无法区分，
+    于是 builtin.danger 不命中、决策继续往下走。**出厂默认 shell.exec=ASK 所以不漏，
+    但只要用户把 shell.exec 改成 allow，安全底线就没了。**
+    安全底线不该依赖用户配置 —— 故区分三态，由 evaluate 做钳制（拍板 #1 选 B）。
+    """
     try:
         from .core.security import _is_dangerous
         return _is_dangerous(command)
-    except Exception as e:  # 黑名单不可用时不因此放行危险判定
-        print(f"[policy] 黑名单不可用（{e}），本规则跳过", flush=True)
-        return None
+    except Exception as e:
+        print(f"[policy] 黑名单不可用（{e}），改走安全底线钳制", flush=True)
+        return _UNAVAILABLE
+
+
+def _blacklist_unavailable() -> bool:
+    """黑名单检查器当前是否不可用（零参数探针）。"""
+    return _dangerous("") is _UNAVAILABLE
 
 
 class PolicyEngine:
@@ -210,7 +229,11 @@ class PolicyEngine:
         try:
             self.data_dir.mkdir(parents=True, exist_ok=True)
             with open(self.config_path, "w", encoding="utf-8") as f:
-                json.dump(_SEED_CONFIG, f, ensure_ascii=False, indent=2)
+                # deepcopy：把 _SEED_CONFIG 当**纯常量**对待。
+                # __init__ 虽已 deepcopy 一份给实例，但若未来有代码把 self._config
+                # 指回种子、或直接改种子，落盘就会把被污染的种子写成"出厂配置"。
+                # 写前再深拷贝一次，成本可忽略，换来"种子不可被写出"。
+                json.dump(copy.deepcopy(_SEED_CONFIG), f, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"[policy] 写 policy.json 失败（忽略）: {e}", flush=True)
 
@@ -251,7 +274,13 @@ class PolicyEngine:
         if pat == DANGER_SENTINEL:
             if op != SHELL_EXEC:
                 return False
-            return _dangerous(target or "") is not None
+            r = _dangerous(target or "")
+            if r is _UNAVAILABLE:
+                # 检查器坏了 -> **本规则不命中**，交给 evaluate 的安全底线钳制。
+                # 这里若当"命中"，规则的 decision 是 deny -> 黑名单一坏 shell 全死，
+                # 连人都批不了（fail-closed 走成了 fail-dead）。
+                return False
+            return r is not None
         return fnmatch.fnmatch(target or "", pat)
 
     def evaluate(
@@ -265,43 +294,45 @@ class PolicyEngine:
         """按 §决策顺序 给出 ALLOW / DENY / ASK。纯计算，不落盘、不入队。"""
         cfg = self._config
         actor = actor or ACTOR_UNKNOWN
+        decision, rule_id, note = self._decide(cfg, op, actor, target)
 
+        # ── 安全底线（V-14 拍板 #1：选 B「底线钳制」）────────────
+        # 黑名单检查器不可用时，**shell.exec 不得落到 ALLOW**：只把 ALLOW 钳到 ASK。
+        #   DENY 保持（更严的优先）/ ASK 本就是底线
+        # 为什么不无条件前置：那会盖掉用户自己配的 DENY 规则
+        # 为什么 rule_id 单列：审计必须能区分「命令确实危险」与「检查器坏了」
+        if op == SHELL_EXEC and decision == ALLOW and _blacklist_unavailable():
+            return Evaluation(
+                decision=ASK, op=op, actor=actor, target=target,
+                rule_id="builtin.danger_unavailable",
+                note="黑名单检查器不可用，安全底线钳制为人工审批（不静默放行 shell）",
+            )
+        return Evaluation(decision=decision, op=op, actor=actor, target=target,
+                          rule_id=rule_id, note=note)
+
+    def _decide(self, cfg: dict, op: str, actor: str, target: str) -> tuple:
+        """决策链 1~4，返回 (decision, rule_id, note) —— 抽出来以便 evaluate 统一加底线。"""
         # 1. rules（有序，先匹配先生效；黑名单排第一 → DENY 天然优先）
         for rule in cfg.get("rules") or []:
             if self._rule_hit(rule, op, target):
-                return Evaluation(
-                    decision=rule.get("decision", ALLOW),
-                    op=op, actor=actor, target=target,
-                    rule_id=rule.get("id", ""),
-                    note=rule.get("note", ""),
-                )
+                return (rule.get("decision", ALLOW),
+                        rule.get("id", ""),
+                        rule.get("note", ""))
 
         # 2. actor_overrides（按 actor 覆盖分类默认）
         overrides = cfg.get("actor_overrides") or {}
         for key in (actor, "*"):
             ov = overrides.get(key) or {}
             if op in ov:
-                return Evaluation(
-                    decision=ov[op], op=op, actor=actor, target=target,
-                    rule_id=f"actor_override:{key}",
-                    note=f"{key} 对该操作显式覆盖",
-                )
+                return (ov[op], f"actor_override:{key}", f"{key} 对该操作显式覆盖")
 
         # 3. default_by_op（出厂策略 C）
         d = (cfg.get("default_by_op") or {}).get(op)
         if d in DECISIONS:
-            return Evaluation(
-                decision=d, op=op, actor=actor, target=target,
-                rule_id="default_by_op",
-                note="分类别默认（策略 C）",
-            )
+            return (d, "default_by_op", "分类别默认（策略 C）")
 
         # 4. 兜底：未配置的类别不阻断开发
-        return Evaluation(
-            decision=ALLOW, op=op, actor=actor, target=target,
-            rule_id="fallback",
-            note="未配置的操作类别默认放行",
-        )
+        return (ALLOW, "fallback", "未配置的操作类别默认放行")
 
     # ── 待审批：入队 / 审批 ─────────────────────────────────────
     def request(
