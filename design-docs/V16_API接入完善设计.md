@@ -1,22 +1,22 @@
 # V-16 设计稿：API 接入完善（远端模型清单 + 连通性自检）
 
-> 状态：**§三 已实施（2026-10-04，随负责人"API 接口的插件不完善"反馈推进）；§四 待拍板**
+> 状态：**§三已实施**（2026-10-04，随负责人"API 接口的插件不完善"反馈推进）；**§四待拍板**（2026-10-05 补定稿复核，见 §八）
 > 日期：2026-10-04
-> 触发：负责人反馈「接入 mimo 就不行了」；已先做漏洞审查（见 §一），**缺陷部分已修**，
+> 触发：负责人反馈「接入某新服务就不行了」；已先做漏洞审查（见 §一），**缺陷部分已修**，
 > 本稿只覆盖**需要新增能力**的部分。
 > 关联：`V14_安全治理策略引擎设计.md`（AI 调用本就在策略闸门内）
 >
 > **实施记录（2026-10-04）**：
-> - 新端点 `GET /api/ai/models?base_url=` —— **实测 mimo 返回 9 个模型**
->   （`mimo-v2.5` / `mimo-v2.6-pro` / `mimo-v2.6-flash` …），两种 base_url 写法结果一致（归一化生效），
+> - 新端点 `GET /api/ai/models?base_url=` —— **实测返回 9 个模型**
+>   （`demo-model-2.5` / `demo-model-2.6-pro` / `demo-model-2.6-flash` …），两种 base_url 写法结果一致（归一化生效），
 >   **响应不含密钥**（用服务端解密 key，前端只拿掩码）
 > - 前端：打开设置自动拉一次 + base_url 失焦再拉；失败回落内置清单 + 黄字原因；
 >   **「手动输入…」恒在**（§3.2 的死路出口）
 > - 顺带修：**设置页保存会把掩码当真 key 覆盖**（`GET /api/config` 返回掩码 → 回填 → 保存）
 >   后端加「含 `*` 即视为掩码、忽略并保留原 key」，前端改状态提示不回填值
 > - **「无法调用」根因确诊**：`Unsupported model deepseek-v4-flash` ——
->   路径与 key 都对（归一化已生效），**只是模型名 mimo 不认**；
->   实测 `mimo-v2.6-pro` → **HTTP 200 ✅**
+>   路径与 key 都对（归一化已生效），**只是模型名该服务不认**；
+>   实测换成该服务自己的模型名 → **HTTP 200 ✅**
 > - ⚠️ 修正原稿一处错误：**不是所有服务都有 `/models`**（我先打的 `{base}/models` 是 404），
 >   正确路径是 **`{归一后 base}/v1/models`**；故 §3.2 的"失败回落 + 手动输入"是**必需品而非兜底**
 
@@ -51,7 +51,7 @@ sel.innerHTML = '-- 请选择模型 --' + pre.models.map(...)
 ```
 
 三个后果：
-1. **新接入的服务必然空清单**（mimo 就是）—— 用户没有可选项
+1. **新接入的服务必然空清单**（示例服务-A 就是）—— 用户没有可选项
 2. **清单里的模型名过期**（硬编码不会随服务更新）
 3. **用户想输入清单外的模型**（自部署、微调名）**做不到**
 
@@ -64,13 +64,15 @@ sel.innerHTML = '-- 请选择模型 --' + pre.models.map(...)
 
 ### 3.1 新端点：`GET /api/ai/models?base_url=&api_key=`
 
-| 项 | 设计 |
-|---|---|
-| 行为 | 对 `{base_url}/models`（**先做归一化**，同 P0-1）发起 GET，带 `Authorization: Bearer` |
-| 超时 | 5s（清单拉不到不该卡住设置页） |
-| 成功 | `{"ok":true,"models":["…"],"source":"remote"}` |
-| 失败 | `{"ok":false,"models":[],"source":"builtin","error":"…","fallback":true}` —— **永远返回 200 + 清单**，让前端可以无条件消费 |
-| 安全 | 走 V-14 闸门 `network.egress`（出网）；**api_key 只在服务端用，不回传** |
+| 项 | 原设计 | 实测（2026-10-05） |
+|---|---|---|
+| 路径 | 对 `{base_url}/models`（**先做归一化**）发起 GET | ⚠️ **更正**：真实路径是 **`{归一化后 base}/v1/models`**（`config.py:151`）；`{base}/models` 实测 404 |
+| 入参 | `?base_url=&api_key=` | 只有 `base_url`（`config.py:100`）；**密钥不接受前端传入**，只用服务端已存值 |
+| 超时 | 5s | **8.0s**（`config.py:150`） |
+| 成功 | `{"ok":true,"models":["…"],"source":"remote"}` | 一致（`config.py:167`），另含 `fallback:false` |
+| 失败 | `{"ok":false,…,"fallback":true}` —— **永远返回 200** | ⚠️ **更正**：普通失败（无 base_url / 非 200 / 空清单 / 异常）返回 **200**；**策略闸门例外**：DENY→**403**，ASK→**202**（`config.py:138,143`） |
+| 安全 | 走 V-14 闸门 `network.egress`（出网） | 一致（`config.py:133`）；**响应体不含密钥字段**（只回 `ok/models/source/fallback/error`）；请求头带 `Authorization: Bearer`（`config.py:152`） |
+| 审计 | （原稿未写） | `policy.decision`（闸门，`policy.py:446`）+ `ai.models_fetch`，detail=`models=<n>`（`config.py:163`） |
 
 **为何失败也返回 200**：设置页的唯一目标是"让用户能选到模型"。
 拉取失败时回落硬编码清单 + 给出可读原因，比抛错让下拉空着更符合用途。
@@ -140,3 +142,90 @@ POST /api/config 时（ai_mode=remote 且 base_url+key+model 齐全）
 3. **3.3 缓存 TTL**（草案 10 分钟）是否合适
 
 > 未拍板前，**已修的 P0-1/P0-3/P1-4/P1-5/P1-6 可先合入**（缺陷修复，不属新能力）。
+
+---
+
+## 八、实施记录 / 实测证据（2026-10-05 补定稿复核）
+
+> 复核口径：**逐条读代码**（不采信旧文档转述）。全部为 `文件:行号` 级证据。
+
+### 8.1 §三 已实施部分
+
+| 结论 | 证据 |
+|---|---|
+| 端点位置 | `agent_community/platform/routers/config.py:99-100`（`@router.get("/api/ai/models")`，签名只有 `base_url: str = ""`） |
+| 归一化函数 | `platform/ai_provider.py:138` `_normalize_base_url()`；`config.py:118` 以 `_normalize_base_url as _norm` 引入 |
+| 归一化行为 | `ai_provider.py:149-152`：`strip().rstrip("/")` 后 **`while` 循环剥掉全部尾部 `/v1`** → 例 `https://api.example.com/v1/` → `https://api.example.com`；两种写法结果一致 |
+| 统一拼接 | 全模块固定拼 `{base}/v1/chat/completions`（`ai_provider.py:141`），故归一化后**永不出现 `/v1/v1/`** |
+| base_url 兜底 | `config.py:124`：入参为空 → 取配置 `ai_base_url`；仍为空 → `config.py:126-127` 返回 `ok:false / fallback:true / error="未配置 base_url"`（**200**） |
+| 拉取失败回落 | 非 200 → `config.py:153-155`（error 含 `GET <norm>/v1/models -> HTTP <code>`）；空清单 → `config.py:159-161`（`"服务返回空模型清单"`）；抛异常 → `config.py:168-170`（`<异常类名>: <消息>`）。**全部 200 + `fallback:true`** |
+| 密钥不外泄 | `config.py:146-147` 服务端解密；`config.py:151-152` 仅作为请求头 `Authorization: Bearer` 发出；`config.py:167` 响应无 key 字段 |
+| 前端「手动输入…」 | `frontend/index.html:646` 生成 `value='__manual__'` 的常驻选项；`:684-688` 选中后 `prompt` 手输并追加 `（手输）` 选项 → **清单永远不是死路** |
+| 前端触发时机 | `index.html:470` base_url `onblur="loadRemoteModels()"`；`:765` 打开设置即拉一次；无独立「获取清单」按钮 |
+| 远端成功后保住已选 | `index.html:663` 取 `sel.dataset.saved`（`:730` 在打开设置时写入）→ `:668-669` 清单内直接选、清单外补选项 |
+| 失败回落前端 | `index.html:672-676`：回落 presets 内置清单 + 黄字「清单获取失败：<原因> —— 可手动输入模型名」 |
+| 掩码防覆盖（后端） | `config.py:220-228`：提交值**含 `*` 即判为掩码** → 忽略，改用 `AC_AI_API_KEY` env 或已存 key；判定理由与代码注释一致（`:221`） |
+| 掩码防覆盖（前端） | `index.html:734-742`：`GET /api/config` 返回含 `*` 时**不回填输入框值**（留空=不修改），改用 placeholder 显示 `已配置（sk-yo****…****-key）` 样式状态 |
+| 写入路径确认 | `GET /api/config` 确实返回掩码（`config.py:194-195` `mask_api_key`）；`mask_api_key` 实现见 `platform/core/security.py:121-125` |
+
+### 8.2 §一「已修」清单复核
+
+| 编号 | 复核结论 | 证据 |
+|---|---|---|
+| P0-1 base_url 归一 | ✅ 成立 | `ai_provider.py:138-152` + `:175` 构造时统一归一 |
+| P0-3 清单外模型补选项 | ✅ 成立 | `index.html:723-729`（打开设置）+ `:634-643` `_keepModel()`（远端重建后用） |
+| P1-4 保存失败也 `success:true` | ✅ 已修 | `config.py:313-314` 增量字段 `provider_loaded` / `provider_error` |
+| P1-5 `configured` 未算 model | ✅ 已修 | `config.py:304,316-317`：改按「**本次是否真选**」判 `model_missing`，并给 `model_effective` |
+| P1-6 包装链不代理属性 | ✅ 已修 | `ai_provider.py:114-135` 基类 `__getattr__` 透传（禁自引用递归） |
+
+### 8.3 与原稿不符 / 尚未实现（事实更正）
+
+| # | 项 | 事实 |
+|---|---|---|
+| 1 | §3.3 **缓存 `ai_model_cache`（TTL 10 分钟）** | **未实现**（全库无此符号）。现状＝**每次 base_url 失焦/开设置都真出网** |
+| 2 | §四 `provider_verified` | **未实现**（全库无此符号），保存响应里不存在该字段 |
+| 3 | §3.1 `?api_key=` 入参 | **未实现**（`config.py:100` 只收 `base_url`），密钥只在服务端取用 |
+| 4 | §3.1 超时 5s | **实为 8.0s**（`config.py:150`） |
+| 5 | §3.1「**永远返回 200**」 | **有例外**：策略 DENY→403、ASK→202（`config.py:138,143`）。前端因此**必须同时判 `d.ok` 与 `d.models.length`**（`index.html:664`），不能只看 HTTP 码 |
+| 6 | §3.2「无论成败下拉末尾常驻手动输入」 | 成立，但**成功分支才保证**：远端成功→`_appendManual()`（`:667`）；失败→`onProviderChange()` + `_appendManual()`（`:672-673`） |
+| 7 | `config.py:147` 对 `load_config()` 返回值再调一次 `_decrypt_secret` | **冗余无效**：`load_config()` 已解密（`config.py:81-82`），再解密是空转（明文无 `dpapi:` 前缀 → 原样返回，`core/security.py:118`）。**当前不构成缺陷**，但注释暗示"这里才解密"，易误导后续维护者 |
+| 8 | 原稿 §一附 的模型名示例 | 已统一为虚拟名（铁律⑥） |
+
+### 8.4 §五 验证矩阵覆盖度（复核）
+
+⚠️ **本稿的矩阵是「草案」，仓库内没有独立的 V-16 测试文件**；下表是逐条对代码/既有测试的核对结果，缺口**不得当作已验**。
+
+| # | 用例 | 覆盖 | 证据 / 缺口 |
+|---|---|---|---|
+| 1 | base_url 含 `/v1` → 不出现 `/v1/v1/` | ✅ | `ai_provider.py:150-151`（while 剥净）+ `:141`（统一拼接）；逻辑上不可达双重 `/v1` |
+| 2 | 远端正常 → 下拉重建且保留已选值 | ⚠️ 仅代码级 | `index.html:664-670`；**无自动化测试** |
+| 3 | 远端超时/404 → 200 + `fallback:true` + 下拉不空 | ⚠️ 部分 | 后端分支 `config.py:153-155,168-170` 明确；**无测试**；前端回落 `:672-676` **无测试** |
+| 4 | 未配置 api_key 仍请求 | ✅ 代码级 | `config.py:152`：`_key` 空则**不带头**仍发请求 |
+| 5 | 清单外模型可提交并保存 | ⚠️ 仅代码级 | 前端 `:684-688`、`:639`；后端 `config.py:229` 直接落库（不校验白名单） |
+| 6 | 连通性自检 401 | ❌ **未实现** | §四 未实施，无 `provider_verified` |
+| 7 | 连通性自检成功 → ✅ 显示 | ❌ **未实现** | 同上；`index.html` 无「已连通」展示 |
+| 8 | 出网经 V-14 `network.egress` 闸门 + 审计 | ✅ | `config.py:133` 调 `check(NETWORK_EGRESS,…)`；`policy.py:445-450` 记 `policy.decision`；`config.py:163` 记 `ai.models_fetch` |
+| 9 | 回归：全量测试通过 + 真实 config 指纹不变 | ✅ | `agent_community/tests/conftest.py` 两层隔离（`isolate_data_dirs` + `guard_real_data_dir`，已覆盖 `~/.agent_community/config.json`） |
+
+**结论**：9 条里 **2 条（#6/#7）因 §四未实施必然为空白**，**4 条（#2/#3/#5）只有代码级依据、无自动化测试**。若 §四 拍板实施，建议同时补这三条的前端/端点级用例。
+
+### 8.5 §四 迄今未实施（唯一待拍板项）
+
+| 项 | 现状 |
+|---|---|
+| 触发时点 | 设计为 `POST /api/config` 内联；**当前 `POST /api/config` 无任何连通性探测**（`config.py:198-320` 只做保存与 provider 重建） |
+| 计费风险 | 会**真发一次** `chat/completions`（`max_tokens=1`）—— 需负责人确认可接受 |
+| 建议的落地边界（供拍板参考，**未实施**） | 设开关（配置键）默认关、仅 `ai_mode=remote` 且 base_url+key+model 齐全时执行、超时 ≤8s、**失败绝不影响保存成功**（与 §一 P1-4 的"诚实回报"同纪律） |
+
+---
+
+## 九、待拍板清单（汇总）
+
+| # | 事项 | 现状 | 谁定 |
+|---|---|---|---|
+| 1 | **§四 连通性自检是否做** | 未实施；会真发一次计费调用 | **负责人** |
+| 2 | 拉取时机：自动（失焦即拉）还是加「获取清单」按钮 | 现状＝**自动**（`index.html:470,765`），无手动按钮 | 负责人 |
+| 3 | `ai_model_cache` 缓存 TTL（草案 10 分钟） | **未实现**，每次真出网 | 负责人 |
+| 4 | 若做 §四：是否加开关 + 默认关 | 建议默认关（避免每次保存都计费） | 负责人 |
+
+> 未拍板前，§一 的 P0-1/P0-3/P1-4/P1-5/P1-6 均已落地，**不依赖以上任何一项**。
