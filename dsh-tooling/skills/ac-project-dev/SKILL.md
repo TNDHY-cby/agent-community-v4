@@ -58,7 +58,7 @@ python3 -m pytest tests/test_rule_gate.py tests/test_ai_cache.py tests/test_ai_u
 - 分层：`server.py`（FastAPI + WS）→ `platform/routers/{config,harness,mirror,workshops,plugins}.py`
   → `platform/core/security.py`、`platform/state.py`（19 个共享单例）。
 - AI 调用链：L1 `rule_gate`（纯规则零 token）→ L2 `ai_cache` → `ai_usage` 预算熔断 → Provider。
-- 平台端省钱已是既成事实：默认模型 `deepseek-v4-flash`、默认**不思考**（`ai_reasoning_effort: off`）。
+- 平台端省钱已是既成事实：默认模型 `example-model-flash`、默认**不思考**（`ai_reasoning_effort: off`）。
   改 AI 调用的代码前先读 `OutAgentsCommunity/docs/降API开支方案-P0/P1/P2`。
 - 测试**两套，别只跑一边**：根 `tests/` 与 `agent_community/tests/`。
 

@@ -107,6 +107,6 @@ def test_invalid_effort_no_injection(capture):
     assert "reasoning_effort" not in capture.last_body
 
 
-def test_default_model_is_flash():
+def test_default_model_is_example_flash():
     p = OpenAICompatibleProvider()
-    assert p.model == "deepseek-v4-flash"
+    assert p.model == "example-model-flash"

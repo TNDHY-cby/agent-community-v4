@@ -34,7 +34,7 @@ class TestBaseUrlNormalization:
         ("https://api.xiaomimimo.com/v1/", "https://api.xiaomimimo.com"),
         ("https://api.xiaomimimo.com/", "https://api.xiaomimimo.com"),
         ("https://api.xiaomimimo.com", "https://api.xiaomimimo.com"),
-        ("https://api.deepseek.com", "https://api.deepseek.com"),
+        ("https://api.example.com", "https://api.example.com"),
         ("  https://x.com/v1  ", "https://x.com"),
         ("https://x.com/v1/v1", "https://x.com"),      # 重复也递归剥掉
         ("", ""),
@@ -55,7 +55,7 @@ class TestBaseUrlNormalization:
     def test_constructor_fallback_still_normalized(self):
         """空 base_url -> 回落 deepseek 默认，且同样归一。"""
         p = OpenAICompatibleProvider(base_url="", api_key="k", model="m")
-        assert p.base_url == "https://api.deepseek.com"
+        assert p.base_url == "https://api.example.com"
 
 
 # ── P1-6：包装链属性透传 ────────────────────────────────────────
@@ -194,8 +194,8 @@ class TestFrontendModelRestore:
                 self.options.append(o)
 
         sel = Sel(["gpt-4o", "gpt-4o-mini"])          # presets.openai 的清单
-        saved = "deepseek-v4-flash"                    # 配置里存的
+        saved = "example-model-flash"                    # 配置里存的
         if not any(o.value == saved for o in sel.options):
             sel.appendChild(Opt(saved))
         sel.value = saved
-        assert sel.value == "deepseek-v4-flash", "补选项后必须能选上"
+        assert sel.value == "example-model-flash", "补选项后必须能选上"

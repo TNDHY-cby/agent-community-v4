@@ -7,7 +7,7 @@ AGENTS.md[SG8S]: F:项目工作指引：铁律、副本地图、启动与测试�
 CHANGELOG.md[SV6S]: F:v4 版本演进变更记录（新增/修复/破坏性变更） | R:code:agent_community/cli.py | A:发布与追溯阅读入口 | S:变更记录需与发布版本保持对齐
 CONTRIBUTING.md[SQ5T]: F:贡献指南（开发流程、提交规范、社区协作方式） | R:- | A:贡献者流程入口 | S:约束外部贡献流程与代码质量门槛
 LICENSE[SV9L]: F:AGPL-3.0 许可证全文，授权范围与义务声明 | R:- | A:法律条款声明，无需运行 | S:修改后网络传播须开源，商用需合规审查
-README.md[SG8M]: F:项目总览：对外口径、协议矩阵与状态、快速开始、架构与目录说明 | R:code:agent_community/cli.py | A:开源仓库文档入口 | S:禁称「多Agent协作平台」；协议状态须与实际实现一致，不虚报可用
+README.md[SG8M]: F:项目总览：对外口径、协议矩阵与状态、快速开始、架构与目录说明 | R:code:agent_community/cli.py | A:开源仓库文档入口 | S:禁称「多Agent协作平台」；模型名与域名用中性占位名，不虚报协议可用
 config.example.json[FC3T]: F:配置文件示例：平台启动参数与端口模板 | R:code:agent_community/platform/config.py | A:配置键名（示例） | S:示例配置仅模板，缺省值由代码默认兜底
 harnesses.example.json[FC3S]: F:harness 注册示例：ACP 类与文件轮询类两份完整模板 | R:code:config.example.json | A:harness-a；harness-b | S:示例仅模板，wakeup_dir/api 字段为占位不可直接使用
 requirements.txt[FC4T]: F:运行时依赖声明（强制纯 ASCII，pip 按 OS 首选编码解码） | R:code:agent_community/cli.py | A:依赖列表 | S:中文注释会让 pip 在 cp936 下直接解码失败，故强制纯 ASCII、无 BOM
@@ -22,7 +22,7 @@ feature_request.yml[FQ4T]: F:功能需求结构化表单模板（场景/价值/�
 __init__.py[LG5T]: F:包初始化与版本元数据声明 | R:- | A:agent_community 包导入入口 | S:保持轻量，避免循环导入
 a2a_server.py[IN8M]: F:A2A 协议暴露层：JSON-RPC 任务收发、Agent Card 发现、HTTP 服务 | R:code:agent_community/platform | A:/.well-known/agent-card.json；POST / | S:监听网络端口（默认9104），当前无鉴权
 cli.py[EV8L]: F:命令行入口：start/stop/status/task/task-result/harness list/agents list，日志统一落盘 | R:code:agent_community/config.py | A:python -m agent_community.cli start --wakeup --port 18920 --no-gui | S:从项目父目录启动避免 types.py 遮蔽；gui 依赖常缺
-config.py[FC8S]: F:配置加载与保存：DEFAULT_CONFIG 全量键、DPAPI 密钥加解密与缺省合并 | R:code:agent_community/cli.py | A:load_config；save_config；_ensure_dir｜22 键 | S:密钥加密落盘且含 * 视为掩码不覆盖；配置缺失回退默认值
+config.py[FC8S]: F:配置加载与保存：DEFAULT_CONFIG 全量键（含 V-16 自检四键）、DPAPI 密钥加解密与缺省合并 | R:code:agent_community/cli.py | A:load_config；save_config；_ensure_dir｜27 键 | S:密钥加密落盘且含 * 视为掩码不覆盖；自检两开关默认 False 避免默认计费
 grpc_gateway.py[IN6S]: F:可选 gRPC 网关：AgentCommunityServicer 封装注册/消息/任务/结果等平台 API | R:code:agent_community/mcp_server.py | A:AgentCommunityServicer；serve | S:默认不启用，需安装 grpcio 且显式配置监听端口
 gui.py[EU6S]: F:桌面 GUI 入口：pywebview 拉起 FastAPI 子进程并在本地窗口展示前端 | R:code:agent_community/server.py | A:AgentCommunityApp；main | S:依赖 pywebview，无 GUI 环境需走 CLI 模式
 mcp_server.py[IN7M]: F:零依赖 stdio MCP 服务：状态/任务/工作间/结果等平台能力暴露为 MCP 工具 | R:code:agent_community/platform | A:t_status；t_create_workshop；_handle；main | S:仅 stdio 传输不监听端口，消息按 JSON-RPC 2.0 解析
@@ -56,7 +56,7 @@ protocol_multi_access.py[IN6M]: F:HTTP/MCP/A2A 三协议接入演示与选择策
 waker_with_deepseek.py[TW5S]: F:DeepSeek 驱动的唤醒示例：AI Provider 能力测试与 wakeup 全流程演示 | R:code:agent_community/platform/ai_provider.py | A:main；test_wakeup_flow | S:示例脚本，需配置 DeepSeek API 密钥且目标 harness 在线方可跑通
 
 ===D:/外端Agent生产合作社/agent_community/frontend/===
-index.html[EU8L]: F:工作大厅前端：Hall 消息流、工作间列表、设置弹窗、远端模型清单与讨论 | R:code:agent_community/frontend/workshop.html | A:GET /api/ai/models；手动输入兜底项；connectWS | S:模型清单失败回落内置并保留已选；静态资源已加 no-cache，改动仍需刷新确认
+index.html[EU8L]: F:工作大厅前端：Hall 消息流、工作间列表、设置弹窗、模型清单与连通性自检开关 | R:code:agent_community/frontend/workshop.html | A:GET /api/ai/models；renderVerifyStatus；loadRemoteModels；connectWS | S:自检结论先亮 3s 再关设置页否则用户看不到；清单失败回落内置并保留已选
 register.html[EU8L]: F:Harness 注册与管理前端：列表刷新、一键注册、桥验证、删除与模板复制及回报协议文档 | R:code:agent_community/frontend/index.html | A:oneClickRegister；verifyBridge；delHarness；activation-result | S:注销即时生效且会全关该 harness 会话不可回滚，操作均走后端注册接口
 workshop.html[AU9L]: F:工作间详情前端：成员进入状态、活跃会话计数、人工确认入口、讨论与任务面板 | R:code:agent_community/frontend/index.html | A:loadWorkshop；draw；CONFIRMING；confirmHumanEnter | S:轮询会重建 DOM，中间态必须靠模板渲染保留；人工确认 source=human
 
@@ -66,7 +66,7 @@ acp_harness_bridge.py[IN7M]: F:ACP 协议 harness 桥：AcpHarnessBridge 子进�
 adapters.py[IN7S]: F:多传输适配：WS/HTTP/PIPE 通道封装，统一 send/wait/notify 接口 | R:code:agent_community/platform/harness_adapter.py | A:select_endpoint；http_call；PipeAdapter | S:发送失败返回 (False, 错误信息) 不抛异常
 ai_cache.py[CP5T]: F:AI 回复缓存：sha256 键读写，减少重复请求 | R:code:agent_community/platform/ai_provider.py | A:AICache；make_key | S:键由 prompt+model 哈希生成，内容变更即失效
 ai_external.py[IA7L]: F:外部 AI 接管通道：remote/manual/off/local 模式、请求记录与降级 | R:code:agent_community/platform/ai_provider.py | A:run_ai_call；ManualAIProvider；create_external_provider | S:manual 无产出由本机模型兜底，off 模式直接占位拒绝
-ai_provider.py[CA9L]: F:AI Provider 抽象与实现：OpenAI/Ollama/HTTP/Fake 及 Gate/Cache/Usage 包装链工厂 | R:code:agent_community/platform/ai_external.py | A:create_ai_provider；AIProvider；OpenAICompatibleProvider；_normalize_base_url | S:包装链顺序固定，熔断与缓存先于真实请求；基类透传属性否则界面看不到生效值
+ai_provider.py[CA9L]: F:AI Provider 抽象与实现：OpenAI/Ollama/HTTP/Fake 及 Gate/Cache/Usage 包装链工厂 | R:code:agent_community/platform/ai_external.py | A:create_ai_provider；AIProvider；OpenAICompatibleProvider；_normalize_base_url | S:包装链顺序固定，熔断与缓存先于真实请求；默认模型名为中性占位名
 ai_usage.py[AC6S]: F:AI 用量统计与预算熔断：日预算计数，超限返回熔断占位 | R:code:agent_community/platform/ai_provider.py | A:AIUsage；daily_budget | S:超预算直接熔断拒绝而非降级，防费用失控
 api_wakeup.py[IS7S]: F:HTTP API 唤醒：探测/推送/outbox 轮询，SSRF 重定向与 scheme 校验 | R:code:agent_community/platform/adapters.py | A:probe_http_api；send_http_api_message；poll_outbox_replies | S:重定向与非白名单 scheme 一律拒绝，防 SSRF
 audit.py[CO5T]: F:轻量操作审计：环形缓冲持久化记录关键操作 | R:code:agent_community/platform/server.py | A:AuditLog；record；query | S:容量固定最旧自动覆盖，仅按 event/actor 查询
@@ -83,11 +83,11 @@ mcp_client.py[IN6S]: F:MCP 客户端适配层：URL 校验、JSON-RPC POST、工
 memory.py[PA7M]: F:任务记忆与能力台账：TaskMemory 向量检索存取、CapabilityLedgerManager 信誉统计与最优 Agent 选择 | R:code:agent_community/platform/orchestrator.py | A:TaskMemory；search_by_text；CapabilityLedgerManager；get_best_agents | S:记忆持久化到本地文件，检索无命中返回空列表不抛异常
 orchestrator.py[AB9L]: F:任务编排核心：任务分析、在线过滤、能力匹配分配、执行记录与审查直连 | R:code:agent_community/platform/policy.py | A:Orchestrator；_analyze_task_full；_build_assignments；ranked_match | S:分配结果按评分降序，无在线 Agent 直接返回失败不重试
 policy.py[DS8L]: F:策略引擎：危险操作评估、审批队列、规则解析、底线钳制与审计记录 | R:code:agent_community/platform/orchestrator.py | A:PolicyEngine；evaluate；request；resolve；ALLOW/DENY/ASK | S:危险规则命中即拦截；底线钳制不可被配置绕过；无响应按默认放行或拒绝需查表
-protocol.py[LN9L]: F:平台核心协议模型：传输/消息/AgentCard/讨论室/任务与执行结果等 dataclass 定义 | R:code:agent_community/platform/orchestrator.py | A:TransportType；AgentCard；DiscussionRoom；Task；ExecutionResult | S:模型为 dataclass，to_dict 输出固定字段，未知字段静默丢弃
+protocol.py[LN9L]: F:平台核心协议模型：传输/消息/AgentCard/讨论室/任务与执行结果等 dataclass 定义 | R:code:agent_community/platform/orchestrator.py | A:TransportType；AgentCard；DiscussionRoom；Task；ExecutionResult | S:dataclass 输出固定字段、未知字段静默丢弃；对外示例一律用虚拟名
 protocol_catalog.py[LN4S]: F:协议目录：可用协议清单与 gRPC 可用性探测 | R:code:agent_community/platform/routers/protocols.py | A:get_protocol_catalog；get_available_protocol_ids | S:目录基于静态定义，gRPC 项按导入是否成功动态标记可用
 react_loop.py[KA6M]: F:ReAct 循环推理引擎：思考-行动-观察步骤循环、系统提示构建与 JSON 解析 | R:code:agent_community/platform/ai_provider.py | A:ReActLoop；LoopStep；LoopResult | S:超过最大步数强制终止，JSON 输出解析失败重试受限次数后退出
 rule_gate.py[DS6M]: F:纯规则闸门：零 token 拦截问候/状态/数学题等低价值请求，优化 AI 开销 | R:code:agent_community/platform/server.py | A:RuleGate；classify | S:仅规则匹配非安全策略，未命中一律放行
-server.py[AB9L]: F:平台主服务：FastAPI 应用、46 个自带端点、路由挂载、AI 与工作间编排、启动入口 | R:code:agent_community/platform/routers | A:app；include_router；_orchestrated_flow；_autonomy_recovery_loop | S:include_router 装入的是惰性 _IncludedRouter，遍历 app.routes 取 .path 会漏判端点已挂载
+server.py[AB9L]: F:平台主服务：FastAPI 应用、46 个自带端点、路由挂载、AI 与工作间编排、启动入口 | R:code:agent_community/platform/routers | A:app；include_router；_orchestrated_flow；_autonomy_recovery_loop；lifespan 启动自检 | S:include_router 装入惰性 _IncludedRouter，遍历 app.routes 取 .path 会漏判端点已挂载
 session_registry.py[PS6M]: F:会话注册表：会话登记与状态机（active/idle/close_requested/stale/closed）与落盘恢复 | R:code:agent_community/platform/state.py | A:SessionRegistry；register；list；counts；sweep_expired_close_requests；sweep_and_audit | S:宽限期走满即判到期；idle 属保留待复用一律不动；记录只改状态不删除
 state.py[CS6S]: F:跨模块共享状态单例：tasks/agents/workshops 等全局容器与 reset/snapshot | R:code:agent_community/platform/session_registry.py | A:reset；snapshot；S 命名空间 | S:模块级全局对象同一进程内唯一，双副本分裂问题已修复
 task_state_machine.py[AB7M]: F:任务分级状态机：L0/L1/L2 任务生命周期流转与插话判定 | R:code:agent_community/platform/routers/workshops_task.py | A:TaskStateMachine；transition；can_interject | S:非法状态迁移报错，插话按 max_pending_cycles 自动过期
@@ -100,6 +100,7 @@ entry_state.py[ES6S]: F:成员进入工作间状态机与按唤醒方式的最�
 bridge_template.py[MI6S]: F:L2 具体桥模板：注册期采集 harness 参数并持久化到 info.metadata | R:code:agent_community/bridge_templates | A:build；get；complete；WM_TO_TEMPLATE | S:wakeup_method 是 StrEnum，须取 .value 否则静默落兜底模板
 connect_artifact.py[CA6S]: F:L3 接入产物按唤醒方式派生（脚本/连接契约/激活提示词）并落工作区 | R:code:agent_community/platform/bridge_template.py | A:artifact_kind；plan；write；KIND_BY_WM | S:只接受逻辑 id，路径恒取自 ws.workspace_dir，绝不接受请求体路径
 tier_guidance.py[TG6S]: F:接入档位判定（A/B/C/D）与三时机提醒文案 | R:code:agent_community/platform/entry_state.py | A:tier_of；guidance_at_register；GUIDANCE_PLUGIN；RECEIPT_TEMPLATE | S:探测不到插件市场默认判 D 给引导，只有显式声明无市场才判 C
+ai_verify.py[MI6S]: F:AI 连通性自检：真发一次 max_tokens=1 探针判定「保存成功≠能用」，带指纹缓存与可读原因 | R:code:agent_community/platform/ai_provider.py | A:verify_provider；verify_provider_async；probe_timeout | S:超时别照 8s 抄（那是列清单），真实 chat 调用实测要 37.8s，默认 45s 可配
 
 ===D:/外端Agent生产合作社/agent_community/platform/core/===
 __init__.py[LG3T]: F:core 包初始化声明 | R:- | A:agent_community.platform.core 导入入口 | S:保持轻量避免循环导入
@@ -108,7 +109,7 @@ security.py[SS9S]: F:安全工具：危险命令黑名单、DPAPI 加解密、�
 ===D:/外端Agent生产合作社/agent_community/platform/routers/===
 __init__.py[LG3T]: F:routers 包初始化声明 | R:- | A:agent_community.platform.routers 导入入口 | S:保持轻量避免循环导入
 audit.py[EO4T]: F:审计查询路由：按事件/执行者过滤最近操作记录 | R:code:agent_community/platform/audit.py | A:router；audit_query | S:仅支持 event/actor 过滤，limit 超上限自动截断
-config.py[EC6M]: F:配置与 AI 管理路由：配置读写/状态、Provider 列表、远端模型清单、AI 待决与人工回复 | R:code:agent_community/platform/config.py | A:GET/POST /api/config；GET /api/ai/models；api_ai_reply | S:保存即重载生效；门禁字段清空需显式值；模型清单失败回落内置清单并回可读原因
+config.py[EC6M]: F:配置与 AI 管理路由：配置读写/状态、Provider 列表、模型清单、连通性自检与 AI 待决回复 | R:code:agent_community/platform/config.py | A:GET/POST /api/config；GET /api/ai/models；_verify_after_save | S:自检开关须传本次生效值否则刚勾上的那次不自检；门禁字段清空需显式值
 harness.py[EB5T]: F:harness 路由聚合入口：汇总注册/消息/桥/镜像等子路由 | R:code:agent_community/platform/routers/harness_register.py | A:router | S:仅聚合 include_router，无独立端点
 harness_bridge.py[EN7L]: F:harness 桥路由：桥测试、模板列表、桥生成、路径登记、验证与激活窗口 | R:code:agent_community/platform/bridge_factory.py | A:harness_bridge_generate；harness_bridge_verify；harness_activate_window | S:桥生成缺必填字段即报错；激活窗口超时未确认自动失效
 harness_common.py[CI6S]: F:harness 路由共享辅助：状态值单例与 harness 身份校验 | R:code:agent_community/platform/identity.py | A:_sv；_harness_identity_check | S:身份校验失败即返回 401/403，未通过不进入业务处理
@@ -155,7 +156,7 @@ V15_工作间会话联动与三层桥设计.md[SD7M]: F:V15 设计稿：工作�
 安全披露_CDP镜像与密钥存储.md[SD5T]: F:安全披露：CDP 镜像与密钥存储风险说明 | R:code:agent_community/platform/core/security.py | A:- | S:披露文档描述风险与缓解，不承诺已全量修复
 工作间模式-parallel并行落地设计.md[SD6S]: F:工作间 parallel 并行模式落地设计：多会话并行分工方案 | R:code:agent_community/platform/workshop.py | A:- | S:设计定稿，parallel 模式实现遵循本稿
 平台设计总纲.md[SD8M]: F:平台设计总纲：架构分层、路由与设计稿索引的唯一权威汇总 | R:code:agent_community/platform/server.py | A:- | S:总纲为平台设计唯一权威汇总，冲突以总纲为准
-V16_API接入完善设计.md[SD6M]: F:V16 设计稿：远端模型清单（已实施）与连通性自检（待拍板） | R:code:agent_community/platform/routers/config.py | A:GET /api/ai/models | S:实测路径是 {归一后 base}/v1/models；§四自检会真发一次计费调用，未拍板不实施
+V16_API接入完善设计.md[SD6M]: F:V16 设计稿：远端模型清单与连通性自检（均已实施，含超时口径更正） | R:code:agent_community/platform/ai_verify.py | A:GET /api/ai/models；POST /api/config | S:自检默认关且超时 45s（原稿 8s 是错的，实测真实调用 37.8s）
 V17_会话关闭兜底设计.md[SD6M]: F:V17 设计稿：close_requested 宽限期惰性收敛（已实施）与验证矩阵覆盖度 | R:code:agent_community/platform/session_registry.py | A:- | S:idle 保留待复用不动、记录只改状态不删；矩阵 #10 并发未覆盖；未同步进 V-15 §12.2
 
 ===D:/外端Agent生产合作社/docs/===
@@ -171,7 +172,7 @@ cordis.patch.yml[SC5S]: F:合作社开发模式 preset 声明：身份人设、�
 package.json[FC3T]: F:preset bundle 包声明：patch 指向 cordis.patch.yml | R:code:dsh-tooling/presets/ac-dev-cloud/cordis.patch.yml | A:dsh.bundle.patch | S:type=module，仅声明无逻辑
 
 ===D:/外端Agent生产合作社/dsh-tooling/skills/ac-project-dev/===
-SKILL.md[SD6S]: F:项目开发手册技能（云端版）：启动/测试/代码要点/雷区/安全底线 | R:code:agent_community/platform/server.py | A:ac-project-dev | S:每条事实经源文件核实，端口约定 18920 唯一权威实例
+SKILL.md[SD6S]: F:项目开发手册技能（云端版）：启动/测试/代码要点/雷区/AOCI 闸门/安全底线 | R:code:agent_community/platform/server.py | A:ac-project-dev | S:每条事实经源文件核实；含中文的 .ps1 必须带 BOM，否则 PowerShell 5.1 报 ParserError
 
 ===D:/外端Agent生产合作社/dsh-tooling/skills/dsh-self-upgrade/===
 SKILL.md[SD6M]: F:DSH 自升级技能：preset 机制、skill 排查、插件安装、安全网与编码判定 | R:code:dsh-tooling/skills/ac-project-dev/SKILL.md | A:dsh-self-upgrade | S:结论来自实测并已清理本地用户路径；技能与插件改动前先确认实际加载的 profile

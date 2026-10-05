@@ -160,7 +160,7 @@ class OpenAICompatibleProvider(AIProvider):
     """适配所有 OpenAI 兼容 API。
 
     配置方式（优先级：构造参数 > 环境变量 > 默认值）：
-    - base_url: 构造参数 > AC_AI_BASE_URL > https://api.deepseek.com
+    - base_url: 构造参数 > AC_AI_BASE_URL > https://api.example.com
     - api_key:  构造参数 > AC_AI_API_KEY > ""
     - model:    构造参数 > AC_AI_MODEL > deepseek-chat
     """
@@ -175,7 +175,7 @@ class OpenAICompatibleProvider(AIProvider):
         self.base_url = _normalize_base_url(
             base_url
             or os.environ.get("AC_AI_BASE_URL", "")
-            or "https://api.deepseek.com"
+            or "https://api.example.com"
         )
         self.api_key = (
             api_key
@@ -185,7 +185,7 @@ class OpenAICompatibleProvider(AIProvider):
         self.model = (
             model
             or os.environ.get("AC_AI_MODEL", "")
-            or "deepseek-v4-flash"
+            or "example-model-flash"
         )
         # 思考强度（类 DSH reasoningEfforts）：off / low / medium / high / max
         # 优先级：构造参数 > 环境变量 AC_AI_REASONING_EFFORT > config > 默认 off

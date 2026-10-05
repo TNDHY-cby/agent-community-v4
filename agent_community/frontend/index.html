@@ -466,7 +466,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
           </div>
           <div class="setup-field">
             <label>Base URL</label>
-            <input type="text" id="setupBaseUrl" placeholder="https://api.deepseek.com"
+            <input type="text" id="setupBaseUrl" placeholder="https://api.example.com"
                    onblur="loadRemoteModels()">
             <div style="font-size:11px;margin-top:4px;color:var(--dim)">
               失焦后自动拉取该服务的模型清单；拉不到时仍可手动输入模型名。
@@ -490,6 +490,8 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
           <div class="setup-actions">
             <button class="setup-btn-primary" id="setupSaveBtn" onclick="saveConfig()">保存</button>
           </div>
+          <!-- V-16 §四：连通性自检结论（默认关时不显示） -->
+          <div id="setupVerifyStatus" style="display:none;margin-top:8px;font-size:12px;line-height:1.6"></div>
           <div class="setup-error" id="setupError" style="display:none"></div>
         </div>
         <!-- 高级功能面板 -->
@@ -507,6 +509,27 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
             </div>
             <label class="toggle-switch">
               <input type="checkbox" id="setupWakeup">
+              <span class="ts-slider"></span>
+            </label>
+          </div>
+          <!-- V-16 §四 连通性自检（2026-10-05）：默认关，开了才发探针（会计费，min 1 token） -->
+          <div class="setup-toggle">
+            <div>
+              <div class="st-label">保存时连通性自检</div>
+              <div class="st-desc">保存后真发一次极小请求验证"能不能用"（会出网、极小额计费；默认关）</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="setupVerifyOnSave">
+              <span class="ts-slider"></span>
+            </label>
+          </div>
+          <div class="setup-toggle">
+            <div>
+              <div class="st-label">启动时连通性自检</div>
+              <div class="st-desc">服务启动时自检一次（会出网；默认关，避免每次重启都计费）</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="setupVerifyOnStartup">
               <span class="ts-slider"></span>
             </label>
           </div>
@@ -622,7 +645,7 @@ function formatTime(ts){if(!ts)return'';try{return new Date(ts).toLocaleTimeStri
 /* ── 设置面板 ── */
 function onProviderChange(){
   const p=document.getElementById('setupProvider').value;
-  const presets={openai:{url:'',models:['gpt-4o','gpt-4o-mini','gpt-4-turbo','gpt-3.5-turbo']},deepseek:{url:'https://api.deepseek.com',models:['deepseek-chat','deepseek-reasoner']},ollama:{url:'http://localhost:11434/v1',models:['llama3','llama3.1','qwen2','mistral','mixtral']}};
+  const presets={openai:{url:'',models:['gpt-4o','gpt-4o-mini','gpt-4-turbo','gpt-3.5-turbo']},deepseek:{url:'https://api.example.com',models:['deepseek-chat','deepseek-reasoner']},ollama:{url:'http://localhost:11434/v1',models:['llama3','llama3.1','qwen2','mistral','mixtral']}};
   const pre=presets[p]||{url:'',models:[]};
   if(!document.getElementById('setupBaseUrl').value) document.getElementById('setupBaseUrl').value=pre.url;
   const sel=document.getElementById('setupModel');
@@ -715,7 +738,7 @@ async function openSettings(){
     onProviderChange();
     if(cfg.ai_model){
       const ms=document.getElementById('setupModel');
-      // ⚠️ 已保存的模型未必在 presets 硬编码清单里（如 deepseek-v4-flash 不在
+      // ⚠️ 已保存的模型未必在 presets 硬编码清单里（如 example-model-flash 不在
       // presets.openai.models，那里只有 gpt-*）—— 此时 `.value=` 赋值会**静默失败**，
       // 下拉停在"-- 请选择模型 --"，而顶部 updateModelStatusDisplay 又显示着旧模型，
       // 两者对不上；用户此时点保存，ai_model 取到空值，**把原本好好的配置冲掉**。
@@ -759,6 +782,10 @@ async function openSettings(){
     if(cfg.port) document.getElementById('setupPort').value=cfg.port;
     else document.getElementById('setupPort').value='18920';
     document.getElementById('setupWakeup').checked=!!cfg.wakeup_enabled;
+    // V-16 §四：两个自检开关与最近结论（默认关；GET 只读缓存，不发请求）
+    document.getElementById('setupVerifyOnSave').checked=!!cfg.ai_verify_on_save;
+    document.getElementById('setupVerifyOnStartup').checked=!!cfg.ai_verify_on_startup;
+    renderVerifyStatus(cd.ai_verify||{}, null);
     switchSettingsTab('llm');
     document.getElementById('setupError').style.display='none';
     // V-16：打开设置即拉一次远端模型清单（否则新服务永远只有内置的几个模型）
@@ -896,6 +923,10 @@ async function saveConfig(){
   btn.disabled=true;btn.textContent='保存中...';errEl.style.display='none';
 
   const rawKey=document.getElementById('setupApiKey').value.trim();
+  // 掩码保护：输入框留空 + placeholder 显示"已配置" => 服务端会保留原 key，
+  // 此时不应报"请填写 API Key"（那会让"只想改模型"的用户无法保存）。
+  const keyAlreadyConfigured=!rawKey
+    && /已配置/.test(document.getElementById('setupApiKey').placeholder||'');
 
   const body={
     ai_provider:document.getElementById('setupProvider').value,
@@ -906,9 +937,11 @@ async function saveConfig(){
     ai_thinking:document.getElementById('setupThinking').checked,
     port:parseInt(document.getElementById('setupPort').value)||18920,
     wakeup_enabled:document.getElementById('setupWakeup').checked,
+    ai_verify_on_save:document.getElementById('setupVerifyOnSave').checked,
+    ai_verify_on_startup:document.getElementById('setupVerifyOnStartup').checked,
   };
 
-  if(!body.ai_api_key&&body.ai_provider==='openai'){
+  if(!body.ai_api_key&&body.ai_provider==='openai'&&!keyAlreadyConfigured){
     errEl.textContent='请填写 API Key';errEl.style.display='block';btn.disabled=false;btn.textContent='保存';return;
   }
 
@@ -916,6 +949,12 @@ async function saveConfig(){
     const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(d.success){
+      // V-16 §四：开了自检就先把结论亮出来（3s），再关设置页 —— 否则用户永远看不到结论
+      if(d.provider_verified!==null&&d.provider_verified!==undefined){
+        renderVerifyStatus({on_save:true},d);
+        btn.textContent='已保存';
+        await new Promise(res=>setTimeout(res,3000));
+      }
       document.getElementById('setupOverlay').classList.remove('show');
     }else{
       errEl.textContent=d.error||'保存失败';errEl.style.display='block';
@@ -925,6 +964,35 @@ async function saveConfig(){
   }finally{
     btn.disabled=false;btn.textContent='保存';
   }
+}
+
+function renderVerifyStatus(info,result){
+  // V-16 §四：显示「✅ 已连通 / ⚠️ 保存了但连不上：<原因>」。
+  // info：GET /api/config 的 ai_verify 摘要；result：POST /api/config 的自检结论（可为 null）
+  const el=document.getElementById('setupVerifyStatus');
+  if(!el) return;
+  const onSave=!!(info.on_save);
+  const onStartup=!!(info.on_startup);
+  let lines=[];
+  if(!onSave&&!onStartup){
+    lines.push('<span style="color:var(--muted)">连通性自检未开启（默认关，避免默认计费）—— 需要时可在「高级功能」打开</span>');
+  }
+  if(result&&result.provider_verified===true){
+    lines.push('<span style="color:var(--green)">✅ 已连通（'+Math.round((result.provider_verify_elapsed_ms||0))+'ms'
+      +'，结论缓存 '+(result.provider_verify_cache_ttl||0)+'s）</span>');
+  }else if(result&&result.provider_verified===false){
+    lines.push('<span style="color:var(--yellow)">⚠️ 保存了但连不上：'
+      +((result.provider_verify_reason||'原因未知'))+'</span>');
+  }else if(result&&result.provider_verified===null&&onSave){
+    lines.push('<span style="color:var(--muted)">本次未自检（ai_mode 非 remote 或 provider 未加载）</span>');
+  }else if(onStartup&&!result){
+    lines.push('<span style="color:var(--muted)">启动自检已开启：服务启动时会自检一次（结果见服务日志）</span>');
+  }
+  if(info.error){
+    lines.push('<span style="color:var(--red)">自检状态读取失败：'+info.error+'</span>');
+  }
+  el.innerHTML=lines.join('<br>');
+  el.style.display=lines.length?'block':'none';
 }
 
 async function saveAdvancedConfig(){
@@ -941,6 +1009,9 @@ async function saveAdvancedConfig(){
     ai_thinking:document.getElementById('setupThinking').checked,
     port:parseInt(document.getElementById('setupPort').value)||18920,
     wakeup_enabled:document.getElementById('setupWakeup').checked,
+    // V-16 §四：高级面板负责这两个自检开关（LLM 面板的保存也一并带上，避免互相冲掉）
+    ai_verify_on_save:document.getElementById('setupVerifyOnSave').checked,
+    ai_verify_on_startup:document.getElementById('setupVerifyOnStartup').checked,
   };
 
   try{

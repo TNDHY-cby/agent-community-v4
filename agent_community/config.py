@@ -17,9 +17,9 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "ai_provider": "openai",
-    "ai_base_url": "https://api.deepseek.com",
+    "ai_base_url": "https://api.example.com",
     "ai_api_key": "",
-    "ai_model": "deepseek-v4-flash",
+    "ai_model": "example-model-flash",
     # 内部 AI 接管模式：remote（真实 AI，默认）/ manual（外部接管）/ off（纯规则降级）
     "ai_mode": "remote",
     # manual 模式下等待外部回写的超时秒数，超时降级为纯规则
@@ -28,6 +28,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # 思考强度（类 DSH reasoningEfforts）：off / low / medium / high / max
     # off = 不思考（thinking disabled，省钱优先，默认）；medium 按官方映射走 high
     "ai_reasoning_effort": "off",
+    # ── V-16 §四 连通性自检（2026-10-05 负责人拍板实施）──
+    # ⚠️ 两个开关**默认 False**：负责人要求"避免默认产生计费流量"。
+    # 自检会真发一次极小探针（max_tokens=1）验证"保存成功 ≠ 能用"。
+    "ai_verify_on_save": False,      # 保存配置时顺带自检（会出网）
+    "ai_verify_on_startup": False,   # 服务启动时自检（会出网；默认关，避免每次重启都计费）
+    "ai_verify_cache_ttl": 600,      # 自检结论缓存 TTL（秒），默认 10 分钟
+    # 探针超时（秒）。⚠️ 别照 /api/ai/models 的 8s 抄：那是**列清单**（实测 0.37s），
+    # 自检是**一次真实 chat 调用** —— 实测真实服务 max_tokens=1 也要 37.8s。
+    # 默认 45s（留余量）：宁可等久一点，也不把"慢但能用"误判成"连不上"。
+    "ai_verify_timeout": 45,
     "wakeup_enabled": False,
     "port": 9103,
     # ── 规则闸门 RuleGate（L1 纯规则短路，零 token）──

@@ -64,7 +64,7 @@ async def api_ai_providers():
             "type": "openai",
             "description": "OpenAI 兼容 API（DeepSeek / OpenAI / Claude / Gemini 等）",
             "env_vars": ["AC_AI_BASE_URL", "AC_AI_API_KEY", "AC_AI_MODEL"],
-            "default_base_url": "https://api.deepseek.com",
+            "default_base_url": "https://api.example.com",
             "default_model": "deepseek-chat",
         },
         {
@@ -188,12 +188,35 @@ async def api_config_status():
 
 @router.get("/api/config")
 async def api_get_config():
-    """返回当前配置（API Key 脱敏）。"""
+    """返回当前配置（API Key 脱敏）。
+
+    V-16 §四：额外回传三个自检开关与最近一次自检结论，供设置页显示
+    「✅ 已连通 / ⚠️ 保存了但连不上：<原因>」。结论只是**缓存里的最近一次**，
+    不在这里发请求（GET 不该产生计费流量）。
+    """
     cfg = load_config()
     safe = dict(cfg)
     if safe.get("ai_api_key"):
         safe["ai_api_key"] = mask_api_key(safe["ai_api_key"])
-    return {"config": safe}
+    return {
+        "config": safe,
+        "ai_verify": _last_verify_snapshot(cfg),
+    }
+
+
+def _last_verify_snapshot(cfg: dict) -> dict:
+    """最近一次自检结论（不改状态、不发请求）。"""
+    try:
+        from ..ai_verify import cache_info, cache_ttl
+        info = cache_info()
+        return {
+            "on_save": bool(cfg.get("ai_verify_on_save", False)),
+            "on_startup": bool(cfg.get("ai_verify_on_startup", False)),
+            "cache_ttl_s": int(cache_ttl(cfg)),
+            "cached_results": int(info.get("size") or 0),
+        }
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
 
 @router.post("/api/config")
 async def api_save_config(request: Request):
@@ -240,6 +263,13 @@ async def api_save_config(request: Request):
     if ai_mode == "remote" and not provider_type:
         return Utf8JSONResponse({"error": "ai_provider 不能为空"}, status_code=400)
     # 持久化配置
+    # ⚠️ V-16 §四 实测修正：自检开关先算出「本次生效值」再落盘 ——
+    #    否则 `_verify_after_save` 会拿**保存前**的 cfg 判断开关，
+    #    用户刚勾上「保存时自检」的那一次反而不自检（恰好是最需要自检的一次）。
+    _verify_on_save = bool(body.get("ai_verify_on_save", cfg.get("ai_verify_on_save", False)))
+    _verify_on_startup = bool(body.get("ai_verify_on_startup",
+                                       cfg.get("ai_verify_on_startup", False)))
+    _verify_cache_ttl = body.get("ai_verify_cache_ttl", cfg.get("ai_verify_cache_ttl", 600))
     # V-9 修复：env 值永不落盘覆盖——存在 AC_AI_API_KEY 时配置文件保存空 key，运行时仍取 env
     env_key = os.environ.get("AC_AI_API_KEY", "")
     persist_key = "" if env_key else (api_key if api_key else cfg.get("ai_api_key", ""))
@@ -254,6 +284,10 @@ async def api_save_config(request: Request):
         "ai_thinking": thinking,
         "wakeup_enabled": wakeup_enabled,
         "port": port,
+        # V-16 §四：自检开关随配置持久化（默认关；空值回退已有配置，避免被冲掉）
+        "ai_verify_on_save": _verify_on_save,
+        "ai_verify_on_startup": _verify_on_startup,
+        "ai_verify_cache_ttl": _verify_cache_ttl,
     })
     # 重新加载 AI Provider
     # V-18 修复：__main__ 副本属性可能缺失/为 None，一律 getattr 兜底，禁止裸访问抛 AttributeError
@@ -297,7 +331,7 @@ async def api_save_config(request: Request):
     # 改用几个增量字段，前端据此如实显示。
     #
     # P1-5 修正：`load_config()` 会合并 `DEFAULT_CONFIG`（ai_model 默认
-    # deepseek-v4-flash），所以**生效 model 永远非空**，按生效值判 model_missing
+    # example-model-flash），所以**生效 model 永远非空**，按生效值判 model_missing
     # 几乎不可达。真正有意义的是「**用户本次有没有真选**」——
     # 下拉停在"请选择模型"时提交的是空值，此时虽有默认兜底，也该告诉用户
     # 「你没选，实际用的是 XXX」，而不是让他以为自己选上了。
@@ -318,7 +352,57 @@ async def api_save_config(request: Request):
         "base_url": base_url,
         # 提交的 key 是否是掩码（已忽略、保留原 key）—— 前端据此提示
         "api_key_masked_ignored": _key_was_masked,
+        # ── V-16 §四 连通性自检（2026-10-05 负责人拍板实施）──────────────
+        # **保存成功 ≠ 能用**：真发一次极小探针（max_tokens=1）给出可读结论。
+        # ⚠️ 默认关（ai_verify_on_save=False）：负责人要求"避免默认产生计费流量"。
+        # 开了才出网；结论按 base_url+model+key 指纹缓存 TTL（默认 10 分钟）。
+        **await _verify_after_save(
+            {"ai_verify_on_save": _verify_on_save,
+             "ai_verify_cache_ttl": _verify_cache_ttl},
+            provider_type, base_url, api_key, model, ai_mode,
+            _new_provider is not None),
     }
+
+async def _verify_after_save(cfg: dict, provider_type: str,
+                             base_url: str, api_key: str, model: str,
+                             ai_mode: str, provider_loaded: bool) -> dict:
+    """保存后的连通性自检（V-16 §四）。**永不抛异常、绝不影响保存结果。**
+
+    返回要并入响应体的自检字段；未开启或无需自检时 `provider_verified=None`
+    （前端据此不显示结论）。
+
+    ⚠️ `cfg` 必须传**本次生效值**（不是 `load_config()` 的旧对象）——
+    实测踩过：传旧 cfg 会让"用户刚勾上保存时自检"的那一次不自检。
+
+    触发条件（任一不满足即跳过，避免无谓出网）：
+      - `ai_verify_on_save` 为真；
+      - `ai_mode=remote`（manual/off/local 不发云端探针）；
+      - provider 已加载成功（加载都失败就没必要再探）。
+    """
+    try:
+        _on = bool(cfg.get("ai_verify_on_save", False))
+        if not _on or ai_mode != "remote" or not provider_loaded:
+            return {"provider_verified": None, "provider_verify_reason": "",
+                    "provider_verified_at": 0}
+        from ..ai_verify import cache_ttl, clear_cache, verify_provider_async
+        # 关键：保存可能换了 key/base/model —— 旧结论立刻失效，否则会拿旧指纹的结论冒充
+        clear_cache()
+        actor = "user"
+        res = await verify_provider_async(provider_type, base_url, model, api_key,
+                                          use_cache=False, cfg=cfg, actor=actor)
+        return {
+            "provider_verified": bool(res.get("ok")),
+            "provider_verify_reason": str(res.get("reason") or ""),
+            "provider_verified_at": float(res.get("at") or 0),
+            "provider_verify_elapsed_ms": int(res.get("elapsed_ms") or 0),
+            "provider_verify_cache_ttl": int(cache_ttl(cfg)),
+        }
+    except Exception as _ve:
+        # 自检是附加信息，任何异常都不能让保存失败
+        print(f"[Config] 连通性自检失败（不影响保存）: {_ve}", flush=True)
+        return {"provider_verified": None,
+                "provider_verify_reason": f"自检本身出错：{type(_ve).__name__}",
+                "provider_verified_at": 0}
 
 @router.get("/api/ai/pending")
 async def api_ai_pending():

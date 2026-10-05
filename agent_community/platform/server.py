@@ -87,6 +87,7 @@ async def _app_lifespan(_app):
     except Exception as _e:
         print(f"[startup] load_state 失败: {_e}", flush=True)
     # 内部 AI 接管模式（remote/manual/off）与 manual 超时：任意启动方式均生效
+    _cfg = None
     try:
         _cfg = load_config()
         _mode = str(_cfg.get("ai_mode") or "remote").strip().lower()
@@ -102,6 +103,27 @@ async def _app_lifespan(_app):
               f"provider={ai_provider.provider_type if ai_provider else None}", flush=True)
     except Exception as _ce:
         print(f"[startup] ai_mode 初始化失败: {_ce}", flush=True)
+    # ── V-16 §四 启动连通性自检（2026-10-05 负责人拍板）──────────────
+    # ⚠️ 默认关（ai_verify_on_startup=False）：启动自检会真发一次极小探针，
+    #    负责人要求"避免默认产生计费流量"，故不默认开。
+    # 开了才探；**后台任务 + 永不抛异常**，绝不能拖慢/拖垮启动。
+    if bool((_cfg or {}).get("ai_verify_on_startup", False)):
+        async def _startup_verify() -> None:
+            try:
+                from .ai_verify import verify_provider_async
+                _r = await verify_provider_async(
+                    str(_cfg.get("ai_provider") or "openai"),
+                    str(_cfg.get("ai_base_url") or ""),
+                    str(_cfg.get("ai_model") or ""),
+                    str(_cfg.get("ai_api_key") or ""),
+                    cfg=_cfg, actor="system:startup")
+                print(f"[startup] AI 连通性自检: ok={_r.get('ok')} "
+                      f"model={_r.get('model')} reason={_r.get('reason') or '-'}", flush=True)
+            except Exception as _ve:
+                print(f"[startup] AI 连通性自检异常（不影响启动）: {_ve}", flush=True)
+        asyncio.create_task(_startup_verify())
+    else:
+        print("[startup] AI 连通性自检未开启（ai_verify_on_startup=False）", flush=True)
     task = asyncio.create_task(_api_outbox_poll_loop())
     task2 = asyncio.create_task(_leader_poll_loop())
     # 拉起已登记 harness 的桥子进程（bridge_supervisor），让 acp/file_poll 类 harness 能领取 pending 消息

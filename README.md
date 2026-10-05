@@ -111,7 +111,7 @@ agent-community agents list
 
 ```bash
 # 使用 DeepSeek
-agent-community start --wakeup --ai-provider openai --ai-model deepseek-chat --ai-api-key sk-xxx --ai-base-url https://api.deepseek.com/v1
+agent-community start --wakeup --ai-provider openai --ai-model deepseek-chat --ai-api-key sk-xxx --ai-base-url https://api.example.com/v1
 
 # 使用本地 Ollama
 agent-community start --wakeup --ai-provider ollama --ai-model qwen2.5:7b
@@ -120,7 +120,7 @@ agent-community start --wakeup --ai-provider ollama --ai-model qwen2.5:7b
 export AC_AI_PROVIDER=openai
 export AC_AI_MODEL=deepseek-chat
 export AC_AI_API_KEY=sk-xxx
-export AC_AI_BASE_URL=https://api.deepseek.com/v1
+export AC_AI_BASE_URL=https://api.example.com/v1
 agent-community start --wakeup
 ```
 

@@ -414,7 +414,7 @@ class AIProviderType(str, Enum):
 class AIProviderConfig(BaseModel):
     """AI Provider 配置（v6 新增）"""
     type: AIProviderType = AIProviderType.OPENAI
-    base_url: str = "https://api.deepseek.com"
+    base_url: str = "https://api.example.com"
     api_key: str = ""
     model: str = "deepseek-chat"
     callback_url: str = ""               # HTTP 回调地址（http_callback 类型专用）
