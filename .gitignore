@@ -31,10 +31,18 @@ config.local.json
 *.secret.json
 
 # ── 开发备份文件（禁止入库） ──
+# ⚠️ 2026-10-05：原有 *.backup / *.bak_* 都漏掉了 'AGENTS.md.backup.<时间戳>.<sha>' 这种
+#    "带后缀"的形态（*.backup 要求文件名以 .backup 结尾），publish_acv4.ps1 的
+#    `git add -A` 会把它提交进公开仓库。补 *.backup.* 兜住。
 *.bak
 *.backup
+*.backup.*
 *.bak_*
 *.old_*
 *.pre_ui*
 *.before_*
 *.wetware_backup
+
+# AOCI agent host integration (machine-bound; do not commit)
+opencode.json
+opencode.json.backup.*

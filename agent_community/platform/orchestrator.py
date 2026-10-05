@@ -541,7 +541,7 @@ class Orchestrator:
             agent_id = st.get("agent_id", "")
             capability = st.get("capability", "general")
 
-            # AI 常返回纯名称（如"测试甲"）而非规范 agent_id（如"harness-测试甲"），
+            # AI 常返回纯名称（如"示例Harness-A"）而非规范 agent_id（如"harness-示例Harness-A"），
             # 先做名称归一化：card.name / harness 后缀 / 直接前缀 三种形式均映射回 agents 的 key。
             if agent_id not in agents:
                 for aid, card in agents.items():

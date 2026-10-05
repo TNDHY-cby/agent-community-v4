@@ -179,8 +179,9 @@ DEFAULT_POLL_DIR = Path(os.environ.get("TEMP", ".")) / "agent_harness_bridge"
 def normalize_harness_id(hid: str) -> str:
     """规范化 harness_id：剥掉自带 harness- 前缀，避免 agent_id 出现 harness-harness-X 重复前缀。
 
-    桥模板注入的 harness_id 常为 'harness-测试甲'，注册拼接 f"harness-{hid}" 会得到
-    'harness-harness-测试甲'，导致 external_online 过滤与委托匹配错位。
+    桥模板注入的 harness_id 常自带 'harness-' 前缀（如 'harness-示例Harness-A'），
+    注册拼接 f"harness-{hid}" 会得到 'harness-harness-示例Harness-A'，
+    导致 external_online 过滤与委托匹配错位。
     """
     hid = (hid or "").strip()
     if hid.startswith("harness-"):
