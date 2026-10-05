@@ -1,0 +1,169 @@
+#AOCI-CODE-VOLUME: 1
+
+===D:/外端Agent生产合作社（External Agent Community）-oss/===
+.gitattributes[FV3T]: F:Git属性规则（LF/CRLF归一化、二进制标记、语言统计） | R:code:.gitignore | A:仓库根级声明配置，无代码入口 | S:换行符策略影响全部文本文件
+.gitignore[FV4T]: F:忽略规则（pycache/venv/日志/凭据/构建产物） | R:code:.gitattributes | A:仓库根级声明配置 | S:忽略规则直接决定版本控制收录范围
+AGENTS.md[SG8S]: F:平台内 AI Agent 协作规则与行为约束文档（任务执行/通信/安全边界） | R:- | A:项目根级 Agent 指令入口 | S:约束 Agent 行为边界，误读可能造成越权操作
+CHANGELOG.md[SV6S]: F:v4 版本演进变更记录（新增/修复/破坏性变更） | R:code:agent_community/cli.py | A:发布与追溯阅读入口 | S:变更记录需与发布版本保持对齐
+CONTRIBUTING.md[SQ5T]: F:贡献指南（开发流程、提交规范、社区协作方式） | R:- | A:贡献者流程入口 | S:约束外部贡献流程与代码质量门槛
+LICENSE[SV9L]: F:AGPL-3.0 许可证全文，授权范围与义务声明 | R:- | A:法律条款声明，无需运行 | S:修改后网络传播须开源，商用需合规审查
+README.md[SG8M]: F:项目总览、功能特性、快速开始、架构说明与使用指引 | R:code:agent_community/cli.py | A:项目文档入口 | S:文档需与当前功能保持一致，避免误导新用户
+config.example.json[FC3T]: F:配置文件示例：平台启动参数与端口模板 | R:code:agent_community/platform/config.py | A:配置键名（示例） | S:示例配置仅模板，缺省值由代码默认兜底
+harnesses.example.json[FC3S]: F:harness 注册示例：ACP 类与文件轮询类两份完整模板 | R:code:config.example.json | A:harness-a；harness-b | S:示例仅模板，wakeup_dir/api 字段为占位不可直接使用
+requirements.txt[FC4T]: F:运行时依赖声明：FastAPI/uvicorn/httpx/pydantic/click | R:code:agent_community/gui.py | A:依赖列表 | S:pywebview 为可选注释，不装也能用 CLI 与 Web
+start.py[EA6M]: F:一键启动器：参数解析、端口检查、GUI/后台模式、Ollama/Wakeup Agent 子进程拉起 | R:code:agent_community/platform/server.py | A:main；parse_args；check_port_available | S:默认端口 9103，GUI 默认开启，端口被占先报错退出
+工作间模式设计V5.md[SD8M]: F:V5 工作间设计：三级讨论、钩子协议、会话模型、唤醒专员与组长机制 | R:code:agent_community/platform/workshop.py | A:- | S:V5 与 v4 并行共存不动 orchestrator.handle_task，老板 6 项决策已确认
+
+===D:/外端Agent生产合作社/.github/ISSUE_TEMPLATE/===
+bug_report.yml[FQ4T]: F:Bug 报告结构化表单模板（复现步骤/环境/期望行为收集） | R:- | A:GitHub Issues 创建入口 | S:引导补齐环境与复现信息，避免无效单
+feature_request.yml[FQ4T]: F:功能需求结构化表单模板（场景/价值/验收标准收集） | R:- | A:GitHub Issues 创建入口 | S:引导说明使用场景与业务价值
+
+===D:/外端Agent生产合作社/agent_community/===
+__init__.py[LG5T]: F:包初始化与版本元数据声明 | R:- | A:agent_community 包导入入口 | S:保持轻量，避免循环导入
+a2a_server.py[IN8M]: F:A2A 协议暴露层：JSON-RPC 任务收发、Agent Card 发现、HTTP 服务 | R:code:agent_community/platform | A:/.well-known/agent-card.json；POST / | S:监听网络端口（默认9104），当前无鉴权
+cli.py[EV8L]: F:命令行入口：start/stop/status/task/task-result/harness list/agents list，日志统一落盘 | R:code:agent_community/config.py | A:python -m agent_community.cli start --wakeup --port 18920 --no-gui | S:从项目父目录启动避免 types.py 遮蔽；gui 依赖常缺
+config.py[FC8S]: F:配置加载/保存（DEFAULT_CONFIG、DPAPI 加密 API Key） | R:code:agent_community/cli.py | A:load_config/save_config | S:API Key 加密落盘；配置缺失回退默认
+grpc_gateway.py[IN6S]: F:可选 gRPC 网关：AgentCommunityServicer 封装注册/消息/任务/结果等平台 API | R:code:agent_community/mcp_server.py | A:AgentCommunityServicer；serve | S:默认不启用，需安装 grpcio 且显式配置监听端口
+gui.py[EU6S]: F:桌面 GUI 入口：pywebview 拉起 FastAPI 子进程并在本地窗口展示前端 | R:code:agent_community/server.py | A:AgentCommunityApp；main | S:依赖 pywebview，无 GUI 环境需走 CLI 模式
+mcp_server.py[IN7M]: F:零依赖 stdio MCP 服务：状态/任务/工作间/结果等平台能力暴露为 MCP 工具 | R:code:agent_community/platform | A:t_status；t_create_workshop；_handle；main | S:仅 stdio 传输不监听端口，消息按 JSON-RPC 2.0 解析
+sdk.py[EA6M]: F:Python SDK：AgentClient/StatefulAgentClient 封装平台 HTTP 接口 | R:code:agent_community/platform/server.py | A:AgentClient；StatefulAgentClient | S:请求失败返回异常对象不抛裸错，状态客户端自动携带会话
+shared_types.py[CN5T]: F:跨模块共享类型：SubTaskAssignment 等公共 dataclass | R:code:agent_community/sdk.py | A:SubTaskAssignment | S:类型被 sdk 与 platform 双侧引用，字段增改需同步
+
+===D:/外端Agent生产合作社/agent_community/agents/===
+__init__.py[LG4T]: F:内置 Agent 导出（PipeAgent/WakeupAgent/OllamaAgent） | R:code:agent_community/agents/pipe_agent.py | A:agent_community.agents 包导入入口 | S:新增 Agent 需同步登记 __all__
+ollama_agent.py[IA6S]: F:基于 Ollama 本地 LLM 的 Agent：注册、举手、协商、委托全流程，自动模型选择 | R:code:agent_community/agents/pipe_agent.py | A:python ollama_agent.py --server-url --ollama-host --ollama-model | S:依赖本地 Ollama 服务（默认11434），调用失败回退 pass
+pipe_agent.py[DW8M]: F:文件管道通信 Agent 基类：注册、轮询、广播举手、协商、委托执行与回报 | R:code:agent_community/agents/wakeup_agent.py | A:PipeAgent(agent_id,...).run() | S:LLM 回调注入决定能力，无回调则 pass-only
+wakeup_agent.py[DA8L]: F:v6 通用 AI 接入层唤醒 Agent：wakeup_task/classify_hands/wakeup_result/mutual_wakeup 路由与 AI 举手判断 | R:code:agent_community/agents/pipe_agent.py | A:WakeupAgent(ai_provider,...)；--ai-provider openai/ollama/http_callback | S:provider 失败返回空选择，不阻塞平台
+
+===D:/外端Agent生产合作社/agent_community/bridge_templates/cli_acp/===
+bridge.py.tmpl[DE8M]: F:ACP 类 harness 标准桥模板：注册、心跳、ACP 拉会话、读 hall.md 激活、任务派发与回报 | R:- | A:python bridge.py --url http://127.0.0.1:18920 | S:模板注入字段勿手改；会话持久化不关闭
+template.json[FE5T]: F:cli_acp 桥模板元数据（必填字段声明） | R:code:agent_community/bridge_templates/cli_acp/bridge.py.tmpl | A:平台桥生成渲染配置 | S:必填字段缺失时模板不可用
+
+===D:/外端Agent生产合作社/agent_community/bridge_templates/file_poll/===
+bridge.py.tmpl[DE7M]: F:文件轮询类 harness 桥模板：心跳、inbox 轮询、trigger 唤醒、回报转发 | R:code:agent_community/bridge_templates/file_poll/template.json | A:python bridge.py --url | S:依赖 harness 的 inbox 目录可写
+template.json[FE5T]: F:file_poll 桥模板元数据 | R:code:agent_community/bridge_templates/file_poll/bridge.py.tmpl | A:平台桥生成渲染配置 | S:字段与模板渲染变量保持一致
+
+===D:/外端Agent生产合作社/agent_community/bridge_templates/pending_poll/===
+bridge.py.tmpl[DE7M]: F:pending 队列轮询桥模板：任务领取、落盘、trigger 唤醒、心跳、回报转发 | R:code:agent_community/bridge_templates/pending_poll/template.json | A:python bridge.py --url | S:依赖平台 pending 接口返回
+template.json[FE5T]: F:pending_poll 桥模板元数据 | R:code:agent_community/bridge_templates/pending_poll/bridge.py.tmpl | A:平台桥生成渲染配置 | S:字段与模板渲染变量保持一致
+
+===D:/外端Agent生产合作社/agent_community/examples/===
+__init__.py[LG3T]: F:示例模块声明 | R:- | A:agent_community.examples 包导入入口 | S:保持轻量
+acp_harness_bridge.py[TE5M]: F:ACP 类 harness 桥参考实现：注册、心跳、会话持久化、任务轮询回报 | R:code:agent_community/platform/acp_harness_bridge.py | A:python -m agent_community.examples.acp_harness_bridge --url --harness-id | S:默认虚拟示例名，必须传 --harness-id 否则收不到任务
+filepoll_harness_bridge.py[TE5S]: F:文件轮询桥示例：inbox 扫描、trigger 唤醒、replies 回报转发、启动自检 | R:- | A:python filepoll_harness_bridge.py --harness-id --inbox --platform | S:默认虚拟示例名；WinError 5 沙箱拦截由自检暴露
+pending_poll_bridge.py[TE5M]: F:pending 轮询桥示例：任务领取、落盘、trigger 唤醒、回报转发 | R:- | A:python -m agent_community.examples.pending_poll_bridge --url --harness-id | S:默认虚拟示例名，必须传 --harness-id
+protocol_multi_access.py[IN6M]: F:HTTP/MCP/A2A 三协议接入演示与选择策略 | R:code:agent_community/a2a_server.py | A:python -m agent_community.examples.protocol_multi_access | S:演示多协议并存，生产环境需按场景取舍
+waker_with_deepseek.py[TW5S]: F:DeepSeek 驱动的唤醒示例：AI Provider 能力测试与 wakeup 全流程演示 | R:code:agent_community/platform/ai_provider.py | A:main；test_wakeup_flow | S:示例脚本，需配置 DeepSeek API 密钥且目标 harness 在线方可跑通
+
+===D:/外端Agent生产合作社/agent_community/frontend/===
+index.html[EU8L]: F:平台大厅前端：Hall 消息流、工作间列表、WebSocket 实时刷新与状态展示 | R:code:agent_community/frontend/workshop.html | A:connectWS；appendMessage；addToHall | S:依赖 /ws WebSocket 通道，断线 5s 自动重连，直开 file:// 无数据
+register.html[EU8L]: F:Harness 注册与管理前端：列表刷新、一键注册、桥验证、删除与模板复制 | R:code:agent_community/frontend/index.html | A:oneClickRegister；verifyBridge；delHarness | S:删除即时生效不可回滚，操作均走后端注册接口
+workshop.html[AU9L]: F:工作间前端：多 Agent 会话监控、聊天同步、任务面板与实时更新 | R:code:agent_community/frontend/index.html | A:openWorkshopView；wsvLoad；wsvChatSend | S:WS 断开自动重连，后端不可用时界面无数据且操作静默失败
+
+===D:/外端Agent生产合作社/agent_community/platform/===
+__init__.py[LG3T]: F:platform 包初始化声明 | R:- | A:agent_community.platform 导入入口 | S:保持轻量避免循环导入
+acp_harness_bridge.py[IN7M]: F:ACP 协议 harness 桥：AcpHarnessBridge 子进程 JSON-RPC 会话、prompt 与轮询 | R:code:agent_community/platform/harness_adapter.py | A:AcpHarnessBridge；AcpSession | S:会话持久化依赖桥进程存活，close 前不释放
+adapters.py[IN7S]: F:多传输适配：WS/HTTP/PIPE 通道封装，统一 send/wait/notify 接口 | R:code:agent_community/platform/harness_adapter.py | A:select_endpoint；http_call；PipeAdapter | S:发送失败返回 (False, 错误信息) 不抛异常
+ai_cache.py[CP5T]: F:AI 回复缓存：sha256 键读写，减少重复请求 | R:code:agent_community/platform/ai_provider.py | A:AICache；make_key | S:键由 prompt+model 哈希生成，内容变更即失效
+ai_external.py[IA7L]: F:外部 AI 接管通道：remote/manual/off/local 模式、请求记录与降级 | R:code:agent_community/platform/ai_provider.py | A:run_ai_call；ManualAIProvider；create_external_provider | S:manual 无产出由本机模型兜底，off 模式直接占位拒绝
+ai_provider.py[CA9L]: F:AI Provider 抽象与实现：OpenAI/Ollama/HTTP/Fake 及 Gate/Cache/Usage 包装链工厂 | R:code:agent_community/platform/ai_external.py | A:create_ai_provider；AIProvider；OpenAICompatibleProvider | S:包装链固定顺序，用量熔断与缓存拦截先于真实请求
+ai_usage.py[AC6S]: F:AI 用量统计与预算熔断：日预算计数，超限返回熔断占位 | R:code:agent_community/platform/ai_provider.py | A:AIUsage；daily_budget | S:超预算直接熔断拒绝而非降级，防费用失控
+api_wakeup.py[IS7S]: F:HTTP API 唤醒：探测/推送/outbox 轮询，SSRF 重定向与 scheme 校验 | R:code:agent_community/platform/adapters.py | A:probe_http_api；send_http_api_message；poll_outbox_replies | S:重定向与非白名单 scheme 一律拒绝，防 SSRF
+audit.py[CO5T]: F:轻量操作审计：环形缓冲持久化记录关键操作 | R:code:agent_community/platform/server.py | A:AuditLog；record；query | S:容量固定最旧自动覆盖，仅按 event/actor 查询
+bridge_factory.py[XE5T]: F:桥代码生成：模板渲染/必填校验/safe_slug 生成可部署桥脚本 | R:code:agent_community/bridge_templates | A:render；generate；safe_slug | S:必填字段缺失抛 BridgeTemplateError 拒绝生成
+bridge_supervisor.py[RR6S]: F:桥进程监管：批量启动/停止/心跳看护与平台同生命周期 | R:code:agent_community/platform/harness_launcher.py | A:start_harness_bridges；watch_harness_bridges | S:启动即记录桥文件，进程消亡由看护循环重启
+discussion_engine.py[AW8L]: F:讨论引擎：收敛驱动审查循环、拓扑排序与分层执行 | R:code:agent_community/platform/experience_v2.py | A:DiscussionEngine；propose；review；execute_layers | S:拓扑排序检测到环即拒绝执行，避免循环依赖
+experience_v2.py[AA6M]: F:经验库 v2：关键词抽取、完成奖励、信誉排序选人 | R:code:agent_community/platform/discussion_engine.py | A:apply_completion_rewards；rank_harnesses_by_reputation | S:信誉数据缺失回退均匀权重，不影响任务分发
+harness_adapter.py[IN9L]: F:Harness 外部接入适配：注册/心跳/唤醒/邀请/委托/审查双向桥接与会话管理 | R:code:agent_community/platform/protocol.py | A:HarnessBridge；HarnessSessionManager；build_activation_prompt | S:桥发送失败返回错误消息不抛异常，心跳超 60s 判离线
+harness_launcher.py[RS8S]: F:harness 进程启动：subprocess 拉起、上线轮询、启动日志与 RCE 命令校验 | R:code:agent_community/platform/harness_adapter.py | A:launch_harness；ensure_harness_online | S:acp_command 含 shell 元字符或解释器包装即拒绝启动
+identity.py[IS8T]: F:Agent-Token 身份凭证：HMAC-SHA256 签发/校验与请求头准入 | R:code:agent_community/config.py | A:issue_agent_token；verify_agent_token；check_request_token | S:旧 harness 无 token 放行，签发后强制携带否则 401/403
+interject_store.py[DM6S]: F:插话存储：pending 到 inserted/ignored/expired 状态机与 L1/L2 系统升级 | R:code:agent_community/platform/discussion_engine.py | A:InterjectStore；submit；system_interject | S:超 max_pending_cycles 未处理自动 expired 防堆积
+local_ai.py[RR4M]: F:本地推理兜底通道（已废弃）：端点探测/自启/chat/extract_json | R:code:agent_community/platform/ai_external.py | A:detect；chat；extract_json | S:2026-09-20 起废弃，ai_mode=remote 时不会进入调用路径
+mcp_client.py[IN6S]: F:MCP 客户端适配层：URL 校验、JSON-RPC POST、工具列表与工具调用封装 | R:code:agent_community/platform/orchestrator.py | A:McpError；validate_mcp_url；mcp_call_tool | S:URL 非 http(s) 或校验失败抛 McpError 拒绝，不静默降级
+memory.py[PA7M]: F:任务记忆与能力台账：TaskMemory 向量检索存取、CapabilityLedgerManager 信誉统计与最优 Agent 选择 | R:code:agent_community/platform/orchestrator.py | A:TaskMemory；search_by_text；CapabilityLedgerManager；get_best_agents | S:记忆持久化到本地文件，检索无命中返回空列表不抛异常
+orchestrator.py[AB9L]: F:任务编排核心：任务分析、在线过滤、能力匹配分配、执行记录与审查直连 | R:code:agent_community/platform/policy.py | A:Orchestrator；_analyze_task_full；_build_assignments；ranked_match | S:分配结果按评分降序，无在线 Agent 直接返回失败不重试
+policy.py[DS8L]: F:策略引擎：危险操作评估、审批队列、规则解析与审计记录 | R:code:agent_community/platform/orchestrator.py | A:PolicyEngine；evaluate；request；resolve | S:危险规则命中即 blocked 并写审计，审批项阻塞至 resolve 或超时
+protocol.py[LN9L]: F:平台核心协议模型：传输/消息/AgentCard/讨论室/任务与执行结果等 dataclass 定义 | R:code:agent_community/platform/orchestrator.py | A:TransportType；AgentCard；DiscussionRoom；Task；ExecutionResult | S:模型为 dataclass，to_dict 输出固定字段，未知字段静默丢弃
+protocol_catalog.py[LN4S]: F:协议目录：可用协议清单与 gRPC 可用性探测 | R:code:agent_community/platform/routers/protocols.py | A:get_protocol_catalog；get_available_protocol_ids | S:目录基于静态定义，gRPC 项按导入是否成功动态标记可用
+react_loop.py[KA6M]: F:ReAct 循环推理引擎：思考-行动-观察步骤循环、系统提示构建与 JSON 解析 | R:code:agent_community/platform/ai_provider.py | A:ReActLoop；LoopStep；LoopResult | S:超过最大步数强制终止，JSON 输出解析失败重试受限次数后退出
+rule_gate.py[DS6M]: F:纯规则闸门：零 token 拦截问候/状态/数学题等低价值请求，优化 AI 开销 | R:code:agent_community/platform/server.py | A:RuleGate；classify | S:仅规则匹配非安全策略，未命中一律放行
+server.py[AB9L]: F:平台主服务：FastAPI 应用、任务编排流、工作间/讨论室 API、harness 激活派发、R2 掉线回收与启动入口 | R:code:agent_community/platform/orchestrator.py | A:app；_orchestrated_flow；_ai_direct_response；_autonomy_recovery_loop | S:启动加载全部路由与状态，R2 掉线回收周期执行，手动模拟降级不影响主流程
+session_registry.py[PS6M]: F:会话注册表：Agent 会话登记、状态查询与单机落盘持久化 | R:code:agent_community/platform/state.py | A:SessionRegistry；register；get_session | S:会话数据落盘 JSON，进程重启后可从磁盘恢复
+state.py[CS6S]: F:跨模块共享状态单例：tasks/agents/workshops 等全局容器与 reset/snapshot | R:code:agent_community/platform/session_registry.py | A:reset；snapshot；S 命名空间 | S:模块级全局对象同一进程内唯一，双副本分裂问题已修复
+task_state_machine.py[AB7M]: F:任务分级状态机：L0/L1/L2 任务生命周期流转与插话判定 | R:code:agent_community/platform/routers/workshops_task.py | A:TaskStateMachine；transition；can_interject | S:非法状态迁移报错，插话按 max_pending_cycles 自动过期
+tool_registry.py[CR6S]: F:工具注册中心：ToolSchema/BaseTool/ToolRegistry 注册与按名执行 | R:code:agent_community/platform/react_loop.py | A:ToolRegistry；BaseTool；execute | S:未注册工具按名执行返回错误不抛异常，schema 为 OpenAI function calling 格式
+waker_protocol.py[LW6M]: F:唤醒协议实现：三种唤醒方式与 SSRF 防护校验 | R:code:agent_community/platform/wakeup_bridge.py | A:validate_target；WakeProtocol | S:非白名单目标或 scheme 非法直接拒绝，防 SSRF
+wakeup_bridge.py[LW5M]: F:互助唤醒桥：跨 Agent 唤醒分发与回退机制 | R:code:agent_community/platform/waker_protocol.py | A:WakeupBridge；wake | S:唤醒失败按协议回退，不阻塞调用方
+workshop.py[LW7M]: F:工作间数据模型：V5 工作间结构定义与最小竖切 CRUD | R:code:agent_community/platform/routers/workshops_lifecycle.py | A:Workshop；create；to_dict | S:数据模型 dataclass 输出固定字段，未知字段丢弃
+
+===D:/外端Agent生产合作社/agent_community/platform/core/===
+__init__.py[LG3T]: F:core 包初始化声明 | R:- | A:agent_community.platform.core 导入入口 | S:保持轻量避免循环导入
+security.py[SS9S]: F:安全工具：危险命令黑名单、DPAPI 加解密、密钥掩码、原子写盘 | R:code:agent_community/config.py | A:_is_dangerous；atomic_write_text；mask_api_key | S:危险命令黑名单拦截 shell 元字符与解释器包装，防 RCE
+
+===D:/外端Agent生产合作社/agent_community/platform/routers/===
+__init__.py[LG3T]: F:routers 包初始化声明 | R:- | A:agent_community.platform.routers 导入入口 | S:保持轻量避免循环导入
+audit.py[EO4T]: F:审计查询路由：按事件/执行者过滤最近操作记录 | R:code:agent_community/platform/audit.py | A:router；audit_query | S:仅支持 event/actor 过滤，limit 超上限自动截断
+config.py[EC6M]: F:配置与 AI 管理路由：配置读写/状态、Provider 列表、AI 待决与人工回复 | R:code:agent_community/platform/config.py | A:api_get_config；api_save_config；api_ai_reply | S:保存即重载生效，AI 待决回复经人工确认后才进入 Provider
+harness.py[EB5T]: F:harness 路由聚合入口：汇总注册/消息/桥/镜像等子路由 | R:code:agent_community/platform/routers/harness_register.py | A:router | S:仅聚合 include_router，无独立端点
+harness_bridge.py[EN7L]: F:harness 桥路由：桥测试/模板/生成/路径/验证/激活窗口与对端路由 | R:code:agent_community/platform/bridge_factory.py | A:harness_bridge_generate；harness_bridge_verify；harness_activate_window | S:桥生成缺失必填字段返回错误，激活窗口超时未确认自动失效
+harness_common.py[CI6S]: F:harness 路由共享辅助：状态值单例与 harness 身份校验 | R:code:agent_community/platform/identity.py | A:_sv；_harness_identity_check | S:身份校验失败即返回 401/403，未通过不进入业务处理
+harness_messaging.py[EM7M]: F:harness 消息与任务路由：消息发送、列表、pending 轮询、任务回报、API 探测与自动连接 | R:code:agent_community/platform/harness_adapter.py | A:harness_message；harness_task_result；harness_auto_connect | S:发送失败返回错误消息不抛异常，API 探测校验 scheme 防 SSRF
+harness_register.py[EI8L]: F:harness 注册全生命周期路由：预注册/探测/注册/启动/心跳/激活结果/注销 | R:code:agent_community/platform/harness_launcher.py | A:register_harness；api_harness_launch；harness_heartbeat；unregister_harness | S:注册前置探测，心跳超时判离线，DELETE 注销即时生效不可回滚
+mirror.py[EO5S]: F:harness 镜像监控路由：CDP 调试端口探测与协议级状态映射 | R:code:agent_community/platform/harness_adapter.py | A:harness_mirror；_mirror_by_cdp；_mirror_by_protocol | S:CDP 不可用时回退协议映射，双路失败返回空数据不报错
+plugins.py[EE6S]: F:插件管理路由：列表/添加/删除/调用与策略闸门 | R:code:agent_community/platform/policy.py | A:api_plugins_invoke；_policy_gate | S:调用前强制过策略闸门，被拒返回 403 不执行插件
+policy.py[EC6S]: F:策略管理路由：规则描述/待审批列表/人工裁决/热重载 | R:code:agent_community/platform/policy.py | A:api_policy_describe；api_policy_resolve；api_policy_reload | S:裁决必须带 decision 字段，pending 不存在返回 404
+protocol_brief.py[EN4T]: F:外端 AI 协议简报路由：输出平台能力与协议概要 | R:code:agent_community/platform/protocol_catalog.py | A:protocol_brief | S:简报实时组装，无可述状态时返回最小化概要
+protocols.py[EN4T]: F:协议目录 API 路由：返回可用协议清单 | R:code:agent_community/platform/protocol_catalog.py | A:list_protocols | S:仅透传静态目录，不触发协议探测
+workshops.py[EB5T]: F:工作间路由聚合入口：汇总生命周期/讨论/派工/任务等子路由 | R:code:agent_community/platform/routers/workshops_lifecycle.py | A:router | S:仅聚合 include_router，无独立端点
+workshops_assign.py[EW7M]: F:工作间组长派工路由：成员选择/派工/转向/确认与工作台 | R:code:agent_community/platform/routers/workshops_common.py | A:workshop_leader_assign；workshop_leader_redirect；workshop_select_members | S:成员未确认不可派工，转向清空未完成任务分配
+workshops_common.py[CW5T]: F:工作间路由共享辅助：组长选人/派工载荷构造与平台 URL 规范化 | R:code:agent_community/platform/routers/workshops_assign.py | A:_leader_pick_member；_leader_build_assign_payload | S:无状态纯函数，平台 URL 强制去尾斜杠防拼接重复
+workshops_discuss.py[EM7M]: F:工作间讨论路由：讨论/审查/继续/完成/启动与插话状态机 | R:code:agent_community/platform/interject_store.py | A:workshop_discuss；submit_interject；interject_break；sm_resume | S:插话超 max_pending_cycles 自动 expired，讨论状态机非法流转返回 409
+workshops_lifecycle.py[EB8M]: F:工作间生命周期路由：创建/列表/重命名/置顶/删除/stale 回收/模式与并行度 | R:code:agent_community/platform/server.py | A:create_workshop；delete_workshop；recycle_stale_workshops | S:删除即时生效不可回滚，stale 判定按未活跃时长阈值执行
+workshops_task.py[EW7M]: F:工作间任务路由：弯路复位/资源 CRUD/任务树节点增改与资源挂接 | R:code:agent_community/platform/memory.py | A:workshop_halt_and_reset；create_tree_node；attach_resource_to_node | S:halt-and-reset 清空任务记忆不可回滚，节点状态迁移受限集合校验
+
+===D:/外端Agent生产合作社/agent_community/platform/tools/===
+__init__.py[LI2T]: F:工具包子模块导出声明 | R:code:agent_community/platform/tool_registry.py | A:工具集合导入入口 | S:仅声明导出，无业务逻辑
+assistant_tools.py[CS7M]: F:平台助手工具集：LaunchHarnessTool/ProbeHarnessTool 等 harness 运维工具 | R:code:agent_community/platform/policy.py | A:LaunchHarnessTool；ProbeHarnessTool | S:LaunchHarness 真实 Popen 拉起进程，执行前过策略引擎
+bridge_tool.py[CH6S]: F:桥接工具：生成 harness 桥脚本并返回路径，供 AI 架桥 | R:code:agent_community/platform/bridge_factory.py | A:BridgeTool；generate_bridge | S:生成脚本写入磁盘，失败返回错误不抛异常
+file_tools.py[CS6S]: F:文件读写工具：ReadFileTool/WriteFileTool，限工作目录与敏感路径黑名单 | R:code:agent_community/platform/policy.py | A:ReadFileTool；WriteFileTool | S:写文件自动建父目录，敏感路径（.env/.ssh）拒绝访问
+shell_tool.py[CS7S]: F:Shell 执行工具：PowerShell 命令执行与危险命令黑名单拦截 | R:code:agent_community/platform/policy.py | A:ShellExecTool；_is_dangerous | S:危险命令（rm -rf/format 等）先被黑名单拦截，再叠加策略闸门
+web_tool.py[CN5S]: F:网页抓取工具：GET 请求正文提取，15 秒超时 | R:code:agent_community/platform/policy.py | A:WebFetchTool | S:仅支持 http/https GET，出网前过策略引擎
+
+===D:/外端Agent生产合作社/agent_community/proto/===
+agent_community.proto[LN4T]: F:A2A gRPC 协议定义：信封式消息与 RPC 服务声明 | R:code:agent_community/proto/ | A:AgentCommunityService；Message | S:proto 为 gRPC 绑定唯一事实源，字段变更需同步生成桩
+
+===D:/外端Agent生产合作社/agent_community/tools/===
+watchdog.py[CW6M]: F:R3 进程看门狗：harness/平台进程存活监测与自动拉起 | R:code:agent_community/platform/server.py | A:watch；restart；Watchdog | S:监测周期固定，进程失联超阈值才触发重启
+
+===D:/外端Agent生产合作社/design-docs/===
+Harness 执行联动框架设计.md[SD5M]: F:Harness 执行联动框架设计：启动/心跳/任务回报链路方案 | R:code:design-docs/Harness 接入 UI 框架设计.md | A:- | S:设计定稿文档，实现以设计稿为唯一事实源
+Harness 接入 UI 框架设计.md[SD5M]: F:Harness 接入 UI 设计：注册/管理/监控界面方案 | R:code:design-docs/Harness通用接入协议.md | A:- | S:设计稿含界面结构与交互流程，未含实现代码
+Harness通用接入协议.md[SD5S]: F:Harness 通用接入协议：注册/消息/桥协议约定 | R:code:agent_community/proto/agent_community.proto | A:- | S:协议描述与 proto 绑定互为参照，冲突以 proto 为准
+P2_gRPC传输实施方案.md[SD4S]: F:P2 gRPC 传输实施方案：暂缓方案与后续实施路径 | R:code:agent_community/proto/agent_community.proto | A:- | S:方案标记 P2 暂缓未实施，不可按已实施引用
+Tool Calling 框架设计.md[SD6M]: F:Tool Calling 框架设计：ReAct 循环、工具抽象与首批 4 工具方案 | R:code:agent_community/platform/react_loop.py | A:ReActLoop；ToolRegistry（设计稿） | S:设计已落地实现，接口以代码为准
+V13_Router拆分与状态注入设计.md[SD4S]: F:V13 技术债清偿设计：Router 二次拆分与状态访问收口方案 | R:code:agent_community/platform/state.py | A:- | S:设计待拍板未实现，仅设计稿无实现代码
+V14_安全治理策略引擎设计.md[SD6M]: F:V14 安全治理设计：ALLOW/DENY/ASK 策略引擎与审计扩容方案 | R:code:agent_community/platform/policy.py | A:PolicyEngine；Decision（设计稿） | S:第一片已实施（policy.py 落地），第二片未启动
+V15_工作间会话联动与三层桥设计.md[SD7M]: F:V15 设计稿：工作间会话联动与三层桥（ACP/HTTP/文件轮询）方案、会话注册表与进入状态机 | R:code:agent_community/platform/session_registry.py | A:- | S:设计定稿含三层桥与会话状态机，实现以 workshop.py/session_registry.py 为准
+取长补短成果回收设计.md[SD6M]: F:成果回收设计：identity/audit/mcp/a2a 挂接方案、验证矩阵与实施记录 | R:code:agent_community/platform/workshop.py | A:- | S:含 P1 挂接与验证矩阵，回收范围以实施记录为准
+多协议接入与前端落地设计.md[SD6M]: F:V-11 设计稿：协议轴实测、三副本分叉、规范偏差与协议目录方案 | R:code:agent_community/platform/server.py | A:- | S:设计稿含协议目录方案，规范偏差以实测为准
+安全披露_CDP镜像与密钥存储.md[SD5T]: F:安全披露：CDP 镜像与密钥存储风险说明 | R:code:agent_community/platform/core/security.py | A:- | S:披露文档描述风险与缓解，不承诺已全量修复
+工作间模式-parallel并行落地设计.md[SD6S]: F:工作间 parallel 并行模式落地设计：多会话并行分工方案 | R:code:agent_community/platform/workshop.py | A:- | S:设计定稿，parallel 模式实现遵循本稿
+平台设计总纲.md[SD8M]: F:平台设计总纲：架构分层、路由与设计稿索引的唯一权威汇总 | R:code:agent_community/platform/server.py | A:- | S:总纲为平台设计唯一权威汇总，冲突以总纲为准
+
+===D:/外端Agent生产合作社/docs/===
+roadmap.md[SD5S]: F:项目路线图：阶段计划与未完成项清单 | R:code:docs/ | A:- | S:未完成项不可按已实施引用，状态以代码为准
+silent-mode-orchestration-design.md[SD6M]: F:token_save 静默模式设计：server.py 六处改动点（静默判定/水位/超时心跳） | R:code:agent_community/platform/server.py | A:_is_silent_mode；_leader_digest；_sm_heartbeat | S:改动点全部在 server.py，静默工作间跳过 auto_retry 与 escalate_l1
+
+===D:/外端Agent生产合作社/dsh-tooling/===
+README.md[SD4S]: F:DSH 功能移植云端说明：五件事、skill-filesystem 硬需求与验证清单 | R:code:dsh-tooling/install-cloud.sh | A:- | S:脚本未在云端实机跑过，Windows 侧仅静态检查
+install-cloud.sh[EW5S]: F:云端一键安装：装技能/补 profile 补丁/装插件/装工作模式并替换占位符 | R:code:dsh-tooling/skills/ac-project-dev/SKILL.md | A:subst；die；say | S:profile 补丁有 .bak 备份，未实机验证，占位符替换失败会告警
+
+===D:/外端Agent生产合作社/dsh-tooling/presets/ac-dev-cloud/===
+cordis.patch.yml[SC5S]: F:合作社开发模式 preset 声明：身份人设、工具面与工作流插件组合 | R:code:dsh-tooling/presets/ac-dev-cloud/package.json | A:preset-acdev | S:人设禁止动态内容，__PROJECT_DIR__ 由安装脚本替换
+package.json[FC3T]: F:preset bundle 包声明：patch 指向 cordis.patch.yml | R:code:dsh-tooling/presets/ac-dev-cloud/cordis.patch.yml | A:dsh.bundle.patch | S:type=module，仅声明无逻辑
+
+===D:/外端Agent生产合作社/dsh-tooling/skills/ac-project-dev/===
+SKILL.md[SD6S]: F:项目开发手册技能（云端版）：启动/测试/代码要点/雷区/安全底线 | R:code:agent_community/platform/server.py | A:ac-project-dev | S:每条事实经源文件核实，端口约定 18920 唯一权威实例
+
+===D:/外端Agent生产合作社/dsh-tooling/skills/dsh-self-upgrade/===
+SKILL.md[SD6M]: F:DSH 自升级技能：preset 机制/skill 排查/插件安装/安全网/编码判定 | R:code:dsh-tooling/skills/ac-project-dev/SKILL.md | A:dsh-self-upgrade | S:结论来自 2026-10-02 实测，含 asar 路径坑与双 profile 并行的判别
