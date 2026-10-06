@@ -2,6 +2,30 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.7.0] - 2026-10-06
+
+gRPC 层鉴权与错误码语义化（V18）+ 公开仓库本地路径泄漏清理。
+
+### 新增
+- **gRPC 错误码语义化**：六条 RPC 的失败不再塌成 `UNKNOWN` —— 上游 400/401/403/404/429/500/503 分别映射
+  `INVALID_ARGUMENT` / `UNAUTHENTICATED` / `PERMISSION_DENIED` / `NOT_FOUND` / `RESOURCE_EXHAUSTED` /
+  `INTERNAL` / `UNAVAILABLE`；连接不可达 `UNAVAILABLE`；客户端 deadline 到期 `DEADLINE_EXCEEDED`；
+  坏的 `payload_json` `INVALID_ARGUMENT`（且不发往上游）。
+- **`agent_token` 透传**：三条带该字段的 RPC 把它注入 `x-agent-token` 头交由平台校验，
+  网关**不做二次校验**（单一校验来源不变）；字段为空则不注入，保留向后兼容。
+- **details 卫生**：对外错误文本剔除本地绝对路径与 Traceback、截断，并附 `upstream=<状态码>` 便于对账。
+- **deadline 贯通**：上游超时按"客户端是否设过 deadline"区分 `DEADLINE_EXCEEDED` 与 `UNAVAILABLE`。
+
+### 修复
+- **公开仓库本地路径泄漏**（自查发现）：清理 5 处本机绝对路径（注释/测试夹具/副本地图），
+  真实路径改为仅保留于不随仓库发布的本地文档。
+- **泄漏检查器两处盲区**：路径正则补齐私有根模式；扫描后缀由固定白名单改为**按文本性判断**
+  （`.bak_*` 等不再漏网）；新增"发布副本工作区无视忽略规则的私有路径残留"检查（堵住 gitignore 藏匿通道）。
+
+### 测试
+- gRPC 冒烟由 10 条扩至 **30 条**（错误码表驱动 / token 转发 / deadline / details 卫生），
+  变异验证 4/4 KILLED；回归全绿。
+
 ## [4.6.0] - 2026-10-06
 
 协议层补齐（gRPC 落地）+ 看门狗常驻守护 + 版本号单一真源 + 一批真实缺陷修复。
