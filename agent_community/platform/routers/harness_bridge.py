@@ -21,6 +21,16 @@ from ..audit import audit_log as _audit_log
 
 router = APIRouter()
 
+# ── 桥落盘根目录（2026-10-06 提为模块级常量，为的是可被测试隔离）──────────
+# 原来在每个用到的地方**按 __file__ 现算**（`Path(__file__).resolve().parent.parent / "bridges"`），
+# 于是 `agent_community/tests/conftest.py` 的 `isolate_data_dirs` **patch 不到它** ——
+# 测试（test_policy_wiring_bridge 的桩）会真的往**真实仓库**的
+# `agent_community/platform/bridges/h1/` 落盘（HANDOVER §13.8 记的那个缺陷）。
+# 提成模块级常量后，conftest 直接 monkeypatch 本常量即可隔离；生产行为零变化。
+_PKG_ROOT = Path(__file__).resolve().parent.parent          # <repo>/agent_community
+BRIDGES_ROOT = _PKG_ROOT / "bridges"                        # <repo>/agent_community/platform/bridges
+
+
 @router.post("/api/harness/bridge-test")
 async def harness_bridge_test(request: Request):
     _audit_log.record("harness.bridge.test", actor="user", target="", detail="桥通道测试")
@@ -179,7 +189,7 @@ async def harness_bridge_generate(harness_id: str, request: Request):
     elif template == "pending_poll":
         work_dir = (body.get("work_dir") or "").strip()
         if not work_dir:
-            work_dir = str(Path(__file__).resolve().parent.parent / "bridges" / safe_slug(harness_id))
+            work_dir = str(BRIDGES_ROOT / safe_slug(harness_id))
         params = {
             "HARNESS_ID": harness_id,
             "WORK_DIR": work_dir,
@@ -188,7 +198,7 @@ async def harness_bridge_generate(harness_id: str, request: Request):
         }
     else:
         return Utf8JSONResponse({"error": f"暂不支持自动生成模板: {template}"}, status_code=400)
-    bridges_root = Path(__file__).resolve().parent.parent / "bridges"
+    bridges_root = BRIDGES_ROOT          # 模块级常量，测试可 monkeypatch（见文件头说明）
     if out_dir:
         # V-6 修复：out_dir 必须位于平台 bridges 根目录内，防任意文件写入
         p = Path(out_dir)

@@ -205,6 +205,20 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     if hl is not None:
         monkeypatch.setattr(hl, "DATA_DIR", tmp, raising=False)
 
+    # 5b) 平台桥落盘根目录 `agent_community/platform/bridges/`
+    #     （2026-10-06 补：test_policy_wiring_bridge 的桩会经
+    #       routers/harness_bridge.py 往**真实仓库**的 bridges/h1/ 落盘，
+    #       发布前"工作树必须干净"闸门与 HANDOVER §13.8 都记了这个缺陷。
+    #       该模块的落点已提为模块级常量 BRIDGES_ROOT，这里直接重定向到 tmp；
+    #       另两个同源落点（tools/bridge_tool、routers/harness_messaging 的默认 work_dir）
+    #       一并重定向，避免同类回归。）
+    hb = _mod("agent_community.platform.routers.harness_bridge")
+    if hb is not None:
+        monkeypatch.setattr(hb, "BRIDGES_ROOT", tmp / "platform_bridges", raising=False)
+    bt = _mod("agent_community.platform.tools.bridge_tool")
+    if bt is not None:
+        monkeypatch.setattr(bt, "_BRIDGES_ROOT", tmp / "platform_bridges", raising=False)
+
     # 6) **用户级配置** ~/.agent_community/config.json
     #    （2026-10-04 事故：测试调 POST /api/config 直接把真实配置覆写，
     #      连 DPAPI 加密的 AI API Key 一起换成测试值 `"k"`，**不可恢复**。

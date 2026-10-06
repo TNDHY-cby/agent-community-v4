@@ -111,7 +111,7 @@ __init__.py[LG3T]: F:routers 包初始化声明 | R:- | A:agent_community.platfo
 audit.py[EO4T]: F:审计查询路由：按事件/执行者过滤最近操作记录 | R:code:agent_community/platform/audit.py | A:router；audit_query | S:仅支持 event/actor 过滤，limit 超上限自动截断
 config.py[EC6M]: F:配置与 AI 管理路由：配置读写/状态、Provider 列表、模型清单、连通性自检与 AI 待决回复 | R:code:agent_community/platform/config.py | A:GET/POST /api/config；GET /api/ai/models；_verify_after_save | S:自检开关须传本次生效值否则刚勾上的那次不自检；门禁字段清空需显式值
 harness.py[EB5T]: F:harness 路由聚合入口：汇总注册/消息/桥/镜像等子路由 | R:code:agent_community/platform/routers/harness_register.py | A:router | S:仅聚合 include_router，无独立端点
-harness_bridge.py[EN7L]: F:harness 桥路由：桥测试、模板列表、桥生成、路径登记、验证与激活窗口 | R:code:agent_community/platform/bridge_factory.py | A:harness_bridge_generate；harness_bridge_verify；harness_activate_window | S:桥生成缺必填字段即报错；激活窗口超时未确认自动失效
+harness_bridge.py[EN7L]: F:harness 桥路由：桥测试、模板列表、桥生成、路径登记、验证与激活窗口 | R:code:agent_community/platform/bridge_factory.py | A:harness_bridge_generate；harness_bridge_verify；harness_activate_window；BRIDGES_ROOT | S:落盘根提为模块级常量 BRIDGES_ROOT（供测试隔离，conftest 会 monkeypatch 掉）；out_dir 必须在其内，防任意写入
 harness_common.py[CI6S]: F:harness 路由共享辅助：状态值单例与 harness 身份校验 | R:code:agent_community/platform/identity.py | A:_sv；_harness_identity_check | S:身份校验失败即返回 401/403，未通过不进入业务处理
 harness_messaging.py[EM7M]: F:harness 消息与任务路由：消息发送、列表、pending 轮询、任务回报、API 探测与自动连接 | R:code:agent_community/platform/harness_adapter.py | A:harness_message；harness_task_result；harness_auto_connect；_dispatch_to_harness | S:发送失败回错误消息不抛异常；队列分支须先判桥存活，不得无条件假成功
 harness_register.py[EI8L]: F:harness 注册全生命周期路由：预注册/探测/注册/启动/心跳/激活结果/注销 | R:code:agent_community/platform/harness_launcher.py | A:register_harness；harness_heartbeat；unregister_harness；bridge_template 采集 | S:注册期采集 L2 桥模板；注销全关该 harness 会话并间接发起关闭请求，不可回滚

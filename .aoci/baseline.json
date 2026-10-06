@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-04T15:04:59Z",
-  "updated_at": "2026-10-05T14:19:40Z",
+  "updated_at": "2026-10-06T01:44:58Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -446,9 +446,9 @@
     },
     "agent_community/platform/routers/harness_bridge.py": {
       "role": "index",
-      "sha256": "3ae67c0734dd0ffc8d07214016418a0aa99c0a23d53a5198e353d638efa149e9",
-      "size": 24628,
-      "normalized_sha256": "1ff418a62f1a228aa566dd3a47861204efdc728d145f002555529e818f4fb87a"
+      "sha256": "6fef6a9545ac971d123112cf93af8bc778ec60194c7512181a77a00911b42d47",
+      "size": 25440,
+      "normalized_sha256": "a0887cd5eae33e31d0e8fa3bf528ae5b28286682f61bcf342dc577ba4fe8309c"
     },
     "agent_community/platform/routers/harness_common.py": {
       "role": "index",
@@ -656,9 +656,9 @@
     },
     "agent_community/tests/conftest.py": {
       "role": "observe",
-      "sha256": "a1f3445d0dce53834d6981f8ad65a9ffedb601b243efc2999eebc81d6b56deed",
-      "size": 10287,
-      "normalized_sha256": "a1f3445d0dce53834d6981f8ad65a9ffedb601b243efc2999eebc81d6b56deed"
+      "sha256": "4c1c5c605d83acbdc09864bead94d509de53e4528582ed4ed4bb9e8b600226ab",
+      "size": 11217,
+      "normalized_sha256": "4c1c5c605d83acbdc09864bead94d509de53e4528582ed4ed4bb9e8b600226ab"
     },
     "agent_community/tests/test_activation_timeout.py": {
       "role": "observe",
@@ -848,9 +848,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "fd96739d5249387f04e59927fb15cd675235c22b9032b3ff23c642d45faf73bd",
-      "size": 37219,
-      "normalized_sha256": "fd96739d5249387f04e59927fb15cd675235c22b9032b3ff23c642d45faf73bd"
+      "sha256": "746d5627b27a5a01f13959492a2d33f713669b210f362cb00ae1ee4c158b0a85",
+      "size": 37298,
+      "normalized_sha256": "746d5627b27a5a01f13959492a2d33f713669b210f362cb00ae1ee4c158b0a85"
     },
     "aoci.meta.txt": {
       "role": "index",
