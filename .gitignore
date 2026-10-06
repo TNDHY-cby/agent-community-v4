@@ -54,3 +54,12 @@ opencode.json.backup.*
 # test-only h1/ and *.tmp are ignored; real bridges stay versioned.
 agent_community/platform/bridges/h1/
 agent_community/platform/bridges/**/*.tmp
+
+# 2026-10-06: AOCI cognition index is a LOCAL BUILD ARTIFACT, not source.
+# Per project decision: the repo stores sources only; the index can be rebuilt
+# locally (see tools / 03-索引构建脚本). Do NOT commit it back.
+aoci.txt
+aoci.meta.txt
+aoci.code.txt
+aoci.database.txt
+.aoci/
