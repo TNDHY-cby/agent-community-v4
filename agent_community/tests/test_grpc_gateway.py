@@ -16,6 +16,7 @@ import json
 import os
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -33,6 +34,10 @@ from agent_community.proto import (  # noqa: E402
 # ── 假平台 REST：记录收到的请求，返回可断言的响应 ──────────────────
 CALLS: list[dict] = []
 
+# V18 §7.1/§7.3：让测试能把假 REST 调成任意状态码/任意慢响应（不改默认正常行为）
+# status=None → 走正常按路径分支；否则一律按 SCENARIO 回
+SCENARIO: dict = {"status": None, "body": None, "sleep": 0.0}
+
 
 class _H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -47,13 +52,39 @@ class _H(BaseHTTPRequestHandler):
 
     def _record(self, body: dict | None):
         CALLS.append({"method": self.command, "path": self.path,
-                      "auth": self.headers.get("Authorization", ""), "body": body})
+                      "auth": self.headers.get("Authorization", ""),
+                      "agent_token": self.headers.get("x-agent-token", ""),
+                      "body": body})
+
+    def _maybe_scenario(self, body: dict | None) -> bool:
+        """V18：测试把状态码/延迟调成任意值时按 SCENARIO 回（返回 True 表示已处理）。
+
+        `body` 是 str 时按**纯文本**回（用来覆盖"上游返回非 JSON 体"的分支）。
+        """
+        if SCENARIO["status"] is None:
+            return False
+        if SCENARIO["sleep"]:
+            time.sleep(SCENARIO["sleep"])
+        payload = SCENARIO["body"]
+        if isinstance(payload, str):
+            raw = payload.encode("utf-8")
+            self.send_response(int(SCENARIO["status"]))
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+        else:
+            self._reply(payload if payload is not None else {"error": "scenario"},
+                        int(SCENARIO["status"]))
+        return True
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(n).decode("utf-8") if n else ""
         body = json.loads(raw) if raw else None
         self._record(body)
+        if self._maybe_scenario(body):
+            return
         if self.path == "/api/harness/register":
             self._reply({"success": True, "agent_token": "tok-xyz", "echo": body})
         elif self.path == "/api/harness/message":
@@ -67,6 +98,8 @@ class _H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self._record(None)
+        if self._maybe_scenario(None):
+            return
         if self.path.startswith("/api/task/"):
             self._reply({"task_id": self.path.rsplit("/", 1)[-1], "status": "working"})
         elif self.path == "/api/protocols":
@@ -95,6 +128,7 @@ def fake_rest():
 def gateway(fake_rest, monkeypatch):
     """把网关的 BASE_URL/TOKEN 指向假 REST，并起一个真 gRPC server。"""
     CALLS.clear()
+    SCENARIO.update(status=None, body=None, sleep=0.0)
     monkeypatch.setattr(gw, "BASE_URL", fake_rest)
     monkeypatch.setattr(gw, "TOKEN", "test-token")
     server, bound = gw.build_server(0)
@@ -182,3 +216,139 @@ class TestEdges:
             assert isinstance(bound, int) and bound > 0
         finally:
             server.stop(0)
+
+
+
+# ── 3. V18 §7.1：错误码映射（表驱动）───────────────────────────────
+class TestErrorMapping:
+    """上游 HTTP 状态 → gRPC 状态码的映射（设计稿 §5.1）。
+
+    这组用例锁的是"失败有语义"：修前所有失败都塌成 UNKNOWN，客户端无法分支。
+    """
+
+    @pytest.mark.parametrize("upstream,expect", [
+        (400, grpc.StatusCode.INVALID_ARGUMENT),
+        (401, grpc.StatusCode.UNAUTHENTICATED),
+        (403, grpc.StatusCode.PERMISSION_DENIED),
+        (404, grpc.StatusCode.NOT_FOUND),
+        (409, grpc.StatusCode.ALREADY_EXISTS),
+        (429, grpc.StatusCode.RESOURCE_EXHAUSTED),
+        (500, grpc.StatusCode.INTERNAL),
+        (503, grpc.StatusCode.UNAVAILABLE),
+        (418, grpc.StatusCode.INTERNAL),          # 未列出 → 兜底 INTERNAL
+    ])
+    def test_upstream_status_maps_to_grpc_code(self, stub, upstream, expect):
+        SCENARIO.update(status=upstream, body={"error": f"上游理由<{upstream}>"},
+                        sleep=0.0)
+        with pytest.raises(grpc.RpcError) as ei:
+            stub.GetTask(pb2.GetTaskRequest(task_id="t"))
+        assert ei.value.code() == expect, f"{upstream} 应映射 {expect}"
+        det = str(ei.value.details() or "")
+        assert f"upstream={upstream}" in det, "details 必须带上游状态码便于对账"
+        assert f"上游理由<{upstream}>" in det
+
+    def test_not_found_details_carry_upstream_message(self, stub):
+        """D1 的直接靶点：修前是 UNKNOWN + 'HTTP Error 404'。"""
+        SCENARIO.update(status=404, body={"error": "任务不存在"}, sleep=0.0)
+        with pytest.raises(grpc.RpcError) as ei:
+            stub.GetTask(pb2.GetTaskRequest(task_id="__none__"))
+        assert ei.value.code() == grpc.StatusCode.NOT_FOUND
+        det = str(ei.value.details() or "")
+        assert "任务不存在" in det and "upstream=404" in det
+
+    def test_connection_refused_maps_unavailable(self, gateway, monkeypatch):
+        """D3：平台不可达不得塌成 UNKNOWN。"""
+        monkeypatch.setattr(gw, "BASE_URL", "http://127.0.0.1:1")
+        ch = grpc.insecure_channel(f"127.0.0.1:{gateway}")
+        try:
+            grpc.channel_ready_future(ch).result(timeout=10)
+            with pytest.raises(grpc.RpcError) as ei:
+                pb2_grpc.AgentCommunityStub(ch).ListProtocols(pb2.ProtocolsRequest())
+            assert ei.value.code() == grpc.StatusCode.UNAVAILABLE
+        finally:
+            ch.close()
+
+    def test_invalid_payload_json_is_invalid_argument_and_not_forwarded(self, stub):
+        SCENARIO.update(status=None)
+        with pytest.raises(grpc.RpcError) as ei:
+            stub.SendMessage(pb2.HarnessMessage(payload_json="{not json"))
+        assert ei.value.code() == grpc.StatusCode.INVALID_ARGUMENT
+        assert "payload_json" in str(ei.value.details())
+        assert not CALLS, "坏 JSON 不得发往上游"
+
+
+# ── 4. V18 §7.2：agent_token 转发（R1/R3/R4）──────────────────────
+class TestTokenForwarding:
+    def test_agent_token_forwarded_as_header(self, stub):
+        """D2：proto 里的 agent_token 必须变成平台认的 x-agent-token 头。"""
+        out = stub.SendMessage(pb2.HarnessMessage(payload_json='{"harness_id":"h1"}',
+                                                 agent_token="tok-abc"))
+        assert out.ok is True
+        assert CALLS[-1]["agent_token"] == "tok-abc"
+
+    def test_empty_token_omits_header(self, stub):
+        """R1：为空**不注入** —— 继承平台"未签发放行"的向后兼容。"""
+        stub.SendMessage(pb2.HarnessMessage(payload_json='{"harness_id":"h1"}', agent_token=""))
+        assert CALLS[-1]["agent_token"] == ""
+
+    def test_submit_task_forwards_token(self, stub):
+        """拍板 ①：SubmitTask 虽然后端当前不校验 P1，也一并转发（一致性）。"""
+        stub.SubmitTask(pb2.SubmitTaskRequest(payload_json='{"mode":"parallel"}',
+                                             agent_token="tok-x"))
+        assert CALLS[-1]["agent_token"] == "tok-x"
+
+    def test_gateway_does_not_verify_locally(self, stub):
+        """R3：网关**不本地校验** —— 假 token 照常转发，平台回 401 时才翻译成 UNAUTHENTICATED。
+
+        这条同时守住 R4：401 不得被改写成别的码。
+        """
+        SCENARIO.update(status=401, body={"error": "缺少身份凭证头 x-agent-token"}, sleep=0.0)
+        with pytest.raises(grpc.RpcError) as ei:
+            stub.SendMessage(pb2.HarnessMessage(payload_json='{"harness_id":"h1"}',
+                                                 agent_token="bogus"))
+        assert CALLS and CALLS[-1]["agent_token"] == "bogus", "网关不得在本地把请求毙掉"
+        assert ei.value.code() == grpc.StatusCode.UNAUTHENTICATED
+
+    def test_list_protocols_and_gettask_never_inject_token(self, stub):
+        """R2：不涉及该字段的 RPC 不得注入头。"""
+        stub.ListProtocols(pb2.ProtocolsRequest())
+        stub.GetTask(pb2.GetTaskRequest(task_id="t"))
+        assert CALLS, "应有上游调用记录"
+        for c in CALLS:
+            assert c["agent_token"] == ""
+
+
+# ── 5. V18 §7.3：deadline 与 details 卫生 ──────────────────────────
+class TestDeadlineAndHygiene:
+    def test_client_deadline_exceeded(self, stub):
+        """客户端设 deadline 且上游慢 → DEADLINE_EXCEEDED（不是 UNKNOWN，也不是干等到默认超时）。"""
+        SCENARIO.update(status=200, body={"status": "running"}, sleep=3.0)
+        with pytest.raises(grpc.RpcError) as ei:
+            stub.ListProtocols(pb2.ProtocolsRequest(), timeout=0.5)
+        assert ei.value.code() == grpc.StatusCode.DEADLINE_EXCEEDED
+
+    def test_details_hide_local_paths_and_tracebacks(self, stub):
+        """卫生：details 里不得出现本地绝对路径与 Traceback（对外纪律）。"""
+        bad = ('Traceback (most recent call last):\n'
+               '  File "D:\\proj\\app.py", line 1, in <module>\n'
+               'RuntimeError: boom at D:\\proj\\app.py')
+        SCENARIO.update(status=500, body={"error": bad}, sleep=0.0)
+        with pytest.raises(grpc.RpcError) as ei:
+            stub.GetTask(pb2.GetTaskRequest(task_id="t"))
+        det = str(ei.value.details() or "")
+        assert ei.value.code() == grpc.StatusCode.INTERNAL
+        assert "Traceback" not in det and "D:" not in det, det
+        assert "upstream=500" in det
+        assert len(det) <= 300, "details 必须截断"
+
+    def test_upstream_raw_body_fallback_still_sanitized(self, stub):
+        """上游返回**非 JSON** 体（raw 分支）也要走同一套卫生与映射。"""
+        SCENARIO.update(status=502,
+                        body="boom at D:\\x\\y Traceback (most recent call last)",
+                        sleep=0.0)
+        with pytest.raises(grpc.RpcError) as ei:
+            stub.ListProtocols(pb2.ProtocolsRequest())
+        assert ei.value.code() == grpc.StatusCode.UNAVAILABLE
+        det = str(ei.value.details() or "")
+        assert "Traceback" not in det and "D:" not in det, det
+        assert "upstream=502" in det
