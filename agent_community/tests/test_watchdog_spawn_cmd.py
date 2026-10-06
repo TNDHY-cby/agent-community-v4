@@ -3,7 +3,7 @@
 
 锁定的是**真实踩到的回归**：本仓库路径含空格（`…（External Agent Community）`），
 原先 `str.split()` 会把含空格的路径切两半 → 子进程报
-`can't open file 'D:\\DSH工作区1\\外端Agent生产合作社（External'`。
+`can't open file 'D:\\my work\\agent-community\\temp'`。
 """
 from __future__ import annotations
 
@@ -39,10 +39,12 @@ class TestSplitSpawnCmd:
 
     def test_quoted_path_with_spaces_stays_one_token(self):
         """带引号且含空格的路径必须保持**单个** token（本次修的正是这条）。"""
-        s = r'python "D:\DSH工作区1\外端Agent生产合作社（External Agent Community）\temp\fake_service.py" 18921'
+        # 用含空格的**中性**路径作夹具：只需表达"路径含空格"这一属性，
+        # 不得写入任何本机真实绝对路径（公开仓库纪律）。
+        s = r'python "D:\my work\agent-community\temp\fake_service.py" 18921'
         toks = wd._split_spawn_cmd(s)
         assert len(toks) == 3, toks
-        assert toks[1] == (r"D:\DSH工作区1\外端Agent生产合作社（External Agent Community）"
+        assert toks[1] == (r"D:\my work\agent-community"
                            r"\temp\fake_service.py")
         assert toks[2] == "18921"
 

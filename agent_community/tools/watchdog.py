@@ -161,13 +161,13 @@ def _split_spawn_cmd(s: str) -> list[str]:
     """切分 `--spawn-cmd` 模板。支持**带引号、路径含空格**的写法。
 
     ⚠️ 2026-10-06 修：原先直接用 `str.split()` 按空白切分，于是
-    `--spawn-cmd "python D:\\...\\External Agent Community\\x.py 18921"`
+    `--spawn-cmd "python D:\\my work\\agent-community\\x.py 18921"`
     会把含空格的路径切成两半，子进程报
-    `python.exe: can't open file 'D:\\DSH工作区1\\外端Agent生产合作社（External'`。
+    `python.exe: can't open file 'D:\\my work\\agent'`。
     **本仓库路径本身含空格**（`…（External Agent Community）`），所以这不是纸上风险：
     用路径当拉起目标的场景必踩（实测：子进程秒退，看门狗反复重试）。
     修法：用 shlex 尊重引号，但取 `posix=False`（否则反斜杠会被当转义吞掉，
-    Windows 路径 `D:\\DSH` 会变成 `DSH`），再手工剥掉成对的外层引号。
+    Windows 路径 `D:\\dir\\sub` 会变成 `dir\\sub`），再手工剥掉成对的外层引号。
     无引号且无空格的旧写法行为完全不变（向后兼容）。
     """
     try:

@@ -29,10 +29,10 @@
 
 | 副本 | 路径 | git | 说明 |
 |---|---|---|---|
-| **开发副本（这里）** | `D:\DSH工作区1\外端Agent生产合作社（External Agent Community）` | 有（本地，**无 remote**） | 实际开发在这里 |
-| **发布副本（开源）** | `D:\外端Agent生产合作社（External Agent Community）-oss` | 有（`origin/master`，与 dev 已同步至 `2a25611`） | 只由 `publish_acv4.ps1` 单向推入 |
-| ⚠️ 已退休副本 | `D:\外端Agent生产合作社（External Agent Community）.retired-20261002` | 无 | 2026-10-02 退休，架构停在 V-9 拆包之前。**P0/P1/P2 成果已由 V-10 回收入主线**，此副本仅存档 |
-| 另一条线 | `D:\OutAgentsCommunity` | — | 独立项目线（**代码零回收价值**，dev 是超集；仅 2 份全盘唯一文档可捞），勿混 |
+| **开发副本（这里）** | `<开发副本根目录>`（真实路径只写在 dev-only 的 HANDOVER.md 与项目技能手册里，**不进公开仓库**） | 有（本地，**无 remote**） | 实际开发在这里 |
+| **发布副本（开源）** | `<发布副本根目录>`（同上，真实路径 dev-only） | 有（`origin/master`，与 dev 已同步至 `2a25611`） | 只由 `publish_acv4.ps1` 单向推入 |
+| ⚠️ 已退休副本 | `<退休副本根目录>`（同上，真实路径 dev-only） | 无 | 2026-10-02 退休，架构停在 V-9 拆包之前。**P0/P1/P2 成果已由 V-10 回收入主线**，此副本仅存档 |
+| 另一条线 | `<另一条线根目录>`（同上，真实路径 dev-only） | — | 独立项目线（**代码零回收价值**，dev 是超集；仅 2 份全盘唯一文档可捞），勿混 |
 
 - ⚠️ `publish_acv4.ps1` **只同步 `agent_community` 一个子目录**；根文档与 `design-docs/` 不进发布副本，要单独处理。
 - ⚠️ 发布脚本已带**反向分叉闸**（oss 独有代码文件 → 中止），防止 robocopy 静默摧毁 oss 上的独有成果。
@@ -45,7 +45,7 @@
 ## 最快上手
 
 ```powershell
-cd "D:\DSH工作区1\外端Agent生产合作社（External Agent Community）"
+cd "<开发副本根目录>"   # 真实路径见 HANDOVER.md / 项目技能手册（不进公开仓库）
 python -m agent_community.gui --port 18920            # 桌面窗口（日常开发）
 python -m agent_community.platform.server --port 18920 # 纯后端（代码默认 9103）
 python -m pytest tests/security_regression.py -v       # 安全回归（需服务在跑）
