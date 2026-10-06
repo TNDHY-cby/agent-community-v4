@@ -140,7 +140,7 @@ web_tool.py[CN5S]: F:网页抓取工具：GET 请求正文提取，15 秒超时 
 agent_community.proto[LN4T]: F:A2A gRPC 协议定义：信封式消息与 RPC 服务声明 | R:code:agent_community/proto/ | A:AgentCommunityService；Message | S:proto 为 gRPC 绑定唯一事实源，字段变更需同步生成桩
 
 ===D:/外端Agent生产合作社/agent_community/tools/===
-watchdog.py[CW6M]: F:R3 进程看门狗：harness/平台进程存活监测与自动拉起 | R:code:agent_community/platform/server.py | A:watch；restart；Watchdog | S:监测周期固定，进程失联超阈值才触发重启
+watchdog.py[RC6T]: F:平台进程看门狗：健康探测（TCP+/api/status）、僵死重启、按原命令行拉起与守护循环 | R:code:agent_community/platform/server.py | A:--check；--daemon；--interval；--spawn-cmd；_split_spawn_cmd；spawn_server | S:spawn-cmd 按空白切分，含空格路径必须加引号；本仓库路径含空格，故新增引号感知切分
 
 ===D:/外端Agent生产合作社/design-docs/===
 Harness 执行联动框架设计.md[SD5M]: F:Harness 执行联动框架设计：启动/心跳/任务回报链路方案 | R:code:design-docs/Harness 接入 UI 框架设计.md | A:- | S:设计定稿文档，实现以设计稿为唯一事实源

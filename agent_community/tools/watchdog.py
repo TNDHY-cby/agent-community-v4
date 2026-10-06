@@ -157,6 +157,32 @@ def _gui_shell_exists(port: int, cache_seconds: float = 300.0) -> bool:
 _spawned: dict = {"cmd": None, "pid": None}  # 本 watchdog 上次拉起的命令与 PID（重启时优先复用“原命令行”）
 
 
+def _split_spawn_cmd(s: str) -> list[str]:
+    """切分 `--spawn-cmd` 模板。支持**带引号、路径含空格**的写法。
+
+    ⚠️ 2026-10-06 修：原先直接用 `str.split()` 按空白切分，于是
+    `--spawn-cmd "python D:\\...\\External Agent Community\\x.py 18921"`
+    会把含空格的路径切成两半，子进程报
+    `python.exe: can't open file 'D:\\DSH工作区1\\外端Agent生产合作社（External'`。
+    **本仓库路径本身含空格**（`…（External Agent Community）`），所以这不是纸上风险：
+    用路径当拉起目标的场景必踩（实测：子进程秒退，看门狗反复重试）。
+    修法：用 shlex 尊重引号，但取 `posix=False`（否则反斜杠会被当转义吞掉，
+    Windows 路径 `D:\\DSH` 会变成 `DSH`），再手工剥掉成对的外层引号。
+    无引号且无空格的旧写法行为完全不变（向后兼容）。
+    """
+    try:
+        import shlex
+        toks = shlex.split(s or "", posix=False)
+    except Exception:  # noqa: BLE001 — shlex 遇到不配对引号会抛，退回朴素切分
+        return (s or "").split()
+    out = []
+    for t in toks:
+        if len(t) >= 2 and t[0] == t[-1] and t[0] in ('"', "'"):
+            t = t[1:-1]
+        out.append(t)
+    return out
+
+
 def _default_server_cmd(port: int, demo: bool = False) -> list[str]:
     cmd = [sys.executable, "-m", "agent_community.platform.server", "--port", str(port)]
     if demo:
@@ -279,8 +305,9 @@ def main() -> int:
     logger.setLevel(logging.DEBUG)
 
     if args.spawn_cmd:
-        # 允许形如: python -m agent_community.platform.server --port 18920 / 或 "python|模块式"
-        tokens = args.spawn_cmd.split()
+        # 允许形如: python -m agent_community.platform.server --port 18920
+        # 也允许带引号、且**路径含空格**的写法（本仓库路径就含空格，见下）
+        tokens = _split_spawn_cmd(args.spawn_cmd)
         if tokens and tokens[0].lower() in ("python", "py"):
             tokens[0] = sys.executable
         _spawned["cmd"] = tokens
