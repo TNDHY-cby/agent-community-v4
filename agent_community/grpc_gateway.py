@@ -113,19 +113,32 @@ if HAS_GRPC:
                     payload_json=json.dumps(resp, ensure_ascii=False)
                 )
 
-        def serve(port: int):
+        def build_server(port: int = 9105):
+            """构建并**启动** gRPC server（不阻塞），返回 `(server, bound_port)`。
+
+            拆出这一步是为了**可测**：冒烟测试要在同进程里起 server、再用真 gRPC 客户端打它，
+            而 `serve()` 内部会 `wait_for_termination()` 永久阻塞。
+            `port=0` 时由系统分配空闲端口，`bound_port` 返回实际绑定值（测试用它最省心）。
+            """
             server = grpc.server(futures.ThreadPoolExecutor(max_workers=8))
             agent_community_pb2_grpc.add_AgentCommunityServicer_to_server(
                 AgentCommunityServicer(), server
             )
-            server.add_insecure_port(f"[::]:{port}")
+            bound = server.add_insecure_port(f"[::]:{port}")
             server.start()
-            print(f"[grpc] gRPC gateway listening on :{port} (forwarding to {BASE_URL})")
+            return server, bound
+
+        def serve(port: int):
+            server, bound = build_server(port)
+            print(f"[grpc] gRPC gateway listening on :{bound or port} (forwarding to {BASE_URL})")
             server.wait_for_termination()
 
     except ImportError as e:
         HAS_GRPC = False
         _STUB_ERROR = str(e)
+
+        def build_server(port: int = 9105):  # noqa: ARG001
+            raise RuntimeError(f"gRPC 桩/依赖不可用：{e}")
 
         def serve(port: int):
             print(f"[grpc] 桩代码未生成（{e}）")

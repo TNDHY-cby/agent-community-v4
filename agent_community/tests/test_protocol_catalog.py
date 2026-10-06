@@ -77,7 +77,10 @@ class TestEndpointFilling:
 
     def test_other_protocols_have_empty_endpoint(self):
         cat = {p["id"]: p for p in pc.get_protocol_catalog()}
-        for pid in ("acp", "pipe", "sse", "grpc"):
+        # ⚠️ 2026-10-06：`grpc` 移出本列表 —— 它现在**真有**网关（9105），
+        #    端点不再属于"凭空造"；其端点是否给出由**可用性**决定
+        #    （不可用时必须为空），断言见 TestRuntimeStatusIsDynamic。
+        for pid in ("acp", "pipe", "sse"):
             assert cat[pid]["endpoint"] == "", f"{pid} 不应凭空造端点"
 
     def test_default_host_port(self):
@@ -167,3 +170,38 @@ class TestProtocolsRoute:
 
         out = run(mod.list_protocols(FakeRequest({})))
         assert out["total"] > 0
+
+
+# ── 运行时状态契约（2026-10-06 加：装完 grpcio 却不重启也要能反映）────────
+class TestRuntimeStatusIsDynamic:
+    """`_PROTOCOLS` 里的 status 是**导入时**快照；凡"随环境变化"的状态必须调用时算。
+
+    事故：装好 grpcio 后，**运行中的**平台仍一直报 gRPC `disabled`（要重启才变），
+    与 `_grpc_available()` docstring 承诺的"随环境变化"不符。
+    """
+
+    def test_grpc_status_follows_availability_without_reload(self, monkeypatch):
+        monkeypatch.setattr(pc, "_grpc_available", lambda: False)
+        row = [p for p in pc.get_protocol_catalog() if p["id"] == "grpc"][0]
+        assert row["status"] == "disabled"
+        assert "grpc" not in pc.get_available_protocol_ids()
+
+        monkeypatch.setattr(pc, "_grpc_available", lambda: True)
+        row = [p for p in pc.get_protocol_catalog() if p["id"] == "grpc"][0]
+        assert row["status"] == "available"
+        assert "grpc" in pc.get_available_protocol_ids()
+
+    def test_grpc_endpoint_filled(self):
+        row = [p for p in pc.get_protocol_catalog(host="127.0.0.1") if p["id"] == "grpc"][0]
+        # 端点与可用性一致：可用 -> 给 9105；不可用 -> 必须为空（不凭空造端点）
+        if row["status"] == "available":
+            assert row["endpoint"] == "127.0.0.1:9105", "gRPC 网关默认端口 9105 必须出现在端点里"
+        else:
+            assert row["endpoint"] == "", "gRPC 不可用时不得给出端点"
+
+    def test_other_protocols_stay_static(self, monkeypatch):
+        """只有 grpc 是运行时状态；别人的静态判定不得被这条改动带偏。"""
+        monkeypatch.setattr(pc, "_grpc_available", lambda: True)
+        got = {p["id"]: p["status"] for p in pc.get_protocol_catalog()}
+        assert got["http"] == "available"
+        assert got["sse"] == "not_implemented", "未实现的 SSE 不能因为 grpc 可用就被算成可用"

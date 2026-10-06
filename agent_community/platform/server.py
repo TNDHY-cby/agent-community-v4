@@ -145,6 +145,14 @@ async def _app_lifespan(_app):
         stop_harness_bridges()
     except Exception as _be:
         print(f"[shutdown] 回收 harness 桥失败: {_be}", flush=True)
+# 版本号**单一真源**：读包元数据，不在这里再写一份。
+# （2026-10-06 修：原先 `/api/status` 硬编码 "4.0.0"，与 `agent_community/__init__.py`
+#   以及 CHANGELOG 迭代线（当时已到 4.5.0）三处口径不一 —— 版本号一旦有第二处真源就必然漂移。）
+try:
+    from .. import __version__ as _PKG_VERSION
+except Exception:  # noqa: BLE001
+    _PKG_VERSION = "0.0.0+unknown"
+
 app = FastAPI(title="外端Agent生产合作社（External Agent Community） Platform v4", default_response_class=Utf8JSONResponse, lifespan=_app_lifespan)
 
 
@@ -684,7 +692,7 @@ async def api_status():
     ))
     return {
         "status": "running",
-        "version": "4.0.0",
+        "version": _PKG_VERSION,
         "agents_registered": len(agents),
         "agents_online": online_agents,
         "tasks_total": len(tasks),

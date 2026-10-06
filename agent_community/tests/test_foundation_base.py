@@ -179,3 +179,60 @@ def test_requirements_not_utf8_bom_regression():
     """回归断言：本文件所在仓库根必须能定位到 requirements.txt（路径守卫）。"""
     assert REQUIREMENTS.parent == REPO_ROOT
     assert sys.version_info >= (3, 10)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 版本号单一真源（2026-10-06 加）
+# ══════════════════════════════════════════════════════════════════
+class TestVersionSingleSource:
+    """事故：`/api/status` 曾**硬编码** `"version": "4.0.0"`，与 `agent_community/__init__.py`
+    的 `__version__`、以及 CHANGELOG 迭代线（当时已到 4.5.0）**三处口径不一**。
+    版本号一旦有第二处真源，就必然漂移 —— 这里把"只有一处"钉住。
+    """
+
+    def test_api_status_version_equals_package_version(self):
+        import asyncio
+
+        from agent_community import __version__
+        from agent_community.platform import server
+
+        data = asyncio.run(server.api_status())
+        assert data["version"] == __version__, (
+            f"/api/status 报的版本 {data['version']!r} 与包元数据 {__version__!r} 不一致 —— "
+            "版本号必须单一真源（读 agent_community.__version__）"
+        )
+
+    def test_no_hardcoded_version_literal_in_server_source(self):
+        import pathlib
+        import re
+
+        from agent_community.platform import server
+
+        src = pathlib.Path(server.__file__).read_text(encoding="utf-8", errors="replace")
+        hits = re.findall(r'"version"\s*:\s*"[0-9][^"]*"', src)
+        assert not hits, f"server.py 里出现了硬编码版本号 {hits} —— 请改读 _PKG_VERSION"
+
+    def test_package_version_looks_like_semver(self):
+        from agent_community import __version__
+
+        assert re.match(r"^\d+\.\d+\.\d+$", __version__), f"版本号形态异常: {__version__!r}"
+
+    def test_changelog_mentions_current_version(self):
+        """有 CHANGELOG 的副本（发布副本）里，最新条目应与 __version__ 对齐。
+
+        开发副本没有 CHANGELOG（它只存在于发布副本），故此处按"存在才校验"处理。
+        """
+        import pathlib
+
+        from agent_community import __version__
+
+        # dev: <repo>/agent_community/tests/ -> <repo>；CHANGELOG 在发布副本根，故向上找两级再并列判断
+        here = pathlib.Path(__file__).resolve()
+        cands = [here.parents[2] / "CHANGELOG.md"]           # dev 根（通常不存在）
+        for p in cands:
+            if not p.exists():
+                continue
+            text = p.read_text(encoding="utf-8", errors="replace")
+            assert f"[{__version__}]" in text, (
+                f"CHANGELOG 里没有当前版本 [{__version__}] 的条目 —— 发布前必须补")
+        # 不存在的副本不判失败（守卫只在"有该文件时"生效）

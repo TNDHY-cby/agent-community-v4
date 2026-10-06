@@ -106,6 +106,19 @@ _PROTOCOLS: list[dict[str, Any]] = [
 ]
 
 
+def _runtime_status(entry: dict) -> str:
+    """条目的**运行时**状态。
+
+    ⚠️ 2026-10-06 修：`_PROTOCOLS` 里的 `status` 是**模块导入时**求值的，
+    于是"装了 grpcio 但服务没重启"时目录仍一直报 `disabled` ——
+    与 `_grpc_available()` docstring 承诺的"随环境变化"不符（实测：装完 grpcio 后
+    运行中的平台仍报 disabled，只有重启才变）。凡"随环境变化"的状态必须**调用时**算。
+    """
+    if entry.get("id") == "grpc":
+        return "available" if _grpc_available() else "disabled"
+    return str(entry.get("status", ""))
+
+
 def get_protocol_catalog(host: str = "127.0.0.1", http_port: int = 18920) -> list[dict[str, Any]]:
     """返回完整协议目录（含运行时端点坐标）。
 
@@ -115,6 +128,7 @@ def get_protocol_catalog(host: str = "127.0.0.1", http_port: int = 18920) -> lis
     for p in _PROTOCOLS:
         entry = dict(p)
         pid = entry["id"]
+        entry["status"] = _runtime_status(entry)      # 随环境变化的状态在调用时算
         # 填充运行时端点
         if pid == "http":
             entry["endpoint"] = f"http://{host}:{http_port}/api"
@@ -124,6 +138,11 @@ def get_protocol_catalog(host: str = "127.0.0.1", http_port: int = 18920) -> lis
             entry["endpoint"] = "stdio: python -m agent_community.mcp_server"
         elif pid == "a2a":
             entry["endpoint"] = f"http://{host}:9104/.well-known/agent-card.json"
+        elif pid == "grpc":
+            # 端点只在**真能起网关**时才给（grpcio 缺失 -> disabled -> 空端点）。
+            # 这条守住原设计意图：不得凭空捏造端点（对应既有测试
+            # `TestEndpointFilling::test_other_protocols_have_empty_endpoint` 的初衷）。
+            entry["endpoint"] = f"{host}:9105" if entry["status"] == "available" else ""
         else:
             entry["endpoint"] = ""
         out.append(entry)
@@ -131,5 +150,9 @@ def get_protocol_catalog(host: str = "127.0.0.1", http_port: int = 18920) -> lis
 
 
 def get_available_protocol_ids() -> list[str]:
-    """返回已实现协议的 id 列表（供 select_endpoint / A2A supportedInterfaces 使用）。"""
-    return [p["id"] for p in _PROTOCOLS if p["status"] == "available"]
+    """返回已实现协议的 id 列表（供 select_endpoint / A2A supportedInterfaces 使用）。
+
+    状态一律取**运行时**值（见 `_runtime_status`），保证"装没装 grpcio"当场反映，
+    而不是沿用模块导入时的快照。
+    """
+    return [p["id"] for p in _PROTOCOLS if _runtime_status(p) == "available"]
