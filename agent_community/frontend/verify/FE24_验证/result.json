@@ -1,0 +1,39 @@
+{
+  "pass": true,
+  "fail": [],
+  "defaultState": {
+    "open": false,
+    "preVisible": false,
+    "summaryVisible": true,
+    "copyBtnOutside": true,
+    "copyBtnVisible": true
+  },
+  "snapEqual": true,
+  "copy": {
+    "msg": "已复制第 1 段（接入教程+注册话术），粘贴给任意 AI 即可帮你注册",
+    "clipEq": true,
+    "expandedEq": true,
+    "statesEqual": true,
+    "sourceLen": 5407,
+    "clipLen": 5583,
+    "sourceLF": 176,
+    "clipboardCRLF": 176
+  },
+  "wakeConfirmed": true,
+  "pendingRestart": true,
+  "nonGet": [
+    "POST /api/harness/harness-fe24-probe/wake",
+    "POST /api/harness/pre-register",
+    "POST /api/harness/probe-register",
+    "POST /api/harness/auto-connect"
+  ],
+  "errors": [],
+  "screenshots": [
+    "01_默认收纳.png",
+    "02_展开态.png",
+    "02_收起态.png",
+    "03_收起态复制.png",
+    "04_wake已配反馈.png",
+    "05_pending_restart提示.png"
+  ]
+}

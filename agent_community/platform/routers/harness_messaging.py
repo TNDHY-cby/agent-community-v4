@@ -226,6 +226,106 @@ async def get_harness_activation_prompt(harness_id: str):
         prompt = (sess.info.metadata or {}).get("activation_prompt") or ""
     return {"success": True, "harness_id": harness_id, "agent_id": sess.agent_id, "prompt": prompt}
 
+def _probe_pid_watching(inbox: str) -> int:
+    """默认实现：扫进程命令行找看着该邮箱的桥（可被测试替换，见 `_set_watch_probe`）。"""
+    inbox = (inbox or "").strip()
+    if not inbox:
+        return 0
+    try:
+        import json as _json
+        import os as _o2
+        import subprocess as _sp
+        # ⚠️ 只找**不是平台自己子进程**的匹配：桥是平台起的子进程，而"探测"这个动作本身
+        #    也会起一个子进程 —— 实测被测试桩计成"又启动了一次"（subprocess.run 内部就是 Popen）。
+        #    排除 `ParentProcessId == 平台 pid` 后，探测不会把平台自己的子进程当成"别人的桥"。
+        ps = ("$needle = [System.IO.Path]::GetFullPath($env:AC_NEEDLE); "
+              "$me = [int]$env:AC_SELF_PID; "
+              "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and "
+              "$_.ParentProcessId -ne $me -and "
+              "($_.CommandLine -like ('*' + $needle + '*') -or "
+              " $_.CommandLine -like ('*' + ($needle -replace '\\\\','/') + '*')) } | "
+              "Select-Object -First 1 -ExpandProperty ProcessId | ConvertTo-Json -Compress")
+        env = dict(_o2.environ)
+        env["AC_NEEDLE"] = inbox
+        env["AC_SELF_PID"] = str(_o2.getpid())
+        r = _sp.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
+                    text=True, encoding="utf-8", errors="replace", timeout=30, env=env)
+        out = (r.stdout or "").strip()
+        if not out or out == "null":
+            return 0
+        return int(_json.loads(out))
+    except Exception as e:  # noqa: BLE001
+        print(f"[auto-connect] 扫进程探测失败（按未探测到处理）: {e}", flush=True)
+        return 0
+
+
+#: 可替换的探测实现（测试用；生产恒为 `_probe_pid_watching`）
+_WATCH_PROBE = _probe_pid_watching
+
+
+def _set_watch_probe(fn) -> None:
+    """替换/还原"桥是否在看着某邮箱"的探测实现（供测试注入，避免真扫进程）。"""
+    global _WATCH_PROBE
+    _WATCH_PROBE = fn or _probe_pid_watching
+
+
+def _bridge_pid_watching(harness_id: str, inbox: str) -> int:
+    """**已经有一只桥在看着这个邮箱**吗？返回它的 pid，没有返回 0。
+
+    ★2026-10-11 实测 bug（正是"唤不醒"的机制之一）：
+      `auto-connect` 原来只用 `harness_manager.bridges` 判"桥已在跑"，而那个登记表
+      **认不出平台起的 example 桥**（实测：平台上明明已有桥在看同一 --inbox，
+      它仍判定"没在跑"）⇒ **每调一次就再起一只**：
+        · 同一邮箱多只桥 ⇒ 重复投递；
+        · ★更要命：桥是**起的时候**才把「叫醒命令」带上 ⇒ 用户后配的命令
+          **永远不生效**，而界面显示"已配置" ⇒ 他配了、却依然唤不醒（`wake_pending_restart` 也永不出现）。
+      判据改为**可自证的事实**：进程命令行里含该邮箱路径（桥启动参数里必然带 `--inbox <路径>`）。
+
+    顺序（★很重要）：**先看平台自己的登记表**（`bridge_procs`，零 I/O、可被测试桩控制），
+    再看进程扫描。理由：既有测试用 `_FakeProc` 桩（没有 `poll()`），
+    只靠"扫进程 + poll"会既漏判、又让被测路径去扫真实进程。
+    """
+    # ① 平台登记表（唯一真源的存活记录）。接口是 `is_alive()` / `describe()`
+    #    —— 我第一版又猜了个 `snapshot()`（**并不存在**）。教训：先 `dir()` 再写，别猜名字。
+    #    ⚠️ 也别在这里按"存活"早退：**策略闸门必须先生效**（AI 发起要走审批，绝不能被
+    #       "反正桥已在跑"绕过去）。所以这里**只取 pid 供返回体展示**，做不做早退由**闸门之后**决定。
+    try:
+        from .. import bridge_procs as _bp
+        for hid_key, rec in (((_bp.describe() or {}).get("bridges")) or {}).items():
+            if hid_key == harness_id and rec.get("status") == "alive" and rec.get("pid"):
+                return int(rec["pid"])
+    except Exception as e:  # noqa: BLE001
+        print(f"[auto-connect] 读桥登记表失败（继续扫进程）: {e}", flush=True)
+    # ② 进程扫描（登记表认不出平台示例桥时兜底）
+    return int(_WATCH_PROBE(inbox) or 0)
+
+
+def _wake_trigger_for(harness_id: str) -> str:
+    """取该 harness 配置的「叫醒命令」**包装脚本**路径（没配就返回空串）。
+
+    ★V38 第 2 步：桥要"叫醒 agent"必须拿到这个；平台**猜不到**，只能由用户在界面上配
+    （`POST /api/harness/{hid}/wake` 写包装脚本）。
+    ⚠️ 整段容错：拿不到就叫醒不了，但**绝不能让 auto-connect 因此崩**（失败要说话，不是要崩）。
+    """
+    try:
+        from .. import bridge_wake as _bw
+        # ⚠️ 别用 auto-connect 里的局部变量 `_pkg`（模块级不存在；我第一版就栽在这里，
+        #    被 try/except 吞掉 ⇒ trigger 永远为空、**静默失效**）。
+        #    ⚠️ 也别猜 `os` / `_os` 哪个在模块级（实测两个都不是！）—— **自己 import**，最稳。
+        #   本文件在 <repo>/agent_community/platform/routers/ ⇒ 要 <repo> 需**上溯 4 层**
+        #   （routers → platform → agent_community → <repo>）。我第一版只上溯 3 层，
+        #   实测把包装脚本写进了 `<repo>/agent_community/agent_community/data/runtime/wake/`
+        #   ——**多了一层**，与平台其余运行数据目录不一致。
+        import os as _o
+        root = _o.path.dirname(_o.path.dirname(_o.path.dirname(
+            _o.path.dirname(_o.path.abspath(__file__)))))
+        cur = _bw.read_wrapper(root, harness_id)
+        return str(cur.get("path") or "") if cur.get("configured") else ""
+    except Exception as e:  # noqa: BLE001
+        print(f"[auto-connect] 读叫醒命令失败（不影响起桥）: {e}", flush=True)
+        return ""
+
+
 @router.post("/api/harness/auto-connect")
 async def harness_auto_connect(request: Request):
     _audit_log.record("harness.auto_connect", actor="user", target="", detail="自动架桥（启进程）")
@@ -255,6 +355,20 @@ async def harness_auto_connect(request: Request):
     # 幂等：桥已在跑就直接返回
     existing = harness_manager.bridges.get(hid)
     if existing and getattr(existing, "proc", None) and existing.proc.poll() is None:
+        # ★2026-10-11 实测陷阱：桥是**起的时候**把「叫醒命令」带上的（见下面 file_poll 分支的
+        #   `--trigger`）。而这里早退 ⇒ **桥已经在跑时，用户后配的叫醒命令静默无效** ——
+        #   他会看到"已配成功"，却依然唤不醒 agent，且没有任何提示（正是"看起来正常"的假状态）。
+        #   ⇒ 如实告诉他：要生效必须让桥重启一次（retrigger=true 可代劳）。
+        _trig_now = _wake_trigger_for(hid)
+        if _trig_now:
+            # 不在这里替用户杀进程（本模块没有那套工具；我也不会去猜内部函数名——
+            # 今天已经因为猜 `_pkg`/`_os`/`_audit_log` 栽过三次）。**如实说清 + 给可用办法**：
+            return {"success": True, "harness_id": hid, "status": "connected",
+                    "bridge_type": "already-running", "pid": existing.proc.pid,
+                    "wake_pending_restart": True,
+                    "note": "桥已在运行，**但你配置的「叫醒命令」要等桥重启后才生效**。"
+                            "两条路：①删掉这个 harness 的桥进程、再调一次本端点；"
+                            "②在「已注册清单」里点该 harness 的「重新连接」（会重新起桥）。"}
         return {"success": True, "harness_id": hid, "status": "connected",
                 "bridge_type": "already-running", "pid": existing.proc.pid,
                 "note": "桥已在运行"}
@@ -272,6 +386,11 @@ async def harness_auto_connect(request: Request):
     # 选桥脚本 + 参数
     bridge_cmd: list[str] | None = None
     bridge_type = ""
+    # ⚠️ 2026-10-11：**这个变量必须在所有分支之前初始化**。
+    #   我昨天加"已有桥就别重复起"时，把它只写进了 FILE_POLL 分支，却在函数末尾共用 ⇒
+    #   走 acp / http 等**其它分支**时直接 `UnboundLocalError` ⇒ 接口 **500**（实测复现）。
+    #   教训：跨分支共用的局部变量，声明要放在分支之前。
+    _already_pid = 0
     if wm == WakeupMethod.HTTP_API:
         return {"success": True, "harness_id": hid, "status": "ready",
                 "bridge_type": "http_api", "note": "http_api 类由平台直接推送，无需桥"}
@@ -284,8 +403,19 @@ async def harness_auto_connect(request: Request):
             return {"success": True, "harness_id": hid, "status": "manual",
                     "bridge_type": "file_poll",
                     "note": "file_poll 需要 wakeup_dir（inbox 目录），注册时未填，请手动架桥"}
+        # ★2026-10-11：记下"是不是已有桥在看着这个邮箱"（可靠判据，见 _bridge_pid_watching）。
+        #   原来的早退只看 harness_manager.bridges，认不出平台起的桥 ⇒ 每调一次再起一只
+        #   ⇒ ①重复投递 ②**用户后配的叫醒命令永不生效**（桥是起的时候才带上它）。
+        #   ⚠️ 但**不能在这里直接返回**：策略闸门必须先跑（AI 发起要走审批，不能被它绕过）。
+        #      所以只取 pid，真正的"不重复启动"判断放在闸门**之后**。
+        _already_pid = _bridge_pid_watching(hid, inbox)
         bridge_cmd = ["-u", script, "--harness-id", hid, "--inbox", inbox, "--platform", base_url]
         bridge_type = "file_poll"
+        _trig = _wake_trigger_for(hid)
+        if _trig:
+            # ★V38 第 2 步：把用户配的「叫醒命令」传给桥 —— 否则桥只落盘、**不会叫醒 agent**
+            #   （实测教训：带空格/带参数的命令行直接传会被拆坏 ⇒ 传**包装脚本**的路径）
+            bridge_cmd += ["--trigger", _trig]
     elif wm == WakeupMethod.ACP:
         script = _os.path.join(_ex, "acp_harness_bridge.py")
         if not _os.path.isfile(script):
@@ -307,6 +437,10 @@ async def harness_auto_connect(request: Request):
             return Utf8JSONResponse({"error": f"桥脚本不存在: {script}"}, status_code=500)
         work_dir = (getattr(info, "wakeup_dir", "") or "").strip() or _os.path.join(_pkg, "data", "bridges", hid)
         bridge_cmd = ["-u", script, "--harness-id", hid, "--url", base_url, "--work-dir", work_dir]
+        _trig2 = _wake_trigger_for(hid)
+        if _trig2:
+            # 同一口径：兜底桥也吃 --trigger（见 file_poll 分支的说明）
+            bridge_cmd += ["--trigger", _trig2]
         bridge_type = "pending_poll"
 
     # 后台启动桥进程（DETACHED，父进程退出不带走）
@@ -339,6 +473,20 @@ async def harness_auto_connect(request: Request):
              "message": pending_message(_ev, _pending), "pending": _pending},
             status_code=202,
         )
+
+    # ★2026-10-11：闸门已过 ⇒ 这里才判断"是否已有桥在看着这个邮箱"，**不重复启动**。
+    #   放在闸门之后是刻意的：AI 发起的启动请求必须照常走审批（上面 202 分支），
+    #   不能被"反正已经有一只桥在跑"绕过。
+    if _already_pid:
+        _trig_have = _wake_trigger_for(hid)
+        _audit_log.record("harness.auto_connect.reuse", actor="user", target=hid,
+                          detail=f"已有桥在看邮箱（pid={_already_pid}），未重复启动")
+        return {"success": True, "harness_id": hid, "status": "connected",
+                "bridge_type": bridge_type, "pid": _already_pid,
+                "wake_pending_restart": bool(_trig_have),
+                "note": ("已有一只桥在看这个邮箱（pid=%d）；**没有重复启动**。" % _already_pid)
+                        + ("但你配了「叫醒命令」，它要**桥重启后**才生效 —— 先停掉这只桥再调本端点，"
+                           "或在界面点该 harness 的「重新连接」。" if _trig_have else "")}
 
     py_exe = _os.environ.get("AC_PYTHON") or _os.sys.executable
     full_cmd = [py_exe] + bridge_cmd

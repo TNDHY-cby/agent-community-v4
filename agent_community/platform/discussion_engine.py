@@ -27,6 +27,8 @@ from .protocol import (
     ReviewRequest, ReviewResponse,
     AgentCard, Message, MessageType,
 )
+# V-20 原子所有权 key 约定（纯函数、无包内依赖，故可模块级导入）
+from .task_ownership import delegation_key
 
 
 # ── 拓扑排序辅助 ──────────────────────────────
@@ -350,8 +352,15 @@ class DiscussionEngine:
         review_fn: Callable[[ReviewRequest], Awaitable[ReviewResponse]],
         task_title: str = "",
         task_description: str = "",
+        owner: str = "",
     ) -> dict[str, "ExecutionResult"]:
         """按拓扑层执行所有委托，每层完成后审查。
+
+        V-20 原子所有权（47 号任务书 DSH 侧）：每个 delegation 一个交付单元锁。
+        同一交付单元同一时刻只允许一个 owner 执行；拿不到锁的单元**不进本层 gather**，
+        直接产出 ok=False 结果（对应 Paperclip 的 SKIP LOCKED：skip 而非排队等待）。
+        锁粒度是 delegation 而非 task —— 层内不同 delegation 的并行**不受影响**。
+        审查回退后的重试沿用同一 owner（续租语义，不会自锁）。
 
         Returns:
             dict[delegation_id → ExecutionResult]
@@ -360,72 +369,108 @@ class DiscussionEngine:
         results: dict[str, "ExecutionResult"] = {}
         parent_outputs: dict[str, str] = {}
 
-        for layer_idx, layer in enumerate(layers):
-            # 并行执行当前层
-            layer_tasks = []
-            for del_req in layer:
-                # 补丁9：注入任务原文，供执行方（含 manual 接管通道）理解所属任务
-                ctx = ExecutionContext(
-                    task_id=task_id,
-                    task_title=task_title,
-                    task_description=task_description,
-                    parent_outputs=dict(parent_outputs),
-                    dependency_graph=[[d.id for d in layer]],
-                    global_constraints=[],
-                )
-                exec_msg = ExecuteMessage(
-                    delegation=del_req,
-                    context=ctx,
-                )
-                layer_tasks.append(execute_fn(exec_msg))
+        # 惰性导入单例：与 server 侧避循环导入同范式（也确保拿到 state 里的唯一副本）
+        from .state import ownership
 
-            layer_results = await asyncio.gather(*layer_tasks, return_exceptions=True)
+        _owner = (owner or task_id or "unknown").strip()
+        _leases: dict[str, object] = {}
 
-            # 审查当前层每个结果
-            for del_req, raw_result in zip(layer, layer_results):
-                if isinstance(raw_result, Exception):
-                    from .protocol import ExecutionResult
-                    result = ExecutionResult(
-                        delegation_id=del_req.id,
-                        from_agent=del_req.from_agent,
-                        to_agent=del_req.to_agent,
-                        ok=False,
-                        content="",
-                        error=str(raw_result),
-                    )
-                else:
-                    result = raw_result
+        try:
+            for layer_idx, layer in enumerate(layers):
+                # 并行执行当前层
+                layer_tasks = []
+                layer_items: list[DelegationRequest] = []  # 与 layer_tasks 严格同序（被拒的单元不进）
+                for del_req in layer:
+                    # V-20：交付单元级原子领取，防同一子任务被双份派发/重复执行
+                    _key = delegation_key(del_req.id)
+                    lease = await ownership.acquire(_key, _owner)
+                    if lease is None:
+                        from .protocol import ExecutionResult as _ER
+                        _held = ownership.owner_of(_key) or "其他 owner"
+                        results[del_req.id] = _ER(
+                            delegation_id=del_req.id,
+                            from_agent=del_req.from_agent,
+                            to_agent=del_req.to_agent,
+                            ok=False,
+                            content="",
+                            error=f"已被 {_held} 领取，拒绝重复执行（原子所有权）",
+                        )
+                        parent_outputs[del_req.id] = f"[依赖执行失败: 已被 {_held} 领取]"
+                        continue
+                    _leases[del_req.id] = lease
 
-                # 审查循环
-                for _ in range(self.MAX_REVIEW_RETRIES + 1):
-                    verdict, review_resp = await self.review(
+                    # 补丁9：注入任务原文，供执行方（含 manual 接管通道）理解所属任务
+                    ctx = ExecutionContext(
                         task_id=task_id,
-                        delegation=del_req,
-                        result=result,
-                        review_fn=review_fn,
+                        task_title=task_title,
+                        task_description=task_description,
+                        parent_outputs=dict(parent_outputs),
+                        dependency_graph=[[d.id for d in layer]],
+                        global_constraints=[],
                     )
-                    if verdict == "pass":
-                        break
-                    elif verdict == "amend":
-                        # 重试执行（带修正反馈）
-                        ctx = ExecutionContext(
-                            task_id=task_id,
-                            parent_outputs=dict(parent_outputs),
-                            dependency_graph=[[d.id for d in layer]],
-                            global_constraints=[f"上次审查反馈: {review_resp.feedback}"],
-                        )
-                        exec_msg = ExecuteMessage(
-                            delegation=del_req,
-                            context=ctx,
-                            phase="retry",
-                            retry_count=self._review_counts[del_req.id],
-                        )
-                        result = await execute_fn(exec_msg)
-                    else:  # fail
-                        break
+                    exec_msg = ExecuteMessage(
+                        delegation=del_req,
+                        context=ctx,
+                    )
+                    layer_tasks.append(execute_fn(exec_msg))
+                    layer_items.append(del_req)
 
-                results[del_req.id] = result
-                parent_outputs[del_req.id] = result.content[:500] if result.ok else f"[依赖执行失败: {result.error or '未知错误'}]"
+                layer_results = await asyncio.gather(*layer_tasks, return_exceptions=True)
+
+                # 审查当前层每个结果
+                for del_req, raw_result in zip(layer_items, layer_results):
+                    if isinstance(raw_result, Exception):
+                        from .protocol import ExecutionResult
+                        result = ExecutionResult(
+                            delegation_id=del_req.id,
+                            from_agent=del_req.from_agent,
+                            to_agent=del_req.to_agent,
+                            ok=False,
+                            content="",
+                            error=str(raw_result),
+                        )
+                    else:
+                        result = raw_result
+
+                    # 审查循环
+                    for _ in range(self.MAX_REVIEW_RETRIES + 1):
+                        verdict, review_resp = await self.review(
+                            task_id=task_id,
+                            delegation=del_req,
+                            result=result,
+                            review_fn=review_fn,
+                        )
+                        if verdict == "pass":
+                            break
+                        elif verdict == "amend":
+                            # 重试执行（带修正反馈）；同一 owner 持锁，不会自锁
+                            ctx = ExecutionContext(
+                                task_id=task_id,
+                                parent_outputs=dict(parent_outputs),
+                                dependency_graph=[[d.id for d in layer]],
+                                global_constraints=[f"上次审查反馈: {review_resp.feedback}"],
+                            )
+                            exec_msg = ExecuteMessage(
+                                delegation=del_req,
+                                context=ctx,
+                                phase="retry",
+                                retry_count=self._review_counts[del_req.id],
+                            )
+                            result = await execute_fn(exec_msg)
+                        else:  # fail
+                            break
+
+                    results[del_req.id] = result
+                    parent_outputs[del_req.id] = result.content[:500] if result.ok else f"[依赖执行失败: {result.error or '未知错误'}]"
+        finally:
+            # 无论正常结束还是异常，都归还已领取的交付单元锁
+            for _did, _lease in _leases.items():
+                try:
+                    await ownership.release(
+                        delegation_key(_did), _owner, getattr(_lease, "token", None)
+                    )
+                except Exception as _e:  # noqa: BLE001 — 释放失败不掩盖主流程结果
+                    print(f"[ownership] 释放交付单元锁失败（忽略）: {_did} {_e}", flush=True)
 
         return results
 

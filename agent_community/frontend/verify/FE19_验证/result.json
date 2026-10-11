@@ -1,0 +1,12 @@
+{
+  "pass": true,
+  "fail": [],
+  "s1": "码农\nm0\npending\n示例Harness-A\nharness：harness-fe19-a · 唤醒：clipboard\n📁 隔间\n未创建\n复制\n<本机路径>\n✗ input\n✗ output\n✗ temp\n📮 邮箱：随隔间创建（架桥时一起建 inbox / replies）\n磁盘实况：隔间尚未创建（「架起具体桥」时才建） · 路径由后端给出\n桥：未架接（还没有为它架起具体桥）\n○ 尚未架桥\n隔间在「架起具体桥」那一步才创建；审计中也没有该成员的 bridge.auto 记录",
+  "s2": "码农\nm0\nentered\n示例Harness-A\nharness：harness-fe19-a\n📁 隔间\n已创建\n复制\n<本机路径>\n✓ input\n✓ output\n✓ temp\n📮 邮箱：inbox ✓ · replies ✓　｜　inbox 积压 1\n磁盘实况 · 路径来自后端 compartments 端点（权威）\n桥：已架接：示例桥 → 示例间-项目-码农-m0（未自证：还没确认这条路真的通）\n● 桥产物在隔间（磁盘实况）\n产物：bridge.py · 隔间已创建",
+  "nonGet": [],
+  "errors": [],
+  "screenshots": [
+    "01_未架接.png",
+    "02_已架接未自证.png"
+  ]
+}

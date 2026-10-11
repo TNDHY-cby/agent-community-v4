@@ -1,0 +1,35 @@
+{
+  "errors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "nonGet": [],
+  "hub": {
+    "title": "对接中心",
+    "logo": "▣\n对接中心\n原型 · 演示数据",
+    "banner": "◈ 范围声明：一 / 二 / 三级讨论仍在\n工作间\n进行——本中心只做流程导航与状态总览，\n不承载讨论\n（全页零写请求）。",
+    "rail": 10,
+    "scopeNoDiscuss": true,
+    "hasWorkshopLink": true,
+    "hasUndefined": false
+  },
+  "talk": {
+    "stage": "一级讨论",
+    "hasExit": true
+  },
+  "work": {
+    "stage": "二三级讨论 · 等结果",
+    "hasExit": true
+  },
+  "hall": {
+    "cardShown": true,
+    "cardText": "◈ | 进入对接中心 | 流程 0→10 导航 · 成员状态 · 隔间与资料库总览 | （一/二/三级讨论仍在工作间进行）",
+    "tabShown": true
+  },
+  "wsp": {
+    "shown": true,
+    "href": "/hub.html"
+  },
+  "narrow": {
+    "overflow": false
+  }
+}

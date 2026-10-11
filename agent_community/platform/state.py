@@ -14,6 +14,7 @@ platform/protocol.py、platform/workshop.py 中的模型为准。
 from __future__ import annotations
 
 from .interject_store import InterjectStore
+from .task_ownership import OwnershipRegistry
 from .task_state_machine import TaskStateMachine
 
 # ── V-5 核心运行时状态（原 server.py L377-387）───────────────────
@@ -30,6 +31,8 @@ assistant_history_max: int = 60
 workshops: dict = {}
 interject_store = InterjectStore()
 task_state_machine = TaskStateMachine()
+# V-20：任务/交付单元原子所有权登记表（防抢单；单例落此以守 V-13 双副本规则）
+ownership = OwnershipRegistry()
 
 # 待激活队列：harness_id → [激活任务]，由各 harness 桥轮询领取
 pending_activations: dict = {}
@@ -101,8 +104,8 @@ def reset() -> None:
     """就地清空全部可变状态（测试隔离 / 进程重启前清场）。
 
     - 只对 _CLEARABLE 里的 dict/list 调 clear()，**不重新绑定**（保双副本语义）
-    - 对象型状态（interject_store / task_state_machine）有自身生命周期，
-      不在自动清理范围；测试需要时各自 reset
+    - 对象型状态（interject_store / task_state_machine / ownership）有自身生命周期，
+      不在自动清理范围；测试需要时各自 reset（ownership.reset() / _states.clear()）
     """
     import sys as _sys
     mod = _sys.modules[__name__]

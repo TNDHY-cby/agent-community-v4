@@ -52,21 +52,59 @@ def artifact_kind(wm: str) -> str:
     return KIND_BY_WM.get((wm or "").strip().lower(), DEFAULT_KIND)
 
 
-def plan(ws: Any, info: Any, member_id: str = "") -> dict:
+def plan(ws: Any, info: Any, member_id: str = "", role: str = "",
+         bridge_template: Optional[dict] = None) -> dict:
     """算出 L3 产物的类型/落点/参数。**不写盘**，供预检与响应预览。
 
-    `target_dir` 只来自 `ws.workspace_dir` —— 路径不可被请求体影响。
+    **落点一律由平台派生**（`test_connect_artifact.py::test_plan_has_no_user_path_input`
+    盯着这条：本函数的签名里**不允许出现任何路径入参**）。
+      - 不给 `role` => 落 `ws.workspace_dir`（工作间根，历史行为）；
+      - 给了 `role` => 落**该成员的隔间** `<ws_dir>/<职位>_<成员id>/`（V23 §9 老板口述：
+        「单个会话拥有一个隔间和一个具体桥」）。
+
+    ⚠️ 我做这版时曾图省事加了个 `target_dir` 路径参数，**被上面那条测试直接拦下**——
+    加一个"可传任意路径"的口子，就把"路径不可被请求体影响"这条可断言的性质削掉了。
+    现改为只收 `role`，路径在本函数内用同一个 `compartment.compartment_dir()` 推导：
+    与调用方 `ensure_compartment()` 共用同一处推导，仍只有一个路径来源。
     """
     from . import bridge_template as bt
+    from . import compartment as _cmp
 
     wm = bt._wm_value(info)
+    # ── ★V36 §3.2：成员**显式挑的那条具体桥模板**优先 ──────────────────────
+    # 老板口径「一条桥 = 一个具体会话」+ V36 §3.1：用户可以在界面上为某成员选一条
+    # 「具体桥模板」（来自 `platform/bridge_templates.py` 的多条列表）。
+    # ① `bridge_template` 入参（本函数新增，**不是路径**，故不违反上面那条守护性质）
+    #    ⇒ 用户显式选中的那条；
+    # ② 没给 ⇒ 维持原行为：用 harness 级那条（`bridge_template.get`，V-15 自动派生）。
+    # 这样"没挑模板"的老路径**行为完全不变**（向后兼容），"挑了模板"才走新分支。
+    if isinstance(bridge_template, dict) and bridge_template:
+        l2 = dict(bridge_template)
+    else:
+        l2 = bt.get(info) or bt.build(info) or {}
+    # 产物**类型**仍按唤醒方式派生（历史口径不动）：
+    # ⚠️ 别混淆两个"kind" —— 具体桥模板里的 `kind` 是**传输层种类**（cli_acp / file_poll /
+    #    pending_poll / script_framework，见 V36 §2.1），而这里的 `artifact_kind` 是
+    #    **产物形态**（script / contract / prompt，由唤醒方式决定）。二者不是一回事。
     kind = artifact_kind(wm)
-    l2 = bt.get(info) or bt.build(info) or {}
+
+    if str(role or "").strip():
+        _target = str(_cmp.compartment_dir(ws.workspace_dir, role, member_id))
+    else:
+        _target = str(getattr(ws, "workspace_dir", "") or "")
 
     params = dict(l2.get("params") or {})
     params["HARNESS_ID"] = params.get("HARNESS_ID") or str(getattr(info, "harness_id", ""))
     # 工作区坐标在**这里**注入（步骤5：L2 只存 harness 相关参数）
-    params["WORKSPACE_DIR"] = str(getattr(ws, "workspace_dir", "") or "")
+    # V23 §9：有隔间时，该成员的工作区坐标**就是它的隔间**（它只能在自己的隔间里写文件）
+    params["WORKSPACE_DIR"] = _target
+    # 2026-10-08 老板：「一个员工一个具体桥和隔间 ⇒ 不会发生**谁收到就是谁的**」。
+    # 邮箱是这条规则的**寻址**落点：把 INBOX_DIR 从「harness 级 wakeup_dir」改成
+    # **该成员隔间里的 inbox** ⇒ 同一 harness 开多个会话也不会串（谁的桥只取谁的邮箱）。
+    # 附带修好一个真问题：从前本类 harness 若 wakeup_dir 为空，会 "缺少模板必填字段: INBOX_DIR"
+    # 而桥渲染失败；现在有成员邮箱兜住。
+    if str(role or "").strip():
+        params["INBOX_DIR"] = str(_cmp.mailbox_dir(ws.workspace_dir, role, member_id, "inbox"))
     if kind == "contract":
         params["PLATFORM_URL"] = params.get("PLATFORM_URL") or ""
     if kind == "script":
@@ -79,8 +117,14 @@ def plan(ws: Any, info: Any, member_id: str = "") -> dict:
         "harness_id": params["HARNESS_ID"],
         "wakeup_method": wm,
         "artifact_kind": kind,
-        "template": l2.get("template"),
-        "target_dir": str(getattr(ws, "workspace_dir", "")),   # ← 唯一路径来源
+        # ⚠️ `_render_script` 按 `plan["template"]` 去 `bridge_factory.generate()` 取内置渲染模板，
+        # 所以这里必须给出**传输层模板名**。两种来源的字段名不同（实测踩过）：
+        #   · 旧来源 `bridge_template.build()` 用字段 `template`
+        #   · V36 的多条「具体桥模板」用字段 `kind`（cli_acp / file_poll / pending_poll / …）
+        # 只认 `template` 会让"用户挑的模板"渲染失败并报 "L2 模板缺失"。
+        "template": l2.get("template") or l2.get("kind") or "",
+        "template_name": l2.get("name") or "",
+        "target_dir": _target,   # ← 唯一路径来源（默认工作间根；给了隔间就是隔间）
         "filename": FILENAME.get(kind, "artifact.txt"),
         "params": params,
         "complete": bool(params.get("WORKSPACE_DIR")),

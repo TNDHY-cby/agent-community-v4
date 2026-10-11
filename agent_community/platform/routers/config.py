@@ -151,8 +151,24 @@ async def api_ai_models(request: Request, base_url: str = ""):
             r = await c.get(f"{norm}/v1/models",
                             headers=({"Authorization": f"Bearer {_key}"} if _key else {}))
         if r.status_code != 200:
+            # ★2026-10-11：把"到底拼了哪个地址"和"该怎么填"一起说出来。
+            #   起因（真事）：老板把 base_url 填成 `https://api.deepseek.com/anthropic`
+            #   （多了个路径），平台拼成 `/anthropic/v1/models` ⇒ 404，
+            #   而原报错只写 `GET …/v1/models -> HTTP 404` —— **看不出是地址填错了**，
+            #   用户只会觉得"接口有问题"。⇒ 报错要能自解（准则⑤）。
+            _tried = f"{norm}/v1/models"
+            _hint = ("base_url 只填到域名（或官方给的根路径），**不要再带 /v1、/anthropic 之类的路径**；"
+                     "平台会自己拼 /v1/models。DeepSeek 官方示例：https://api.deepseek.com")
+            if r.status_code in (404, 405):
+                _hint = ("很可能 base_url 多带了路径 —— " + _hint
+                         + f"（本次实际请求：{_tried}）")
+            elif r.status_code in (401, 403):
+                _hint = "key 没被服务端接受（可能在别处失效/填错）。" + _hint
+            elif r.status_code == 402:
+                _hint = "key 有效但**账户余额不足**（充值后即可用；本步失败不代表配置写错）。"
             return {"ok": False, "models": [], "source": "builtin", "fallback": True,
-                    "error": f"GET {norm}/v1/models -> HTTP {r.status_code}"}
+                    "error": f"GET {_tried} -> HTTP {r.status_code}",
+                    "tried_url": _tried, "base_url": norm, "hint": _hint}
         ids = [str(m.get("id") or "") for m in
                (r.json().get("data") or []) if isinstance(m, dict)]
         ids = [x for x in ids if x]

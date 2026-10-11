@@ -57,6 +57,9 @@ from .task_state_machine import (
     EV_RESUME, EV_DROP, EV_RESOLVE, EV_COMPLETE,
 )
 from .interject_store import InterjectStore
+# 47 号（Marvis 侧心跳）：3 个 /api/heartbeat 端点用到本单例。
+# 原提交 abf28d2 只写了用法、漏了 import ⇒ 实测 GET/POST 均 NameError→500（2026-10-07 DSH 修复）。
+from .heartbeat import heartbeat_registry
 from .state import tasks, discussion_rooms, agents, assistant_history, assistant_history_max, workshops, interject_store, task_state_machine, pending_activations, pending_tasks, pending_bridge_tests, _bridge_tests_inflight, _wakeup_inflight, _WAKEUP_TTL, _BRIDGE_TEST_TTL, _offline_redispatch, _r2_handled_at, _R2_HANDLE_GAP, pending_pre_register
 from .ai_provider import AIProvider, create_ai_provider
 from .ai_external import (
@@ -75,7 +78,7 @@ from .acp_harness_bridge import AcpHarnessBridge  # noqa: F401  （V-22 同期�
 PIPE_DIR = Path(os.environ.get("TEMP", ".")) / "agent_community_pipe"
 PIPE_TO_AGENT_DIR = PIPE_DIR / "to_agent"
 STATIC_DIR = Path(__file__).parent.parent / "frontend"
-DATA_DIR = Path(__file__).parent.parent / "data"
+DATA_DIR = Path(os.environ.get("AC_DATA_DIR") or (Path(__file__).parent.parent / "data"))
 # ── 状态 ──────────────────────────────────────────────────────
 from contextlib import asynccontextmanager
 @asynccontextmanager
@@ -193,6 +196,12 @@ from .routers.policy import router as _policy_router
 app.include_router(_policy_router)  # V-14 策略自省与待审批：GET /api/policy、/api/policy/pending（人工审批）
 from .routers.sessions import router as _sessions_router
 app.include_router(_sessions_router)  # V-15 步骤8：会话可见性：GET /api/sessions（§12.2.1 保留待复用必配可见性）
+from .routers.company_admin import router as _company_admin_router
+app.include_router(_company_admin_router)  # 远程接入（公司间令牌授权）管理：登记/签发/吊销/校验
+from .routers.handover import router as _handover_router
+app.include_router(_handover_router)  # V-23 交接体系：证据栏 + 送达回执（无证据不回执）
+from .routers.system import router as _system_router
+app.include_router(_system_router)  # V-27 平台生命周期：GET /api/system/lifecycle、POST /api/system/shutdown（退出并关闭）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1", "http://localhost"],
@@ -356,7 +365,16 @@ def validate_acp_command(acp_command: str) -> tuple[bool, str]:
     import os as _os
     exe = _os.path.basename(first).lower()
     if exe in _ACP_COMMAND_BLOCKED_EXES:
-        return False, f"acp_command 禁止使用解释器包装: {exe}"
+        # ★2026-10-11：这条拒绝**本身是对的**（`cmd /c …` 走 shell 是 RCE 注入主入口），
+        #   但原报错只说"禁止使用解释器包装: cmd" —— **用户和 AI 都无法据此自行修正**，
+        #   而且它和界面引导打架：我为躲开"引号会被拆坏"教用户写 `wake.cmd` 包装脚本，
+        #   而 `.cmd/.bat` 在 Windows 上必须经 cmd 解释 ⇒ **注册直接被拒**（实测踩到）。
+        #   ⇒ 不改安全规则，但把话说清：**要给可直接执行的入口（.exe / python 脚本等）**。
+        return False, (
+            f"acp_command 不能以解释器/脚本宿主开头（{exe}）—— 这是防注入的硬规则。"
+            "请改成**可直接执行的入口**：Windows 上用 exe 本体，或用你 agent 自带的启动器；"
+            "若只有 .cmd/.bat 包装脚本，请改为**直接给它的真实程序**（exe）+ 参数。"
+        )
     return True, ""
 
 
@@ -641,6 +659,20 @@ async def register_agent(card: AgentCard):
     _append_hall(sys_msg)
     await bcast_to_clients(sys_msg)
     return {"success": True, "agent_id": card.agent_id}
+# ★"harness 框架特点"的**单一真相**（2026-10-11 老板要求：列表要能看出是什么框架、适配什么大模型）。
+#   ⚠️ 与 `/api/bridge-catalog` 分工不同、不要合并：
+#     · 这里回答「**这个框架本身是什么**」（它住在哪、怎么被驱动、典型形态）；
+#     · bridge-catalog 回答「**接入时你要填什么**」（谁提供/怎么填/怎么自证/常见坑）。
+#   两者可能都要看一眼，但**同一问题只在一处回答**。
+FRAMEWORK_NOTES = {
+    "cli-agent": "命令行型：有 CLI 入口，可被一条命令拉起（适合 cli_acp 桥）",
+    "ide-agent": "IDE 内型：住在编辑器里，通常靠插件/内置终端被驱动",
+    "desktop-agent": "桌面型：独立窗口程序，常见做法是盯文件夹或人工中转",
+    "api-proxy": "API 代理型：自身暴露接口，平台可直接推送（通常无需桥）",
+    "custom": "自定义型：形态特殊，按它自己说明的接入方式办",
+}
+
+
 @app.get("/api/agents")
 async def list_agents(online_only: bool = False):
     result = []
@@ -656,6 +688,16 @@ async def list_agents(online_only: bool = False):
         sw_name = sw.get("name", "") if sw else ""
         sw_ver = sw.get("version", "") if sw else ""
         software_context = f"{sw_name} {sw_ver}".strip() if (sw_name or sw_ver) else card.description or ""
+        # ★2026-10-11（老板要求）：列表要能看出**这个 harness 是什么框架、适配什么大模型**
+        #   —— 此前只显示软件名，用户点进去才知道接的是什么。
+        #   数据来源就是 harness 自己的注册信息（`harness_type` / `ai.model_name` / `ai.provider`），
+        #   不做二次推断，取到什么显示什么；取不到就如实留空（界面不编）。
+        _info = getattr(hs, "info", None) if hs else None
+        _ai = (getattr(_info, "ai", None) or {}) if _info else {}
+        _framework = str(getattr(_info, "harness_type", "") or "") if _info else ""
+        _model = str((_ai.get("model_name") if isinstance(_ai, dict) else getattr(_ai, "model_name", "")) or "")
+        _provider = str((_ai.get("provider") if isinstance(_ai, dict) else getattr(_ai, "provider", "")) or "")
+        _model_ver = str((_ai.get("version") if isinstance(_ai, dict) else getattr(_ai, "version", "")) or "")
         result.append({
             "agent_id": aid, "name": card.name,
             "capabilities": card.capabilities,
@@ -663,6 +705,12 @@ async def list_agents(online_only: bool = False):
             "status": status,
             "software": card.software,
             "software_context": software_context,
+            # 框架特点（harness_type）+ 适配大模型（provider/model/version），给"harness 列表"显示
+            "framework": _framework,
+            "framework_note": FRAMEWORK_NOTES.get(_framework, ""),
+            "model": _model,
+            "model_provider": _provider,
+            "model_version": _model_ver,
             "agent_card": {
                 "capabilities": card.capabilities,
                 "description": card.description,
@@ -1032,20 +1080,39 @@ if ($found.Count -eq 0) { '[]' } else { $found | Select-Object -First 1 | Conver
         return {"success": False, "activated": False, "error": str(e)}
 def _stop_bridge_processes(harness_id: str, bridge_dir: str = ""):
     """终止指定 harness 的桥进程（按命令行匹配 harness_id / 桥目录路径）。
-    仅匹配显式含 harness_id（长度>=3）或 bridge_dir 的命令行，避免误杀。
+
+    ⚠️★★2026-10-11 **实测事故修复**：本函数原用**裸子串匹配**
+        `$_.Name -match 'python|node' -and $_.CommandLine.Contains(<harness_id>)`
+    而**平台自己的命令行里就含这些字符串**（它跑着 `-m agent_community.platform.server`，
+    请求路径里也常带 harness_id）⇒ **平台把自己杀了**。
+    现象极具误导性：进程还活着、端口却在听不到、日志只有
+    `Accept failed ... WinError 64 指定的网络名不再可用`、随之 `Application shutdown complete`，
+    于是"平台老是崩"查了好几轮才定位（同一天我用过宽的进程匹配还误杀过别的东西，同一个错）。
+
+    ⇒ 现在两道防线：
+      ① **排除平台自身**（`-m agent_community.platform.server` / `server.py --port`）；
+      ② **要求命中桥特征**（命令行含 `_harness_bridge.py`/`_bridge.py`，或显式给了 bridge_dir）。
+    宁可漏杀一个桥（用户可手动停），也**绝不能再杀平台**。
     """
     import subprocess
-    matches = []
+    needles = []
     if harness_id and len(harness_id) >= 3:
-        matches.append(harness_id)
+        needles.append(harness_id)
     if bridge_dir:
-        matches.append(bridge_dir)
-    if not matches:
-        return {"killed": 0}
-    conds = " -or ".join("$_.CommandLine.Contains({0})".format(json.dumps(m)) for m in matches)
+        needles.append(bridge_dir)
+    if not needles:
+        return {"killed": 0, "note": "没有可匹配的 harness_id/bridge_dir"}
+    conds = " -or ".join("$_.CommandLine.Contains({0})".format(json.dumps(m)) for m in needles)
     ps = (
-        "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python|node' -and $_.CommandLine "
-        f"-and ({conds}) }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
+        "Get-CimInstance Win32_Process | Where-Object { "
+        "$_.Name -match 'python|node' -and $_.CommandLine "
+        f"-and ({conds}) "
+        # ① 绝不碰平台自身
+        "-and ($_.CommandLine -notlike '*-m agent_community.platform.server*') "
+        "-and ($_.CommandLine -notlike '*agent_community\\\\platform\\\\server.py*') "
+        # ② 必须是桥进程（脚本名里带 bridge）
+        "-and ($_.CommandLine -like '*bridge*.py*') "
+        "} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
     )
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
@@ -1313,6 +1380,67 @@ async def client_ws(ws: WebSocket):
 # ═══════════════════════════════════════════════════════════════
 # 任务创建 → 广播 + 等待举手
 # ═══════════════════════════════════════════════════════════════
+def _find_workshop_of_task(task_id: str) -> Optional[Workshop]:
+    """由「来源任务」反查它的工作间（老板主流程 ②的幂等键）。"""
+    if not task_id:
+        return None
+    for _ws in workshops.values():
+        if getattr(_ws, "origin_task_id", "") == task_id:
+            return _ws
+    return None
+
+
+def _auto_create_workshop_for_task(task, command: str) -> Optional[Workshop]:
+    """老板主流程 ②：**大厅广播任务 → 自动新建工作间**。
+
+    为什么现在才做：`Workshop.status` 里本就写着整条流程
+    （`draft → discussing(一级讨论) → selecting(选定员工) → division(二级讨论) → running → review(三级讨论)`），
+    **设计是有的，缺的只是"自动建间"这一环**——2026-10-07 实测：全库只有注释提到自动建间、无实现，
+    而 A2A 那条入站路径建出的还是**无成员的空房间**、停在 draft，人来了没房间可进。
+
+    幂等：同一任务已有工作间则直接返回（重复广播不会建出第二个房间）。
+    成员留空：选人是**老板流程 ④**（用户点选 + AI 初选），不在建间时替用户决定。
+    失败不抛：建间失败**不影响广播本身**（返回 None，广播照常进行）。
+    """
+    try:
+        if task is None or not getattr(task, "id", ""):
+            return None
+        _old = _find_workshop_of_task(task.id)
+        if _old is not None:
+            return _old
+        if len(workshops) >= MAX_WORKSHOPS:
+            print(f"[workshop] 工作间已达上限 {MAX_WORKSHOPS}，任务 {task.id} 不再自动建间", flush=True)
+            return None
+        _ws = Workshop(
+            workshop_id=uuid4().hex[:8],
+            name=(getattr(task, "title", "") or command.strip()[:20] or "未命名工作间"),
+            workspace_dir=str(WORKSHOP_BASE / f"ws_{uuid4().hex[:8]}"),
+            hall_content=command,
+            members=[],
+            created_at=now_iso(),
+            origin_task_id=task.id,
+        )
+        _ws.status = "discussing"          # 自动建间即进入一级讨论
+        workshops[_ws.workshop_id] = _ws
+        try:
+            write_workspace_files(_ws)     # hall.md / AGENTS.md / 资料清单
+        except Exception as _e:
+            print(f"[workshop] 自动建间后写工作区文件失败: {_e}", flush=True)
+        try:
+            from .audit import audit_log as _al
+            _al.record("workshop.auto_create", actor="system", target=_ws.workshop_id,
+                       detail=f"task={task.id} name={_ws.name}",
+                       extra={"task_id": task.id, "workshop_id": _ws.workshop_id})
+        except Exception:  # noqa: BLE001 — 审计失败不影响建间
+            pass
+        save_state()
+        print(f"[workshop] 任务 {task.id} 自动建间 {_ws.workshop_id}（{_ws.name}）-> 一级讨论", flush=True)
+        return _ws
+    except Exception as e:  # noqa: BLE001 — 自动建间失败绝不能打断广播
+        print(f"[workshop] 自动建间失败（不影响广播）: {e}", flush=True)
+        return None
+
+
 @app.post("/api/command")
 async def api_command(request: Request):
     body = await request.json()
@@ -1339,6 +1467,11 @@ async def api_command(request: Request):
     )
     _append_hall(create_msg)
     await bcast_to_clients(create_msg)
+    # 老板主流程 ②：广播即**自动新建工作间**（幂等；失败不影响广播）。
+    # ③ 一级讨论就在这个房间里进行；④ 选成员由用户在房间里点选（AI 初选）。
+    _auto_ws = _auto_create_workshop_for_task(task, command)
+    if _auto_ws is not None:
+        create_msg.payload["workshop_id"] = _auto_ws.workshop_id
     # v7: 有 AI Provider 时走 Orchestrator 智能调度
     if ai_provider:
         print(f"[api_command] 调度 {task.id}, ws_agents={list(ws_agents)}", flush=True)
@@ -1347,7 +1480,27 @@ async def api_command(request: Request):
         # 无 AI 时回退到传统全局广播
         asyncio.create_task(_broadcast_and_collect(task.id, command))
         asyncio.create_task(_trigger_wakeup(task.id, command))
-    return {"success": True, "task_id": task.id, "title": task.title, "task": task.model_dump()}
+    return {"success": True, "task_id": task.id, "title": task.title,
+            "workshop_id": (_auto_ws.workshop_id if _auto_ws is not None else ""),
+            "task": task.model_dump()}
+
+@app.get("/api/tasks/{task_id}/workshop")
+async def api_task_workshop(task_id: str):
+    """由任务反查它自动建成的工作间（老板主流程 ②的反查口）。
+
+    没有则 404 —— 前端据此区分「这条任务还没建间」与「房间已建好，去选人」。
+    """
+    _ws = _find_workshop_of_task(task_id)
+    if _ws is None:
+        return Utf8JSONResponse({"error": "该任务还没有自动建成的现工作间"}, status_code=404)
+    return {"success": True, "task_id": task_id, "workshop_id": _ws.workshop_id,
+            "name": _ws.name, "status": _ws.status,
+            "member_count": len(_ws.members or []),
+            "workspace_dir": _ws.workspace_dir,
+            "next_step": ("选成员（POST /api/workshop/{id}/select-members 由 AI 初选，"
+                          "或 POST /api/workshop/{id}/members 手工加）"
+                          if not _ws.members else "名单已定，可开工")}
+
 
 # ============ 插件注册表（车间底部插件接口区） ============
 PLUGINS_FILE = DATA_DIR / "plugins.json"
@@ -2666,6 +2819,16 @@ async def prefill_proposal(room_id: str):
             ai_provider.chat("你是一个善于总结和规划的工作助手。严格按要求返回 JSON。", prompt),
             label="server.room_plan_prefill",
         )
+        # ★2026-10-12：**先认 AI 错误文本**。原代码在解析不到 JSON 时走 else 分支
+        #   `return {"success": True, ...}` —— 而 provider 的错误文本（`[Error: HTTP 402] {...}`）
+        #   切片后**是合法 JSON 但只有 error 键**，于是"AI 根本没答"会被当成
+        #   "AI 预填成功（内容为空）" ⇒ **假成功**（准则⑤）。
+        from .ai_provider import ai_error_text as _aet
+        _err = _aet(raw)
+        if _err:
+            return {"success": False, "error": f"平台 AI 调用失败，未能预填：{_err[:200]}",
+                    "error_code": "ai_unavailable",
+                    "hint": "检查平台 AI 配置/额度后重试；也可以直接手工填写分工。"}
         # 尝试提取 JSON（容错处理）
         json_start = raw.find("{")
         json_end = raw.rfind("}") + 1
@@ -3483,7 +3646,7 @@ async def api_budget(task_id: str):
 # ═══════════════════════════════════════════════════════════════
 # 工作间（V5 最小竖切）
 # ═══════════════════════════════════════════════════════════════
-WORKSHOP_BASE = Path(__file__).resolve().parent.parent / "data" / "workshops"
+WORKSHOP_BASE = DATA_DIR / "workshops"
 # ── 插话存储 + 自治边界状态机（V6-1）──────────────────────
 # 待激活队列：harness_id → [激活任务]，由各 harness 桥轮询领取
 # 待执行任务队列：harness_id → [工作任务]，由各 harness 桥轮询领取
@@ -3684,6 +3847,82 @@ async def recover_stale_tasks(request: Request):
             "recycled_count": len(recycled), "skipped_count": len(skipped)}
 
 
+
+
+# ── 心跳上报与失联判定（2026-10-07 Marvis，47 号任务书 Marvis 侧）──────────
+# agent 周期上报 alive/idle/busy → POST /api/heartbeat；
+# GET /api/heartbeat 看在线/失联概览；GET /api/heartbeat/stale 列失联 agent。
+# 任务卡死判定与孤儿回收复用 V-18：GET /api/tasks/stale + POST /api/tasks/recover-stale。
+
+@app.post("/api/heartbeat")
+async def api_heartbeat(request: Request):
+    """Agent 周期心跳上报。
+
+    body: {agent_id?, harness_id, harness_name?, status?: "alive"|"idle"|"busy", interval?: 秒, note?}
+    - harness 必须已注册（仿 /api/wakeup/response 归属校验），未注册拒绝 403；
+    - 未传 agent_id 时用 harness_id 兜底；
+    - 纯内存登记，不落盘、不阻塞主流程（落盘交给 save_state 既有链路）。
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return Utf8JSONResponse({"error": "body 必须为 JSON"}, status_code=400)
+    harness_id = str(body.get("harness_id", "")).strip()
+    if not harness_id:
+        return Utf8JSONResponse({"error": "harness_id required"}, status_code=400)
+    sess = harness_manager.sessions.get(harness_id)
+    if not sess:
+        print(f"[安全][Heartbeat] {harness_id} 未注册，拒绝心跳上报", flush=True)
+        return Utf8JSONResponse({"error": "harness 未注册，拒绝上报"}, status_code=403)
+    reg_name = getattr(sess.info, "harness_name", "") or ""
+    body_name = str(body.get("harness_name", "") or "").strip()
+    if reg_name and body_name and body_name != reg_name:
+        return Utf8JSONResponse({"error": "harness_name 与注册信息不一致"}, status_code=403)
+    agent_id = str(body.get("agent_id", "") or harness_id).strip()
+    try:
+        interval = float(body.get("interval") or 30.0)
+    except (TypeError, ValueError):
+        interval = 30.0
+    status = str(body.get("status") or "alive").strip()
+    note = str(body.get("note") or "").strip()
+    # ⚠️ 2026-10-08 修：`interval` 之前**解析了却从未使用**（`beat()` 不接收 interval，只有
+    # `register()` 会写进记录）⇒ 文档承诺的 `interval?: 秒` 实际无效，调用方**无法缩短失联判定窗口**
+    # （实测踩到：想用 interval=1 秒造"失联"来验证掉线抢救链，结果 4 秒后仍判在线，
+    #  因为记录里的 interval 一直是默认 30 秒 ⇒ 要 60 秒才失联）。
+    # 现在：带 interval 时先更新该 agent 的心跳配置，再 beat。
+    try:
+        _prev = heartbeat_registry.status(agent_id) or {}
+        if abs(float(interval) - float(_prev.get("interval") or 0)) > 1e-6:
+            heartbeat_registry.register(agent_id, harness_id=harness_id,
+                                        harness_name=str(body.get("harness_name") or ""),
+                                        interval=interval)
+    except Exception as _e:  # noqa: BLE001
+        print(f"[heartbeat] interval 更新失败(不影响心跳): {_e}", flush=True)
+    rec = heartbeat_registry.beat(agent_id, status=status, note=note, harness_id=harness_id)
+    return {"success": True, "agent_id": agent_id, "harness_id": harness_id,
+            "status": rec.get("status"), "last_seen": rec.get("last_seen")}
+
+
+@app.get("/api/heartbeat")
+async def api_heartbeat_status():
+    """查看全部 Agent 心跳登记：在线 / 失联概览。"""
+    return {
+        "total": len(heartbeat_registry._registry),
+        "online": heartbeat_registry.online(),
+        "stale": heartbeat_registry.stale(),
+        "timeout_scale": heartbeat_registry.timeout_scale,
+    }
+
+
+@app.get("/api/heartbeat/stale")
+async def api_heartbeat_stale():
+    """失联（超时未上报）Agent 列表。孤儿任务回收复用 V-18 端点。"""
+    stale = heartbeat_registry.stale()
+    return {
+        "stale_count": len(stale),
+        "stale": stale,
+        "hint": "任务卡死判定与回收复用 GET /api/tasks/stale 与 POST /api/tasks/recover-stale",
+    }
 
 
 def _dispatch_leader_review_discuss(ws, user_msg):
@@ -4209,6 +4448,18 @@ def _activate_leader_if_needed(ws: Workshop):
         if (time.time() - act_at) < 90:
             return "组长正在激活中，请稍候片刻；激活完成后组长会主动向您汇报并接管讨论。", False, leader
     hid = (leader.harness_ids or [None])[0]
+    # ★与员工路径**同一条判定**：平台完全不认识这个 harness ⇒ 没人能收到，别派（也别假装派了）。
+    #   （2026-10-08 首次接入审计：只拦了员工路径，名单第一人兜底当组长时走这里，仍然假 dispatched。）
+    if _harness_unknown(hid):
+        from . import entry_state as _es0
+        leader.status = "blocked"
+        leader.entry_state = _es0.BLOCKED
+        leader.entry_reason = (f"绑定的 harness「{hid}」**平台不认识**（没注册、也没有它的桥进程）："
+                              f"先注册它、或把该成员改绑到已注册的 harness；否则没人能收到这条消息")
+        print(f"[activ] 组长 {leader.member_id} 绑定的 harness「{hid}」平台完全不认识 → 标 blocked",
+              flush=True)
+        return ("（组长绑定的 harness 平台不认识：请先注册它或改绑；平台不会假装已经派发。）",
+                False, leader)
     leader.status = "activating"
     ws._leader_activating_at = time.time()
     method = _harness_wakeup_method(hid) if hid else "clipboard"
@@ -4239,6 +4490,26 @@ def _activate_leader_if_needed(ws: Workshop):
     )
     if _rep_bonus:
         act_payload["message"] = act_payload["message"] + "\n\n" + _rep_bonus
+    # ── V-23 自动架桥（**组长路径**，2026-10-07）──────────────────────
+    # 老板流程 ⑤：「确定后开启二级讨论区（**自动激活外端 agent 新对话并且根据具体桥模板
+    # 和真实路径架桥**）与组长（外端 agent）讨论」—— **组长才是第一个该拿到桥的人**。
+    # ⚠️ 实测教训（端到端验收抓到的）：首版只把自动架桥接进了员工路径
+    # （`_activate_single`），而 `_activate_workshop` 会把名单第一人**兜底当组长**
+    # 并 `continue` 跳过，于是走组长路径时**永远不架桥**、工作区里空空如也。
+    _leader_bridge = _auto_bridge_for_member(ws, leader, hid) if hid else {
+        "ok": False, "path": "", "compartment": "", "error": "无 harness"}
+    _leader_artifact = _leader_bridge["path"]
+    if _leader_bridge["compartment"]:
+        act_payload["compartment_dir"] = _leader_bridge["compartment"]
+        act_payload["message"] = act_payload["message"] + _compartment_hint(
+            _leader_bridge["compartment"], ws.workspace_dir)
+    if _leader_artifact:
+        act_payload["connect_artifact"] = _leader_artifact
+        act_payload["message"] = act_payload["message"] + _artifact_hint(_leader_artifact)
+    # ── 老板 2026-10-08：**组长路径也要带路径信息**（平台介绍/资料库/分工文件夹/会话名）──
+    # ⚠️ 与员工路径共用 `_member_path_hints`——第一次做这件事时我只改了员工路径，
+    #    而 `_activate_workshop` 会把名单第一人兜底当组长并跳过员工分支 ⇒ 组长那份又漏了。
+    act_payload["message"] = act_payload["message"] + _workshop_info_hint(**_member_path_hints(ws, leader))
     # V-15 步骤2：消费返回值。原先 `_disp_ok` 收了没用 —— 桥死了也照样回"已向组长派发"，
     # 假成功从队列分支转移到这里，组长永远停在 activating。
     # V-15 步骤3：同步推进进入状态机（entry_state），供前端显示真实进度与受阻原因。
@@ -4665,6 +4936,94 @@ def _tree_persist(ws: Workshop) -> None:
 
 
 
+def _activate_remaining_members(ws: Workshop, reason: str = "review") -> list:
+    """老板主流程 ⑦：**把还没进场的员工拉进来**（每人自己的会话 + 自己隔间里的桥）。
+
+    为什么单独写一个：`_activate_workshop` 会连组长一起重新动员，且**不跳过 `activating`**——
+    在三级讨论这种"人可能已经在干活"的时点重派，会把人从半路再打断一次。
+    本函数只处理 **pending / blocked**（从没进去的、或上次失败的），
+    `activating / entered / working / idle / completed` 一律不碰。
+
+    每个成员走 `_activate_single` ⇒ 内含 `_auto_bridge_for_member`（架桥 + 建隔间）⇒
+    提示词里带 `_compartment_hint`（**告知工作间共享区路径**，即老板要的"架桥时告知共享资料库路径"）。
+    返回被激活的 member_id 列表（供响应/审计展示）；单个失败不影响其它人。
+    """
+    done = []
+    for m in (ws.members or []):
+        if m.status in ("activating", "entered", "working", "idle", "completed"):
+            continue
+        try:
+            _activate_single(ws, m)
+            done.append(m.member_id)
+        except Exception as e:  # noqa: BLE001 — 一个人失败不拖累其他人
+            print(f"[activate] 工作间 {ws.workshop_id} 成员 {m.member_id} 补激活失败: {e}", flush=True)
+    if done:
+        try:
+            from .audit import audit_log as _al
+            _al.record("workshop.activate_remaining", actor="system", target=ws.workshop_id,
+                       detail=f"reason={reason} activated={','.join(done)}",
+                       extra={"reason": reason, "activated": done})
+        except Exception:  # noqa: BLE001
+            pass
+        print(f"[activate] 工作间 {ws.workshop_id} 补激活 {len(done)} 名（{reason}）：{done}", flush=True)
+    return done
+
+
+async def _session_setup_for_workshop(ws: Workshop) -> dict:
+    """**开工前自动跑步骤 4/7/8/9**（建会话 + 命名 + 落库）——老板流程里这几步是"自动"的。
+
+    老板 2026-10-08 的流程：「**4. 自动按照 harness 模板打开 harness 新对话**」；
+    此前只能由界面点一次（`onboard-members`），本函数把它接到"开工"这条路上。
+
+    ★**只在安全时自动做**（两条要求同时满足）：
+      · 该 harness **配了 `new_session` 脚本**（没配 ⇒ 自动做也没意义，交给人工模式）；
+      · 该动作的 **`foreground != "required"`**（**不会抢用户桌面**）——
+        点一下"开工"若把人家窗口弹出来，就违反了老板"**不要弹出来影响用户**"那条要求；
+        这类就先跳过、留给界面按钮（人点之前会看到"会占用桌面"的提示）。
+    另：已有会话名（`session_aliases` 非空）的成员**跳过**，避免每次开工都白跑一次子进程。
+
+    返回 `{member_id: "auto_ok"|"manual"|"skipped_foreground"|"already"|"failed: ..."}`，仅供日志/排查；
+    界面要看的"谁建好了"从 `members-status` 的 `session_aliases` 读（同一处事实源）。
+    """
+    out: dict = {}
+    try:
+        from .action_scripts import available_actions, session_name_for
+        from .routers.workshops_session import establish_one
+    except Exception as e:  # noqa: BLE001
+        print(f"[session-setup] 模块不可用: {e}", flush=True)
+        return out
+    for m in list(ws.members or []):
+        try:
+            # V28：跳过条件从"有会话名"改成"**已有运行中的通道**" ——
+            # 否则一旦停用通道（旧名仍留在 aliases 里），这里会永远跳过、**换不了对话**。
+            if str(getattr(m, "channel_state", "pending") or "pending") == "active":
+                out[m.member_id] = "already"
+                continue
+            hid = (m.harness_ids or [None])[0]
+            sess = harness_manager.sessions.get(hid) if hid else None
+            av = (available_actions(sess).get("new_session") or {}) if sess else {}
+            if not av.get("configured"):
+                out[m.member_id] = "manual"
+                continue
+            if str(av.get("foreground") or "") == "required":
+                out[m.member_id] = "skipped_foreground"
+                print(f"[session-setup] {m.member_id} 跳过自动建会话：该动作会占用用户桌面"
+                      f"（foreground=required），留给界面按钮/人工", flush=True)
+                continue
+            # 建会话是**同步子进程** ⇒ 丢线程，别卡住事件循环
+            r = await asyncio.to_thread(establish_one, ws, m)
+            ok = bool(r.get("success")) and bool(r.get("all_verified"))
+            out[m.member_id] = "auto_ok" if ok else "unverified"
+            print(f"[session-setup] {m.member_id} 自动建会话：{out[m.member_id]}"
+                  f" name={r.get('name', '')}", flush=True)
+        except Exception as e:  # noqa: BLE001
+            out[m.member_id] = f"failed: {type(e).__name__}"
+            print(f"[session-setup] {m.member_id} 自动建会话异常: {e}", flush=True)
+    if out:
+        save_state()
+    return out
+
+
 async def _activate_workshop(ws: Workshop):
     """开工总动员（最小修复，替代原缺失实现）：
     对 ws.members 逐个激活——组长走 _activate_leader_if_needed（已激活自动跳过），
@@ -4673,6 +5032,12 @@ async def _activate_workshop(ws: Workshop):
     此处补为 async（asyncio.create_task 要求 coroutine），内部保持纯规则同步调用。
     """
     try:
+        # ── 老板流程步骤 4/7/8/9：**先建会话并命名，再派激活消息** ─────────────
+        # 顺序很重要：激活消息里要带上"平台给你的会话名"，而那个名字来自这里的落库结果；
+        # 反过来（先派激活）就会出现"消息里没有会话名"或"消息发到了错的会话"。
+        _setup = await _session_setup_for_workshop(ws)
+        if _setup:
+            print(f"[workshop] 开工前会话流程: {json.dumps(_setup, ensure_ascii=False)}", flush=True)
         leader = next((m for m in ws.members if m.role == "组长"), None)
         if leader is None and ws.members:
             leader = ws.members[0]  # 名单第一人兜底为组长
@@ -4848,6 +5213,42 @@ def _r2_sweep_once() -> dict:
         return stats
 
 
+def _member_recover_sweep_once() -> dict:
+    """老板口述②的**自动臂**：running 工作间里掉线的成员各跑一轮抢救链。
+
+    ⚠️ **默认关**：老板 2026-10-07 定的产品化准则里有「**自动兜底默认关**」，
+    而这条会**主动去调起别人的窗口/重派激活**（对用户可见的动作），
+    所以默认不自动跑；要用时设 `AC_OFFLINE_AUTO=1`（或人工走
+    `POST /api/workshop/{ws}/recover-scan`，界面上就是"人工点一下抢救"）。
+    冷却与"到 3 次才上报人"的阈值都在 `member_offline` 里，本函数只负责扫。
+    """
+    acted: dict = {}
+    idle: list = []
+    if str(os.environ.get("AC_OFFLINE_AUTO", "")).strip() not in ("1", "true", "True", "on"):
+        return acted
+    try:
+        from .routers.workshops_recover import _run_one
+    except Exception as e:  # noqa: BLE001
+        print(f"[offline] 抢救模块不可用: {e}", flush=True)
+        return acted
+    for ws in list(workshops.values()):
+        if ws.status != "running":
+            continue
+        for m in list(ws.members or []):
+            try:
+                r = _run_one(ws, m)
+                a = r.get("action")
+                if a == "idle":
+                    idle.append(m.member_id)      # 没活干：**没打扰**，与"做了动作"分开报
+                elif a not in ("none", None):
+                    acted[m.member_id] = a
+            except Exception as e:  # noqa: BLE001
+                print(f"[offline] 抢救扫描异常 {m.member_id}: {e}", flush=True)
+    if idle:
+        print(f"[offline] 本轮回跳过（无在进行的工作，未打扰）: {idle}", flush=True)
+    return acted
+
+
 def _manual_sim_sweep_once() -> int:
     """外端派发成功但长期无回报的补齐扫描（仅 manual/off 模式，20s 周期调用）。
 
@@ -4898,6 +5299,9 @@ async def _autonomy_recovery_loop():
         try:
             _r2_stats = _r2_sweep_once()
             _sim_n = _manual_sim_sweep_once()
+            _off_acted = _member_recover_sweep_once()
+            if _off_acted:
+                print(f"[offline] 抢救动作: {json.dumps(_off_acted, ensure_ascii=False)}", flush=True)
             if _sim_n:
                 print(f"[manual-sim] 本轮补齐 {_sim_n} 个无回报成员发言", flush=True)
             if _r2_stats.get("timeout") or _r2_stats.get("collected") or _r2_stats.get("flushed") or _r2_stats.get("leader_reactivated"):
@@ -5341,20 +5745,31 @@ def _dispatch_to_harness(harness_id, payload, kind="task"):
     return True, ("已入 pending 队列（**桥存活未知**：该桥未经平台启动，"
                   "是否有人领取无法确认）")
 def _file_poll_send(harness_id: str, payload: dict) -> bool:
-    """把消息写入 file_poll 类 harness 的 inbox（wakeup_dir），由 harness 侧桥/agent 读取。
+    """把消息写入 file_poll 类 harness 的 inbox，由 harness 侧桥/agent 读取。
     文件约定：`task_<时间戳>.json`，内容含 type/workshop_id/member_id/任务等；
     harness 干完活后调 POST /api/harness/activation-result 或 /task-result 回报。
+
+    **2026-10-08 老板：「一个员工一个具体桥和隔间 ⇒ 不会发生谁收到就是谁的」。**
+    故 inbox 的选择顺序改为：
+      1) `payload["compartment_dir"]` 存在 → 写**该成员专属邮箱** `<隔间>/inbox/`
+         （同一 harness 开多个会话也不会串：谁的桥只取谁的邮箱）；
+      2) 否则回落到 harness 级 `wakeup_dir`（**向后兼容**：历史调用与未走隔间的路径不变）。
     """
-    sess = harness_manager.sessions.get(harness_id)
-    if not sess or not getattr(sess.info, "wakeup_dir", ""):
-        return False
-    inbox = Path(sess.info.wakeup_dir)
+    inbox = None
+    comp = str(payload.get("compartment_dir") or "").strip()
+    if comp:
+        inbox = Path(comp) / "inbox"
+    if inbox is None:
+        sess = harness_manager.sessions.get(harness_id)
+        if not sess or not getattr(sess.info, "wakeup_dir", ""):
+            return False
+        inbox = Path(sess.info.wakeup_dir)
     try:
         inbox.mkdir(parents=True, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         path = inbox / f"task_{ts}.json"
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"[filepoll] 已写入 inbox: {path}", flush=True)
+        print(f"[filepoll] 已写入 inbox: {path}（{'成员邮箱' if comp else 'harness 级邮箱'}）", flush=True)
         return True
     except Exception as e:
         print(f"[filepoll] 写入 inbox 失败({harness_id}): {e}", flush=True)
@@ -5375,7 +5790,9 @@ def _platform_base_url():
         port = 18920
     return f"http://127.0.0.1:{port}"
 
-def _activation_prompt(hid, role, workspace_dir, workshop_id="", member_id=""):
+def _activation_prompt(hid, role, workspace_dir, workshop_id="", member_id="", artifact_path="",
+                       compartment_dir="", library_dir="", assignment_dir="", session_name="",
+                       workshop_name=""):
     """取该 HA 注册时自动生成的激活提示词；未注册/无模板时回退默认模板。
     模板含 {role}/{workspace_dir}/{harness_name}/{model_name}/{capabilities}
     /{workshop_id}/{member_id} 占位符，激活时由平台填充实时值后下发。
@@ -5433,7 +5850,195 @@ def _activation_prompt(hid, role, workspace_dir, workshop_id="", member_id=""):
     out = tpl
     for _k, _v in _fields.items():
         out = out.replace("{" + _k + "}", str(_v))
+    # V-23 自动架桥：把平台刚生成的接入产物路径告诉对方。
+    # 用**追加**而不是占位符 —— 已注册的自定义激活模板里没有 {connect_artifact}，
+    # 追加对自定义模板与默认模板一视同仁（占位符只在用得到时才需要有）。
+    return (out + _artifact_hint(artifact_path)
+            + _compartment_hint(compartment_dir, workspace_dir)
+            + _workshop_info_hint(workshop_name, workshop_id, library_dir, assignment_dir,
+                                  session_name))
+
+
+def _artifact_hint(artifact_path: str) -> str:
+    """V-23：把「你的接入产物在哪、怎么用」这段话收成**唯一一处**。
+
+    两条激活路径（员工 `_activate_single` / 组长 `_activate_leader_if_needed`）都要说这段话，
+    分别内联会让文案随时间漂移（本项目的老毛病），故集中在此。
+    """
+    if not artifact_path:
+        return ""
+    return (
+        "\n\n【你的接入产物（平台已自动生成本工作间的桥）】\n"
+        f"- 路径：{artifact_path}\n"
+        "- 这是平台按「你的具体桥模板」+「本工作间真实路径」生成的接入产物，已落在你的工作区目录下。"
+        "按它的类型使用：脚本则运行它；契约 JSON 则按其中的坐标回连。\n"
+        "- 若你已经有到本工作间的可用连接，忽略本段即可（平台可能重复生成）。"
+    )
+
+
+def _member_path_hints(ws: Workshop, m: WorkshopMember) -> dict:
+    """激活消息要带的那几个**路径**（资料库 / 该员工的分工文件夹 / 平台给的会话名 / 工作间名）。
+
+    ⚠️ **必须是唯一推导点**：本项目已两次栽在"只改了一条激活路径"上——
+    第一条是自动架桥（注释里记着：「首版只把自动架桥接进了员工路径，而组长路径永远不架桥」），
+    第二条就是本函数对应的路径提示（我又只改了 `_activate_single`，组长路径漏了）。
+    两条路径（员工 `_activate_single` / 组长 `_activate_leader_if_needed`）都**只能**从这里取。
+    """
+    out = {"workshop_name": getattr(ws, "name", ""), "workshop_id": getattr(ws, "workshop_id", ""),
+           "library_dir": "", "assignment_dir": "", "session_name": ""}
+    try:
+        from .workshop import LIBRARY_DIRNAME, member_assignment_dir
+        out["library_dir"] = str(Path(ws.workspace_dir) / LIBRARY_DIRNAME)
+        out["assignment_dir"] = str(member_assignment_dir(ws, m))
+    except Exception as _e:  # noqa: BLE001
+        print(f"[activ] 资料库/分工路径推导失败（不影响激活）: {_e}", flush=True)
+    try:
+        out["session_name"] = (list(getattr(m, "session_aliases", []) or []) or [""])[0]
+    except Exception:  # noqa: BLE001
+        pass
     return out
+
+
+def _workshop_info_hint(workshop_name: str = "", workshop_id: str = "", library_dir: str = "",
+                        assignment_dir: str = "", session_name: str = "") -> str:
+    """把「**这是什么平台** + 去哪看项目与分工」收成**唯一一处**（老板 2026-10-08 的要求）。
+
+    老板原话：「激活消息应该带上信息路径信息，**介绍平台**，介绍对应工作间**共享资料库文件夹路径**，
+    介绍各自事情，但是激活信息是**通用的模板**，只是更新了各种路径，**外端 agent 拿着路径自己去看**
+    项目和分工……每个员工分配到一个文件夹（名称：**agent名-职位**），里面有详细分工内容」。
+
+    ⇒ 本段**只放路径与"去看什么"**，**不把分工内容贴进消息**：
+    消息体保持通用模板（可复制沿用），只有路径随工作间/成员变化。
+    """
+    if not (library_dir or assignment_dir or session_name):
+        return ""
+    lines = [
+        "",
+        "【这是什么平台】",
+        "外端Agent生产合作社（External Agent Community）：把多个异构 agent 组织成一个个**工作间**"
+        "协作的**本地自部署**平台。你不需要把结果发给某个中心——**在共享区与你的隔间里交接文件**即可。",
+        "",
+        f"【本工作间】{workshop_name or '（未命名）'}"
+        + (f"（`{workshop_id}`）" if workshop_id else ""),
+    ]
+    if library_dir:
+        lines += [
+            "",
+            "【共享资料库（项目与**全员分工**都在这儿）】",
+            f"- 路径：{library_dir}",
+            "- 先读 `README.md`（索引与规矩）、`plan.md`（全员分工）、`framework.md`（项目框架）。",
+        ]
+    if assignment_dir:
+        lines += [
+            "",
+            "【你的分工文件夹（**先看这里**）】",
+            f"- 路径：{assignment_dir}",
+            "- 里面 `assignment.md` 写着**你要做的事**、你的工作区坐标、以及去哪看全局。",
+        ]
+    if session_name:
+        lines += [
+            "",
+            "【平台给你的会话名】",
+            f"- {session_name}",
+            "- 若与你当前会话名不一致，按平台给的指引处理（改名，或告知用户由他处理）。",
+        ]
+    lines += [
+        "",
+        "**请拿着上面的路径自己去读。**平台不会把分工内容贴在消息里——",
+        "本激活消息是**通用模板**，只有路径随工作间/成员变化。",
+    ]
+    return "\n".join(lines)
+
+
+def _auto_bridge_for_member(ws: Workshop, m: WorkshopMember, hid: str) -> str:
+    """V-23 **自动架桥**：建间激活前，用 L2 具体桥模板 + 该成员的隔间路径生成 L3 接入产物。
+
+    这是「双模板」链的最后一环：L1 初级模板（注册期采集参数）→ L2 具体桥模板（注册期生成）
+    → **L3 接入产物（本函数，建间激活期生成、落在该成员的隔间里）**。
+
+    **V23 §9（老板 2026-10-07 口述：「单个会话拥有一个隔间和一个具体桥」）**：
+    产物落点从「工作间根」改为「**该成员的隔间**」`<ws_dir>/<职位>_<成员id>/`。
+    此前所有人都往工作间根写同名的 `bridge.py`，**后写的覆盖先写的**（隔离实例实测：
+    两条 bridge.auto 审计都在、工作区只剩一份 bridge.py，内文只有后者的 harness_id）。
+
+    **创建时机（老板更正两次后的结论）**：
+    「新建工作间 → 选定员工 → **架起具体桥** → 此刻建隔间」。
+    本函数就是那个"架桥那一步"，故**隔间的创建点就在这里**（`ensure_compartment` 幂等，
+    续作/重派会复用同一隔间）。我一度把建隔间挪进 `write_workspace_files()`（建间就建），
+    **放早了**，已退回——未选中的员工、还没架桥的房间不该有空隔间。
+
+    返回 `{"ok","path","compartment","error"}`。**任何失败都不阻断激活** —— 照常派发，
+    只是提示词里说明桥没生成。
+    """
+    _fail = lambda _e: {"ok": False, "path": "", "compartment": "", "error": str(_e)}
+    try:
+        sess = harness_manager.sessions.get(hid)
+        info = getattr(sess, "info", None) if sess else None
+        if info is None:
+            return _fail("harness 未注册/无 info")
+        from . import compartment as _cmp
+        from .connect_artifact import plan as _plan, render as _render
+        _comp = _cmp.ensure_compartment(ws.workspace_dir, m.role, m.member_id)
+        if not _comp.get("ok"):
+            print(f"[bridge] 工作间 {ws.workshop_id} 成员 {m.member_id}: "
+                  f"隔间创建失败，跳过自动架桥（{_comp.get('error')}）", flush=True)
+            return _fail(f"隔间创建失败: {_comp.get('error')}")
+        _pl = _plan(ws, info, m.member_id, role=m.role)
+        if not _pl.get("complete"):
+            print(f"[bridge] 工作间 {ws.workshop_id} 成员 {m.member_id}: "
+                  f"L2 模板参数不完备，跳过自动架桥", flush=True)
+            return {"ok": False, "path": "", "compartment": _comp["dir"],
+                    "error": "L2 模板参数不完备"}
+        _out = _render(_pl)
+        if not _out.get("ok"):
+            print(f"[bridge] 自动架桥失败（不阻断激活）: {_out.get('error')}", flush=True)
+            return {"ok": False, "path": "", "compartment": _comp["dir"],
+                    "error": str(_out.get("error"))}
+        _path = _out.get("path") or ""
+        print(f"[bridge] 自动架桥完成：ws={ws.workshop_id} member={m.member_id} "
+              f"kind={_out.get('artifact_kind')} 隔间={_comp['dir']} -> {_path}", flush=True)
+        try:
+            from .audit import audit_log as _al
+            _al.record(
+                "bridge.auto", actor="system", target=ws.workshop_id,
+                detail=f"member={m.member_id} harness={hid} kind={_out.get('artifact_kind')}",
+                extra={"member_id": m.member_id, "harness_id": hid,
+                       "artifact_kind": _out.get("artifact_kind") or "",
+                       "artifact_path": _path, "compartment": _comp["dir"]},
+            )
+        except Exception:  # noqa: BLE001 — 审计失败不影响架桥
+            pass
+        return {"ok": True, "path": _path, "compartment": _comp["dir"], "error": ""}
+    except Exception as e:  # noqa: BLE001 — 架桥异常绝不阻断激活
+        print(f"[bridge] 自动架桥异常（不阻断激活）: {e}", flush=True)
+        return _fail(e)
+
+
+def _compartment_hint(comp_dir: str, ws_dir: str) -> str:
+    """V23 §9：告诉该成员「共享区在哪、你的隔间在哪、只在自己的隔间里写」。
+
+    老板流程 ⑦ 还要求「**架桥时告知共享资料库路径**」，故这里把资料库目录一并点名
+    （形态见 V23 §9.4：**自动建立的文件夹**，日后可 `git init` 升格为库）。
+
+    两道激活路径（员工 `_activate_single` / 组长 `_activate_leader_if_needed`）共用此文案，
+    分别内联必然漂移（本项目老毛病）。
+    """
+    if not comp_dir:
+        return ""
+    _lib = ""
+    if ws_dir:
+        _lib = os.path.join(str(ws_dir), "library")
+    return (
+        "\n\n【你的隔间（你只在这个目录里写文件）】\n"
+        f"- 你的隔间：{comp_dir}（内含 input/ output/ temp/）\n"
+        f"- 工作间共享区：{ws_dir}（hall.md 与共享资料在这里，**只读，不要往里写**）\n"
+        + (f"- **共享资料库**：{_lib}（`plan.md`=分工安排，`framework.md`=项目框架；**读它拿分工**）\n"
+           if _lib else "")
+        + "- 规则：产物写进你自己的 output/，中间文件放 temp/，输入从 input/ 取；"
+        "**不要写别人的目录，也不要写共享区**——多人同时写工作间根会互相覆盖。"
+    )
+
+
 def _handle_activation_timeout(ws: Workshop, m: WorkshopMember) -> str:
     """V-15 步骤7：激活超时分档（§10.2 + 验证矩阵 #6）。
 
@@ -5468,6 +6073,22 @@ def _handle_activation_timeout(ws: Workshop, m: WorkshopMember) -> str:
     return "needs_human"
 
 
+def _harness_unknown(hid: str) -> bool:
+    """平台**既不认识**这个 harness（没有会话）、**也没有**它的桥进程记录 ⇒ **没人能收到消息**。
+
+    为什么单独抽出来：两条激活路径（员工 `_activate_single` / 组长 `_activate_leader_if_needed`）
+    都要用同一条判定——本项目已**三次**栽在"只改了一条激活路径"上
+    （自动架桥、路径提示、以及本处的前置拦截），所以判定必须只有一处。
+    """
+    try:
+        if hid and hid in harness_manager.sessions:
+            return False
+        from . import bridge_procs as _bp
+        return _bp.status(hid) == "unknown"
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _activate_single(ws: Workshop, m: WorkshopMember) -> None:
     """激活单个成员：file_poll 类 HA 写 inbox 文件，其余进队列由桥轮询领取。
     激活提示词取该 HA 注册时自动生成的模板（按角色/工作区坐标填充）。
@@ -5480,13 +6101,51 @@ def _activate_single(ws: Workshop, m: WorkshopMember) -> None:
     """
     hid = (m.harness_ids or [None])[0]
     from . import entry_state as _es          # V-15 步骤3
+    # V28 §2 规则 5：**停用通道后不得再投消息**（否则"说了停用、消息照收"= 假状态）
+    try:
+        from .routers.workshops_session import member_channel_allows_dispatch as _ch_ok
+        _allow, _why = _ch_ok(m)
+        if not _allow:
+            m.status = "blocked"
+            m.entry_state = _es.BLOCKED
+            m.entry_reason = _why
+            print(f"[activ] {m.member_id} 通道已停用 -> 不派发（{_why}）", flush=True)
+            return
+    except Exception:  # noqa: BLE001
+        pass
     if not hid:
         m.status = "blocked"
         m.entry_state = _es.BLOCKED
         m.entry_reason = _es.REASON_NO_HARNESS
         return
+    # ★2026-10-08 首次接入审计发现的**假成功**：成员绑了一个**平台完全不认识**的 harness 时，
+    #   旧逻辑会走到 pending 队列分支并回「已入 pending 队列（桥存活未知）」⇒ `entry_state=dispatched`，
+    #   而实际上**没有任何人能收到这条消息**（隔间/桥/邮箱全空，队列永远没人来取）。
+    # 判据取"**平台既没有它的会话、也没有它的桥进程记录**"——这时才断言"没人能收到"；
+    # 只登记过桥进程（平台拉起过桥）的情况仍按原逻辑走，避免误拦。
+    if _harness_unknown(hid):
+        m.status = "blocked"
+        m.entry_state = _es.BLOCKED
+        m.entry_reason = (f"绑定的 harness「{hid}」**平台不认识**（没注册、也没有它的桥进程）："
+                          f"先注册它、或把该成员改绑到已注册的 harness；否则没人能收到这条消息")
+        print(f"[activ] {m.member_id} 绑定的 harness「{hid}」平台完全不认识 → 标 blocked（不产生假派发）",
+              flush=True)
+        return
     method = _harness_wakeup_method(hid)
     m.entry_state = _es.PENDING               # 起点（此前可能卡在上一轮）
+    # ── V-23 自动架桥（双模板链的最后一环，2026-10-07）────────────────
+    # 建间激活前，先按「L2 具体桥模板 + 本工作间真实 workspace_dir」生成 L3 接入产物，
+    # 并把产物路径写进激活提示词。失败不阻断（照常派发，只是提示词里不含产物路径）。
+    _bridge = _auto_bridge_for_member(ws, m, hid)
+    _artifact = _bridge["path"]
+    _comp_dir = _bridge["compartment"]
+    # 老板 2026-10-08：激活消息要带上**路径信息**（平台介绍 / 共享资料库 / 该员工的
+    # 「agent名-职位」分工文件夹 / 平台给的会话名）——外端 agent 拿路径自己去看。
+    # 与组长路径**共用** `_member_path_hints`（唯一推导点，别再各写一遍）。
+    _hints = _member_path_hints(ws, m)
+    _hints.pop("workshop_id", None)   # 它已按位置参数传入，留在 dict 里会"重复关键字"报错（实测踩到）
+    _prompt = _activation_prompt(hid, m.role, ws.workspace_dir, ws.workshop_id,
+                                 m.member_id, _artifact, _comp_dir, **_hints)
     # 统一派发：http_api 用 HTTP 推送，file_poll 写 inbox，其它进队列
     _ok, _note = _dispatch_to_harness(hid, {
         "type": "activate",
@@ -5494,8 +6153,10 @@ def _activate_single(ws: Workshop, m: WorkshopMember) -> None:
         "member_id": m.member_id,
         "role": m.role,
         "workspace_dir": ws.workspace_dir,
-        "activation_prompt": _activation_prompt(hid, m.role, ws.workspace_dir, ws.workshop_id, m.member_id),
-        "message": _activation_prompt(hid, m.role, ws.workspace_dir, ws.workshop_id, m.member_id),
+        "compartment_dir": _comp_dir,          # V23 §9：该成员自己的隔间
+        "connect_artifact": _artifact,         # V-23：本工作间的接入产物路径
+        "activation_prompt": _prompt,
+        "message": _prompt,
     }, kind="activation")
     if not _ok:
         m.status = "blocked"

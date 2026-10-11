@@ -26,11 +26,16 @@ import urllib.request
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "agent_community" / "data"
+DATA_DIR = Path(os.environ.get("AC_DATA_DIR") or (PROJECT_ROOT / "agent_community" / "data"))
 LOG_DIR = DATA_DIR / "logs"
 DEFAULT_PORT = 18920
 DEFAULT_INTERVAL = 30.0
 HEALTH_URL = "http://127.0.0.1:{port}/api/status"
+
+# 健康模式（V19 决策点②）：http = 历史行为（TCP + /api/status）；tcp = 只判 TCP。
+# 默认 http ⇒ **18920 现有路径行为零变化**；`--health tcp` 由 main() 按参数设置。
+HEALTH_MODES = ("http", "tcp")
+_HEALTH_MODE = "http"
 
 logger = logging.getLogger("watchdog")
 
@@ -59,10 +64,19 @@ def _http_health(port: int, timeout: float = 5.0) -> tuple[bool, str]:
         return False, f"{type(e).__name__}: {e}"
 
 
-def probe(port: int, http_timeout: float = 5.0) -> tuple[bool, str]:
-    """一次完整健康判定：TCP + HTTP。"""
+def probe(port: int, http_timeout: float = 5.0, mode: str | None = None) -> tuple[bool, str]:
+    """一次健康判定（`mode` 缺省取全局 `--health` 设置）。
+
+    - `http`（默认 = 历史行为）：TCP + `GET /api/status`（要求 `status=="running"`）；
+    - `tcp`（V19 决策点②，`--health tcp`）：**只判 TCP 可达** —— 给**没有 HTTP 端点**的目标用
+      （如 gRPC 网关 9105）。没有这个模式的话，对它的健康**恒为 false**，看门狗会
+      **每轮都重拉**、反复抢端口（V19 稿 §2.1 记录的前置缺陷）。
+    """
     if not _port_open(port):
         return False, "TCP 不可达（无进程监听该端口）"
+    m = (mode or _HEALTH_MODE) or "http"
+    if m == "tcp":
+        return True, "TCP 可达（--health tcp 模式）"
     ok, detail = _http_health(port, http_timeout)
     return ok, f"HTTP /api/status: {detail}"
 
@@ -144,7 +158,7 @@ def _gui_shell_exists(port: int, cache_seconds: float = 300.0) -> bool:
     out = _run_powershell(
         "Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" -ErrorAction SilentlyContinue "
         "| Where-Object { $_.CommandLine -match 'gui' } "
-        f"| Where-Object {{ $_.CommandLine -match '18920|{port}' }} | Select-Object -First 1 ProcessId"
+        f"| Where-Object {{ $_.CommandLine -match '{port}' }} | Select-Object -First 1 ProcessId"
     )
     if out and not out.startswith("__ERR__") and out.strip():
         found = True
@@ -295,7 +309,13 @@ def main() -> int:
     ap.add_argument("--interval", type=float, default=DEFAULT_INTERVAL, help="守护轮询间隔秒（默认 30）")
     ap.add_argument("--demo", action="store_true", help="拉起时附带 --demo（跳过 Harness 真实连通检查）")
     ap.add_argument("--spawn-cmd", default="", help="拉起用的命令模板（默认: <python> -m agent_community.platform.server --port <port>）")
+    ap.add_argument("--health", choices=list(HEALTH_MODES), default="http",
+                    help="健康判据：http=TCP+/api/status（默认，18920 现行为）；"
+                         "tcp=只判 TCP（给没有 HTTP 端点的目标用，如 gRPC 网关 9105）")
     args = ap.parse_args()
+
+    global _HEALTH_MODE
+    _HEALTH_MODE = args.health
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")

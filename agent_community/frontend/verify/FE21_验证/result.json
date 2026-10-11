@@ -1,0 +1,16 @@
+{
+  "pass": true,
+  "fail": [],
+  "promptLen": 4274,
+  "undelivered": true,
+  "scHead": "🟡 桥取走了，但你的 agent 没回话 ⇒ 多半是没配「叫醒命令」",
+  "nonGet": [
+    "POST /api/workshop/1c39c757/member/m0/self-check"
+  ],
+  "errors": [],
+  "screenshots": [
+    "01_话术.png",
+    "02_未送达.png",
+    "03_自检灯.png"
+  ]
+}

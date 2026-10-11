@@ -33,6 +33,18 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+# ── 输出编码自保（2026-10-11 实测缺陷修复）──────────────────────────────
+# 本脚本会打印 ✓ / ✗。在**中文 Windows** 上 stdout 编码随控制台码页（多为 GBK）
+# ⇒ 打印这两个字符会抛 `UnicodeEncodeError: 'gbk' codec can't encode character '\u2717'`，
+# **把桥进程弄死**（实测：桥起来后一自检就异常）。
+# ⇒ 与其要求用户记着设 PYTHONIOENCODING，不如脚本自己把 stdout/stderr 改成
+#    UTF-8 + 出错不炸（errors="replace"）。这样谁跑都不会因为这个挂掉。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:  # noqa: BLE001 — 老解释器没有 reconfigure：退回原样，不因此崩
+    pass
+
 
 def post_json(url: str, payload: dict) -> bool:
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")

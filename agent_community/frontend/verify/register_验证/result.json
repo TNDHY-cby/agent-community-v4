@@ -1,0 +1,34 @@
+{
+  "pass": true,
+  "fail": [],
+  "viewports": {
+    "1280": {
+      "count": 4,
+      "overlaps": [],
+      "hitsTitle": false,
+      "hitsBtn": false,
+      "hScroll": false
+    },
+    "1440": {
+      "count": 4,
+      "overlaps": [],
+      "hitsTitle": false,
+      "hitsBtn": false,
+      "hScroll": false
+    },
+    "1680": {
+      "count": 4,
+      "overlaps": [],
+      "hitsTitle": false,
+      "hitsBtn": false,
+      "hScroll": false
+    }
+  },
+  "clicked": "http://127.0.0.1:18930/ops.html",
+  "errors": [],
+  "screenshots": [
+    "01_1280_顶栏.png",
+    "01_1440_顶栏.png",
+    "01_1680_顶栏.png"
+  ]
+}

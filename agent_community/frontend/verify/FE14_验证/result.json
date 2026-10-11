@@ -1,0 +1,73 @@
+{
+  "pass": true,
+  "fail": [],
+  "ws": "8ab575bb",
+  "s1": {
+    "model": {
+      "tag": "未建立",
+      "act": "建立模型"
+    },
+    "fw": {
+      "tag": "未建立（平台模板）",
+      "act": "写框架"
+    },
+    "mMsg": null,
+    "fwMsg": null
+  },
+  "s2": {
+    "cls": "m-msg warn",
+    "text": "已保存 · 缺 3 块（未完成）：3. 分工对应、4. 依赖与顺序、5. 产物落点　·　v1　·　执笔：组长"
+  },
+  "s3": {
+    "cls": "m-msg ok",
+    "text": "已保存 · v2　·　执笔：组长　·　旧版已备份"
+  },
+  "s4": {
+    "saved": {
+      "cls": "fw-msg ok",
+      "text": "已保存 · framework.md　·　plan.md 已按当前名单重生成；framework.md 已写入"
+    },
+    "afterReload": {
+      "tag": "已建立",
+      "act": "编辑",
+      "text": "## 项目框架（FE14 验收写入）\n\n本项目分三条线推进，验收以脚本通过为准。\n"
+    }
+  },
+  "s5": {
+    "cls": "fw-msg err",
+    "text": "未写入：内容为空（后端保持已有内容，未传 framework）"
+  },
+  "s6": {
+    "cls": "m-msg err",
+    "text": "未写入：未提供 model"
+  },
+  "lib_final": {
+    "v": 2,
+    "hist": 1
+  },
+  "viewports": {
+    "1024": true,
+    "1280": true,
+    "1920": true
+  },
+  "nonGet": [
+    "POST /api/workshop/8ab575bb/library/update",
+    "POST /api/workshop/8ab575bb/library/update",
+    "POST /api/workshop/8ab575bb/library/update",
+    "POST /api/workshop/8ab575bb/library/update",
+    "POST /api/workshop/8ab575bb/library/update"
+  ],
+  "errors": [],
+  "screenshots": [
+    "01_初始两块.png",
+    "02_模型缺3块.png",
+    "03_模型已完成.png",
+    "04_框架已写入.png",
+    "05_框架刷新后.png",
+    "06_框架空提交反向断言.png",
+    "07_模型空提交反向断言.png",
+    "08_1024.png",
+    "08_1280.png",
+    "08_1920.png"
+  ]
+}

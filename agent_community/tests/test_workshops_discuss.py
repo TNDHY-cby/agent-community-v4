@@ -255,7 +255,13 @@ class TestLifecycle:
         ws = mkws(status="running")
         status, payload = unpack(run(wd.workshop_review("ws_t")))
         assert status == 200
-        assert payload == {"success": True, "status": "review", "action": "review"}
+        # 2026-10-07 主流程 ⑦：响应**增补** `activated`（本轮补激活了哪些成员）。
+        # 这是有意的接口增补，故此处改为逐键断言而非整字典相等——原断言会把
+        # "任何新增字段"都判成回归，反而不利于接口演进。
+        assert payload["success"] is True
+        assert payload["status"] == "review"
+        assert payload["action"] == "review"
+        assert payload["activated"] == [], "⑦ 新增字段：本轮没有待补激活的成员"
         assert ws.status == "review"
         sm = state_mod.task_state_machine
         assert sm.get_state("ws_t") == "discussing"

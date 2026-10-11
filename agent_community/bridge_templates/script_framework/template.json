@@ -1,0 +1,30 @@
+{
+  "name": "script_framework",
+  "description": "通用脚本框架（V26）：按**动作**组织的 L1 骨架 —— new_session（新建对话）/ rename_session（重命名对话）/ deliver（送消息进会话）。平台只依赖契约、不依赖具体实现；每个 harness 只填自己的命令或用人工模式。bridge（桥）沿用既有 bridge_templates/{cli_acp,file_poll,pending_poll}。",
+  "interface_type": "action_scripts",
+  "actions": {
+    "new_session": {
+      "template": "new_session.tmpl",
+      "required_fields": ["HARNESS_ID", "HARNESS_NAME"],
+      "optional_fields": ["NEW_SESSION_CMD", "FOREGROUND"],
+      "foreground_default": "optional",
+      "flow_step": 4
+    },
+    "rename_session": {
+      "template": "rename_session.tmpl",
+      "required_fields": ["HARNESS_ID", "HARNESS_NAME"],
+      "optional_fields": ["RENAME_CMD", "FOREGROUND"],
+      "foreground_default": "optional",
+      "flow_step": 8
+    },
+    "deliver": {
+      "template": "deliver.tmpl",
+      "required_fields": ["HARNESS_ID", "HARNESS_NAME"],
+      "optional_fields": ["DELIVER_CMD", "DELIVER_METHOD", "INJECT_SCRIPT", "WINDOW_TITLE_LIKE", "SUBMIT", "FOREGROUND"],
+      "foreground_default": "optional",
+      "flow_step": 5
+    }
+  },
+  "exit_codes": { "0": "成功且可自证", "10": "成功但未核实", "other": "失败" },
+  "notes": "所有动作都**不把会话名当身份凭据**（V25 §4.1.1）；名字由平台生成并下发。"
+}

@@ -1,0 +1,50 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""L1 骨架 · **rename_session**（把平台指定的名字写到会话上）—— 老板流程**步骤 8**。
+
+为什么这一步关键（V25 §0）：**会话身份由平台建立**——
+平台自己建、自己立刻改名，于是"新建名随机/用户会改名"在流程上被绕开。
+契约见 ../SPEC.md（V26 §3）：本骨架同样**开箱即用**（配命令则可自证，否则人工模式返回 10）。
+"""
+
+{{AC_COMMON}}
+
+HARNESS_ID = {{HARNESS_ID_LIT}}
+HARNESS_NAME = {{HARNESS_NAME_LIT}}
+# 本 harness 的"重命名"命令；可用 {session_id} / {session_name} / {new_name} 占位。留空 = 人工模式。
+RENAME_CMD = {{RENAME_CMD_LIT}}
+FOREGROUND = {{FOREGROUND_LIT}} or "optional"
+CMD_TIMEOUT = 45.0
+
+
+class RenameSession(Action):
+    action = "rename_session"
+
+    def do(self, payload):
+        new_name = (payload.get("new_name") or "").strip()
+        sess = payload.get("session") or {}
+        if not new_name:
+            raise Failed("缺少 new_name（平台应下发『工作间id-项目-职位-成员id』）")
+        if RENAME_CMD:
+            cmd = (RENAME_CMD
+                   .replace("{new_name}", new_name)
+                   .replace("{session_id}", str(sess.get("id") or ""))
+                   .replace("{session_name}", str(sess.get("name") or "")))
+            ok, out = run_command(cmd, timeout=CMD_TIMEOUT)
+            if not ok:
+                raise Failed(f"重命名命令失败：{out[:200]}")
+            blob = parse_json_blob(out)
+            applied = str(blob.get("applied_name") or blob.get("name") or "").strip()
+            if not applied:
+                raise Unverified(f"命令成功但没回报 applied_name：{out[:200]}")
+            if applied != new_name:
+                # 回报的名字与要求不一致 ⇒ 如实报未核实，不假装改成了
+                raise Unverified(f"回报的名字({applied})与要求({new_name})不一致")
+            return {"applied_name": applied, "readback": str(blob.get("readback") or ""), "via": "cmd"}
+        log(f"【人工模式】请把该会话**重命名为**：{new_name}")
+        log("  （复制粘贴即可；改完平台会按这个名字匹配，不必再猜哪个会话）")
+        raise Unverified("未配置 RENAME_CMD：已提示人工重命名，平台按『未核实』处理")
+
+
+if __name__ == "__main__":
+    sys.exit(run_action(RenameSession))

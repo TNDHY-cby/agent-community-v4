@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>外端agent生产合作社 — 成员隔间与桥</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--bg:#121316;--bg2:#191b20;--bg3:#21242a;--bg4:#2b2f37;--bg5:#363b45;--ink:#e8e6e1;--muted:#9b978e;--dim:#66625a;--rule:#26292f;--accent:#d97757;--accent-soft:rgba(217,119,87,.13);--accent-strong:#e58968;--green:#86b394;--green-soft:rgba(134,179,148,.13);--yellow:#d9ab53;--yellow-soft:rgba(217,171,83,.13);--red:#d07468;--red-soft:rgba(208,116,104,.13);--blue:#7ba3c9;--blue-soft:rgba(123,163,201,.13);--cyan:#64b5b4;--cyan-soft:rgba(100,181,180,.13);--purple:#a08cc0;--purple-soft:rgba(160,140,192,.13);--radius-lg:14px;--radius-md:10px;--font-mono:"JetBrains Mono","Cascadia Code",Consolas,"Courier New",monospace}
+*{margin:0;padding:0;box-sizing:border-box}
+*{scrollbar-width:thin;scrollbar-color:var(--bg4) transparent}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.app{display:grid;grid-template-rows:52px 1fr 26px;height:100vh}
+.topbar{display:flex;align-items:center;gap:12px;padding:0 16px;background:linear-gradient(180deg,#1d2026,#181a20);border-bottom:1px solid var(--rule);min-width:0}
+.topbar .logo{font-size:15px;font-weight:800;color:var(--accent);letter-spacing:.03em;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.topbar .logo .sub{color:var(--muted);font-weight:600;font-size:12.5px}
+.health{display:flex;align-items:center;gap:.45rem;font-size:11px;color:var(--muted);background:var(--bg3);border:1px solid var(--rule);border-radius:999px;padding:3px 12px;white-space:nowrap}
+.health .dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.health.ok .dot{background:var(--green);box-shadow:0 0 6px var(--green)}
+.health.bad .dot{background:var(--red)}
+.health.checking .dot{background:var(--yellow);animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.ws-select{background:var(--bg3);border:1px solid var(--rule);border-radius:8px;padding:5px 9px;font-size:12px;color:var(--ink);outline:none;font-family:inherit;max-width:260px;transition:border-color .15s}
+.ws-select:focus{border-color:var(--accent)}
+.spacer{flex:1;min-width:8px}
+.refresh-info{font-size:11px;color:var(--dim);white-space:nowrap;font-family:var(--font-mono)}
+.btn{font-size:12px;padding:6px 14px;border:1px solid var(--rule);border-radius:8px;background:var(--bg3);color:var(--ink);cursor:pointer;transition:all .15s;font-weight:500;font-family:inherit;white-space:nowrap}
+.btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--dim);border-top-color:var(--accent);border-radius:50%;animation:rot .7s linear infinite;vertical-align:-1px;margin-right:5px}
+@keyframes rot{to{transform:rotate(360deg)}}
+.navlink{font-size:11.5px;color:var(--muted);text-decoration:none;border:1px solid var(--rule);border-radius:8px;padding:5px 11px;transition:all .15s;white-space:nowrap}
+.navlink:hover{border-color:var(--accent);color:var(--accent)}
+.banner{display:none;margin:10px 16px 0;padding:11px 15px;border-radius:10px;font-size:13px;line-height:1.7;border:1px solid rgba(208,116,104,.45);background:var(--red-soft);color:#eab0a8}
+.banner.show{display:block}
+.banner code{font-family:var(--font-mono);font-size:12px;background:rgba(0,0,0,.35);padding:1px 7px;border-radius:5px;color:#f0d9d4}
+.main{display:flex;flex-direction:column;gap:12px;padding:14px 16px;overflow-y:auto;min-height:0}
+.rulebar{background:var(--bg2);border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:10px;padding:10px 15px;font-size:13px;color:var(--ink);flex:none}
+.rulebar b{color:var(--accent-strong)}
+.rulebar .src{color:var(--dim);font-size:11.5px;margin-left:6px}
+.shared{display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--rule);border-radius:10px;padding:9px 15px;font-size:12px;color:var(--muted);flex:none;min-width:0}
+.shared .tag{font-size:10.5px;font-weight:800;background:var(--blue-soft);color:var(--blue);border:1px solid rgba(123,163,201,.35);border-radius:6px;padding:2px 8px;flex:none}
+.shared .path{font-family:var(--font-mono);font-size:11.5px;color:#d8d2c6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help}
+.panel{background:var(--bg2);border:1px solid var(--rule);border-radius:var(--radius-lg);display:flex;flex-direction:column;overflow:hidden;min-height:120px;flex:1}
+.panel-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--rule);flex:none;flex-wrap:wrap}
+.panel-title{font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.panel-title b{color:var(--ink)}
+.count-pill{background:var(--accent-soft);color:var(--accent);padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700}
+.err-strip{display:none;margin:10px 14px 0;padding:9px 12px;border-radius:9px;font-size:12.5px;line-height:1.6;border:1px solid rgba(208,116,104,.4);background:var(--red-soft);color:#eab0a8}
+.err-strip.show{display:block}
+.panel-body{flex:1;overflow-y:auto;padding:14px;min-height:0}
+.empty{text-align:center;padding:38px 18px;color:var(--muted)}
+.empty .ico{font-size:28px;line-height:1;margin-bottom:10px;opacity:.8}
+.empty .t{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:6px}
+.empty .s{font-size:12.5px;line-height:1.75;color:var(--dim);max-width:420px;margin:0 auto}
+.skel{border-radius:9px;background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:sh 1.3s infinite;margin-bottom:10px}
+@keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+/* member grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
+.mcard{background:var(--bg3);border:1px solid var(--rule);border-radius:var(--radius-md);padding:13px 14px;display:flex;flex-direction:column;gap:9px}
+.m-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.role{font-size:11px;font-weight:800;border-radius:7px;padding:3px 10px}
+.role.leader{background:var(--accent-soft);color:var(--accent-strong);border:1px solid rgba(217,119,87,.35)}
+.role.coder{background:var(--blue-soft);color:var(--blue);border:1px solid rgba(123,163,201,.35)}
+.role.searcher{background:var(--cyan-soft);color:var(--cyan);border:1px solid rgba(100,181,180,.35)}
+.role.other{background:var(--purple-soft);color:var(--purple);border:1px solid rgba(160,140,192,.35)}
+.mid{font-family:var(--font-mono);font-size:11px;color:var(--dim)}
+.m-state{margin-left:auto;font-size:10px;font-weight:800;border-radius:6px;padding:2px 8px}
+.m-state.pending{background:var(--yellow-soft);color:var(--yellow)}
+.m-state.active,.m-state.entered,.m-state.ok{background:var(--green-soft);color:var(--green)}
+.m-state.fail,.m-state.rejected{background:var(--red-soft);color:var(--red)}
+.m-state.other{background:var(--bg4);color:var(--muted)}
+.m-state.dispatched{background:var(--blue-soft);color:var(--blue);animation:pulse 1.3s infinite}
+.m-state.acked{background:var(--cyan-soft);color:var(--cyan)}
+.m-state.blocked{background:var(--red-soft);color:var(--red)}
+.m-state.timeout{background:var(--red-soft);color:var(--red)}
+.m-state.needs_human{background:var(--red);color:#fff;animation:pulse 1.1s infinite}
+.m-name{font-size:13.5px;font-weight:800;word-break:break-word}
+.m-meta{font-family:var(--font-mono);font-size:11px;color:var(--dim);word-break:break-all}
+.booth{background:var(--bg2);border:1px solid var(--rule);border-radius:9px;padding:9px 11px}
+.booth .lbl{font-size:10.5px;font-weight:800;color:var(--muted);letter-spacing:.05em;margin-bottom:5px;display:flex;align-items:center;gap:7px}
+.booth .path{font-family:var(--font-mono);font-size:11.5px;color:#d8d2c6;word-break:break-all;line-height:1.65}
+.booth .path .root{color:var(--dim)}
+.copy{font-size:10px;border:1px solid var(--rule);background:var(--bg3);color:var(--muted);border-radius:6px;padding:1px 7px;cursor:pointer;font-family:inherit;transition:all .15s;margin-left:auto}
+.copy:hover{border-color:var(--accent);color:var(--accent)}
+.subdirs{display:flex;gap:6px;margin-top:7px;flex-wrap:wrap}
+.subdir{font-family:var(--font-mono);font-size:10.5px;font-weight:700;background:var(--bg4);color:var(--muted);border:1px solid var(--rule);border-radius:6px;padding:2px 8px}
+.subdir:before{content:"▤ ";opacity:.6}
+.subdir.on{color:var(--green);border-color:rgba(134,179,148,.45);background:var(--green-soft)}
+.subdir.on:before{content:"✓ ";opacity:1}
+.subdir.off{color:var(--dim);opacity:.75}
+.subdir.off:before{content:"✗ ";opacity:.8}
+.ex-badge{font-size:9.5px;font-weight:800;border-radius:5px;padding:1px 6px;margin-left:6px}
+.ex-badge.yes{background:var(--green);color:#0e1a12}
+.ex-badge.no{background:transparent;color:var(--dim);border:1px dashed var(--bg5)}
+/* 共享资料库 */
+.lib-rule{font-size:11.5px;color:var(--muted);line-height:1.6;margin-bottom:9px}
+.lib-files{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px}
+.lib-file{font-family:var(--font-mono);font-size:11px;background:var(--bg3);color:#d8d2c6;border:1px solid var(--rule);border-radius:7px;padding:3px 9px}
+.lib-file .sz{color:var(--dim);margin-left:6px}
+.lib-prev{border:1px solid var(--rule);border-radius:9px;background:var(--bg3);margin-bottom:8px;overflow:hidden}
+.lib-prev summary{cursor:pointer;padding:8px 12px;font-size:12.5px;font-weight:700;color:var(--ink);list-style:none;display:flex;align-items:center;gap:8px;transition:background .15s}
+.lib-prev summary:hover{background:var(--bg4)}
+.lib-prev summary::-webkit-details-marker{display:none}
+.lib-prev summary .tag2{font-size:10px;font-weight:800;border-radius:5px;padding:1px 7px}
+.lib-prev summary .tag2.plan{background:var(--accent-soft);color:var(--accent-strong)}
+.lib-prev summary .tag2.fw{background:var(--blue-soft);color:var(--blue)}
+.lib-prev summary .tag2.rm{background:var(--purple-soft);color:var(--purple)}
+.lib-prev summary .arrow{margin-left:auto;color:var(--dim);font-size:11px}
+.lib-prev[open] summary .arrow{transform:rotate(90deg)}
+.lib-prev pre{margin:0;padding:10px 13px;border-top:1px solid var(--rule);font-family:var(--font-mono);font-size:11.5px;line-height:1.75;color:#d8d2c6;white-space:pre-wrap;word-break:break-word;max-height:170px;overflow-y:auto;background:var(--bg2)}
+.derived{font-size:10px;color:var(--dim);margin-top:5px}
+/* bridge status */
+.bridge{border-radius:9px;padding:9px 11px;border:1px solid var(--rule);background:var(--bg2);border-left:3px solid var(--dim)}
+.bridge.new{border-left-color:var(--green);background:linear-gradient(90deg,var(--green-soft),var(--bg2) 50%)}
+.bridge.old{border-left-color:var(--yellow);background:linear-gradient(90deg,var(--yellow-soft),var(--bg2) 50%)}
+.bridge.none{border-left-color:var(--bg5)}
+.bridge .bt{font-size:11.5px;font-weight:800;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.bridge.new .bt{color:var(--green)}
+.bridge.old .bt{color:var(--yellow)}
+.bridge.none .bt{color:var(--dim)}
+.bridge .btime{font-weight:600;color:var(--muted);font-size:11px}
+.bridge .bh{font-family:var(--font-mono);font-size:11px;color:var(--muted);word-break:break-all;margin-top:4px}
+.bridge .bpath{font-family:var(--font-mono);font-size:11px;color:#d8d2c6;word-break:break-all;margin-top:3px}
+.bridge .bpath mark{background:rgba(134,179,148,.22);color:#a8d4b6;padding:0 2px;border-radius:3px}
+.hist-btn{font-size:10.5px;background:none;border:1px solid var(--rule);border-radius:6px;color:var(--dim);cursor:pointer;padding:1px 7px;font-family:inherit;margin-left:auto;transition:all .15s}
+.hist-btn:hover{border-color:var(--accent);color:var(--accent)}
+.hist{display:none;margin-top:7px;border-top:1px dashed var(--rule);padding-top:6px;font-family:var(--font-mono);font-size:10.5px;color:var(--dim);line-height:1.8;word-break:break-all}
+.bridge.open .hist{display:block}
+/* FE-19：权威桥行 + 邮箱行 */
+.bridge .bauth{font-size:11.5px;font-weight:700;line-height:1.55;margin-bottom:5px;word-break:break-word}
+.bridge .bauth.none{color:var(--yellow)}
+.bridge .bauth.pending{color:var(--yellow)}
+.bridge .bauth.ok{color:var(--green)}
+.bridge .bauth.retired{color:var(--dim)}
+.mailbox{font-size:11px;color:var(--cyan);margin-top:5px;word-break:break-word}
+.statusbar{display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--bg2);border-top:1px solid var(--rule);font-size:10.5px;color:var(--dim);overflow:hidden;white-space:nowrap}
+.statusbar .sep{color:var(--rule)}
+/* FE-13 项目模型块 */
+.model-block{background:var(--bg3);border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.model-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}
+.model-tag{font-size:10.5px;font-weight:800;border-radius:6px;padding:2px 8px}
+.model-tag.complete{background:var(--green-soft);color:var(--green);border:1px solid rgba(134,179,148,.4)}
+.model-tag.incomplete{background:var(--yellow-soft);color:var(--yellow);border:1px solid rgba(217,171,83,.4)}
+.model-tag.none{background:var(--bg4);color:var(--muted);border:1px solid var(--rule)}
+.model-title{font-size:12.5px;font-weight:800}
+.model-meta{font-size:10.5px;color:var(--dim);margin-left:auto}
+.model-empty{font-size:12px;color:var(--muted);line-height:1.6}
+.model-missing{font-size:11px;color:var(--yellow);margin-top:5px}
+/* FE-13 补齐：建立/编辑入口 + 模型编辑器（写路径，V32 §3） */
+.model-act,.fw-act{margin-left:8px;font-size:10.5px;font-weight:700;background:var(--accent-soft);color:var(--accent-strong);border:1px solid var(--accent);border-radius:6px;padding:2px 10px;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
+.model-act:hover,.fw-act:hover{background:var(--accent);color:#fff}
+.model-act:disabled,.fw-act:disabled{opacity:.55;cursor:default}
+.m-edit,.fw-edit{border-top:1px dashed var(--rule);margin-top:8px;padding-top:8px}
+.m-warn{font-size:11px;color:var(--yellow);background:var(--yellow-soft);border:1px solid rgba(217,171,83,.35);border-radius:7px;padding:5px 9px;margin-bottom:7px;line-height:1.6}
+.m-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px;font-size:11px;color:var(--muted)}
+.m-bar select{background:var(--bg2);border:1px solid var(--rule);border-radius:6px;color:var(--ink);font-size:11px;font-family:inherit;padding:2px 6px}
+.m-mode{font-size:10.5px;background:var(--bg2);border:1px solid var(--rule);border-radius:6px;color:var(--muted);cursor:pointer;padding:2px 9px;font-family:inherit;transition:all .15s}
+.m-mode.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-strong);font-weight:700}
+.m-field{margin-bottom:6px}
+.m-field label{display:block;font-size:10.5px;font-weight:700;color:var(--muted);margin-bottom:3px}
+.m-field textarea,.fw-ta{width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--rule);border-radius:7px;color:#d8d2c6;font-family:var(--font-mono);font-size:11.5px;line-height:1.65;padding:6px 8px;resize:vertical;min-height:46px}
+.m-field textarea:focus,.fw-ta:focus{outline:none;border-color:var(--accent)}
+.m-field textarea.big{min-height:120px}
+.m-btns{display:flex;gap:8px;align-items:center;margin-top:7px;flex-wrap:wrap}
+.m-save,.fw-save{font-size:11.5px;font-weight:700;background:var(--accent);border:1px solid var(--accent);border-radius:7px;color:#fff;padding:4px 14px;cursor:pointer;font-family:inherit;transition:opacity .15s}
+.m-save:disabled,.fw-save:disabled{opacity:.55;cursor:default}
+.m-cancel,.fw-cancel{font-size:11.5px;background:var(--bg2);border:1px solid var(--rule);border-radius:7px;color:var(--muted);padding:4px 12px;cursor:pointer;font-family:inherit}
+.m-msg,.fw-msg{font-size:11.5px;margin-top:7px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
+.m-msg.ok,.fw-msg.ok{color:var(--green)}
+.m-msg.warn,.fw-msg.warn{color:var(--yellow)}
+.m-msg.err,.fw-msg.err{color:var(--red)}
+/* FE-14 项目框架块（framework.md；与 .model-* / .m-* 选择器完全分开） */
+.fw-block{background:var(--bg3);border:1px solid var(--rule);border-left:3px solid var(--blue);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.fw-tag{font-size:10.5px;font-weight:800;border-radius:6px;padding:2px 8px}
+.fw-tag.on{background:var(--blue-soft);color:var(--blue);border:1px solid rgba(123,163,201,.4)}
+.fw-tag.none{background:var(--bg4);color:var(--muted);border:1px solid var(--rule)}
+/* FE-16 AI 草案按钮 */
+.m-draft{font-size:11.5px;font-weight:700;background:var(--bg2);border:1px solid var(--accent);border-radius:7px;color:var(--accent-strong);padding:4px 12px;cursor:pointer;font-family:inherit;transition:all .15s}
+.m-draft:hover{background:var(--accent-soft)}
+.m-draft:disabled{opacity:.55;cursor:default}
+.m-draftbar{font-size:11px;color:var(--yellow);background:var(--yellow-soft);border:1px solid rgba(217,171,83,.4);border-radius:7px;padding:5px 9px;margin-bottom:7px;line-height:1.6;font-weight:700}
+@media (max-width:1099px){
+  html,body{overflow:auto}
+  .app{height:auto;min-height:100vh;grid-template-rows:52px auto 26px}
+  .main{overflow:visible}
+  .grid{grid-template-columns:1fr}
+  .topbar{flex-wrap:wrap;height:auto;padding:8px 16px}
+  .app{grid-template-rows:auto 1fr 26px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="logo">🏗 成员隔间与桥<span class="sub">· V23 §9</span></div>
+    <a class="navlink" id="backWs" href="#" style="display:none">↩ 返回工作间</a>
+    <div class="health checking" id="health"><span class="dot"></span><span id="healthText">检测中…</span></div>
+    <select class="ws-select" id="wsSel" title="选择工作间"><option value="">选择工作间…</option></select>
+    <div class="spacer"></div>
+    <span class="refresh-info" id="refreshInfo">尚未刷新</span>
+    <button class="btn" id="refreshBtn" onclick="Bth.tick(true)">⟳ 刷新</button>
+    <a class="navlink" href="/ops.html">📡 运维看板</a>
+    <a class="navlink" href="/handover.html">🧾 回执台</a>
+    <a class="navlink" href="/">◈ 大厅</a>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <main class="main">
+    <div class="rulebar">
+      <b>一个会话 ＝ 一个隔间 ＋ 一个具体桥</b>
+      <span class="src">权威定义（V23 §9）：新建工作间 → 选定员工 → <b style="color:var(--accent)">架起具体桥 → 此刻才创建隔间</b>；隔间跟岗位跨会话存活，具体桥跟会话、落在各自隔间，永不互相覆盖</span>
+    </div>
+    <div class="shared" id="sharedBar" style="display:none">
+      <span class="tag">共享区</span>
+      <span class="path" id="sharedPath"></span>
+      <span style="color:var(--dim);font-size:11px;flex:none">工作间根 · hall/共享资料库在此，成员只在自己隔间内可写</span>
+    </div>
+    <section class="panel" id="libPanel" style="display:none;flex:none">
+      <div class="panel-head">
+        <span class="panel-title">📚 共享<b>资料库</b></span>
+        <span class="count-pill" id="libExist"></span>
+        <span class="count-pill" id="libCount" style="background:var(--bg4);color:var(--muted)"></span>
+        <span style="font-size:10.5px;color:var(--dim);margin-left:auto" id="libForm"></span>
+      </div>
+      <div class="panel-body" id="libBody" style="overflow-y:auto;max-height:420px"></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head">
+        <span class="panel-title">成员<b>隔间卡</b></span>
+        <span class="count-pill" id="mCount">–</span>
+        <span class="count-pill" id="mOrphans">孤儿 —</span>
+        <span class="count-pill" id="mDelivery">未送达 —</span>
+        <span class="count-pill" id="exCount" style="background:var(--green-soft);color:var(--green)"></span>
+      </div>
+      <div class="err-strip" id="mErr"></div>
+      <div class="panel-body" id="mBody"></div>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <span>数据源 /api/workshop/{id}/compartments（权威路径+磁盘实况） · /api/workshop/{id} · /api/workshop/{id}/bridge-bindings · /api/audit?event=bridge.auto</span>
+    <span class="sep">|</span>
+    <span>路径由后端给出，前端不自行推导（公式仅作回归断言）</span>
+    <span class="sep">|</span>
+    <span>写请求仅 POST …/library/update（模型/框架）；其余只读</span>
+    <span class="spacer"></span>
+    <span id="sbClock"></span>
+  </footer>
+</div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+function el(tag, cls, text){const e=document.createElement(tag); if(cls)e.className=cls; if(text!=null)e.textContent=text; return e;}
+function pad(n){return String(n).padStart(2,'0');}
+function fmtAbs(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());}
+function relOf(d){
+  const s=Math.max(0,Math.round((Date.now()-d.getTime())/1000));
+  if(s<5) return '刚刚';
+  if(s<60) return s+' 秒前';
+  if(s<3600) return Math.floor(s/60)+' 分钟前';
+  if(s<86400) return Math.floor(s/3600)+' 小时前';
+  return Math.floor(s/86400)+' 天前';
+}
+async function req(path, opts){
+  try{
+    const res=await fetch(path, opts);
+    let data=null; try{ data=await res.json(); }catch(e){ data=null; }
+    const msg=(data&&typeof data==='object')?(data.error||data.detail):null;
+    return {ok:res.ok, status:res.status, data, msg:msg||((!res.ok)?('HTTP '+res.status):null)};
+  }catch(e){ return {ok:false, status:0, data:null, msg:'网络错误：'+e.message}; }
+}
+function msgOf(r){ return r.msg||'未知错误'; }
+
+/* ===== 隔间公式（镜像 platform/compartment.py · safe_part/compartment_dir） ===== */
+const ILLEGAL=/[\\\/:*?"<>|\x00-\x1f]/g;
+function safePart(raw, fallback){
+  let s=String(raw==null?'':raw).trim();
+  s=s.replace(ILLEGAL,'_');
+  s=s.split('..').join('_');
+  s=s.replace(/^[ .]+|[ .]+$/g,'');
+  s=s.replace(/_{2,}/g,'_');
+  if(!s||s==='.'||s==='..') return fallback;
+  return s.slice(0,48);
+}
+function compDirPath(wsDir, role, mid){
+  const sep=String(wsDir).indexOf('\\')>=0?'\\':'/';
+  let base=String(wsDir||'').replace(/[\/\\]+$/,'');
+  return base+sep+safePart(role,'成员')+'_'+safePart(mid,'x');
+}
+
+/* ===== 状态 ===== */
+let workshops=[], wsCur=null, auditEv=[], running=false, timer=null, wsFetchedAt=0;
+let compRows=null, compOk=false;   /* GET /compartments 权威实况 */
+let libData=null, libOk=false;     /* GET /library 共享资料库 */
+let bbMap={};                      /* FE-19：GET …/bridge-bindings 按 member_id（失败=空，回退既有证据行） */
+const WS_REFRESH_MS=5*60*1000;
+
+/* ===== 选择器 ===== */
+function fillSelect(){
+  const sel=$('wsSel');
+  const cur=sel.value;
+  sel.innerHTML='';
+  const ph=document.createElement('option');
+  ph.value=''; ph.textContent=workshops.length?('选择工作间…（'+workshops.length+'）'):'选择工作间…';
+  sel.append(ph);
+  workshops.forEach(w=>{
+    const o=document.createElement('option');
+    o.value=w.workshop_id;
+    o.textContent=(w.workshop_id)+' · '+(w.name||'（未命名）')+' · '+(w.status||'');
+    sel.append(o);
+  });
+  sel.value=cur||wsCur?.workshop_id||'';
+}
+
+/* ===== 渲染 ===== */
+function roleClass(role){
+  if(role==='组长') return 'leader';
+  if(role==='码农') return 'coder';
+  if(role==='搜索者') return 'searcher';
+  return 'other';
+}
+function stateClass(st){
+  /* DSH 13 号 §四：进度读 entry_state（pending/dispatched/acked/entered/blocked/timeout/needs_human） */
+  const s=String(st||'');
+  if(s==='pending') return 'pending';
+  if(s==='dispatched') return 'dispatched';
+  if(s==='acked') return 'acked';
+  if(s==='entered'||s==='active'||s==='ok'||s==='approved') return 'entered';
+  if(s==='blocked'||s==='fail'||s==='failed'||s==='rejected') return 'blocked';
+  if(s==='timeout') return 'timeout';
+  if(s==='needs_human') return 'needs_human';
+  return s?'other':'other';
+}
+function normPath(p){ return String(p||'').replace(/\//g,'\\').replace(/\\+/g,'\\').toLowerCase(); }
+function classifyPath(artifactPath, compPath){
+  const p=normPath(artifactPath), c=normPath(compPath);
+  return p&&c&&p.indexOf(c)>=0?'new':'old';
+}
+function bridgeFor(memberId){
+  return auditEv.filter(e=>e.member_id===memberId);
+}
+/* 桥状态：实况优先（bridge_files），审计为证据，推导仅兜底 */
+function renderBridge(m, crow){
+  const recs=bridgeFor(m.member_id);
+  const box=el('div','bridge none');
+  /* FE-19 / 100 号：顶部权威桥行 —— status_text 原文展示（含「未架接」「未自证」，界面不改写、绝不说完成/已通） */
+  const bb=bbMap[m.member_id];
+  if(bb&&bb.status_text){
+    const st=(bb.bridge&&bb.bridge.state)||'none';
+    const auth=el('div','bauth '+(st==='attached'?(bb.bridge.verified?'ok':'pending'):(st==='retired'?'retired':'none')),
+      '桥：'+bb.status_text);
+    box.append(auth);
+  }
+  const hasFiles=crow&&Array.isArray(crow.bridge_files)&&crow.bridge_files.length>0;
+  const dir=crow?crow.dir:'';
+  if(hasFiles){
+    box.classList.add('new');
+    const t=el('div','bt');
+    t.append(el('span',null,'● 桥产物在隔间（磁盘实况）'));
+    box.append(t);
+    box.append(el('div','bh','产物：'+crow.bridge_files.join('、')+(crow.exists?' · 隔间已创建':'')));
+  }else if(recs.length){
+    const latest=recs[0];
+    const inComp=dir?classifyPath(latest.artifact_path,dir)==='new':false;
+    box.classList.add('old');
+    const t=el('div','bt');
+    t.append(el('span',null,inComp?'◐ 曾发桥（审计），隔间此刻无产物':'◐ 旧落点（隔离前发出，仅存档）'));
+    if(latest.ts){
+      const dt=new Date(String(latest.ts).replace(' ','T'));
+      const time=el('span','btime','· '+(isNaN(dt)?latest.ts:relOf(dt)));
+      if(!isNaN(dt)) time.title='发桥时间 '+fmtAbs(dt);
+      t.append(time);
+    }
+    if(recs.length>1){
+      const hb=el('button','hist-btn','历史 '+recs.length+' 条');
+      hb.type='button';
+      hb.onclick=(e)=>{e.stopPropagation();box.classList.toggle('open');};
+      t.append(hb);
+    }
+    box.append(t);
+    if(latest.harness_id){
+      box.append(el('div','bh','harness：'+latest.harness_id+(latest.artifact_kind?(' · 产物：'+latest.artifact_kind):'')));
+    }
+    if(latest.artifact_path){
+      const pp=el('div','bpath');
+      const raw=String(latest.artifact_path);
+      const seg=dir?dir.replace(/^[\/\\]+/,''):'';
+      const idx=seg?raw.toLowerCase().indexOf(seg.toLowerCase()):-1;
+      if(idx>=0){
+        pp.append(document.createTextNode(raw.slice(0,idx)));
+        pp.append(el('mark',null,raw.slice(idx,idx+seg.length)), document.createTextNode(raw.slice(idx+seg.length)));
+      }else pp.textContent=raw;
+      pp.title=raw;
+      box.append(pp);
+    }
+    if(recs.length>1){
+      const hist=el('div','hist');
+      recs.slice(1).forEach(r=>hist.append(el('div',null,'· '+String(r.ts||'')+' → '+String(r.artifact_path||'（无落点）'))));
+      box.append(hist);
+    }
+  }else{
+    const t=el('div','bt','○ 尚未架桥');
+    box.append(t);
+    box.append(el('div','bh', crow&&crow.exists
+      ? '隔间已创建，暂无桥产物与发桥记录（激活/续作时会自动发出）'
+      : '隔间在「架起具体桥」那一步才创建；审计中也没有该成员的 bridge.auto 记录'));
+  }
+  return box;
+}
+function memberCard(m, wsDir, crow){
+  const card=el('div','mcard');
+  const top=el('div','m-top');
+  top.append(el('span','role '+roleClass(m.role), m.role||'（无职位）'));
+  top.append(el('span','mid',m.member_id||''));
+  const st=el('span','m-state '+stateClass(m.entry_state||m.status), m.entry_state||m.status||'—');
+  st.title='status='+(m.status||'')+' · entry_state='+(m.entry_state||'');
+  top.append(st);
+  card.append(top);
+  card.append(el('div','m-name',m.display_name||(crow&&crow.display_name)||'（未命名成员）'));
+  const meta=el('div','m-meta');
+  const hids=Array.isArray(m.harness_ids)?m.harness_ids.join(', '):'';
+  meta.textContent=[hids?('harness：'+hids):'', m.wakeup_method?('唤醒：'+m.wakeup_method):''].filter(Boolean).join(' · ')||'—';
+  card.append(meta);
+  if(m.entry_reason){
+    const rr=el('div','m-meta'); rr.style.color='var(--muted)'; rr.textContent='进入原因：'+m.entry_reason;
+    card.append(rr);
+  }
+  /* 隔间：dir 权威来自 compartments；接口失败才降级公式推导 */
+  const dir=crow?crow.dir:(wsDir?compDirPath(wsDir,m.role,m.member_id):'');
+  const comp=el('div','booth');
+  const lbl=el('div','lbl');
+  lbl.append(document.createTextNode('📁 隔间'));
+  if(crow&&compOk){
+    lbl.append(el('span','ex-badge '+(crow.exists?'yes':'no'), crow.exists?'已创建':'未创建'));
+  }
+  const copy=el('button','copy','复制');
+  copy.type='button';
+  copy.disabled=!dir;
+  copy.onclick=()=>{
+    if(!dir) return;
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(dir).then(()=>{
+        copy.textContent='已复制';
+        setTimeout(()=>{copy.textContent='复制';},1400);
+      }).catch(()=>{ copy.textContent='复制失败'; setTimeout(()=>{copy.textContent='复制';},1400); });
+    }else{
+      copy.textContent='不可用';
+      setTimeout(()=>{copy.textContent='复制';},1400);
+    }
+  };
+  lbl.append(copy);
+  comp.append(lbl);
+  const pathEl=el('div','path');
+  if(dir&&wsDir){
+    const rootLen=String(wsDir).replace(/[\/\\]+$/,'').length;
+    if(dir.indexOf(wsDir.replace(/[\/\\]+$/,''))===0){
+      pathEl.append(el('span','root',dir.slice(0,rootLen)));
+      pathEl.append(document.createTextNode(dir.slice(rootLen)));
+    }else{
+      pathEl.textContent=dir;
+    }
+  }else{
+    pathEl.textContent=dir||'（缺少路径，无法展示）';
+  }
+  comp.append(pathEl);
+  const subs=el('div','subdirs');
+  const names=(crow&&Array.isArray(crow.subdir_names)&&crow.subdir_names.length)?crow.subdir_names:['input','output','temp'];
+  names.forEach(n=>{
+    let on=null, tip='应含分区（接口降级，未取到实况）';
+    if(crow&&compOk){
+      if(!crow.exists){ on=false; tip='隔间未创建，分区自然不存在（架桥时随隔间一起建）'; }
+      else if(Object.prototype.hasOwnProperty.call(crow.subdirs,n)){
+        on=!!crow.subdirs[n];
+        tip=on?'磁盘上存在':'磁盘上缺失';
+      }else{ on=false; tip='磁盘上缺失'; }
+    }
+    const chip=el('span','subdir'+(on===true?' on':on===false?' off':''),
+      (on===true?'✓ ':on===false?'✗ ':'')+n);
+    chip.title=tip;
+    subs.append(chip);
+  });
+  comp.append(subs);
+  /* FE-19 / V35 §6 邮箱：只报后端 mailbox（布尔）+ mailbox_pending（计数），不自行拼路径 */
+  if(crow&&crow.mailbox&&Object.keys(crow.mailbox).length){
+    const mb=el('div','mailbox');
+    const states=Object.keys(crow.mailbox).map(k=>k+(crow.mailbox[k]?' ✓':' ✗'));
+    const pend=crow.mailbox_pending||{};
+    const ptxt=Object.keys(pend).filter(k=>pend[k]>0).map(k=>k+' 积压 '+pend[k]);
+    mb.textContent='📮 邮箱：'+states.join(' · ')+(ptxt.length?('　｜　'+ptxt.join('、')):'　｜　无积压');
+    comp.append(mb);
+  }else if(crow&&!crow.exists){
+    comp.append(el('div','mailbox','📮 邮箱：随隔间创建（架桥时一起建 inbox / replies）'));
+  }else if(crow&&crow.exists){
+    comp.append(el('div','mailbox','📮 邮箱：未取到（接口未返回 mailbox）'));
+  }
+  comp.append(el('div','derived', compOk
+    ? (crow&&crow.exists
+        ? '磁盘实况 · 路径来自后端 compartments 端点（权威）'
+        : '磁盘实况：隔间尚未创建（「架起具体桥」时才建） · 路径由后端给出')
+    : '应含分区 · 公式推导降级（compartments 端点不可用，路径非权威）'));
+  card.append(comp);
+  card.append(renderBridge(m, crow));
+  return card;
+}
+function renderMembers(){
+  const body=$('mBody'), count=$('mCount'), err=$('mErr'), exCount=$('exCount');
+  const bar=$('sharedBar');
+  if(!wsCur){
+    err.classList.remove('show');
+    bar.style.display='none';
+    count.textContent='–';
+    exCount.textContent='';
+    const bw=document.getElementById('backWs'); if(bw) bw.style.display='none';
+    body.innerHTML='';
+    const em=el('div','empty');
+    em.append(el('div','ico','🏗'),el('div','t','请选择一个工作间'),
+      el('div','s','用顶栏下拉框选择工作间后，这里会显示每位成员的隔间（后端权威路径 + 磁盘实况），以及他那一份桥。'));
+    body.append(em);
+    return;
+  }
+  bar.style.display='';
+  const bw=document.getElementById('backWs');
+  if(bw){ bw.style.display=''; bw.href='/workshop.html?ws_id='+encodeURIComponent(wsCur.workshop_id); bw.title='返回工作间 '+wsCur.workshop_id; }
+  $('sharedPath').textContent=wsCur.workspace_dir||'（该工作间未提供 workspace_dir）';
+  $('sharedPath').title=wsCur.workspace_dir||'';
+  const members=Array.isArray(wsCur.members)?wsCur.members:[];
+  count.textContent=members.length+' 名成员';
+  if(compOk&&compRows){
+    const ex=(compRows.count!=null&&compRows.exists_count!=null)?compRows.exists_count:compRows.filter(r=>r.exists).length;
+    const tot=(compRows.count!=null)?compRows.count:compRows.length;
+    exCount.textContent='已建隔间 '+ex+'/'+tot;
+    exCount.style.display='';
+  }else{
+    exCount.textContent='';
+    exCount.style.display='none';
+  }
+  body.innerHTML='';
+  if(!members.length){
+    const em=el('div','empty');
+    em.append(el('div','ico','👥'),el('div','t','该工作间还没有成员'),
+      el('div','s','成员在工作间的「选人/分工」环节加入后，隔间卡会出现在这里。'));
+    body.append(em);
+    return;
+  }
+  const compMap={};
+  if(compOk&&Array.isArray(compRows)) compRows.forEach(r=>{compMap[r.member_id]=r;});
+  const grid=el('div','grid');
+  members.forEach(m=>grid.append(memberCard(m, wsCur.workspace_dir, compMap[m.member_id])));
+  body.append(grid);
+}
+/* ===== 共享资料库（GET /library，只读） ===== */
+function prevBlock(fileName, tagText, tagCls){
+  const det=document.createElement('details');
+  det.className='lib-prev';
+  const sm=document.createElement('summary');
+  sm.append(el('span','tag2 '+tagCls, tagText), document.createTextNode(fileName), el('span','arrow','▶'));
+  det.append(sm);
+  const content=(libData&&libData.preview&&typeof libData.preview[fileName]==='string')?libData.preview[fileName]:'';
+  det.append(el('pre',null,content||'（暂无内容）'));
+  return det;
+}
+/* ===== 共享资料库（GET /library 读；写仅 POST library/update · FE-13/V32） ===== */
+/* 五块键名/标题/提示与后端 platform/workshop.py 的 MODEL_SECTIONS 逐字一致 */
+const MODEL_SECTIONS=[
+  ['goal','1. 目标与验收','这个项目要做成什么；怎么算做完'],
+  ['parts','2. 组成（模块/任务分解）','项目由哪几块组成；每块做什么'],
+  ['roles','3. 分工对应','谁负责哪块（与 plan.md 的关系见文件头）'],
+  ['deps','4. 依赖与顺序','谁必须先做、谁等谁；哪些可以并行'],
+  ['outputs','5. 产物落点','每块的成果放在谁的 output/；整合者按这里核对']
+];
+/* 编辑器状态放模块级：30s 定时 tick 会重建 DOM，输入不能跟着丢（FE-13 §1） */
+let modelEdit={open:false,mode:'form',author:'组长',values:{},text:'',truncated:false,draftBar:false};
+let modelMsg=null;   /* 最近一次保存结果 {cls,text}，重渲染后仍显示（失败要说话） */
+function modelPrefill(mdl){
+  const prev=(mdl&&typeof mdl.preview==='string')?mdl.preview:'';
+  const vals={};
+  MODEL_SECTIONS.forEach(([key,title])=>{
+    vals[key]='';
+    const marker='## '+title;
+    const i=prev.indexOf(marker);
+    if(i<0) return;
+    let seg=prev.slice(i+marker.length);
+    const j=seg.indexOf('\n## ');
+    if(j>=0) seg=seg.slice(0,j);
+    seg=seg.split('\n').filter(l=>l.trim().indexOf('<!--')!==0).join('\n');
+    vals[key]=seg.split('（待补）').join('').trim();
+  });
+  return {vals, prev, truncated:prev.length>=2000};
+}
+function openModelEdit(){
+  const mdl=(libData&&libData.model)||null;
+  modelMsg=null;
+  if(mdl&&mdl.exists){
+    const pf=modelPrefill(mdl);
+    modelEdit.values=pf.vals;
+    modelEdit.text=pf.prev;
+    modelEdit.truncated=pf.truncated;
+    modelEdit.author=(mdl.author&&['组长','整合者','用户'].indexOf(mdl.author)>=0)?mdl.author:'组长';
+  }else{
+    modelEdit.values={};
+    MODEL_SECTIONS.forEach(([k])=>{modelEdit.values[k]='';});
+    modelEdit.text='';
+    modelEdit.truncated=false;
+    modelEdit.author='组长';
+  }
+  modelEdit.mode='form';
+  modelEdit.draftBar=false;   /* 重新打开 = 上次草案横幅不再宣称"待确认" */
+  modelEdit.open=true;
+  renderLibrary();
+}
+async function genDraft(){
+  /* FE-16 · V29 路径 B：只发 draft 这一条；落盘仍只经「保存」→ library/update */
+  const wsId=wsCur&&wsCur.workshop_id;
+  if(!wsId) return;
+  const btn=document.querySelector('.m-draft');
+  if(btn){ btn.disabled=true; btn.textContent='生成中…'; }
+  const r=await req('/api/workshop/'+encodeURIComponent(wsId)+'/library/model/draft',{
+    method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+  const d=r.data||null;
+  if(r.ok&&d&&d.success&&d.draft){
+    MODEL_SECTIONS.forEach(([k])=>{ modelEdit.values[k]=(d.draft[k]!=null?String(d.draft[k]):''); });
+    modelEdit.mode='form';
+    modelEdit.draftBar=true;
+    const filled=(d.filled||[]).length, miss=(d.missing||[]).length;
+    modelMsg={cls:'warn', text:'草案已生成（未落盘 · 待确认）：填了 '+filled+' 块'
+      +(miss?('，缺 '+miss+' 块（'+(d.missing||[]).join('、')+'）'):'（五块齐全）')
+      +'　·　请修改后点「保存」才写入'};
+  }else if(r.ok&&d&&!d.success){
+    modelMsg={cls:'err', text:'未生成：'+(d.error||'未知错误')};
+  }else{
+    /* 400 未配 AI / 404：error + hint 原文都给（不装成功、不吞指引） */
+    const parts=[];
+    if(d&&d.error) parts.push(d.error);
+    if(d&&d.hint) parts.push(d.hint);
+    modelMsg={cls:'err', text:'未生成：'+(parts.join('　｜　')||msgOf(r))};
+  }
+  renderLibrary();
+}
+async function saveModel(){
+  const wsId=wsCur&&wsCur.workshop_id;
+  if(!wsId) return;
+  const btn=document.querySelector('.m-save');
+  const body={author:modelEdit.author};
+  if(modelEdit.mode==='text'){ body.model=modelEdit.text; }
+  else{
+    body.model={};
+    MODEL_SECTIONS.forEach(([k])=>{ body.model[k]=modelEdit.values[k]||''; });
+  }
+  if(btn){ btn.disabled=true; btn.textContent='保存中…'; }
+  const r=await req('/api/workshop/'+encodeURIComponent(wsId)+'/library/update',{
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const mo=(r.ok&&r.data&&r.data.model)||null;
+  if(r.ok&&mo&&mo.ok){
+    /* 成功也分两态：齐全=绿；缺块=黄+逐名（准则⑤，不许把缺块显示成完成） */
+    const miss=mo.missing||[];
+    modelMsg=miss.length
+      ? {cls:'warn', text:'已保存 · 缺 '+miss.length+' 块（未完成）：'+miss.join('、')+'　·　v'+(mo.version||'')+'　·　执笔：'+modelEdit.author}
+      : {cls:'ok', text:'已保存 · v'+(mo.version||'')+'　·　执笔：'+modelEdit.author+(mo.backed_up?'　·　旧版已备份':'')};
+    modelEdit.draftBar=false;   /* 保存 = 人已确认，草案横幅撤下 */
+    modelEdit.open=false;
+  }else{
+    /* 反向断言：model.ok=false（含后端「未提供 model」）绝不显示「已保存」 */
+    const t=(!r.ok?msgOf(r):((mo&&mo.error)||(r.data&&r.data.error)||'保存失败'));
+    modelMsg={cls:'err', text:'未写入：'+t};
+  }
+  const lb=await req('/api/workshop/'+encodeURIComponent(wsId)+'/library');
+  if(lb.ok&&lb.data){ libData=lb.data; libOk=true; }
+  renderLibrary();
+}
+function modelEditorEl(){
+  const wrap=el('div','m-edit');
+  if(modelEdit.draftBar){
+    wrap.append(el('div','m-draftbar','AI 草案 · 待确认（未落盘）—— 修改后点「保存」才写入 model.md'));
+  }
+  if(modelEdit.truncated){
+    wrap.append(el('div','m-warn','⚠ 模型正文超过预览上限（前 2000 字）：下面预填可能不全；保存会用当前内容整体覆盖（旧版已自动备份到 model.history/，可回溯）。'));
+  }
+  const bar=el('div','m-bar');
+  bar.append(el('span',null,'执笔人'));
+  const sel=document.createElement('select');
+  ['组长','整合者','用户'].forEach(o=>{ const op=document.createElement('option'); op.value=o; op.textContent=o; sel.append(op); });
+  sel.value=modelEdit.author;
+  sel.addEventListener('change',()=>{ modelEdit.author=sel.value; });
+  bar.append(sel);
+  const bForm=el('button','m-mode'+(modelEdit.mode==='form'?' on':''),'五块表单');
+  const bText=el('button','m-mode'+(modelEdit.mode==='text'?' on':''),'整篇编辑');
+  bForm.type='button'; bText.type='button';
+  bForm.addEventListener('click',()=>{ modelEdit.mode='form'; renderLibrary(); });
+  bText.addEventListener('click',()=>{ modelEdit.mode='text'; renderLibrary(); });
+  bar.append(el('span',null,'模式'),bForm,bText);
+  wrap.append(bar);
+  if(modelEdit.mode==='form'){
+    MODEL_SECTIONS.forEach(([key,title,hint])=>{
+      const f=el('div','m-field');
+      const lb=document.createElement('label'); lb.textContent=title; f.append(lb);
+      const ta=document.createElement('textarea');
+      ta.placeholder='提示：'+hint;
+      ta.value=modelEdit.values[key]||'';
+      ta.addEventListener('input',()=>{ modelEdit.values[key]=ta.value; });
+      f.append(ta);
+      wrap.append(f);
+    });
+  }else{
+    const f=el('div','m-field');
+    const lb=document.createElement('label'); lb.textContent='整篇 markdown（保存即整体覆盖）'; f.append(lb);
+    const ta=document.createElement('textarea'); ta.className='big';
+    ta.placeholder='# 项目模型 · …（直接写整篇）';
+    ta.value=modelEdit.text||'';
+    ta.addEventListener('input',()=>{ modelEdit.text=ta.value; });
+    f.append(ta);
+    wrap.append(f);
+  }
+  const btns=el('div','m-btns');
+  if(modelEdit.mode==='form'){
+    const dr=el('button','m-draft','✨ 一键生成草案'); dr.type='button';
+    dr.title='用平台 AI 把大厅内容与讨论收敛成五块草案（不落盘，须人工确认后保存）';
+    dr.addEventListener('click',()=>{ genDraft(); });
+    btns.append(dr);
+  }
+  const save=el('button','m-save','保存'); save.type='button';
+  save.addEventListener('click',()=>{ saveModel(); });
+  const cancel=el('button','m-cancel','取消'); cancel.type='button';
+  cancel.addEventListener('click',()=>{ modelEdit.open=false; modelMsg=null; renderLibrary(); });
+  btns.append(save,cancel,el('span',null,'保存后自动刷新 version / 历史版本'));
+  wrap.append(btns);
+  return wrap;
+}
+/* ===== FE-14 项目框架（framework.md）界面写入 · V32 §3 ===== */
+/* 状态只看 preview：空=未建立；含平台模板句=未建立（平台模板）；否则=已建立（API 不给版本/历史，不假装有） */
+const FW_PLACEHOLDER='待一级/二级讨论收敛后更新';
+let fwEdit={open:false,text:'',truncated:false};
+let fwMsg=null;
+function fwInfo(){
+  const prev=(libData&&libData.preview&&typeof libData.preview['framework.md']==='string')?libData.preview['framework.md']:'';
+  const fw=(libData&&libData.framework)||null;
+  /* 首选后端权威字段（DSH a7d1241）；在用实例重启前响应里还没有该字段 ⇒ 回退预览字符串判据 */
+  const hasField=!!(fw&&typeof fw.exists==='boolean'&&typeof fw.is_platform_template==='boolean');
+  const exists=hasField?fw.exists:!!prev.trim();
+  const established=hasField?(fw.exists&&!fw.is_platform_template)
+    :(exists&&prev.indexOf(FW_PLACEHOLDER)<0);
+  return {prev, exists, established, truncated:prev.length>=1200};
+}
+function openFwEdit(){
+  const info=fwInfo();
+  fwMsg=null;
+  fwEdit.text=info.prev;
+  fwEdit.truncated=info.truncated;
+  fwEdit.open=true;
+  renderLibrary();
+}
+async function saveFw(){
+  const wsId=wsCur&&wsCur.workshop_id;
+  if(!wsId) return;
+  const btn=document.querySelector('.fw-save');
+  if(btn){ btn.disabled=true; btn.textContent='保存中…'; }
+  const r=await req('/api/workshop/'+encodeURIComponent(wsId)+'/library/update',{
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({framework:fwEdit.text})});
+  const note=(r.ok&&r.data&&r.data.note)||'';
+  if(r.ok&&r.data&&r.data.success===true&&note.indexOf('framework.md 已写入')>=0){
+    fwMsg={cls:'ok', text:'已保存 · framework.md　·　'+note};
+    fwEdit.open=false;
+  }else if(r.ok&&note.indexOf('保持已有内容')>=0){
+    /* 反向断言：空内容 ⇒ 后端不写，界面同样不许显示成功（准则⑤） */
+    fwMsg={cls:'err', text:'未写入：内容为空（后端保持已有内容，未传 framework）'};
+  }else{
+    fwMsg={cls:'err', text:'未写入：'+msgOf(r)};
+  }
+  const lb=await req('/api/workshop/'+encodeURIComponent(wsId)+'/library');
+  if(lb.ok&&lb.data){ libData=lb.data; libOk=true; }
+  renderLibrary();
+}
+function fwEditorEl(){
+  const wrap=el('div','fw-edit');
+  if(fwEdit.truncated){
+    wrap.append(el('div','m-warn','⚠ 预览上限 1200 字：下面预填可能不全；保存会整体覆盖（旧版后端已自动备份到 framework.history/）。'));
+  }
+  const f=el('div','m-field');
+  const lb=document.createElement('label'); lb.textContent='framework.md 整篇（保存即覆盖）'; f.append(lb);
+  const ta=document.createElement('textarea'); ta.className='big fw-ta';
+  ta.placeholder='# 项目框架 …（直接写整篇）';
+  ta.value=fwEdit.text||'';
+  ta.addEventListener('input',()=>{ fwEdit.text=ta.value; });
+  f.append(ta);
+  wrap.append(f);
+  const btns=el('div','m-btns');
+  const save=el('button','fw-save','保存'); save.type='button';
+  save.addEventListener('click',()=>{ saveFw(); });
+  const cancel=el('button','fw-cancel','取消'); cancel.type='button';
+  cancel.addEventListener('click',()=>{ fwEdit.open=false; fwMsg=null; renderLibrary(); });
+  btns.append(save,cancel,el('span',null,'保存后预览自动刷新'));
+  wrap.append(btns);
+  return wrap;
+}
+function fwBlock(){
+  const info=fwInfo();
+  const wrap=el('div','fw-block');
+  const head=el('div','model-head');
+  head.append(el('span','fw-tag '+(info.established?'on':'none'), info.established?'已建立':(info.exists?'未建立（平台模板）':'未建立')),
+    el('span','model-title','项目框架 framework.md'));
+  const act=el('button','fw-act',info.established?'编辑':'写框架');
+  act.type='button';
+  act.addEventListener('click',openFwEdit);
+  head.append(act);
+  wrap.append(head);
+  if(fwMsg){ wrap.append(el('div','fw-msg '+fwMsg.cls, fwMsg.text)); }
+  if(fwEdit.open){ wrap.append(fwEditorEl()); }
+  const det=document.createElement('details');
+  det.className='lib-prev';
+  const sm=document.createElement('summary');
+  sm.append(el('span','tag2 fw','framework.md'),document.createTextNode('  ▶'),el('span','arrow','▶'));
+  det.append(sm);
+  det.append(el('pre',null,info.prev||'（暂无内容）'));
+  wrap.append(det);
+  return wrap;
+}
+function renderLibrary(){
+  const panel=$('libPanel'), body=$('libBody'), exist=$('libExist'), count=$('libCount'), form=$('libForm');
+  if(!wsCur){ panel.style.display='none'; return; }
+  panel.style.display='';
+  body.innerHTML='';
+  if(!libOk||!libData){
+    exist.textContent='未取到'; exist.style.background='var(--bg4)'; exist.style.color='var(--muted)';
+    count.textContent=''; form.textContent='';
+    const w=el('div','lib-rule','资料库接口暂不可用（见上方错误条）；恢复后自动重试。');
+    body.append(w);
+    return;
+  }
+  const files=Array.isArray(libData.files)?libData.files:[];
+  exist.textContent=libData.exists?'已创建':'未创建';
+  exist.style.background=libData.exists?'var(--green-soft)':'var(--bg4)';
+  exist.style.color=libData.exists?'var(--green)':'var(--muted)';
+  count.textContent=files.length?files.length+' 个文件':'0 个文件';
+  form.textContent=libData.form||'';
+  const rule=el('div','lib-rule');
+  rule.textContent=(libData.rule||'共享区（成员都能读）；成员只在自己的隔间里写文件。')
+    +(libData.dir?('　·　'+libData.dir):'');
+  rule.title=libData.dir||'';
+  body.append(rule);
+  if(!libData.exists){
+    const em=el('div','empty');
+    em.style.padding='16px 10px';
+    em.append(el('div','ico','📂'),el('div','t','资料库尚未创建'),
+      el('div','s','资料库在建间时随共享区自动生成（README/plan/framework）；本工作间早于该功能或尚未建库。'));
+    body.append(em);
+    return;
+  }
+  if(files.length){
+    const fl=el('div','lib-files');
+    files.forEach(f=>{
+      const chip=el('span','lib-file',f.name);
+      if(f.size!=null) chip.append(el('span','sz',f.size>=1024?(Math.round(f.size/102.4)/10+' KB'):f.size+' B'));
+      fl.append(chip);
+    });
+    body.append(fl);
+  }
+  body.append(prevBlock('plan.md','分工安排','plan'));
+  body.append(fwBlock());   /* FE-14：框架块（可写），替换原只读 prevBlock('framework.md',…) */
+  /* 项目模型（FE-13 · model.md；三态：未建立/缺N块/完整；准则⑤）＋建立/编辑入口（V32 §3） */
+  const mdl=libData.model||null;
+  const mBlock=el('div','model-block');
+  const mHead=el('div','model-head');
+  if(mdl&&mdl.exists){
+    const ok=!(mdl.missing&&mdl.missing.length);
+    const tag=el('span','model-tag '+(ok?'complete':'incomplete'),ok?'已完成':'缺 '+(mdl.missing||[]).length+' 块');
+    mHead.append(tag, el('span','model-title','项目模型 model.md'),
+      el('span','model-meta','执笔：'+(mdl.author||'—')+(mdl.version?' · v'+mdl.version:'')+(mdl.updated_at?' · '+mdl.updated_at:'')));
+  }else{
+    mHead.append(el('span','model-tag none','未建立'),el('span','model-title','项目模型 model.md'));
+  }
+  const mAct=el('button','model-act',(mdl&&mdl.exists)?'编辑':'建立模型');
+  mAct.type='button';
+  mAct.addEventListener('click',openModelEdit);
+  mHead.append(mAct);
+  mBlock.append(mHead);
+  if(modelMsg){ mBlock.append(el('div','m-msg '+modelMsg.cls, modelMsg.text)); }
+  if(modelEdit.open){ mBlock.append(modelEditorEl()); }
+  if(mdl&&mdl.exists){
+    const det=el('details','lib-prev');
+    const sm=document.createElement('summary');
+    sm.append(el('span','tag2 model','model.md'),document.createTextNode('  ▶'));
+    det.append(sm);
+    det.append(el('pre',null,mdl.preview||'(空)'));
+    mBlock.append(det);
+  }else{
+    mBlock.append(el('div','model-empty','项目模型尚未建立——点右上「建立模型」开始（组长/整合者在二级讨论时执笔）。五块：目标与验收 / 组成部分 / 分工对应 / 依赖与顺序 / 产物落点。'));
+  }
+  if(mdl&&mdl.missing&&mdl.missing.length){
+    mBlock.append(el('div','model-missing','未完成块：'+mdl.missing.join('、')));
+  }
+  if(mdl&&mdl.history_count){mBlock.append(el('div','model-meta','历史版本 '+mdl.history_count+' 个'));}
+  body.append(mBlock);
+  body.append(prevBlock('README.md','索引与规矩','rm'));
+}
+function renderStatus(res){
+  const h=$('health'), ht=$('healthText'), banner=$('banner');
+  if(res.ok&&res.data&&res.data.status==='running'){
+    h.className='health ok';
+    ht.textContent='running v'+(res.data.version||'?');
+    banner.classList.remove('show');
+  }else{
+    h.className='health bad';
+    ht.textContent='后端未连接';
+    banner.innerHTML='';
+    banner.append(el('div',null,'⚠ 后端未启动或无法访问'+(res.msg?('（'+res.msg+'）'):'')+'。请先启动后端：'));
+    banner.append(el('code',null,'python -m agent_community.platform.server --port 18920'));
+    banner.classList.add('show');
+  }
+}
+
+/* ===== 主循环 ===== */
+function showErr(text){
+  const err=$('mErr');
+  if(text){ err.textContent=text; err.classList.add('show'); }
+  else err.classList.remove('show');
+}
+function renderMemberCounts(orphan, delivery){
+  [['mOrphans','孤儿',orphan,'orphan_count','人'],['mDelivery','未送达',delivery,'total_pending','条']].forEach(([id,label,res,key,unit])=>{
+    const node=$(id), count=res&&res.ok&&res.data?res.data[key]:null;
+    node.textContent=label+' '+(res?(count!=null?count+' '+unit:'加载失败'):'—');
+    node.title=res?(res.ok?(res.data.headline||''):msgOf(res)):'';
+    node.style.background='var(--bg4)';
+    node.style.color=count>0?'var(--yellow)':'var(--muted)';
+  });
+}
+async function tick(manual){
+  if(running) return;
+  running=true;
+  const btn=$('refreshBtn');
+  if(manual){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>刷新中…'; }
+  try{
+    const jobs=[req('/api/status')];
+    const needWsList=(!workshops.length)||(Date.now()-wsFetchedAt>WS_REFRESH_MS);
+    if(needWsList) jobs.push(req('/api/workshops'));
+    const wsId=wsCur?wsCur.workshop_id:($('wsSel').value||'');
+    if(wsId){
+      jobs.push(req('/api/workshop/'+encodeURIComponent(wsId)));
+      jobs.push(req('/api/workshop/'+encodeURIComponent(wsId)+'/compartments'));
+      jobs.push(req('/api/workshop/'+encodeURIComponent(wsId)+'/library'));
+      jobs.push(req('/api/workshop/'+encodeURIComponent(wsId)+'/bridge-bindings'));   /* FE-19 */
+      jobs.push(req('/api/audit?limit=200&event=bridge.auto&target='+encodeURIComponent(wsId)));
+      jobs.push(req('/api/workshop/'+encodeURIComponent(wsId)+'/orphans'));
+      jobs.push(req('/api/workshop/'+encodeURIComponent(wsId)+'/delivery-status'));
+    }
+    const r=await Promise.all(jobs);
+    let i=0;
+    renderStatus(r[i++]);
+    if(needWsList){
+      const wl=r[i++];
+      if(wl.ok&&wl.data&&Array.isArray(wl.data.workshops)){
+        workshops=wl.data.workshops; wsFetchedAt=Date.now(); fillSelect();
+      }
+    }
+    if(wsId){
+      const wd=r[i++], cp=r[i++], lb=r[i++], bb=r[i++], au=r[i++], orphan=r[i++], delivery=r[i++];
+      renderMemberCounts(orphan,delivery);
+      const errs=[];
+      if(wd.ok&&wd.data){
+        const d=wd.data.workshop||wd.data;
+        wsCur=Object.assign({},d,{workshop_id:d.workshop_id||wsId});
+      }else{
+        errs.push('工作间加载失败：'+msgOf(wd));
+        if(!wsCur||wsCur.workshop_id!==wsId) wsCur={workshop_id:wsId,members:[]};
+      }
+      if(cp.ok&&cp.data&&Array.isArray(cp.data.compartments)){
+        compRows=cp.data.compartments;
+        compRows.count=cp.data.count;
+        compRows.exists_count=cp.data.exists_count;
+        compOk=true;
+      }else{
+        compRows=null; compOk=false;
+        errs.push('隔间实况加载失败（已降级为公式推导，路径非权威）：'+msgOf(cp));
+      }
+      if(lb.ok&&lb.data){ libData=lb.data; libOk=true; }
+      else{ libData=null; libOk=false; errs.push('资料库加载失败：'+msgOf(lb)); }
+      if(bb.ok&&bb.data&&Array.isArray(bb.data.bindings)){
+        const m={}; bb.data.bindings.forEach(b=>{ if(b&&b.member_id) m[b.member_id]=b; }); bbMap=m;
+      }else{ bbMap={}; }   /* FE-19：拉不到就回退（renderBridge 的磁盘/审计证据行照常，不空窗） */
+      if(au.ok&&au.data&&Array.isArray(au.data.events)){
+        auditEv=au.data.events;  /* 时间倒序 */
+      }else{
+        errs.push('发桥审计加载失败：'+msgOf(au));
+      }
+      showErr(errs.length?(errs.join(' ｜ ')+'（展示可能不完整）'):'');
+    }else{
+      wsCur=null; auditEv=[]; compRows=null; compOk=false; libData=null; libOk=false; bbMap={}; renderMemberCounts(null,null); showErr('');
+    }
+    renderMembers();
+    renderLibrary();
+    $('refreshInfo').textContent='上次刷新 '+fmtAbs(new Date());
+  }catch(e){
+    console.error('booths tick error', e);
+    $('refreshInfo').textContent='刷新出错：'+e.message;
+  }finally{
+    running=false;
+    if(manual){ btn.disabled=false; btn.innerHTML='⟳ 刷新'; }
+  }
+}
+function startTimer(){ if(timer) clearInterval(timer); timer=setInterval(()=>tick(false),30000); }
+
+/* ===== 交互 ===== */
+$('wsSel').addEventListener('change',()=>{
+  const id=$('wsSel').value;
+  wsCur=id?{workshop_id:id}:null;
+  auditEv=[];
+  try{
+    const u=new URL(location.href);
+    if(id) u.searchParams.set('ws_id',id); else u.searchParams.delete('ws_id');
+    history.replaceState(null,'',u.toString());
+  }catch(e){}
+  tick(false);
+});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){ if(timer){clearInterval(timer); timer=null;} }
+  else{ tick(false); startTimer(); }
+});
+setInterval(()=>{ $('sbClock').textContent='本机时间 '+fmtAbs(new Date()); },1000);
+$('sbClock').textContent='本机时间 '+fmtAbs(new Date());
+
+const Bth={ tick };
+
+/* ===== 测试钩子（验收② 路径公式对拍） ===== */
+window.__boothsTest={
+  safePart, derive:compDirPath, stateClass,
+  /* 桥落点分类：与 renderBridge 同一判据（回归断言用） */
+  classify(artifactPath, compPath){
+    return classifyPath(artifactPath, compPath);
+  },
+  selfTest(){
+    /* 样本 = 后端 compartment.compartment_dir 真函数输出（2026-10-07 对拍） */
+    const cases=[
+      ['D:\\ws_root','组长','m0','组长_m0'],
+      ['D:\\ws_root','码农','m1','码农_m1'],
+      ['D:\\ws_root','搜索者','m3','搜索者_m3'],
+      ['D:\\ws_root','前端/攻城狮','m 9','前端_攻城狮_m 9'],
+      ['D:\\ws_root','..','m1','__m1'],
+      ['D:\\ws_root','','','成员_x']
+    ];
+    const out={pass:0,fail:[]};
+    cases.forEach(([dir,role,mid,expectName])=>{
+      const got=compDirPath(dir,role,mid);
+      const gotName=got.replace(/^.*[\\\/]/,'');
+      if(gotName===expectName) out.pass++;
+      else out.fail.push({role,mid,expectName,gotName});
+    });
+    return out;
+  }
+};
+
+/* ===== 启动 ===== */
+(function init(){
+  const urlId=(()=>{try{return new URL(location.href).searchParams.get('ws_id')||'';}catch(e){return '';}})();
+  fillSelect();
+  if(urlId){
+    wsCur={workshop_id:urlId};
+    const sel=$('wsSel');
+    /* 选项未加载完时先占位 */
+    const o=document.createElement('option'); o.value=urlId; o.textContent=urlId+'（加载中…）';
+    sel.append(o); sel.value=urlId;
+  }
+  tick(false).then(()=>{
+    if(urlId&&wsCur&&wsCur.name){
+      fillSelect(); $('wsSel').value=urlId;
+    }
+  });
+  startTimer();
+})();
+</script>
+</body>
+</html>

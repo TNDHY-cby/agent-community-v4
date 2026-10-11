@@ -1,0 +1,93 @@
+{
+  "errors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "nonGet": [
+    "POST /api/workshop/1c127ad0/discuss",
+    "POST /api/workshop/1c127ad0/start"
+  ],
+  "loaded": {
+    "barShown": true,
+    "text": "该工作间尚在草稿；回大厅发布任务继续。",
+    "buttons": [
+      "回大厅"
+    ],
+    "wsStatus": "draft"
+  },
+  "states": {
+    "discussing": {
+      "text": "与平台AI明确需求；说“开始选人”，或点按钮结束讨论去选人。",
+      "buttons": [
+        "结束讨论，选定员工 →"
+      ]
+    },
+    "selecting": {
+      "text": "名单已生成（可改）：确认成员后进入二级讨论。",
+      "buttons": [
+        "确认成员"
+      ]
+    },
+    "division": {
+      "text": "分工安排已按当前名单更新（library/plan.md）；AI 同意后点「🚀 开始工作」。",
+      "buttons": [
+        "📚 资料库",
+        "🏗 隔间与桥",
+        "🚀 开始工作"
+      ]
+    },
+    "running": {
+      "text": "成员在各自隔间作业；完成后走 review 收口。",
+      "buttons": [
+        "🏗 隔间与桥",
+        "📚 资料库"
+      ]
+    },
+    "review": {
+      "text": "完成复核与收口；可查隔间成果。",
+      "buttons": [
+        "🏗 隔间与桥"
+      ]
+    },
+    "done": {
+      "text": "任务完成；隔间与资料库可回看留档。",
+      "buttons": [
+        "🏗 隔间与桥"
+      ]
+    },
+    "未来状态x": {
+      "text": "当前状态：未来状态x · 可查看隔间与共享资料库。",
+      "buttons": [
+        "🏗 隔间与桥",
+        "📚 资料库"
+      ]
+    }
+  },
+  "started": {
+    "barText": "成员在各自隔间作业；完成后走 review 收口。",
+    "notice": "正在激活员工，拉取各 harness 的新会话...（激活状态请看右侧列表） | 工作已启动——每位成员在自己的隔间作业。隔间与共享资料库：booths.html?ws_id=1c127ad0（或用上方「下一步」条的按钮直达）。",
+    "hasPath": true
+  },
+  "strip": {
+    "shown": true,
+    "dots": [
+      "1 广播(完)",
+      "2 讨论(当前)",
+      "3 选人",
+      "4 分工",
+      "5 工作"
+    ],
+    "statusChip": "状态 discussing",
+    "enter": "/workshop.html?ws_id=1c127ad0"
+  },
+  "back": {
+    "shown": true,
+    "href": "/workshop.html?ws_id=1c127ad0"
+  },
+  "nf": {
+    "chip": "尚未建间",
+    "none": "该任务还没有自动建成的现工作间",
+    "shown": true
+  }
+}

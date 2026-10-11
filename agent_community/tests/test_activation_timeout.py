@@ -21,7 +21,28 @@ from agent_community.platform import entry_state as es
 from agent_community.platform.workshop import Workshop, WorkshopMember
 
 
+class _StubSess:
+    """最小 harness 会话替身：让平台**认识**这个 harness。
+
+    为什么需要它（2026-10-08）：`_activate_single` 新增前置拦截——成员绑的 harness
+    **平台既不认识、也没有它的桥进程**时直接标 `blocked`（因为**没人能收到消息**；
+    旧逻辑却会回"已入 pending 队列"⇒ 假 `dispatched`）。
+    那是"harness 不认识"这个**独立问题**；本文件要测的是**激活超时链**，
+    前提自然是"平台认识这个 harness"，故补一条会话记录。
+    """
+
+    def __init__(self, hid="h_none"):
+        ai = type("AI", (), {"model_name": "stub", "capabilities": []})()
+        wm = type("WM", (), {"value": "clipboard"})()   # 走 pending 队列分支（与旧行为一致）
+        self.info = type("I", (), {"harness_id": hid, "harness_name": "示例Harness-A",
+                                   "wakeup_method": wm, "ai": ai,
+                                   "model_dump": lambda self=None: {}})()
+        self.metadata = {}
+
+
 def _mk(wid="w1", mid="m1"):
+    from agent_community.platform import server as _srv
+    _srv.harness_manager.sessions.setdefault("h_none", _StubSess())
     ws = Workshop(workshop_id=wid, name="t", workspace_dir=f"D:\\ws\\{wid}",
                   hall_content="hall")
     m = WorkshopMember(member_id=mid, role="员工", display_name="甲",

@@ -1,0 +1,106 @@
+{
+  "pass": true,
+  "fail": [],
+  "head": {
+    "title": "流程说明",
+    "logo": "▣\n流程说明\n· 全流程 · 只讲不做\n说明书 · 含示意",
+    "banner": "◈ 本页是流程说明（全流程，只讲不做）：每步做什么、谁做、去哪个页面；操作一律去正主页面（接入页 / 工作间 / 大厅 / 看板）。",
+    "hasOld": false,
+    "railCount": 13
+  },
+  "chapters": [
+    {
+      "no": "—",
+      "t": "这页是什么（定位）",
+      "bodyLen": 443
+    },
+    {
+      "no": "前",
+      "t": "前置 · 起服务",
+      "bodyLen": 626
+    },
+    {
+      "no": "0",
+      "t": "0 · 注册 harness",
+      "bodyLen": 446
+    },
+    {
+      "no": "1",
+      "t": "1 · 广播任务建工作间",
+      "bodyLen": 131
+    },
+    {
+      "no": "2",
+      "t": "2 · 一级讨论",
+      "bodyLen": 189
+    },
+    {
+      "no": "3",
+      "t": "3 · 选成员",
+      "bodyLen": 213
+    },
+    {
+      "no": "4–8",
+      "t": "4·5·6·7·8 · 通道与隔间",
+      "bodyLen": 959
+    },
+    {
+      "no": "按",
+      "t": "（按需）停用 / 新建通道",
+      "bodyLen": 242
+    },
+    {
+      "no": "9",
+      "t": "9 · 更新视觉脚本",
+      "bodyLen": 154
+    },
+    {
+      "no": "10",
+      "t": "10 · 二三级讨论",
+      "bodyLen": 266
+    },
+    {
+      "no": "尾",
+      "t": "收尾 · 阶段整合",
+      "bodyLen": 114
+    },
+    {
+      "no": "随",
+      "t": "随时 · 掉线抢救",
+      "bodyLen": 311
+    },
+    {
+      "no": "查",
+      "t": "速查表",
+      "bodyLen": 974
+    }
+  ],
+  "viewports": {
+    "v1280": true,
+    "v1024": true
+  },
+  "idx": {
+    "tab": "◈ 流程说明",
+    "tile": "流程说明",
+    "tileTitle": "流程说明 · 全流程（只讲不做）",
+    "hasOld": false
+  },
+  "wsp": {
+    "pill": "◈ 流程说明",
+    "hasOld": false
+  },
+  "hubApiReqs": [],
+  "hubErrors": [],
+  "errors": [],
+  "screenshots": [
+    "01_hub_1920.png",
+    "02_hub_末章.png",
+    "03_hub_1024.png",
+    "03_hub_1280.png",
+    "04_hub_1024.png",
+    "04_index入口.png",
+    "05_index入口.png",
+    "05_workshop入口.png",
+    "06_workshop入口.png"
+  ]
+}

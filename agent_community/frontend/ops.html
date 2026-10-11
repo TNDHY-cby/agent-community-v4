@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>外端agent生产合作社 — 运维看板</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--bg:#121316;--bg2:#191b20;--bg3:#21242a;--bg4:#2b2f37;--bg5:#363b45;--ink:#e8e6e1;--muted:#9b978e;--dim:#66625a;--rule:#26292f;--accent:#d97757;--accent-soft:rgba(217,119,87,.13);--accent-strong:#e58968;--green:#86b394;--green-soft:rgba(134,179,148,.13);--yellow:#d9ab53;--yellow-soft:rgba(217,171,83,.13);--red:#d07468;--red-soft:rgba(208,116,104,.13);--blue:#7ba3c9;--blue-soft:rgba(123,163,201,.13);--cyan:#64b5b4;--cyan-soft:rgba(100,181,180,.13);--purple:#a08cc0;--purple-soft:rgba(160,140,192,.13);--shadow-1:0 1px 2px rgba(0,0,0,.35),0 3px 10px rgba(0,0,0,.18);--shadow-2:0 8px 24px rgba(0,0,0,.38);--radius-lg:14px;--radius-md:10px;--radius-sm:7px;--font-mono:"JetBrains Mono","Cascadia Code",Consolas,"Courier New",monospace}
+*{margin:0;padding:0;box-sizing:border-box}
+*{scrollbar-width:thin;scrollbar-color:var(--bg4) transparent}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--bg5)}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.app{display:grid;grid-template-rows:52px 1fr 26px;height:100vh}
+/* ===== topbar ===== */
+.topbar{display:flex;align-items:center;gap:12px;padding:0 16px;background:linear-gradient(180deg,#1d2026,#181a20);border-bottom:1px solid var(--rule);box-shadow:0 1px 0 rgba(255,255,255,.03);min-width:0}
+.topbar .logo{font-size:15px;font-weight:800;color:var(--accent);letter-spacing:.03em;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.topbar .logo .sub{color:var(--muted);font-weight:600;font-size:12.5px}
+.health{display:flex;align-items:center;gap:.45rem;font-size:11px;color:var(--muted);background:var(--bg3);border:1px solid var(--rule);border-radius:999px;padding:3px 12px;white-space:nowrap}
+.health .dot{width:7px;height:7px;border-radius:50%;background:var(--dim);transition:background .3s}
+.health.ok .dot{background:var(--green);box-shadow:0 0 6px var(--green)}
+.health.bad .dot{background:var(--red)}
+.health.checking .dot{background:var(--yellow);animation:pulse 1.2s infinite}
+.spacer{flex:1;min-width:8px}
+.refresh-info{font-size:11px;color:var(--dim);white-space:nowrap;font-family:var(--font-mono)}
+.btn{font-size:12px;padding:6px 14px;border:1px solid var(--rule);border-radius:8px;background:var(--bg3);color:var(--ink);cursor:pointer;transition:all .15s;font-weight:500;font-family:inherit;white-space:nowrap}
+.btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--dim);border-top-color:var(--accent);border-radius:50%;animation:rot .7s linear infinite;vertical-align:-1px;margin-right:5px}
+@keyframes rot{to{transform:rotate(360deg)}}
+.navlink{font-size:11.5px;color:var(--muted);text-decoration:none;border:1px solid var(--rule);border-radius:8px;padding:5px 11px;transition:all .15s;white-space:nowrap}
+.navlink:hover{border-color:var(--accent);color:var(--accent)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+/* ===== global banner ===== */
+.banner{display:none;margin:10px 16px 0;padding:11px 15px;border-radius:10px;font-size:13px;line-height:1.7;border:1px solid rgba(208,116,104,.45);background:var(--red-soft);color:#eab0a8}
+.banner.show{display:block}
+.banner code{font-family:var(--font-mono);font-size:12px;background:rgba(0,0,0,.35);padding:1px 7px;border-radius:5px;color:#f0d9d4}
+/* ===== main ===== */
+.main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;padding:14px 16px;overflow:hidden;min-height:0}
+.panel{background:var(--bg2);border:1px solid var(--rule);border-radius:var(--radius-lg);display:flex;flex-direction:column;overflow:hidden;min-height:0;min-width:0}
+.panel-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--rule);flex:none;flex-wrap:wrap}
+.panel-title{font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.panel-title b{color:var(--ink);font-weight:800}
+.count-pill{background:var(--accent-soft);color:var(--accent);padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700}
+.panel-body{flex:1;overflow-y:auto;padding:12px 14px 16px;min-height:0}
+/* ===== filter bar ===== */
+.filters{display:flex;gap:8px;padding:10px 14px;border-bottom:1px solid var(--rule);flex-wrap:wrap;flex:none;align-items:center}
+.filters input,.filters select{background:var(--bg2);border:1px solid var(--rule);border-radius:8px;padding:6px 10px;font-size:12.5px;color:var(--ink);outline:none;transition:border-color .15s;font-family:inherit;min-width:0}
+.filters input{width:150px}
+.filters input:focus,.filters select:focus{border-color:var(--accent)}
+.filters input::placeholder{color:var(--dim)}
+.filters .f-mono{font-family:var(--font-mono)}
+.filters .lbl{font-size:11px;color:var(--dim);font-weight:700}
+/* ===== error strip ===== */
+.err-strip{display:none;margin:0 0 10px;padding:9px 12px;border-radius:9px;font-size:12.5px;line-height:1.6;border:1px solid rgba(208,116,104,.4);background:var(--red-soft);color:#eab0a8}
+.err-strip.show{display:block}
+.warn-strip{display:none;margin:0 0 10px;padding:9px 12px;border-radius:9px;font-size:12.5px;line-height:1.6;border:1px solid rgba(217,171,83,.4);background:var(--yellow-soft);color:#e6c887}
+.warn-strip.show{display:block}
+.stale-note{font-size:11px;color:var(--yellow);margin-left:auto;font-weight:700}
+/* ===== empty state ===== */
+.empty{text-align:center;padding:34px 18px;color:var(--muted)}
+.empty .ico{font-size:26px;line-height:1;margin-bottom:10px;opacity:.75}
+.empty .t{font-size:13.5px;font-weight:700;color:var(--ink);margin-bottom:5px}
+.empty .s{font-size:12px;line-height:1.7;color:var(--dim);max-width:340px;margin:0 auto}
+.empty.good .t{color:var(--green)}
+/* ===== skeleton ===== */
+.skel{border-radius:9px;background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:sh 1.3s infinite;margin-bottom:9px}
+@keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+/* ===== timeline ===== */
+.tl{position:relative;padding-left:20px}
+.tl:before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--rule);border-radius:2px}
+.tl-item{position:relative;margin-bottom:10px;background:var(--bg3);border:1px solid var(--rule);border-radius:var(--radius-md);padding:10px 13px;cursor:pointer;transition:border-color .15s,background .15s}
+.tl-item:hover{border-color:var(--bg5);background:#24272e}
+.tl-item.open{border-color:rgba(217,119,87,.35)}
+.tl-item:before{content:"";position:absolute;left:-19px;top:16px;width:10px;height:10px;border-radius:50%;background:var(--muted);border:2px solid var(--bg2);box-shadow:0 0 0 2px var(--rule)}
+.tl-item[data-node="green"]:before{background:var(--green)}
+.tl-item[data-node="red"]:before{background:var(--red)}
+.tl-item[data-node="yellow"]:before{background:var(--yellow)}
+.tl-item[data-node="blue"]:before{background:var(--blue)}
+.tl-item[data-node="cyan"]:before{background:var(--cyan)}
+.tl-item[data-node="purple"]:before{background:var(--purple)}
+.tl-item[data-node="dim"]:before{background:var(--dim)}
+.tl-l1{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px}
+.tl-time{font-size:11.5px;color:var(--dim);font-family:var(--font-mono);cursor:help}
+.actor{font-size:10.5px;font-weight:800;border-radius:6px;padding:2px 8px;background:var(--bg4);color:var(--muted);border:1px solid var(--rule)}
+.actor.system{background:var(--blue-soft);color:var(--blue);border-color:rgba(123,163,201,.35)}
+.actor.user{background:var(--purple-soft);color:var(--purple);border-color:rgba(160,140,192,.35)}
+.ws-chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;border-radius:7px;padding:3px 9px;background:var(--accent-soft);color:var(--accent-strong);border:1px solid rgba(217,119,87,.3);text-decoration:none;max-width:260px;transition:all .15s}
+.ws-chip:hover{border-color:var(--accent);transform:translateY(-1px)}
+.ws-chip .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-chip .go{opacity:.7;font-size:10px}
+.ws-chip.plain{background:var(--bg4);color:var(--muted);border-color:var(--rule);font-family:var(--font-mono);font-weight:600}
+.tl-l2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:800;border-radius:999px;padding:3px 11px;border:1px solid transparent;font-family:var(--font-mono)}
+.chip .tdot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.85}
+.chip.term .tdot{opacity:1;box-shadow:0 0 4px currentColor}
+.chip.unknown{background:var(--bg4);color:var(--muted);border-color:var(--rule)}
+.st-created{background:var(--bg4);color:var(--muted);border-color:var(--rule)}
+.st-assigned{background:var(--blue-soft);color:var(--blue);border-color:rgba(123,163,201,.35)}
+.st-discussing{background:var(--purple-soft);color:var(--purple);border-color:rgba(160,140,192,.35)}
+.st-executing{background:var(--cyan-soft);color:var(--cyan);border-color:rgba(100,181,180,.35)}
+.st-waiting_reply{background:var(--yellow-soft);color:var(--yellow);border-color:rgba(217,171,83,.35)}
+.st-stuck-paused{background:var(--yellow-soft);color:var(--yellow);border-color:rgba(217,171,83,.35)}
+.st-blocked-retrying{background:var(--red-soft);color:var(--red);border-color:rgba(208,116,104,.35)}
+.st-timeout{background:var(--red-soft);color:var(--red);border-color:rgba(208,116,104,.35)}
+.st-done{background:var(--green-soft);color:var(--green);border-color:rgba(134,179,148,.4)}
+.st-dropped{background:var(--red-soft);color:var(--red);border-color:rgba(208,116,104,.4)}
+.st-removed{background:transparent;color:var(--dim);border:1px dashed var(--bg5)}
+.arrow{color:var(--dim);font-size:13px;font-weight:700}
+.act{font-size:10.5px;font-weight:800;border-radius:6px;padding:2.5px 9px;letter-spacing:.02em}
+.act-noop{background:var(--bg4);color:var(--dim)}
+.act-auto_retry{background:var(--blue-soft);color:var(--blue)}
+.act-escalate_l1{background:var(--yellow-soft);color:var(--yellow)}
+.act-escalate_l2{background:var(--red);color:#1c0e0c;box-shadow:0 0 10px rgba(208,116,104,.5);display:inline-flex;align-items:center;gap:5px}
+.act-escalate_l2 .blip{width:6px;height:6px;border-radius:50%;background:#fff;animation:blp 1s infinite}
+@keyframes blp{0%,100%{opacity:1}50%{opacity:.25}}
+.act-pause{background:var(--yellow-soft);color:var(--yellow)}
+.act-resume{background:var(--cyan-soft);color:var(--cyan)}
+.act-done{background:var(--green-soft);color:var(--green)}
+.act-drop{background:var(--red-soft);color:var(--red)}
+.act-unknown{background:var(--bg4);color:var(--muted)}
+.tl-note{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.55;word-break:break-word}
+.tl-note b{color:var(--dim);font-weight:700}
+.tl-raw{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);word-break:break-all;margin-top:4px}
+.unparsed-tag{font-size:10px;font-weight:800;color:var(--yellow);border:1px dashed rgba(217,171,83,.5);border-radius:5px;padding:1px 7px;margin-left:6px}
+.tl-expand{display:none;margin-top:9px;padding-top:9px;border-top:1px dashed var(--rule);font-family:var(--font-mono);font-size:11.5px;line-height:1.9;color:var(--muted);word-break:break-all}
+.tl-item.open .tl-expand{display:block}
+.tl-expand .k{color:var(--dim);display:inline-block;min-width:88px}
+.tl-expand .v{color:#d8d2c6}
+/* ===== heartbeat board ===== */
+.hb-summary{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+.sum{font-size:11.5px;font-weight:800;border-radius:999px;padding:4px 11px;border:1px solid transparent;display:inline-flex;align-items:center;gap:6px}
+.sum .d{width:7px;height:7px;border-radius:50%}
+.sum.on{background:var(--green-soft);color:var(--green);border-color:rgba(134,179,148,.35)}
+.sum.on .d{background:var(--green);box-shadow:0 0 5px var(--green)}
+.sum.off{background:var(--red-soft);color:var(--red);border-color:rgba(208,116,104,.35)}
+.sum.off .d{background:var(--red)}
+.sum.off.zero{background:var(--bg4);color:var(--dim);border-color:var(--rule)}
+.sum.off.zero .d{background:var(--dim);box-shadow:none}
+.sum.total{background:var(--bg3);color:var(--muted);border-color:var(--rule)}
+.sum.scale{background:var(--bg3);color:var(--dim);border-color:var(--rule);cursor:help}
+.hb-group{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:14px 0 8px;display:flex;align-items:center;gap:7px}
+.hb-group:first-of-type{margin-top:0}
+.hb-group.alert{color:var(--red)}
+.hb-card{background:var(--bg3);border:1px solid var(--rule);border-radius:var(--radius-md);padding:10px 12px;margin-bottom:8px}
+.hb-card.stale{border-left:2px solid var(--red);background:linear-gradient(90deg,rgba(208,116,104,.07),var(--bg3) 40%)}
+.hb-top{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.hb-sdot{width:8px;height:8px;border-radius:50%;flex:none}
+.hb-sdot.alive{background:var(--green);animation:pulse 1.6s infinite}
+.hb-sdot.idle{background:var(--yellow)}
+.hb-sdot.busy{background:var(--blue);animation:pulse 1.2s infinite}
+.hb-sdot.dead{background:var(--red);box-shadow:0 0 6px rgba(208,116,104,.7)}
+.hb-name{font-size:13px;font-weight:800;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help}
+.hb-badge{font-size:10px;font-weight:800;border-radius:6px;padding:2px 8px;flex:none}
+.hb-badge.alive{background:var(--green-soft);color:var(--green)}
+.hb-badge.idle{background:var(--yellow-soft);color:var(--yellow)}
+.hb-badge.busy{background:var(--blue-soft);color:var(--blue)}
+.hb-badge.st{background:var(--red);color:#fff}
+.hb-meta{font-family:var(--font-mono);font-size:11px;color:var(--dim);line-height:1.7;word-break:break-all}
+.hb-meta .ago{cursor:help}
+.hb-note{font-size:11.5px;color:var(--muted);font-style:italic;margin-top:5px;line-height:1.55;word-break:break-word}
+.hb-fail{font-size:11.5px;color:var(--red);margin-top:6px;font-family:var(--font-mono)}
+/* ===== FE-18 三问区块（FE-17 §3）===== */
+.q3-panel{grid-column:1 / -1;max-height:300px;flex:none}
+.q3-ws{background:var(--bg3);border:1px solid var(--rule);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--ink);outline:none;font-family:inherit;max-width:260px}
+.q3-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.q3-col{background:var(--bg3);border:1px solid var(--rule);border-radius:var(--radius-md);padding:10px 12px;min-width:0}
+.q3-col h4{font-size:12px;font-weight:800;letter-spacing:.04em;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.q3-col h4 .n{background:var(--accent-soft);color:var(--accent);border-radius:6px;font-size:10.5px;padding:1px 7px}
+.q3-row{background:var(--bg2);border:1px solid var(--rule);border-radius:8px;padding:7px 9px;margin-bottom:7px;font-size:12px;line-height:1.6}
+.q3-row:last-child{margin-bottom:0}
+.q3-row .who{font-weight:800;color:var(--ink)}
+.q3-row .sub{color:var(--muted);font-size:11.5px;word-break:break-word}
+.q3-row .talk{color:var(--cyan);font-size:11.5px;word-break:break-all}
+.q3-row .why{color:var(--yellow);font-size:11.5px;word-break:break-word}
+.q3-row .fix{color:var(--green);font-size:11.5px;word-break:break-word}
+.q3-empty{font-size:12px;color:var(--muted);line-height:1.7}
+.q3-act{display:inline-block;margin-top:7px;font-size:12px;font-weight:700;background:var(--accent);color:#fff;border-radius:8px;padding:5px 14px;text-decoration:none;transition:opacity .15s}
+.q3-act:hover{opacity:.85}
+.q3-act.ghost{background:var(--bg2);color:var(--ink);border:1px solid var(--rule)}
+/* ===== statusbar ===== */
+.statusbar{display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--bg2);border-top:1px solid var(--rule);font-size:10.5px;color:var(--dim);overflow:hidden;white-space:nowrap}
+.statusbar .sep{color:var(--rule)}
+/* ===== responsive ===== */
+@media (max-width:1399px){.main{grid-template-columns:minmax(0,1fr) 320px}}
+@media (max-width:1279px){.q3-grid{grid-template-columns:1fr}.q3-panel{max-height:420px}}
+@media (max-width:1099px){
+  html,body{overflow:auto}
+  .app{height:auto;min-height:100vh;grid-template-rows:52px auto 26px}
+  .main{grid-template-columns:1fr;grid-template-rows:auto minmax(420px,55vh) minmax(320px,auto);overflow:visible}
+  .panel{min-height:0}
+  .filters input{width:100%;flex:1 1 140px}
+}
+@media (max-width:1099px) and (min-width:0px){.tl-panel{min-height:420px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ===== topbar ===== -->
+  <header class="topbar">
+    <div class="logo">📡 运维看板<span class="sub">· 工单审计</span></div>
+    <div class="health checking" id="health" title="后端健康状态"><span class="dot"></span><span id="healthText">检测中…</span></div>
+    <div class="spacer"></div>
+    <span class="refresh-info" id="refreshInfo">尚未刷新</span>
+    <button class="btn" id="refreshBtn" onclick="Ops.tick(true)">⟳ 刷新</button>
+    <a class="navlink" href="/handover.html">🧾 回执台</a>
+    <a class="navlink" href="/booths.html">🏗 隔间</a>
+    <a class="navlink" href="/">◈ 大厅</a>
+  </header>
+
+  <!-- ===== global banner ===== -->
+  <div class="banner" id="banner"></div>
+
+  <!-- ===== main ===== -->
+  <main class="main">
+    <!-- FE-18 三问区块（FE-17 §3：看板只回答三个问题） -->
+    <section class="panel q3-panel">
+      <div class="panel-head">
+        <span class="panel-title">现在该看的<b>三件事</b></span>
+        <select class="q3-ws" id="q3Ws" title="选择工作间"><option value="">（选择工作间）</option></select>
+        <span class="count-pill" id="q3Orphans">孤儿 —</span>
+        <span class="count-pill" id="q3Delivery">未送达 —</span>
+        <span class="stale-note" id="q3Stale" style="display:none">数据可能过期</span>
+      </div>
+      <div class="panel-body">
+        <div class="err-strip" id="q3Err"></div>
+        <div class="q3-grid">
+          <div class="q3-col"><h4><span class="n">①</span>谁在干活</h4><div class="q3-body" id="q3Who"></div></div>
+          <div class="q3-col"><h4><span class="n">②</span>谁卡住了、为什么</h4><div class="q3-body" id="q3Stuck"></div></div>
+          <div class="q3-col"><h4><span class="n">③</span>我该按哪里</h4><div class="q3-body" id="q3Do"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- left: audit timeline -->
+    <section class="panel tl-panel">
+      <div class="panel-head">
+        <span class="panel-title">工单状态迁移<b>时间线</b></span>
+        <span class="count-pill" id="tlCount">–</span>
+        <span class="stale-note" id="tlStale" style="display:none">数据可能过期</span>
+      </div>
+      <div class="filters">
+        <span class="lbl">筛选</span>
+        <input id="fActor" class="f-mono" type="text" placeholder="操作者 actor" autocomplete="off">
+        <input id="fTarget" class="f-mono" type="text" placeholder="工单号（8位hex）" autocomplete="off" maxlength="8">
+        <select id="fLimit" title="拉取条数">
+          <option value="50">50 条</option>
+          <option value="100" selected>100 条</option>
+          <option value="200">200 条</option>
+          <option value="500">500 条</option>
+        </select>
+        <button class="btn" id="fClear" onclick="Ops.clearFilters()" style="padding:5px 11px;font-size:11.5px">清空</button>
+      </div>
+      <div class="panel-body">
+        <div class="err-strip" id="tlErr"></div>
+        <div id="tlList"></div>
+      </div>
+    </section>
+
+    <!-- right: heartbeat board -->
+    <section class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Agent<b>在线 / 失联看板</b></span>
+        <span class="stale-note" id="hbStale" style="display:none">数据可能过期</span>
+      </div>
+      <div class="panel-body">
+        <div class="err-strip" id="hbErr"></div>
+        <div class="warn-strip" id="hbWarn"></div>
+        <div class="hb-summary" id="hbSummary"></div>
+        <div id="hbBody"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== statusbar ===== -->
+  <footer class="statusbar">
+    <span>数据源：/api/audit · /api/heartbeat · /api/heartbeat/stale · /api/status · members-status · offline-report</span>
+    <span class="sep">|</span>
+    <span>只读页面</span>
+    <span class="sep">|</span>
+    <span>审计上限 500 条（环形缓冲）</span>
+    <span class="sep">|</span>
+    <span>心跳表内存态 · 重启清空</span>
+    <span class="spacer"></span>
+    <span id="sbClock"></span>
+  </footer>
+</div>
+<script>
+'use strict';
+/* ===== 契约常量（任务书 §4/§5，冻结） ===== */
+const RE_DETAIL = /^(\S+): (\S+)→(\S+) action=(\S+) note=(.*)$/;
+const STATE_CLS = {created:'st-created',assigned:'st-assigned',discussing:'st-discussing',executing:'st-executing',waiting_reply:'st-waiting_reply','stuck-paused':'st-stuck-paused','blocked-retrying':'st-blocked-retrying',timeout:'st-timeout',done:'st-done',dropped:'st-dropped',removed:'st-removed'};
+const TERM_STATES = {done:1,dropped:1,removed:1};
+const NODE_COLOR = {created:'dim',assigned:'blue',discussing:'purple',executing:'cyan',waiting_reply:'yellow','stuck-paused':'yellow','blocked-retrying':'red',timeout:'red',done:'green',dropped:'red',removed:'dim'};
+const ACT_META = {noop:'直接置位',auto_retry:'自动重试',escalate_l1:'组长裁决',escalate_l2:'需人工介入',pause:'暂停',resume:'恢复',done:'完成',drop:'丢弃'};
+const HB_LABEL = {alive:'在线',idle:'空闲',busy:'忙碌'};
+const REFRESH_MS = 12000, WS_REFRESH_MS = 5*60*1000;
+
+const $ = id => document.getElementById(id);
+function el(tag, cls, text){const e=document.createElement(tag); if(cls)e.className=cls; if(text!=null)e.textContent=text; return e;}
+function pad(n){return String(n).padStart(2,'0');}
+function fmtAbs(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());}
+function relOf(d){
+  const s=Math.max(0,Math.round((Date.now()-d.getTime())/1000));
+  if(s<5) return '刚刚';
+  if(s<60) return s+' 秒前';
+  if(s<3600) return Math.floor(s/60)+' 分钟前';
+  if(s<86400) return Math.floor(s/3600)+' 小时前';
+  return Math.floor(s/86400)+' 天前';
+}
+function parseLocalISO(ts){return new Date(ts);}   /* 本地无时区串：不补 Z / +08:00 */
+function parseEpoch(x){return new Date(x*1000);}
+function parseDetail(d){
+  if(typeof d!=='string') return null;
+  const m=d.match(RE_DETAIL);
+  if(!m) return null;
+  return {ev:m[1],from:m[2],to:m[3],action:m[4],note:m[5]};
+}
+/* 兼容两套 404 / 错误形状（协作书 §3.5）：{"error":…} 与 {"detail":…} */
+async function fetchJSON(path){
+  let res;
+  try{ res=await fetch(path); }
+  catch(e){ return {ok:false, msg:'网络错误：'+e.message}; }
+  let data=null;
+  try{ data=await res.json(); }catch(e){ data=null; }
+  if(!res.ok){
+    let msg=null;
+    if(data&&typeof data==='object') msg=data.error||data.detail||null;
+    return {ok:false, status:res.status, msg:msg||('HTTP '+res.status+(res.status===404?'（未找到）':''))};
+  }
+  return {ok:true, data:data};
+}
+
+/* ===== 状态 ===== */
+let wsMap=null, wsFetchedAt=0, tlLast=null, hbLast=null, hlbLast=null, running=false, timer=null;
+
+/* ===== 时间线渲染 ===== */
+function stateChip(s){
+  const known=Object.prototype.hasOwnProperty.call(STATE_CLS,s);
+  const c=el('span','chip '+(known?STATE_CLS[s]:'unknown')+(TERM_STATES[s]?' term':''), s);
+  if(known||TERM_STATES[s]) c.prepend(el('span','tdot'));
+  if(!known) c.title='未知状态（前向兼容，原样显示）';
+  return c;
+}
+function actBadge(action){
+  const label=ACT_META[action];
+  const b=el('span','act '+(label?'act-'+action:'act-unknown'), label?label+' '+action:action);
+  if(action==='escalate_l2') b.prepend(el('span','blip'));
+  if(!label) b.title='未知动作（原样显示）';
+  return b;
+}
+function wsChip(target){
+  if(!target) return null;
+  const name=wsMap?wsMap[target]:undefined;
+  const a=el('a','ws-chip'+(name?'':' plain'));
+  a.href='/workshop.html?ws_id='+encodeURIComponent(target);
+  a.target='_blank'; a.rel='noopener';
+  a.title=name?('工单 '+target+'（'+name+'）· 点击新标签打开'):('工单 '+target+' · 未找到对应工作间（可能已删除），显示原始编号');
+  a.append(el('span','nm',name||target), el('span','go','↗'));
+  return a;
+}
+function buildRow(ev){
+  const item=el('div','tl-item');
+  const p=parseDetail(ev.detail);
+  item.dataset.node=p?(NODE_COLOR[p.to]||'dim'):'dim';
+  /* line 1: 时间 / actor / 工单 */
+  const l1=el('div','tl-l1');
+  const t=parseLocalISO(ev.ts);
+  const time=el('span','tl-time',isNaN(t)?String(ev.ts):relOf(t));
+  time.title=isNaN(t)?String(ev.ts):('绝对时间 '+fmtAbs(t)+'（原始 ts：'+ev.ts+'）');
+  l1.append(time);
+  const actor=el('span','actor '+(ev.actor==='system'?'system':ev.actor==='user'?'user':''),
+    ev.actor||'（空 actor）');
+  if(!ev.actor) actor.title='actor 为空串';
+  l1.append(actor);
+  const chip=wsChip(ev.target);
+  if(chip) l1.append(chip);
+  item.append(l1);
+  /* line 2: 双胶囊箭头 / 降级原文 */
+  if(p){
+    const l2=el('div','tl-l2');
+    l2.append(stateChip(p.from), el('span','arrow','→'), stateChip(p.to), actBadge(p.action));
+    item.append(l2);
+    if(p.note){
+      const n=el('div','tl-note');
+      n.append(el('b',null,'备注：'), document.createTextNode(p.note));
+      item.append(n);
+    }
+  }else{
+    const raw=el('div','tl-raw');
+    raw.append(document.createTextNode(String(ev.detail==null?'':ev.detail)), el('span','unparsed-tag','未解析'));
+    item.append(raw);
+  }
+  /* 展开区（原始详情，点击切换） */
+  const ex=el('div','tl-expand');
+  function line(k,v){const d=el('div'); d.append(el('span','k',k), el('span','v',v)); return d;}
+  ex.append(line('detail',String(ev.detail==null?'':ev.detail)));
+  ex.append(line('event',String(ev.event==null?'':ev.event)));
+  ex.append(line('target',String(ev.target==null?'（空）':ev.target)));
+  ex.append(line('时间',String(ev.ts==null?'':ev.ts)));
+  ex.append(line('actor',String(ev.actor==null?'':ev.actor)));
+  if(p){
+    ex.append(line('解析结果','ev='+p.ev+' · from='+p.from+' · to='+p.to+' · action='+p.action+' · note='+(p.note===''?'（空）':p.note)));
+  }else{
+    ex.append(line('解析结果','未匹配冻结正则 → 已降级显示原文'));
+  }
+  item.append(ex);
+  return item;
+}
+function renderTimeline(res){
+  const errEl=$('tlErr'), list=$('tlList'), count=$('tlCount'), stale=$('tlStale');
+  if(!res.ok){
+    errEl.textContent='时间线加载失败：'+res.msg+'（'+(res.status===404?'兼容两套 404 已解析':'')+'）';
+    errEl.classList.add('show');
+    if(tlLast){ stale.style.display=''; }  /* 保留上次数据 */
+    else{ list.innerHTML=''; count.textContent='–'; }
+    return;
+  }
+  errEl.classList.remove('show'); stale.style.display='none';
+  tlLast=res.data;
+  const all=Array.isArray(res.data.events)?res.data.events:[];
+  const events=all.filter(e=>e&&e.event==='task.transition');  /* §10.5：只取状态迁移 */
+  const limit=parseInt($('fLimit').value,10)||100;
+  count.textContent=events.length+' 条';
+  count.title=events.length>=limit?('已达到 limit='+limit+' 上限，更早的记录未拉取（ring buffer 上限 500）'):'本次拉取条数';
+  list.innerHTML='';
+  if(!events.length){
+    const filtered=$('fActor').value.trim()||$('fTarget').value.trim();
+    const em=el('div','empty');
+    em.append(el('div','ico','🗒'),el('div','t',filtered?'无匹配记录':'还没有工单状态迁移记录'),
+      el('div','s',filtered?'当前筛选条件下没有记录，试试清空筛选。':'工单被推进、完成或丢弃时，状态迁移会自动出现在这里。'));
+    list.append(em);
+    return;
+  }
+  const tl=el('div','tl');
+  events.forEach(e=>tl.append(buildRow(e)));
+  list.append(tl);
+}
+
+/* ===== 心跳看板渲染 ===== */
+function hbCard(entry, isStale){
+  const c=el('div','hb-card'+(isStale?' stale':''));
+  const top=el('div','hb-top');
+  const st=isStale?'dead':(HB_LABEL[entry.status]?entry.status:'idle');
+  top.append(el('span','hb-sdot '+st));
+  const name=(entry.harness_name&&String(entry.harness_name).trim())?entry.harness_name:entry.harness_id||entry.agent_id||'（未知）';
+  const nm=el('span','hb-name',name);
+  nm.title=(entry.harness_name?entry.harness_name+' · ':'')+(entry.harness_id||'')+(entry.agent_id?(' · '+entry.agent_id):'');
+  top.append(nm);
+  top.append(el('span','hb-badge '+(isStale?'st':st), isStale?'失联':(HB_LABEL[entry.status]||entry.status||'未知')));
+  c.append(top);
+  const meta=el('div','hb-meta');
+  const parts=[];
+  if(entry.agent_id) parts.push(entry.agent_id);
+  if(entry.interval!=null) parts.push(Math.round(entry.interval)+'s 上报');
+  if(entry.last_seen!=null){
+    const d=parseEpoch(entry.last_seen);
+    const ago=el('span','ago','上次 '+relOf(d));
+    ago.title='上次上报 '+fmtAbs(d)+'（epoch '+entry.last_seen+'）';
+    meta.append(document.createTextNode(parts.join(' · ')+(parts.length?' · ':'')),ago);
+  }else{
+    meta.append(document.createTextNode(parts.join(' · ')));
+  }
+  c.append(meta);
+  if(isStale){
+    const f=el('div','hb-fail');
+    const ago=entry.last_ago!=null?Math.round(entry.last_ago):'?';
+    const th=entry.threshold!=null?Math.round(entry.threshold):'?';
+    f.textContent='已 '+ago+' 秒未上报 · 阈值 '+th+' 秒';
+    if(entry.since!=null){
+      const sd=parseEpoch(entry.since);
+      f.title='首次登记 '+fmtAbs(sd);
+    }
+    c.append(f);
+  }
+  if(entry.note&&String(entry.note).trim()) c.append(el('div','hb-note','“'+entry.note+'”'));
+  if(!HB_LABEL[entry.status]&&!isStale){
+    const w=el('div','hb-fail'); w.style.color='var(--yellow)';
+    w.textContent='未知状态：'+entry.status+'（原样显示）';
+    c.append(w);
+  }
+  return c;
+}
+function renderBoard(hbRes, hlRes){
+  const errEl=$('hbErr'), warnEl=$('hbWarn'), sumEl=$('hbSummary'), body=$('hbBody'), staleNote=$('hbStale');
+  const errors=[];
+  if(!hbRes.ok) errors.push('/api/heartbeat：'+hbRes.msg);
+  if(!hlRes.ok) errors.push('/api/heartbeat/stale：'+hlRes.msg);
+  if(errors.length){
+    errEl.textContent='心跳数据加载失败 —— '+errors.join(' ｜ ');
+    errEl.classList.add('show');
+    if(hbLast||hlbLast) staleNote.style.display='';
+  }else{
+    errEl.classList.remove('show'); staleNote.style.display='none';
+  }
+  const hb=hbRes.ok?hbRes.data:null;
+  const hlb=hlRes.ok?hlRes.data:null;
+  if(hb) hbLast=hb;
+  if(hlb) hlbLast=hlb;
+  const data=hbLast;
+  sumEl.innerHTML=''; warnEl.classList.remove('show');
+  if(!data){
+    body.innerHTML='';
+    const em=el('div','empty');
+    em.append(el('div','ico','📡'),el('div','t','无法获取心跳数据'),el('div','s','请确认后端已启动，页面会每 12 秒自动重试。'));
+    body.append(em);
+    return;
+  }
+  const online=Array.isArray(data.online)?data.online:[];
+  const staleHb=Array.isArray(data.stale)?data.stale:[];
+  const staleList=(hlb&&Array.isArray(hlb.stale))?hlb.stale:staleHb;
+  const total=(typeof data.total==='number')?data.total:(online.length+staleHb.length);
+  /* 契约哨兵：total == online + stale */
+  const mismatches=[];
+  if(total!==online.length+staleHb.length) mismatches.push('total='+total+' 但 online('+online.length+')+stale('+staleHb.length+')='+(online.length+staleHb.length));
+  if(hlb&&typeof hlb.stale_count==='number'&&hlb.stale_count!==staleHb.length) mismatches.push('stale 端点='+hlb.stale_count+' 与 heartbeat.stale='+staleHb.length+' 不一致');
+  if(mismatches.length){
+    warnEl.textContent='数据一致性异常（'+mismatches.join('；')+'），请报告后端。';
+    warnEl.classList.add('show');
+  }
+  const sOn=el('span','sum on'); sOn.append(el('span','d'),document.createTextNode('在线 '+online.length)); sOn.title='heartbeat.online';
+  const sOff=el('span','sum off'+(staleList.length?'':' zero')); sOff.append(el('span','d'),document.createTextNode('失联 '+staleList.length)); sOff.title='heartbeat.stale';
+  const sTot=el('span','sum total','共 '+total); sTot.title='heartbeat.total（应恒等于 online+stale）';
+  const sScale=el('span','sum scale','阈值 ×'+(data.timeout_scale!=null?data.timeout_scale:'?'));
+  sScale.title='失联阈值 = 上报周期 × timeout_scale（当前 '+data.timeout_scale+'），来自 /api/heartbeat';
+  sumEl.append(sOn,sOff,sTot,sScale);
+  body.innerHTML='';
+  if(!online.length&&!staleList.length){
+    const em=el('div','empty');
+    em.append(el('div','ico','🛰️'),el('div','t','暂无 Agent 心跳上报'),
+      el('div','s','Agent 注册并开始周期上报后，在线与失联状态会显示在这里。心跳表为内存态，服务重启后会清空。'));
+    body.append(em);
+    return;
+  }
+  if(online.length){
+    body.append(el('div','hb-group','● 在线 ('+online.length+')'));
+    online.forEach(e=>body.append(hbCard(e,false)));
+  }else{
+    const em=el('div','empty'); em.style.padding='14px 0';
+    em.append(el('div','t','当前没有在线 Agent'),el('div','s','有 Agent 上报心跳后会出现在这里。'));
+    body.append(em);
+  }
+  if(staleList.length){
+    body.append(el('div','hb-group alert','⚠ 失联 ('+staleList.length+')'));
+    staleList.forEach(e=>body.append(hbCard(e,true)));
+  }else if(online.length){
+    const em=el('div','empty good'); em.style.padding='14px 0';
+    em.append(el('div','t','✓ 当前没有失联的 Agent'));
+    body.append(em);
+  }
+}
+
+/* ===== FE-18 三问区块（FE-17 §3：只回答三个问题；禁词见 FE-18 §4）===== */
+let q3WsId='';
+const Q3_ENTRY_TXT={pending:'还没接活',dispatched:'已通知、还没接上',acked:'它已收到通知',entered:'已进入工作',blocked:'卡住',timeout:'超时',needs_human:'需要人工',rejected:'被拒绝'};
+const Q3_CH_TXT={pending:'未接通',active:'运行中',retired:'已停用'};
+const Q3_STUCK_ENTRY={timeout:1,needs_human:1,blocked:1,rejected:1};
+function q3Stuck(x){ return !!(x&&(x.needs_rescue===true||x.offline===true||x.verdict==='rescue'||Q3_STUCK_ENTRY[x.entry_state])); }
+function q3Minutes(x){
+  try{
+    if(!hbLast||!Array.isArray(hbLast.stale)||!x||!x.harness_id) return null;
+    const e=hbLast.stale.find(s=>s&&(s.harness_id===x.harness_id||s.agent_id===x.harness_id));
+    if(!e||e.last_ago==null) return null;   /* 匹配不到就不显示分钟数（不编） */
+    const sec=Math.round(e.last_ago);
+    return sec>=60?(Math.round(sec/60)+' 分钟'):(sec+' 秒');
+  }catch(err){ return null; }
+}
+function q3Reason(x){
+  const rs=Array.isArray(x.reasons)?x.reasons.join('；'):'';
+  return rs||x.entry_reason||(x.offline?'联系不上（有确认信号）':'')||'请到工作间查看该成员状态';
+}
+function q3Advice(x){
+  if(x.escalated) return '已升级给人工：去工作间由你（或组长）接手处理';
+  if(x.offline) return '它联系不上：去工作间对该成员点「抢救」先试重连';
+  if(x.entry_state==='pending'&&x.pending_work) return '活派了但还没接上：去工作间为该成员建立通道并送桥';
+  if(Q3_STUCK_ENTRY[x.entry_state]) return '去工作间查看该成员状态并按提示处理（可点「抢救」）';
+  return '去工作间查看该成员状态';
+}
+function q3Empty(text){ return el('div','q3-empty',text); }
+function q3Link(href,label,primary){
+  const a=el('a','q3-act'+(primary?'':' ghost'),label);
+  a.href=href; return a;
+}
+function q3BridgeLine(x,msMap,bbMap){
+  /* 100 号：优先用后端人话 status_text（内含「未架接」/「未自证」两硬规则，界面不改写）；
+     桥绑定取不到时回退通道对话名（不空窗） */
+  const b=bbMap?bbMap[x.member_id]:null;
+  if(b&&b.status_text) return el('div','talk','桥：'+b.status_text);
+  const m=msMap[x.member_id]||{};
+  const ch=m.channel||{};
+  return el('div','talk','这条通道接到对话：'+(ch.name||(Q3_CH_TXT[ch.state]||'未接通')));
+}
+function q3WhoRow(x,msMap,bbMap){
+  const m=msMap[x.member_id]||{};
+  const row=el('div','q3-row');
+  row.append(el('div','who',(m.role||'—')+' · '+(m.display_name||x.member_id)));
+  row.append(el('div','sub','正在：'+(x.pending_work_why||x.entry_reason||'进行中（详情去工作间）')));
+  row.append(q3BridgeLine(x,msMap,bbMap));
+  return row;
+}
+function q3StuckRow(x,msMap,bbMap){
+  const m=msMap[x.member_id]||{};
+  const row=el('div','q3-row');
+  row.append(el('div','who',(m.role||'—')+' · '+(m.display_name||x.member_id)));
+  const min=q3Minutes(x);
+  if(min) row.append(el('div','sub','已 '+min+' 没有动静'));
+  row.append(q3BridgeLine(x,msMap,bbMap));
+  row.append(el('div','why','卡在：'+q3Reason(x)));
+  row.append(el('div','fix','怎么办：'+q3Advice(x)));
+  return row;
+}
+function q3ActRow(x,wsId,msMap){
+  const m=msMap[x.member_id]||{};
+  const row=el('div','q3-row');
+  row.append(el('div','sub','「'+(m.display_name||x.member_id)+'」'+q3Reason(x)));
+  row.append(q3Link('/workshop.html?ws_id='+encodeURIComponent(wsId),'去工作间处理',true));
+  return row;
+}
+function renderQ3(ms,of,bb){
+  const who=$('q3Who'), stuck=$('q3Stuck'), doEl=$('q3Do');
+  if(!who||!stuck||!doEl) return;
+  who.innerHTML=''; stuck.innerHTML=''; doEl.innerHTML='';
+  const bbMap={};
+  ((bb&&bb.bindings)||[]).forEach(b=>{ if(b&&b.member_id) bbMap[b.member_id]=b; });
+  if(!q3WsId){
+    who.append(q3Empty('还没有工作间。'));
+    stuck.append(q3Empty('有工作间后，卡住的成员会显示在这里。'));
+    doEl.append(q3Empty('去大厅发一条任务，创建你的第一个工作间。'));
+    doEl.append(q3Link('/','去大厅发任务',true));
+    return;
+  }
+  const msMap={};
+  ((ms&&ms.members)||[]).forEach(x=>{ if(x&&x.member_id) msMap[x.member_id]=x; });
+  const members=Array.isArray(of&&of.members)?of.members:((ms&&ms.members)||[]);
+  const wsHref='/workshop.html?ws_id='+encodeURIComponent(q3WsId);
+  if(!members.length){
+    who.append(q3Empty('该工作间还没有成员。'));
+    stuck.append(q3Empty('没有成员，自然没有卡住的。'));
+    doEl.append(q3Empty('先选人、确认名单，成员才会出现在这里。'));
+    doEl.append(q3Link(wsHref,'去工作间选人',true));
+    return;
+  }
+  const stuckList=members.filter(q3Stuck);
+  const workers=members.filter(x=>!q3Stuck(x)&&(x.pending_work===true||(x.verdict&&x.verdict!=='idle')));
+  /* ① 谁在干活 */
+  if(workers.length){ workers.forEach(x=>who.append(q3WhoRow(x,msMap,bbMap))); }
+  else{ who.append(q3Empty('当前没有人手上有进行中的活——空闲是正常态。')); }
+  /* ② 谁卡住了、为什么 */
+  if(stuckList.length){ stuckList.forEach(x=>stuck.append(q3StuckRow(x,msMap,bbMap))); }
+  else{ stuck.append(q3Empty((of&&of.summary)||'没有卡住的成员。')); }
+  /* ③ 我该按哪里（每行 ≤1 主按钮；由 ② 推导，不自己算阶段） */
+  if(stuckList.length){
+    stuckList.forEach(x=>doEl.append(q3ActRow(x,q3WsId,msMap)));
+  }else if(workers.length){
+    doEl.append(q3Empty('没有卡住的成员。可以去工作间看进度。'));
+    doEl.append(q3Link(wsHref,'去工作间看进度',false));
+  }else{
+    doEl.append(q3Empty('没人有活、也没人卡住（空闲是正常态）。要推进流程就去工作间。'));
+    doEl.append(q3Link(wsHref,'去工作间',false));
+  }
+}
+function fillQ3Select(){
+  const sel=$('q3Ws'); if(!sel) return;
+  const ids=wsMap?Object.keys(wsMap):[];
+  const cur=q3WsId;
+  sel.innerHTML='';
+  if(!ids.length){ sel.append(new Option('（还没有工作间）','')); q3WsId=''; return; }
+  ids.forEach(id=>{ sel.append(new Option(wsMap[id]||id, id)); });
+  if(cur&&ids.indexOf(cur)>=0){ sel.value=cur; }
+  else{ q3WsId=ids[0]; sel.value=q3WsId; }
+}
+function renderQ3Counts(orphan, delivery){
+  [['q3Orphans','孤儿',orphan,'orphan_count','人'],['q3Delivery','未送达',delivery,'total_pending','条']].forEach(([id,label,res,key,unit])=>{
+    const node=$(id), count=res&&res.ok&&res.data?res.data[key]:null;
+    node.textContent=label+' '+(res?(count!=null?count+' '+unit:'加载失败'):'—');
+    node.title=res?(res.ok?(res.data.headline||''):(res.msg||'加载失败')):'';
+    node.style.background='var(--bg4)';
+    node.style.color=count>0?'var(--yellow)':'var(--muted)';
+  });
+}
+async function q3Tick(){
+  try{
+    fillQ3Select();
+    const errEl=$('q3Err');
+    if(!q3WsId){ errEl.classList.remove('show'); renderQ3Counts(null,null); renderQ3(null,null); return; }
+    const base='/api/workshop/'+encodeURIComponent(q3WsId);
+    const r=await Promise.all([fetchJSON(base+'/members-status'), fetchJSON(base+'/offline-report'),
+                               fetchJSON(base+'/bridge-bindings'), fetchJSON(base+'/orphans'),
+                               fetchJSON(base+'/delivery-status')]);
+    renderQ3Counts(r[3],r[4]);
+    if(!r[0].ok||!r[1].ok){
+      /* 规则17：接口挂了要有中文提示，但不清空上次结果 */
+      errEl.textContent='三问数据加载失败：成员状态 '+r[0].msg+' ｜ 动静报告 '+r[1].msg+'（下方可能不是最新）';
+      errEl.classList.add('show');
+      return;
+    }
+    errEl.classList.remove('show');
+    /* 桥绑定失败不报错条：q3BridgeLine 自动回退通道对话名（不空窗） */
+    renderQ3(r[0].data, r[1].data, (r[2]&&r[2].ok)?r[2].data:null);
+  }catch(e){
+    const errEl=$('q3Err');
+    errEl.textContent='三问数据加载出错：'+e.message;
+    errEl.classList.add('show');
+  }
+}
+
+/* ===== status / 全局横幅 ===== */
+function renderStatus(res){
+  const h=$('health'), ht=$('healthText'), banner=$('banner');
+  if(res.ok&&res.data&&res.data.status==='running'){
+    h.className='health ok';
+    ht.textContent='running v'+(res.data.version||'?')+' · Agent '+((res.data.agents_online!=null?res.data.agents_online:'?'));
+    h.title='GET /api/status 正常\n在线 '+(res.data.agents_online)+' / 注册 '+(res.data.agents_registered)+'\n任务 '+(res.data.tasks_active)+' 活跃 / 共 '+(res.data.tasks_total)+'\nHarness '+(res.data.harnesses);
+    banner.classList.remove('show');
+  }else{
+    h.className='health bad';
+    ht.textContent='后端未连接';
+    h.title=res.ok?'状态异常':'加载失败：'+(res.msg||'');
+    banner.innerHTML='';
+    banner.append(el('div',null,'⚠ 后端未启动或无法访问'+(res.msg?('（'+res.msg+'）'):'')+'。请先启动后端：'));
+    const code=el('code',null,'python -m agent_community.platform.server --port 18920');
+    banner.append(code, el('div',null,'启动后本页会每 12 秒自动重试；也可点右上角「⟳ 刷新」立即重试。'));
+    banner.classList.add('show');
+  }
+}
+
+/* ===== 主循环 ===== */
+function auditURL(){
+  const p=new URLSearchParams();
+  p.set('event','task.transition');
+  p.set('limit',$('fLimit').value);
+  const a=$('fActor').value.trim(); if(a) p.set('actor',a);
+  const t=$('fTarget').value.trim(); if(t) p.set('target',t);
+  return '/api/audit?'+p.toString();
+}
+async function tick(manual){
+  if(running) return;
+  running=true;
+  const btn=$('refreshBtn');
+  if(manual){btn.disabled=true; btn.innerHTML='<span class="spin"></span>刷新中…';}
+  try{
+    const needWs=!wsMap||(Date.now()-wsFetchedAt>WS_REFRESH_MS);
+    const jobs=[fetchJSON('/api/status'),fetchJSON(auditURL()),fetchJSON('/api/heartbeat'),fetchJSON('/api/heartbeat/stale')];
+    if(needWs) jobs.push(fetchJSON('/api/workshops'));
+    const r=await Promise.all(jobs);
+    if(needWs&&r[4].ok&&r[4].data&&Array.isArray(r[4].data.workshops)){
+      const m={};
+      r[4].data.workshops.forEach(w=>{if(w&&w.workshop_id)m[w.workshop_id]=w.name||'';});
+      wsMap=m; wsFetchedAt=Date.now();
+    }else if(needWs){ wsFetchedAt=Date.now(); }  /* 拉失败下轮再试，映射缺失时降级显示 id */
+    renderStatus(r[0]);
+    renderTimeline(r[1]);
+    renderBoard(r[2],r[3]);
+    await q3Tick();   /* FE-18：三问区块自己拉数据、自己吞错（内部 try，不拖垮本 tick） */
+    $('refreshInfo').textContent='上次刷新 '+fmtAbs(new Date());
+  }catch(e){
+    console.error('ops tick error',e);
+    $('refreshInfo').textContent='刷新出错：'+e.message;
+  }finally{
+    running=false;
+    if(manual){btn.disabled=false; btn.innerHTML='⟳ 刷新';}
+  }
+}
+function startTimer(){ if(timer) clearInterval(timer); timer=setInterval(()=>tick(false),REFRESH_MS); }
+
+/* ===== 交互 ===== */
+let fTimer=null;
+['fActor','fTarget'].forEach(id=>$(id).addEventListener('input',()=>{clearTimeout(fTimer); fTimer=setTimeout(()=>tick(false),400);}));
+$('fLimit').addEventListener('change',()=>tick(false));
+$('q3Ws').addEventListener('change',()=>{ q3WsId=$('q3Ws').value; q3Tick(); });   /* FE-18 */
+$('tlList').addEventListener('click',e=>{
+  if(e.target.closest('.ws-chip')) return;   /* 工单链接照常跳转 */
+  const item=e.target.closest('.tl-item');
+  if(item) item.classList.toggle('open');
+});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){ if(timer){clearInterval(timer); timer=null;} }
+  else{ tick(false); startTimer(); }
+});
+setInterval(()=>{ $('sbClock').textContent='本机时间 '+fmtAbs(new Date()); },1000);
+$('sbClock').textContent='本机时间 '+fmtAbs(new Date());
+
+const Ops={
+  tick,
+  clearFilters(){
+    $('fActor').value=''; $('fTarget').value=''; $('fLimit').value='100';
+    tick(false);
+  }
+};
+
+/* ===== 测试钩子（Console 自测用，验收 §7-2） ===== */
+window.__opsTest={
+  parseDetail,
+  selfTest(){
+    const cases=[
+      ['remove: dropped→removed action=drop note=removed',{ev:'remove',from:'dropped',to:'removed',action:'drop',note:'removed'}],
+      ['drop: created→dropped action=drop note=',{ev:'drop',from:'created',to:'dropped',action:'drop',note:''}],
+      ['set_state: created→assigned action=noop note=',{ev:'set_state',from:'created',to:'assigned',action:'noop',note:''}],
+      ['future_thing: a→b action=z note=中文 含空格: 与冒号',{ev:'future_thing',from:'a',to:'b',action:'z',note:'中文 含空格: 与冒号'}],
+      ['garbage line',null],
+      ['',null],
+      [null,null]
+    ];
+    const out={pass:0,fail:[]};
+    cases.forEach(([input,expect])=>{
+      const got=parseDetail(input);
+      const ok=JSON.stringify(got)===JSON.stringify(expect);
+      if(ok) out.pass++; else out.fail.push({input,expect,got});
+    });
+    return out;
+  },
+  /* 注入一条畸形/样例记录做渲染降级目检（仅影响本地 DOM，不发任何请求） */
+  injectFake(detail){
+    const d=new Date();
+    const ts=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+    const row=buildRow({ts,event:'task.transition',actor:'__opsTest__',target:'deadbeef',detail:detail});
+    row.style.outline='1px dashed var(--yellow)';
+    const list=$('tlList');
+    const first=list.querySelector('.tl')||list;
+    first.prepend(row);
+    return row;
+  }
+};
+
+/* FE-18 测试钩子：注入数据渲染（与 __opsTest.injectFake 同范式，只动本地 DOM、不发请求） */
+window.__opsQ3={
+  renderWith(ms,of,bb){ renderQ3(ms,of,bb||null); },
+  setWs(id){ q3WsId=id||''; const s=$('q3Ws'); if(s&&id) s.value=id; }
+};
+
+/* ===== 启动 ===== */
+tick(false);
+startTimer();
+</script>
+</body>
+</html>

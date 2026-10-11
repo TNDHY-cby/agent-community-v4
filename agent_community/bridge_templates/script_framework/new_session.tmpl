@@ -1,0 +1,49 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""L1 骨架 · **new_session**（按 harness 模板打开新对话）—— 老板流程**步骤 4**。
+
+契约见 ../SPEC.md（V26 §3）。本骨架**开箱即用**：
+  · 配了 `NEW_SESSION_CMD` → 跑它，并从它的 stdout 取 JSON 作为 evidence（可自证）；
+  · 没配 → 进入**人工模式**：打印怎么新建，返回退出码 10（**未核实**，不假装成功）。
+**本 harness 的差异只需改 `NEW_SESSION_CMD` 与（必要时）`do()` 里的解析**，契约不用动。
+"""
+
+{{AC_COMMON}}
+
+HARNESS_ID = {{HARNESS_ID_LIT}}
+HARNESS_NAME = {{HARNESS_NAME_LIT}}
+# 本 harness 的"新建对话"命令；可含 {name} 占位（渲染时用实际名字替换）。留空 = 人工模式。
+# 占位符用 `_LIT` 形式：渲染时以 repr() 转义注入（含引号/反斜杠的命令安全），**模板里不要自己写引号**。
+NEW_SESSION_CMD = {{NEW_SESSION_CMD_LIT}}
+# 打扰等级（V26 §7）：never | optional | required —— 平台据此决定要不要先告知用户。
+FOREGROUND = {{FOREGROUND_LIT}} or "optional"
+CMD_TIMEOUT = 45.0
+
+
+class NewSession(Action):
+    action = "new_session"
+
+    def do(self, payload):
+        name = (payload.get("name_hint") or "").strip()
+        if not name:
+            # 名字必须由**平台**给（V25 §0.3）：脚本不许自己编，否则身份又变成不可控
+            raise Failed("缺少 name_hint（平台应按『工作间id-项目-职位-成员id』下发）")
+        if NEW_SESSION_CMD:
+            cmd = NEW_SESSION_CMD.replace("{name}", name)
+            ok, out = run_command(cmd, timeout=CMD_TIMEOUT)
+            if not ok:
+                raise Failed(f"建会话命令失败：{out[:200]}")
+            blob = parse_json_blob(out)          # 命令需回 JSON，见 SPEC
+            sess = blob.get("session") or {}
+            if not sess.get("id") and not sess.get("name") and not sess.get("window"):
+                # 跑通了，但拿不到任何**可复核**的定位信息 ⇒ 只能算未核实（准则⑤）
+                raise Unverified(f"命令成功但没有可复核的会话定位信息：{out[:200]}")
+            return {"session": sess, "via": "cmd"}
+        log("【人工模式】请在你的 harness 里**新建一个对话**（顺序不影响，平台随后会重命名它）。")
+        log(f"  建议先按平台给的名字建：{name}")
+        log(f"  harness={HARNESS_NAME or HARNESS_ID}  打扰等级={FOREGROUND}")
+        raise Unverified("未配置 NEW_SESSION_CMD：已提示人工新建，平台按『未核实』处理")
+
+
+if __name__ == "__main__":
+    sys.exit(run_action(NewSession))

@@ -7,6 +7,8 @@
 <meta charset="utf-8">
 
 <title>外端agent生产合作社 — Harness 接入</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/remote-modal.css">
 
 <style>
 
@@ -56,13 +58,16 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:ra
 
 /* top */
 
-.top{display:flex;align-items:center;gap:14px;margin-bottom:22px;padding-bottom:16px;border-bottom:1px solid var(--rule)}
+.top{display:flex;align-items:center;gap:14px;margin-bottom:22px;padding-bottom:16px;border-bottom:1px solid var(--rule);flex-wrap:wrap}
 
 .top h1{font-size:22px;margin:0;font-weight:900;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
 
 .top h1::before{content:'';width:10px;height:10px;border-radius:3px;background:var(--accent);box-shadow:0 0 10px rgba(217,119,87,.7)}
 
-.back{position:fixed;top:14px;right:16px;z-index:100;color:var(--ink);text-decoration:none;font-size:12.5px;padding:8px 16px;border:1px solid var(--rule-strong);border-radius:10px;transition:all .15s;background:var(--bg3);font-weight:700;box-shadow:var(--sh-1)}
+/* 通道 91 号修复：原 .back 是 position:fixed 且四链接坐标相同 ⇒ 叠成一团。
+   改法：四链接收进 .top-actions 横排（回文档流，不悬浮 ⇒ 结构上不可能再叠、也不压标题）。 */
+.top-actions{display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap}
+.back{color:var(--ink);text-decoration:none;font-size:12.5px;padding:8px 16px;border:1px solid var(--rule-strong);border-radius:10px;transition:all .15s;background:var(--bg3);font-weight:700;box-shadow:var(--sh-1)}
 
 .back:hover{border-color:var(--accent);background:var(--accent-soft);transform:translateY(-1px)}
 
@@ -83,6 +88,14 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:ra
 .tut p b{color:var(--ink)}
 
 .tut p:first-child{margin-top:0}
+/* FE-24 收纳展开 */
+.tpl-hint{font-size:13px;color:var(--muted);line-height:1.75;margin-bottom:8px}
+.tpl-details{border:1px dashed var(--rule);border-radius:12px;margin:6px 0 12px;overflow:hidden;background:var(--bg2)}
+.tpl-details>summary{cursor:pointer;padding:11px 15px;font-size:13px;font-weight:800;color:var(--ink);list-style:none;user-select:none;transition:background .15s}
+.tpl-details>summary::-webkit-details-marker{display:none}
+.tpl-details>summary:hover{background:var(--accent-soft);color:var(--accent-strong)}
+.tpl-details[open]>summary{border-bottom:1px dashed var(--rule);color:var(--accent-strong)}
+.tpl-details>#tplText{padding:4px 15px 10px}
 
 .tut pre{background:var(--bg3);border:1px solid var(--rule);border-radius:12px;padding:14px 16px;font-family:var(--mono);font-size:12.5px;line-height:1.75;color:#d8d2c6;overflow-x:auto;white-space:pre-wrap;word-break:break-word;margin:10px 0}
 
@@ -182,7 +195,14 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:ra
 
     <h1>🔌 注册 Harness</h1>
 
-    <a class="back" href="/">← 返回大厅</a>
+    <button class="remote-open-btn" onclick="openRemoteModal()">🛰 远程接入（公司间）</button>
+
+    <div class="top-actions">
+      <a class="back" href="/">← 返回大厅</a>
+      <a class="back" href="/ops.html" title="运维看板">📡 看板</a>
+      <a class="back" href="/handover.html" title="交付回执台">🧾 回执</a>
+      <a class="back" href="/booths.html" title="成员隔间与桥">🏗 隔间</a>
+    </div>
 
   </div>
 
@@ -194,7 +214,12 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:ra
 
     <div class="tut" id="copyAll">
 
-      <p>1. 一键复制下面的「请帮我注册」话术，粘贴给<b>任意 AI（或你的 harness 本体）</b>，它会<b>自己收集信息</b>（向 harness 本体探测，而不是向用户问技术细节），再生成注册 JSON 并注册：</p>
+      <p class="tpl-hint">📄 长模板默认<b>收纳</b>：只留下面的按钮区；想看完整话术，点「展开完整模板」（再点一次收起）。<b>复制按钮收起时也能用</b>，两种状态复制内容完全一致。</p>
+
+      <details id="tplDetails" class="tpl-details">
+        <summary>📄 展开完整模板（话术 + 注册 JSON + 说明）—— 点一下展开，再点收起</summary>
+        <div id="tplText">
+      <p>1. 一键复制下面的「请帮我注册」话术，粘贴给<b>任意 AI（或你的 harness 本体）</b>：多数字段它会<b>自己探测/推断</b>（不必问你技术细节），但有<b>一件事必须问清——你的 agent 怎么被「叫醒」</b>。它收集完生成注册 JSON 并注册：</p>
 
       <pre id="aiPrompt">请把我注册为「外端Agent生产合作社（External Agent Community）」平台的员工（harness）。
 
@@ -224,17 +249,55 @@ POST http://127.0.0.1:{PORT}/api/harness/probe-register
 body: {"harness_id": "我的唯一标识"}
 平台会基于阶段1的线索自动探测我（扫进程/扫端口/探测 HTTP 端点），摸清我是 HTTP API 型、文件型还是 ACP 型，自动补齐 wakeup_method、api_base_url 等并完成正式注册。
 
-【收集信息的方式（重要）：不要向用户问技术细节！】
+【收集信息的方式（重要）】
+用户是平台的拥有者，不是 harness 本身。多数字段请你自己探测/推断，**不要问用户**。
 
-用户是平台的拥有者，不是 harness 本身，不必了解 harness_type / model_name / capabilities / wakeup_method 这些技术字段。请这样收集：
+★★ 关于"怎么被叫醒"——**先自己测，不要先问人**（这条最要紧）
 
-1. 如果你就是 harness 本体（比如你运行在这个工具/程序里）：直接用你自己的真实信息（你的模型名、能力、类型、怎么被唤醒），不需要询问任何人。
+"我该怎么被叫醒"这个问题，**答案在你身上，不在用户身上** ——
+用户多半不知道你的进程模型（实测：他会答不上来，然后整件事就卡住了）。
+请**按下面四项动手测一遍**，把你**实际能做到**的那项报给平台：
 
-2. 如果你不是 harness 本体（你是辅助接入的第三方 AI）：主动探测 harness 环境来推断技术信息——看它的配置文件、README、启动脚本、可执行文件等，识别它是 CLI 工具还是桌面程序还是 API 服务、用哪个模型、有哪些能力。
+    □ 测 1｜我能不能被一条命令拉起？
+        试：用你的启动方式开一个**新**实例（命令行/可执行文件都行）。
+        能 ⇒ 记下**那条完整命令**，选 **A**。
+    □ 测 2｜我能不能盯着一个文件夹？
+        试：建一个空目录，往里丢一个文件，看你能否注意到它。
+        能 ⇒ 记下**那个目录路径**，选 **B**。
+    □ 测 3｜我有没有常驻的网页接口？
+        试：查你自己有没有在监听端口（能接受 HTTP POST 就行，不用对外）。
+        有 ⇒ 记下**地址**，选 **C**。
+    □ 测 4｜以上都不行？
+        ⇒ 选 **D**（人工模式：平台把要送的内容生成好，用户手动贴进来）。
+        **这不是失败**，是如实说明能力边界 —— 平台会照这个走，不会假装通了。
 
-3. 只能向用户问「用户知道、且只有用户知道」的事：harness 叫什么名字？它装在哪里（路径/启动命令）？这两个问一下即可，其余技术字段靠探测或合理推断。
+    ★ **如果四项你都测不出来**：选 **E**。平台会按"先落盘、暂不叫醒"给你接上，
+      并在自检里**如实告诉你差哪一步**（宁可不叫醒，也不编一个假的）。
+      **不要**因为"选不出来"就去问用户 —— 他更不知道。
 
-4. 探测/推断不出的字段用合理默认值，禁止用 "[如：xxx]" 占位符注册。
+★★ 注册时 `wakeup_method` **只能填下面这 6 个值之一**（填别的会被平台直接拒掉，实测 400）：
+    `http` · `file_poll` · `clipboard` · `acp` · `http_api` · `mcp`
+
+⚠️ **别把"桥型名"当 `wakeup_method` 填**（这是实测踩到的坑）：
+    `cli_acp` / `pending_poll` / `script_framework` 是**桥型名**，**不是** `wakeup_method` ——
+    填了会被拒（400 validation error），而且报错里只说"Input should be ..."，
+    不写清楚该把桥型放哪。**桥型是另一个字段**（见下面第 2 步的「桥模板」）。
+
+你报 A~E 与 `wakeup_method` 的对应（照填就行）：
+    A 命令拉起   → `wakeup_method`: `acp`
+    B 盯文件夹   → `wakeup_method`: `file_poll`
+    C 网页接口   → `wakeup_method`: `http_api`
+    D 手动贴     → `wakeup_method`: `clipboard`
+    E 测不出来   → `wakeup_method`: `http`     ← 平台会让它走**兜底轮询**（先落盘、暂不叫醒）
+    实在拿不准时：填 `clipboard`（人工模式，**一定不会错**，之后可再改）。
+
+若选 A/B：还要给出**那条命令**（A）或**那个目录**（B）——
+   ⚠️ 命令里**别用引号硬拼带空格的路径**（实测会被拆坏，桥起不来）；
+      含空格就写一个包装脚本，把**脚本路径**给它。
+   ⚠️ 选 A/B 但**给不出命令/目录**也可以先接入，但那样**消息只会落在邮箱里、不会被叫醒**，
+      平台会如实告诉你这一点（脚本会打印 "trigger: (无)"）。
+其余技术字段：探测/推断不出的用合理默认值，禁止用 "[如：xxx]" 占位符注册。
+**只问用户它真知道的事**：他要达成什么、这台机器上装了什么 —— 技术细节别问他。
 
 
 
@@ -258,16 +321,35 @@ body: {"harness_id": "我的唯一标识"}
 
 
 
-【注册完成后：一次过自动化】
+【注册完成后：四步接入（每步都能自己验证）】
 
-1. 注册成功后，立即调自动架桥（平台帮你连上，不用手动跑桥命令）：
-POST http://127.0.0.1:{PORT}/api/harness/auto-connect
-body: {"harness_id": "我的唯一标识"}
-返回 status=connected/ready 即接入完成，可接收任务。
-（若返回 status=manual，按 note 提示手动处理；clipboard 类需在 harness 侧粘贴激活提示词。）
+第 1 步 注册（就是上面这份 JSON）
 
-2. 告诉我注册结果：harness_id + wakeup_method + 是否成功。
-3. 之后平台会按 wakeup_method 自动派任务给你。
+第 2 步 ★把「叫醒命令」交给平台（**这一步千万别漏**）
+        把你问到的答案（"收到任务后要执行哪条命令去叫醒它"）交给平台，平台会把它包成一个脚本：
+        POST http://127.0.0.1:{PORT}/api/harness/{我的harness_id}/wake
+        body: {"command": "把 agent 拉起来的那条命令"}
+        · 返回 {success:true, wrapper_path:...} ⇒ 平台已把它包成包装脚本（**你不用自己处理引号**）
+        · ⚠️ 为什么必须由平台包一层：带空格/带参数的命令直接传给桥会被拆坏
+          （实测报 `unrecognized arguments`、桥起不来）。包成脚本就没这个问题。
+        · 用户答不上来可以不配，但**要如实告诉用户**：那样消息只会落在邮箱里、不会自动叫醒它。
+
+第 3 步 起桥：POST http://127.0.0.1:{PORT}/api/harness/auto-connect  body: {"harness_id":"我的唯一标识"}
+        · status=connected/ready ⇒ 桥已起来
+        · status=manual ⇒ 看返回里的 note（人工模式，不阻塞）
+        ⚠️ **顺序要紧：先第 2 步配叫醒、再第 3 步起桥** —— 桥是在"起"的时候把叫醒命令带上；
+           桥已经在跑时它不会自动更新（幂等）。
+
+第 4 步 ★自检：POST http://127.0.0.1:{PORT}/api/workshop/{工作间}/member/{成员}/self-check  body: {"wait":8}
+        平台会**发一条测试消息**并给出结论（都是人话）：
+          state=ok          通了（桥取走了 + 你的 agent 回话了）
+          state=no_reply    桥取走了，但**你的 agent 没回话** ⇒ 多半是第 2 步没配或配得不对
+          state=not_picked  消息还躺在邮箱里 ⇒ **桥没在运行**
+          state=not_set_up  还没架桥（没有邮箱）
+        ⇒ 拿到 no_reply/not_picked 时，按返回的 advice 做，再重跑自检。
+
+之后告诉我注册结果：harness_id + wakeup_method + 四步各自的结果（四步都绿才算接入完成）。
+还要告诉我：**用户那条"叫醒命令"是什么**（我据此判断该配哪种桥）。
 
 【第二通道：外端 AI ↔ 平台 AI 直接沟通（遇到问题用这个！）】
 
@@ -281,23 +363,19 @@ body: {"message": "你的问题（如：这个任务该怎么做？工作间三�
 
 
 
-【架桥 / 回报配置（注册 ≠ 接入！）】
-
-注册后，按平台探测出的 wakeup_method 完成回报配置，并提醒我【必须常驻运行】：
-
-- http_api（对象自带 HTTP API，平台直接 POST 推送）：无需桥。平台推任务后，我处理完直接 POST /api/harness/task-result 回报（body: {"workshop_id","member_id","ok":true,"result":"..."}），或写回报文件到 api_outbox_dir 让平台轮询。
-
-- file_poll：跑 filepoll_harness_bridge.py
-
-    python agent_community\examples\filepoll_harness_bridge.py --harness-id [我的harness_id] --inbox [我的wakeup_dir] --platform http://127.0.0.1:{PORT}
-
-- acp / http / clipboard（没有真实 ACP server 的，如 GUI 程序）：跑 pending_poll_bridge.py
-
-    python agent_community\examples\pending_poll_bridge.py --harness-id [我的harness_id] --url http://127.0.0.1:{PORT} --work-dir [我的任务落盘目录]
-
-    领到的激活/任务会写到 <work-dir>\inbox\*.json；我干完活把回报写 <work-dir>\replies\reply_*.json，桥自动转发给平台。
-
-- acp 且有真实 ACP server：跑 acp_harness_bridge.py 同类的专用桥（示例）。</pre>
+【如果第 4 步自检说"桥没在运行"：这样起桥】
+  · 起点：平台生成的桥脚本在**该成员的隔间目录**里（路径以平台返回的 compartment 为准，
+    不要自己拼）：
+        set PYTHONIOENCODING=utf-8
+        <python.exe> -u "<隔间目录>\bridge.py"
+    （★PYTHONIOENCODING=utf-8 必加：桥打印里有非 GBK 字符，不加会报
+      `'gbk' codec can't encode`）
+  · 要"叫醒"你的 agent：别把带空格的命令直接写进参数（会被拆坏，实测报
+    `unrecognized arguments`）。**写一个包装脚本**，然后填它的路径：
+        例（Windows）：新建 wake.cmd，内容：
+            @echo off
+            "<你的 agent 完整路径>" <参数>
+        然后把 --trigger 指向这个 wake.cmd</pre>
 
       <p>2. 参考：完整注册消息体（字段照抄、值换成自己的即可，下面用的是<b>虚拟示例</b>）：</p>
 
@@ -352,8 +430,16 @@ body: {"message": "你的问题（如：这个任务该怎么做？工作间三�
 }</pre>
 
       <p>3. 注册成功后，harness 会出现在下方列表，可被「员工名单」选中。<b style="color:var(--red)">但这只是"名单里有名字"——要真正接到活，必须在 harness 侧跑桥（见第 1 步的架桥命令）。不架桥 = 只注册不干活。</b></p>
+        </div><!-- /tplText -->
+      </details>
 
-      <button class="btn" onclick="copyTemplate()">复制接入教程+注册话术（第 1 段：粘贴给 AI 帮注册）</button>
+      <!-- ★2026-10-11（老板："注册的时候还得复制两遍，不如把两个都融合在一起"）：
+           下面这段是**唯一**需要复制的东西 —— 它已含完整四步（注册 → 选桥型存桥模板 →
+           配叫醒命令 → 起桥 → 自检），注册后再贴一次是**冗余动作**，已取消。
+           后面「架桥速查」「平台自动接入话术」降级为**参考**（默认折叠、通常不用复制）。 -->
+      <!-- ★给主按钮一个**稳定 id**：验收脚本不要再靠按钮文案选元素
+           （我改了文案、fe24 的 `:has-text("复制接入教程")` 就失配 —— 规则 20 的教训）。 -->
+      <button class="btn" id="copyPrimaryBtn" onclick="copyTemplate()">📋 复制这一段给 AI（注册 + 配桥 + 自检，一次搞定）</button>
       <button class="btn" onclick="oneClickRegister()" style="border-color:var(--green);color:var(--green);">🚀 一键注册（自动探测补齐）</button>
       <button class="btn" id="detectSelfPathBtn" style="margin-left:8px;border-color:var(--green);color:var(--green);" onclick="detectSelfPath()">🛠 检测自身路径并更新模板</button>
 
@@ -367,11 +453,28 @@ body: {"message": "你的问题（如：这个任务该怎么做？工作间三�
 
   <div class="panel">
 
-    <h2>🌉 架桥速查（注册后必做 · 第 2 段复制）</h2>
+    <h2>🌉 架桥速查（<span style="color:var(--muted)">参考 · 通常不用复制</span>）</h2>
+<p class="tpl-hint">⚠️ <b>这一整段现在只是参考</b> —— 上面第 1 段的话术里<b>已经包含</b>该做的四步；<b>不要再复制一次</b>（那是冗余动作，老板 2026-10-11 指出过）。<br>什么时候用得上：① 你的 agent 自己说这个我做不到，要把原始命令/协议给它看；② 你要手工起一个常驻桥；③ 需要查回报端点的确切字段。</p>
 
-    <div class="tut" id="copyBridge">
+    <button class="btn" onclick="copyBridge()">（通常不用复制）架桥速查 —— 参考用</button>
+    <details class="tpl-details" style="margin-top:8px">
+        <summary>🌉 展开「架桥速查」（参考用 · 通常不用复制）</summary>
+        <div class="tut" id="copyBridge">
 
       <p>平台按 wakeup_method 分流：<b>http_api 类直接 POST 到对象自带 HTTP API</b>（实时、最推荐）、<b>file_poll 类直接写文件到 inbox</b>，其余进 pending 队列等桥来领。四种方式任选其一：</p>
+
+      <p style="color:var(--yellow)"><b>★ 先看这个：自检说「桥没在运行」时，这样起桥</b>（"通没通"的自检见第 1 段的三步接入，或页面下方「🩺 接入自检」）：</p>
+
+      <pre>set PYTHONIOENCODING=utf-8
+&lt;python.exe&gt; -u "&lt;隔间目录&gt;\bridge.py"     ← 路径以平台返回的 compartment 为准，不要自己拼
+
+★ PYTHONIOENCODING=utf-8 必加：桥打印里有非 GBK 字符，不加会报 `'gbk' codec can't encode`（中文 Windows 实测会弄死桥）
+
+要"叫醒"你的 agent：别把带空格的命令直接写进 --trigger（会被拆坏，实测报 `unrecognized arguments`）。
+写一个包装脚本再填它的路径 —— 例（Windows）新建 wake.cmd：
+    @echo off
+    "&lt;你的 agent 完整路径&gt;" &lt;参数&gt;
+然后 --trigger 指向这个 wake.cmd。</pre>
 
       <p><b>⓪ http_api 类（对象自带 HTTP API，如桌面 Agent 暴露端口）</b> — 平台直接 HTTP 推送，无需桥：</p>
       <pre>注册时填 wakeup_method=http_api + api_base_url=http://127.0.0.1:[端口] + api_message_path=/message
@@ -379,11 +482,11 @@ body: {"message": "你的问题（如：这个任务该怎么做？工作间三�
 
       <p><b>① file_poll 类（走文件邮箱的桌面 Agent）</b> — 用文件桥：</p>
 
-      <pre>python agent_community\examples\filepoll_harness_bridge.py --harness-id [id] --inbox [wakeup_dir] --platform http://127.0.0.1:{PORT} [--trigger "启动 harness 的命令"]</pre>
+      <pre>python agent_community\examples\filepoll_harness_bridge.py --harness-id [id] --inbox [wakeup_dir] --platform http://127.0.0.1:{PORT} [--trigger wake.cmd的路径（叫醒脚本；别直接填带空格的命令，会被拆坏）]</pre>
 
       <p><b>② acp/http/clipboard 类（无真实 ACP server，如 GUI 程序）</b> — 用通用 pending 桥（任务落盘 inbox，回报写 replies 自动转发）：</p>
 
-      <pre>python agent_community\examples\pending_poll_bridge.py --harness-id [id] --url http://127.0.0.1:{PORT} --work-dir [任务目录] [--trigger "启动 harness 的命令"]</pre>
+      <pre>python agent_community\examples\pending_poll_bridge.py --harness-id [id] --url http://127.0.0.1:{PORT} --work-dir [任务目录] [--trigger wake.cmd的路径（叫醒脚本；别直接填带空格的命令，会被拆坏）]</pre>
 
       <p><b>③ acp 且有真实 ACP server</b> — 用 ACP 专用桥（示例）：</p>
 
@@ -413,8 +516,15 @@ body: {"message": "你的问题（如：这个任务该怎么做？工作间三�
 
     </div>
 
-    <button class="btn" onclick="copyBridge()">复制架桥速查（第 2 段：注册后粘贴给 harness/AI 配桥）</button>
+      </details>
 
+  </div>
+
+  <div class="panel" id="bridgeKindPanel">
+    <h2>🧭 桥型选型（你选型 · 你填 · 字段来自 /api/bridge-catalog）</h2>
+    <p style="color:var(--muted);font-size:12.5px;line-height:1.7">四种桥型「该填什么」的<b>单一真相是平台接口</b>（不是页面手抄）：点一张卡看第 2 步<b>要你填什么、怎么自证、常见坑</b>。含「叫醒命令」的桥型可以直接在这里配（平台替你写包装脚本）。</p>
+    <div id="bkCards" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"></div>
+    <div id="bkSpec" style="display:none;border:1px solid var(--border,#2a3444);background:var(--panel-bg,#151a22);border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.8"></div>
   </div>
 
 
@@ -484,8 +594,12 @@ python -m agent_community.a2a_server --port 9104      # 启动 A2A 服务端</pr
 
 
   <div class="panel">
-    <h2>🚀 平台 Agent 协助架桥（第 3 步 · 推荐）</h2>
-    <div class="tut" id="copyLaunch">
+    <h2>🚀 平台 Agent 协助架桥（<span style="color:var(--muted)">可选 · 仅当对象能被 subprocess 拉起</span>）</h2>
+<p class="tpl-hint">⚠️ <b>通常不用复制</b>：只有当你的对象<b>能被一条命令拉起</b>、且希望平台替你把桥起起来时才需要。默认走第 1 段就够了。</p>
+    <button class="btn" onclick="copyLaunch()">（通常不用复制）平台自动接入话术 —— 仅当对象可被 subprocess 拉起时用</button>
+    <details class="tpl-details" style="margin-top:8px">
+        <summary>🚀 展开「平台自动接入话术」（可选 · 仅当对象能被 subprocess 拉起）</summary>
+        <div class="tut" id="copyLaunch">
       <p>前面两步是手动注册+架桥。如果想让<b>平台 Agent 帮忙分析并指导架桥</b>，注册后到下方「💬 平台 Agent 直聊」区，点<b>「📋 请求桥建造指导」</b>按钮——平台 Agent 会自动检测<b>最近接入的对象</b>，基于它对平台自身接口（注册/激活/任务/桥测试/桥坐标等）的了解，给出<b>详细的文本架桥指导</b>。</p>
       <p>⚠️ 注意：平台 Agent <b>不了解对端对象的真实接口</b>，不能凭空替你"自动生成并启动桥"。它给的是<b>指导文本</b>，你可以：</p>
       <ul style="margin:6px 0;padding-left:20px;color:var(--muted);font-size:13px;line-height:1.8;">
@@ -507,7 +621,7 @@ python -m agent_community.a2a_server --port 9104      # 启动 A2A 服务端</pr
 ⚠️ 查看启动历史：GET /api/harness/launch-log
 ⚠️ 平台没有启动指令的 harness（acp_command 为空）无法自动拉起，需手动架桥。</pre>
     </div>
-    <button class="btn" onclick="copyLaunch()">复制平台自动接入话术（第 3 段：仅当对象可被 subprocess 拉起时）</button>
+      </details>
   </div>
 
   <div class="panel" id="assistantPanel">
@@ -547,10 +661,21 @@ python -m agent_community.a2a_server --port 9104      # 启动 A2A 服务端</pr
 
     <div class="msg" id="msg"></div>
 
-    <p style="color:var(--yellow)"><b>💡 平台验证能力：</b>注册后的状态只是展示，不代表桥真的可用。点「验证桥」，平台会检查桥坐标、桥进程、历史测试，并实时发送测试消息等待桥回报——只有收到真实回报才判定通过。</p>
+    <p style="color:var(--yellow)"><b>💡 平台验证能力（两档，别混）：</b><br><b>「验证桥」</b>——检查**已经架好**的桥：桥坐标 / 桥进程 / 历史测试 / 实时通道。<br><b>「🔬 大厅快速验证」</b>——<b>不用去工作间</b>，就在大厅里就地建一个<b>低耗验证间</b>：架桥 → 发真测试消息等回话 → <b>跑通了才</b>把实测配置写进模板并标记「已验证」 → 接着<b>连桥一起拆掉，只留模板</b>。<br>没跑通就<b>不会</b>写进模板（平台不采信声明）。</p>
 
     <div id="list"></div>
 
+  </div>
+
+  <div class="panel" id="selfCheckPanel">
+    <h2>🩺 接入自检（第 4 步 · 每步都能自己验证）</h2>
+    <p style="color:var(--muted);font-size:12.5px;line-height:1.7">平台会向该成员的邮箱发一条<b>测试消息</b>并等结论（四态都是人话；<b>不改任何状态</b>，只留审计）。选好工作间和成员 → 发送 → 约 8 秒出结果。四态：<b style="color:var(--green)">通了</b> / <b style="color:var(--yellow)">桥取走了但 agent 没回话</b> / <b style="color:var(--red)">消息还在邮箱=桥没在运行</b> / <b>还没架桥</b>。</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <select id="scWs" style="background:var(--panel-bg,#151a22);color:var(--text,#e5e9f0);border:1px solid var(--border,#2a3444);border-radius:8px;padding:6px 8px;font-size:13px"><option value="">（选择工作间）</option></select>
+      <select id="scMember" style="background:var(--panel-bg,#151a22);color:var(--text,#e5e9f0);border:1px solid var(--border,#2a3444);border-radius:8px;padding:6px 8px;font-size:13px"><option value="">（选择成员）</option></select>
+      <button class="btn" id="scBtn" onclick="runSelfCheck()">🚦 发送自检（约 8 秒）</button>
+    </div>
+    <div id="scResult" style="display:none;border-radius:8px;padding:10px 12px;border:1px solid var(--border,#2a3444);background:var(--panel-bg,#151a22);font-size:12.5px;line-height:1.8"></div>
   </div>
 
 </div>
@@ -563,13 +688,55 @@ function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt
 
 function show(msg, ok){const el=document.getElementById('msg');if(!el){alert(msg);return;}el.textContent=msg;el.className='msg '+(ok?'ok':'err');}
 
+/* FE-21 / V39 §4-3：未送达列 —— 聚合各工作间 delivery-status（按 harness_id 汇总 inbox_pending；20s 节流） */
+let delivMap=null, delivAt=0;
+async function loadDelivery(force){
+  if(!force && delivMap && Date.now()-delivAt<20000) return;
+  try{
+    const wl=await fetch('/api/workshops').then(x=>x.json());
+    const ids=(wl.workshops||[]).map(w=>w.workshop_id).filter(Boolean);
+    const rows=await Promise.all(ids.map(id=>
+      fetch('/api/workshop/'+encodeURIComponent(id)+'/delivery-status')
+        .then(x=>x.ok?x.json():null).catch(()=>null)));
+    const map={};
+    rows.forEach(rs=>{
+      (rs&&Array.isArray(rs.members)?rs.members:[]).forEach(m=>{
+        const hid=m.harness_id||'';
+        if(!hid) return;
+        if(!map[hid]) map[hid]={pending:0, stuck:false};
+        map[hid].pending+=Math.max(0, Number(m.inbox_pending)||0);
+        if(m.stuck) map[hid].stuck=true;
+      });
+    });
+    delivMap=map; delivAt=Date.now();
+  }catch(e){ delivMap=null; delivAt=Date.now(); }
+}
+
+/* FE-22 / 105 §五-1：清单 wake 列（GET …/wake，与 delivery 同 20s 节流窗口） */
+let wakeMap=null, wakeAt=0;
+async function loadWake(hs){
+  if(wakeMap && Date.now()-wakeAt<20000) return;
+  try{
+    const map={};
+    await Promise.all((hs||[]).map(h=>
+      fetch('/api/harness/'+encodeURIComponent(h.harness_id)+'/wake')
+        .then(x=>x.ok?x.json():null).catch(()=>null)
+        .then(w=>{ if(w&&w.success) map[h.harness_id]=w; })));
+    wakeMap=map; wakeAt=Date.now();
+  }catch(e){ wakeMap=null; wakeAt=Date.now(); }
+}
+
 async function refreshList(){
 
   try{
 
+    await loadDelivery();
+
     const d=await fetch('/api/harness/list').then(x=>x.json());
 
     const hs=d.harnesses||[];
+
+    await loadWake(hs);
 
     document.getElementById('list').innerHTML = hs.length? hs.map(h=>{
 
@@ -599,6 +766,16 @@ async function refreshList(){
 
       }
 
+      const dv=(delivMap&&delivMap[h.harness_id])||null;
+      const dvTag = dv ? (dv.pending>0
+        ? `<span class="ai" style="color:var(--red)">📥 未送达 ${dv.pending}</span>`
+        : `<span class="ai" style="color:var(--green)">📥 无积压</span>`) : '';
+
+      const wk=(wakeMap&&wakeMap[h.harness_id])||null;
+      const wkTag = wk ? (wk.configured
+        ? `<span class="ai" style="color:var(--green)" title="${esc(wk.status_text||'')}">📣 已配：${esc(String(wk.command||'').slice(0,40))}</span>`
+        : `<span class="ai" style="color:var(--red)" title="${esc(wk.why||'')}">📣 未配叫醒（消息只会躺邮箱）</span>`) : '';
+
       return `<div class="h-item" data-hid="${esc(h.harness_id)}">
 
         <span class="name">${esc(h.harness_name)}</span>
@@ -609,9 +786,15 @@ async function refreshList(){
 
         ${bridgeTag}
 
+        ${dvTag}
+
+        ${wkTag}
+
         ${bd?`<span class="ai" title="${esc(bd)}">📂 ${esc(bd)}</span>`:''}
 
         <button class="del" onclick="verifyBridge('${esc(h.harness_id).replace(/'/g,"\\'")}')">验证桥</button>
+
+        <button class="del" style="border-color:var(--green);color:var(--green)" onclick="sandboxVerify('${esc(h.harness_id).replace(/'/g,"\\'")}',event)">🔬 大厅快速验证</button>
 
         <button class="del" onclick="recordBridge('${esc(h.harness_id).replace(/'/g,"\\'")}')">记录桥坐标</button>
 
@@ -623,6 +806,342 @@ async function refreshList(){
 
   }catch(e){}
 
+}
+
+/* FE-21 / V39 §4-4：接入自检（四态灯；后端 a91aef6） */
+async function loadScWorkshops(){
+  try{
+    const d=await fetch('/api/workshops').then(x=>x.json());
+    const sel=document.getElementById('scWs');
+    sel.innerHTML='<option value="">（选择工作间）</option>';
+    (d.workshops||[]).forEach(w=>{
+      const o=document.createElement('option');
+      o.value=w.workshop_id;
+      o.textContent=w.workshop_id+' · '+(w.name||'（未命名）');
+      sel.append(o);
+    });
+  }catch(e){}
+}
+async function scWsChanged(){
+  const ws=document.getElementById('scWs').value;
+  const sel=document.getElementById('scMember');
+  sel.innerHTML='<option value="">（选择成员）</option>';
+  if(!ws) return;
+  try{
+    const d=await fetch('/api/workshop/'+encodeURIComponent(ws)+'/members-status')
+      .then(x=>x.ok?x.json():{});
+    (d.members||[]).forEach(m=>{
+      const o=document.createElement('option');
+      o.value=m.member_id;
+      o.textContent=(m.role||m.member_id)+' · '+(m.display_name||m.member_id);
+      sel.append(o);
+    });
+  }catch(e){}
+}
+const SC_LAMP={
+  ok:{c:'var(--green)',t:'🟢 通了（桥取走了 + 你的 agent 回话了）'},
+  no_reply:{c:'var(--yellow)',t:'🟡 桥取走了，但你的 agent 没回话 ⇒ 多半是没配「叫醒命令」'},
+  not_picked:{c:'var(--red)',t:'🔴 消息还躺在邮箱里 ⇒ 桥没在运行'},
+  not_set_up:{c:'var(--muted,#9aa3ae)',t:'⚪ 还没架桥（没有邮箱）'}
+};
+async function runSelfCheck(){
+  const ws=document.getElementById('scWs').value;
+  const mid=document.getElementById('scMember').value;
+  const box=document.getElementById('scResult');
+  box.style.display='block';
+  if(!ws||!mid){ box.innerHTML='<span style="color:var(--yellow)">请先选择工作间和成员。</span>'; return; }
+  const btn=document.getElementById('scBtn');
+  btn.disabled=true; btn.textContent='⏳ 自检中（约 8 秒）…';
+  box.innerHTML='<span style="color:var(--yellow)">⏳ 正在向该成员邮箱发测试消息并等待结论…</span>';
+  try{
+    const x=await fetch('/api/workshop/'+encodeURIComponent(ws)+'/member/'+encodeURIComponent(mid)+'/self-check',
+      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wait:8})});
+    const r=await x.json().catch(()=>({error:'响应不可解析'}));
+    if(!x.ok){
+      box.innerHTML='<span style="color:var(--red)">❌ 自检失败：'+esc(r.error||r.detail||JSON.stringify(r))+'</span>';
+    }else{
+      const lamp=SC_LAMP[r.state]||{c:'var(--red)',t:'⚠ 未知结论（state='+esc(String(r.state||''))+'）'};
+      box.innerHTML='<div style="color:'+lamp.c+';font-weight:800;font-size:13.5px">'+lamp.t+'</div>'
+        +(r.advice?('<div style="margin-top:6px">怎么办：'+esc(r.advice)+'</div>'):'')
+        +(r.state==='no_reply'?('<div style="margin-top:6px"><a href="#bridgeKindPanel" style="color:var(--green);font-weight:700">→ 去配叫醒命令（桥型选型 · 你填）</a></div>'):'')
+        +'<div style="margin-top:4px;color:var(--muted,#9aa3ae);font-size:11.5px">state='+esc(String(r.state||''))
+        +(r.probe_id?(' · 探针 '+esc(String(r.probe_id))):'')+'（自检会真发一条测试消息，但不改任何状态）</div>';
+    }
+  }catch(e){
+    box.innerHTML='<span style="color:var(--red)">❌ 自检异常：'+esc(e.message)+'</span>';
+  }
+  btn.disabled=false; btn.textContent='🚦 发送自检（约 8 秒）';
+}
+
+/* ===== FE-22：桥型选型（单一真相 /api/bridge-catalog）+ 叫醒命令真填口（105 §四/§五）===== */
+async function bkLoad(){
+  try{
+    const d=await fetch('/api/bridge-catalog').then(x=>{ if(!x.ok) throw new Error('HTTP '+x.status); return x.json(); });
+    const kinds=(d&&d.kinds)||[];
+    const box=document.getElementById('bkCards');
+    box.innerHTML='';
+    if(!kinds.length){ box.innerHTML='<span class="ai">桥型目录暂不可用（接口没返回数据）</span>'; return; }
+    kinds.forEach(k=>{
+      const b=document.createElement('button');
+      b.className='del'; b.type='button';
+      b.style.cssText='text-align:left;padding:8px 10px;max-width:230px';
+      b.innerHTML='<b>'+esc(k.label||k.kind)+'</b><br><span style="color:var(--muted);font-size:11.5px">'+esc(k.one_liner||'')+'</span>';
+      b.title=esc(k.when||k.kind);
+      b.addEventListener('click',()=>bkSelect(k.kind));
+      box.appendChild(b);
+    });
+  }catch(e){
+    const box=document.getElementById('bkCards');
+    if(box) box.innerHTML='<span class="ai" style="color:var(--red)">桥型目录加载失败：'+esc(e.message)+'</span>';
+  }
+}
+async function bkSelect(kind){
+  const spec=document.getElementById('bkSpec');
+  spec.style.display='block';
+  spec.innerHTML='<span style="color:var(--yellow)">⏳ 读取该型规格…</span>';
+  try{
+    const d=await fetch('/api/bridge-catalog/'+encodeURIComponent(kind))
+      .then(x=>{ if(!x.ok) throw new Error('HTTP '+x.status); return x.json(); });
+    const s=d.spec||{};
+    const fields=Array.isArray(s.fields)?s.fields:[];
+    const userF=fields.filter(f=>f.provides==='user');
+    const platF=fields.filter(f=>f.provides==='platform');
+    let h='<b>'+esc(s.label||s.kind)+'</b> <span class="ai">'+esc(s.kind||'')+'</span>';
+    if(userF.length){
+      h+='<div style="margin-top:6px"><b>你填：</b></div>';
+      userF.forEach(f=>{
+        h+='<div style="margin-left:6px;margin-top:4px">· <b>'+esc(f.label||f.name)+'</b>'
+          +(f.fill?('<br><span style="color:var(--muted)">'+esc(f.fill)+'</span>'):'')
+          +(f.example?('<br><code style="font-size:11.5px">'+esc(f.example)+'</code>'):'')
+          +'</div>';
+      });
+    }
+    if(platF.length) h+='<div style="margin-top:6px;color:var(--muted)">平台自动填：'+platF.map(f=>esc(f.name)).join('、')+'</div>';
+    if(s.verify&&s.verify.text) h+='<div style="margin-top:6px"><b>怎么自证：</b>'+esc(s.verify.text)+'</div>';
+    if(Array.isArray(s.pitfalls)&&s.pitfalls.length){
+      h+='<div style="margin-top:6px;color:var(--yellow)"><b>常见坑：</b>'+s.pitfalls.map(p=>esc(p)).join('；')+'</div>';
+    }
+    /* ★V41 裁定 1B（老板 2026-10-11）：**通用桥模板 = 注册 harness 的产物**，
+       而工作间架桥**依赖它存在**。此前这块只"展示该填什么"、**没有任何提交**
+       ⇒ 用户选完型、读完字段，**平台并不知道**（= 这一步没落到平台）。
+       现在补：把"选了这个型"**保存成该 harness 的那一条通用桥模板**。 */
+    h+=bkTemplateFormHtml(kind,userF);
+    const hasTrigger=userF.some(f=>f.name==='TRIGGER_CMD');
+    if(hasTrigger) h+=bkWakeFormHtml();
+    spec.innerHTML=h;
+    bkFillTplHarnSel();
+    if(hasTrigger) bkFillHarnSel();
+  }catch(e){
+    spec.innerHTML='<span style="color:var(--red)">规格读取失败：'+esc(e.message)+'</span>';
+  }
+}
+/* ★V41：把"选的这个桥型"保存成该 harness 的**通用桥模板**（裁定 1B：一个 harness 一条）。
+   平台自带字段（HARNESS_ID / PLATFORM_URL 等）不用填，平台会派生；这里只让用户填"该填什么"里
+   属于 user 的那几项。保存后工作间里才架得起桥（工作间会显示"桥模板：<名字>"）。 */
+function bkTemplateFormHtml(kind,userF){
+  const inputs=(userF||[]).filter(f=>f.name!=='TRIGGER_CMD').map(f=>
+    '<div style="margin-top:5px"><b>'+esc(f.label||f.name)+'</b>'
+    +'<br><input data-tplf="'+esc(f.name)+'" placeholder="'+esc(f.example||'')+'" '
+    +'style="width:100%;box-sizing:border-box;background:var(--panel-bg,#151a22);color:var(--text,#e5e9f0);border:1px solid var(--border,#2a3444);border-radius:6px;padding:5px 8px;font-size:12.5px">'
+    +(f.fill?('<div style="color:var(--muted);font-size:11.5px">'+esc(f.fill)+'</div>'):'')
+    +'</div>').join('');
+  return '<div style="margin-top:10px;border-top:1px dashed var(--border,#2a3444);padding-top:8px">'
+    +'<b>🧩 保存成这个 agent 的通用桥模板（第 2 步 · 注册的产物）</b>'
+    +'<div style="color:var(--muted);font-size:11.5px;margin-top:2px">类型：<code>'+esc(kind)+'</code>。'
+    +'平台自带字段不用填（它会自己派生）。保存后，它在工作间里才架得起桥。</div>'
+    +'<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">'
+    +'<select id="bkTplHid" style="background:var(--panel-bg,#151a22);color:var(--text,#e5e9f0);border:1px solid var(--border,#2a3444);border-radius:6px;padding:5px 6px;font-size:12.5px"><option value="">（选择已注册 harness）</option></select>'
+    +'<input id="bkTplName" placeholder="桥模板名字（可留空=用平台默认名）" style="flex:1;min-width:170px;background:var(--panel-bg,#151a22);color:var(--text,#e5e9f0);border:1px solid var(--border,#2a3444);border-radius:6px;padding:5px 8px;font-size:12.5px">'
+    +'<button class="btn" id="bkTplBtn" onclick="bkTemplateSave(\''+esc(kind)+'\')">保存桥模板</button>'
+    +'</div>'+inputs+'<div id="bkTplRes" style="margin-top:6px"></div></div>';
+}
+async function bkFillTplHarnSel(){
+  try{
+    const d=await fetch('/api/harness/list').then(x=>x.json());
+    const sel=document.getElementById('bkTplHid');
+    if(!sel) return;
+    sel.innerHTML='<option value="">（选择已注册 harness）</option>';
+    (d.harnesses||[]).forEach(h=>{
+      const o=document.createElement('option');
+      o.value=h.harness_id;
+      o.textContent=h.harness_id+(h.harness_name?('（'+h.harness_name+'）'):'');
+      sel.append(o);
+    });
+  }catch(e){}
+}
+async function bkTemplateSave(kind){
+  const hid=(document.getElementById('bkTplHid')||{}).value||'';
+  const box=document.getElementById('bkTplRes');
+  const nm=((document.getElementById('bkTplName')||{}).value||'').trim();
+  if(!hid){ box.innerHTML='<span style="color:var(--yellow)">请先选一个已注册的 harness。</span>'; return; }
+  const params={};
+  document.querySelectorAll('#bkSpec [data-tplf]').forEach(i=>{
+    const v=(i.value||'').trim();
+    if(v) params[i.getAttribute('data-tplf')]=v;
+  });
+  const btn=document.getElementById('bkTplBtn');
+  if(btn){ btn.disabled=true; btn.textContent='保存中…'; }
+  try{
+    const body={name:nm||('（'+kind+' · 平台默认名）'),kind:kind,params:params};
+    const x=await fetch('/api/harness/'+encodeURIComponent(hid)+'/bridge-template',
+      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const r=await x.json().catch(()=>({error:'响应不可解析'}));
+    if(!x.ok){
+      /* 失败要说话：直接显示后端给的中文原因 + 怎么改 */
+      box.innerHTML='<span style="color:var(--red)">❌ 保存失败：'+esc(r.error||JSON.stringify(r))+'</span>'
+        +(r.hint?('<div style="color:var(--yellow);font-size:11.5px">怎么改：'+esc(r.hint)+'</div>'):'');
+    }else{
+      const t=r.template||{};
+      /* ★V41 P3（规则 20：后端口径变了，界面同一次跟上）：
+         若你在模板里填了「叫醒命令」，后端会把它**同步成桥真正使用的那一处**。
+         这件事必须显示出来 —— 否则用户不知道"叫醒命令也配好了"，
+         下一个动作（起桥）就不知道能不能生效。 */
+      var wakeHead='';
+      if(r.wake_synced&&r.wake_synced.path){
+        wakeHead='<div style="color:var(--green);font-weight:700">📣 叫醒命令已同步生效</div>'
+          +'<div style="font-size:11.5px">命令：<code>'+esc(r.wake_synced.command||'')+'</code>'
+          +' · 包装脚本：<code>'+esc((r.wake_synced.path||'').split(/[\\/]/).pop())+'</code></div>'
+          +'<div style="color:var(--muted);font-size:11.5px">你只填这一处就够了 —— 桥用的就是它。</div>';
+      }else if(r.wake_synced&&r.wake_synced.error){
+        wakeHead='<div style="color:var(--red);font-weight:700">⚠ 叫醒命令同步失败：'+esc(r.wake_synced.error)+'</div>'
+          +(r.wake_synced.hint?('<div style="color:var(--yellow);font-size:11.5px">怎么改：'+esc(r.wake_synced.hint)+'</div>'):'');
+      }
+      box.innerHTML='<div style="color:var(--green);font-weight:700">✅ 已保存为该 agent 的通用桥模板</div>'
+        +'<div style="font-size:11.5px">名字：<code>'+esc(t.name||'')+'</code> · 类型：<code>'+esc(t.kind||kind)+'</code></div>'
+        +(r.note?('<div style="color:var(--muted);font-size:11.5px">'+esc(r.note)+'</div>'):'')
+        +wakeHead
+        +'<div style="color:var(--muted);font-size:11.5px">下一步：到工作间把某个成员架桥（会显示"桥模板：'+esc(t.name||'')+'"）。</div>';
+    }
+  }catch(e){
+    box.innerHTML='<span style="color:var(--red)">❌ 保存异常：'+esc(e.message)+'</span>';
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent='保存桥模板'; }
+  }
+}
+function bkWakeFormHtml(){
+  return '<div id="bkWakeBox" style="margin-top:10px;border-top:1px dashed var(--border,#2a3444);padding-top:8px">'
+    +'<b>📣 配一条叫醒命令（第 2 步 · 你填）</b>'
+    +'<div style="color:var(--muted);font-size:11.5px;margin-top:2px">只填<b>一条命令</b>（例：<code>我的agent --wake</code>）。'
+    +'平台会替你写成包装脚本 —— <b>别自己拼带空格的引号参数</b>（会被拆坏、桥起不来，实测报 unrecognized arguments）。</div>'
+    +'<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'
+    +'<select id="bkWakeHid" style="background:var(--panel-bg,#151a22);color:var(--text,#e5e9f0);border:1px solid var(--border,#2a3444);border-radius:6px;padding:5px 6px;font-size:12.5px"><option value="">（选择已注册 harness）</option></select>'
+    +'<input id="bkWakeCmd" placeholder="收到任务后执行的那条命令" style="flex:1;min-width:180px;background:var(--panel-bg,#151a22);color:var(--text,#e5e9f0);border:1px solid var(--border,#2a3444);border-radius:6px;padding:5px 8px;font-size:12.5px">'
+    +'<button class="btn" id="bkWakeBtn" onclick="bkWakeSave()">写入（平台生成包装脚本）</button>'
+    +'</div><div id="bkWakeRes" style="margin-top:6px"></div></div>';
+}
+async function bkFillHarnSel(){
+  try{
+    const d=await fetch('/api/harness/list').then(x=>x.json());
+    const sel=document.getElementById('bkWakeHid');
+    if(!sel) return;
+    sel.innerHTML='<option value="">（选择已注册 harness）</option>';
+    (d.harnesses||[]).forEach(h=>{
+      const o=document.createElement('option');
+      o.value=h.harness_id;
+      o.textContent=h.harness_id+(h.harness_name?('（'+h.harness_name+'）'):'');
+      sel.append(o);
+    });
+  }catch(e){}
+}
+async function bkWakeSave(){
+  const hid=document.getElementById('bkWakeHid').value;
+  const cmd=document.getElementById('bkWakeCmd').value.trim();
+  const box=document.getElementById('bkWakeRes');
+  if(!hid||!cmd){ box.innerHTML='<span style="color:var(--yellow)">请选 harness 并填一条命令。</span>'; return; }
+  const btn=document.getElementById('bkWakeBtn');
+  btn.disabled=true; btn.textContent='写入中…';
+  try{
+    const x=await fetch('/api/harness/'+encodeURIComponent(hid)+'/wake',
+      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd})});
+    const r=await x.json().catch(()=>({error:'响应不可解析'}));
+    if(!x.ok){
+      box.innerHTML='<span style="color:var(--red)">❌ 写入失败：'+esc(r.error||JSON.stringify(r))+'</span>';
+    }else{
+      let confirmed='';
+      try{
+        const g=await fetch('/api/harness/'+encodeURIComponent(hid)+'/wake')
+          .then(xx=>xx.ok?xx.json():null).catch(()=>null);
+        if(g&&g.status_text) confirmed='<div style="color:var(--green);font-weight:800">📣 '+esc(g.status_text)+'</div>';
+      }catch(e){}
+      box.innerHTML='<div style="color:var(--green);font-weight:700">✅ 已写入包装脚本</div>'
+        +confirmed
+        +(r.wrapper_path?('<div style="font-family:monospace;font-size:11.5px;word-break:break-all">脚本：'+esc(r.wrapper_path)+'</div>'):'')
+        +(r.next?('<div style="margin-top:2px">下一步：'+esc(r.next)+'</div>'):'')
+        +'<div style="margin-top:2px"><a href="#selfCheckPanel" style="color:var(--green)">→ 去自检确认它真的会被叫醒</a></div>';
+      wakeMap=null; wakeAt=0; refreshList();   /* 让清单 wake 列立即刷新 */
+    }
+  }catch(e){
+    box.innerHTML='<span style="color:var(--red)">❌ 写入异常：'+esc(e.message)+'</span>';
+  }
+  btn.disabled=false; btn.textContent='写入（平台生成包装脚本）';
+}
+
+/* ── ★V42：大厅快速验证（低耗验证间）────────────────────────────────────────
+   与「验证桥」的分工（两者不要混）：
+     · 验证桥        → 检查**已有的**桥（坐标/进程/历史/实时通道）
+     · 大厅快速验证  → 在**大厅里就地**建一个低耗验证间 → 架桥 → 真跑通 →
+                        **跑通才**把实测配置写进模板并标记"已验证" → 接着**拆掉**（只留模板）
+   老板口径：「大厅注册时，给到一个等价低耗工作间模型进行架桥等等测试」、
+            「让它先跑通才写入具体模板里，然后测试的再清理掉」、「连桥也拆掉，只留模板」
+   ⚠️ 没跑通就**不会**写模板 —— 这条门槛由后端把关，界面如实显示（不许假装成功）。 */
+async function sandboxVerify(id, ev){
+  const btn = (ev && ev.target) || (typeof event!=='undefined' && event && event.target) || null;
+  if(btn){ btn.disabled = true; btn.textContent = '验证中…'; }
+  show('正在大厅里就地验证「'+id+'」：建验证间 → 架桥 → 发真测试消息等回话（最多约 20 秒）→ 跑通才写模板 → 拆掉验证间。整个过程中你会看到每一步的结论。', true);
+  try{
+    const r = await fetch('/api/harness/'+encodeURIComponent(id)+'/verify',
+      {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({wait:16, teardown:true})}).then(x=>x.json());
+    // ★先刷新列表（让卡片上的桥模板标记更新），**再渲染报告**。
+    //   报告**不插进卡片**：列表刷新会整段替换 DOM，插进卡片极易被冲掉/插到已脱离
+    //   文档的节点里（我为此查了很多轮，最终选择更稳的做法）。
+    //   ⇒ 报告固定渲染到 `#sandboxReportHost`（在 #msg 下方，**不参与列表刷新**）。
+    try{ if(typeof refreshList==='function') await refreshList(true); }catch(e){}
+    renderSandboxVerify(id, r);
+    const ok = !!r.success;
+    show(ok ? ('✅ 跑通了 —— 配置已写进模板并标记已验证，验证间已拆掉（只留模板）。')
+            : ('❌ 没跑通：'+(r.reason || r.error || '详见下方报告')+'（**没有**写进模板 —— 先跑通才写入）'), ok);
+  }catch(e){ show('验证请求失败：'+e.message, false); }
+  finally{ if(btn){ btn.disabled = false; btn.textContent = '🔬 大厅快速验证'; } }
+}
+
+function renderSandboxVerify(id, r){
+  // ★2026-10-11 结论：**报告不进卡片**。
+  //   卡片所在的列表会被 `refreshList()` 整段替换，把 HTML 插进卡片里会出现
+  //   "插进了已脱离文档的节点 / 被后续刷新冲掉"两种情况 —— 界面上什么都看不到、
+  //   而且**不报任何错**（我为此排查了十几轮）。
+  //   ⇒ 固定渲染到 `#sandboxReportHost`：它挂在标题下、**不参与列表刷新**，
+  //     既能稳定显示，位置也合理（结论紧接着操作提示）。
+  let host = document.getElementById('sandboxReportHost');
+  if(!host){
+    host = document.createElement('div');
+    host.id = 'sandboxReportHost';
+    const msg = document.getElementById('msg');
+    if(msg && msg.parentNode){ msg.parentNode.insertBefore(host, msg.nextSibling); }
+    else { document.body.appendChild(host); }
+    host = document.getElementById('sandboxReportHost');
+  }
+  if(!host) return;
+  const st = r.state || '';
+  const stateText = {ok:'通了（收到回话）', no_reply:'桥取走了，但 agent 没回话', not_picked:'消息还躺在邮箱里（桥没在跑）', '':'—'}[st] || st;
+  const okMark = b => b ? '<span style="color:var(--green)">✅</span>' : '<span style="color:var(--red)">❌</span>';
+  const det = r.detail || {};
+  const cm = r.committed || {};
+  const td = r.torndown || {};
+  const html = `<div class="verify-report" style="margin-top:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;line-height:1.8">
+    <b>大厅快速验证报告</b> · 结论：${r.success?'<b style="color:var(--green)">跑通了 ✅</b>':'<b style="color:var(--red)">没跑通 ❌</b>'}<br>
+    ① 验证间：${esc(r.sandbox_id||'-')} <span style="color:var(--muted)">（低耗、不进正式工作间列表）</span>${r.had_template?'· 用的是它已有的桥模板':'· 它还没有桥模板，平台先派生了一条<b>草稿</b>用于跑通'}<br>
+    ② 架桥：${r.stage==='attach'?(okMark(false)+' '+esc(r.error||'架桥失败')):(okMark(true)+' 已架桥，桥型 '+esc(r.bridge_kind||'-'))}<br>
+    ③ 自检：${okMark(r.success)} ${esc(stateText)} ${det.waited_seconds?('（等了 '+det.waited_seconds+' 秒）'):''}<br>
+    ${r.reason?('&nbsp;&nbsp;&nbsp;&nbsp;说明：'+esc(r.reason)+'<br>'):''}
+    ${r.advice?('&nbsp;&nbsp;&nbsp;&nbsp;怎么办：'+esc(r.advice)+'<br>'):''}
+    ④ ${r.gate_note?esc(r.gate_note):''}<br>
+    ${cm.success?('&nbsp;&nbsp;&nbsp;&nbsp;模板「'+esc(cm.template_name||'')+'」已标记 <b>已验证</b> · 验证时间 '+new Date((cm.verified_at||0)*1000).toLocaleString('zh-CN')+'<br>'):''}
+    ⑤ 清理：${td.removed?(okMark(true)+' 验证间已拆掉（桥已停、隔间已清），<b>只留模板</b>'):(td.note?esc(td.note):'—')}<br>
+    ${r.bridge_start_error?('<span style="color:var(--yellow)">⚠ 起桥说明：'+esc(r.bridge_start_error)+'</span><br>'):''}
+  </div>`;
+  const old = host.querySelector('.verify-report');
+  if(old) old.remove();
+  host.insertAdjacentHTML('beforeend', html);
 }
 
 async function verifyBridge(id){
@@ -785,7 +1304,8 @@ function safeCopy(text, onResult){
 
 function copyTemplate(){
 
-  const t = document.getElementById('copyAll').textContent;
+  /* FE-24：复制模板正文本体（收起/展开两态完全一致；不再把按钮文案混进去） */
+  const t = document.getElementById('tplText').textContent;
 
   safeCopy(t, (ok) => {
     if (ok) show('已复制第 1 段（接入教程+注册话术），粘贴给任意 AI 即可帮你注册', true);
@@ -825,6 +1345,13 @@ async function oneClickRegister(){
         st.innerHTML='<span style="color:var(--green)">✅ '+(d3.status==='ready'?'就绪（无需桥）':'已连接')+'，可接收任务！'
           +(d3.pid?'<br>桥进程 PID: '+esc(String(d3.pid)):'')
           +(d3.bridge_type?'<br>桥类型: '+esc(d3.bridge_type):'')+'</span>';
+        /* FE-24 / 109 号 §三：桥已在跑时，后配的叫醒命令要重启桥才生效——必须说出来 */
+        if(d3.wake_pending_restart){
+          st.innerHTML+='<br><span style="color:var(--yellow)">⚠ 你配了「叫醒命令」，但桥已在运行 —— <b>它要等桥重启后才生效</b>：'
+            +esc(d3.note||'先停掉这只桥再重新起桥（或在清单里重新连接）')+'</span>';
+        }else if(d3.note){
+          st.innerHTML+='<br><span style="color:var(--muted,#9aa3ae)">'+esc(d3.note)+'</span>';
+        }
       }else if(d3.status==='manual'){
         st.innerHTML='<span style="color:var(--yellow)">⚠️ 需手动介入：'+esc(d3.note||'')+'</span>';
       }else{
@@ -833,6 +1360,7 @@ async function oneClickRegister(){
     }catch(e){
       document.getElementById('autoConnectStatus').innerHTML='<span style="color:var(--red)">❌ 架桥异常：'+esc(e.message)+'</span>';
     }
+    box.innerHTML+='<br><a href="#selfCheckPanel" style="color:var(--green);font-weight:700">→ 去自检（第 4 步：验证通没通）</a>';
   }catch(e){box.innerHTML='<span style="color:var(--red)">❌ '+esc(e.message)+'</span>';}
 }
 
@@ -930,6 +1458,12 @@ function detectSelfPath(){
 refreshList();
 
 setInterval(refreshList, 5000);
+
+/* FE-21：接入自检面板初始化 */
+loadScWorkshops();
+document.getElementById('scWs').addEventListener('change', scWsChanged);
+/* FE-22：桥型选型目录（单一真相） */
+bkLoad();
 
 /* ===== 平台助手直聊 ===== */
 (function(){
@@ -1214,6 +1748,7 @@ window.acToast=function(msg,err){var t=document.querySelector('.acm-toast');if(!
 })();
 
 </script>
+<script src="/remote-modal.js"></script>
 
 
 

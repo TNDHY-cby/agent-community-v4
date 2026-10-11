@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""L1 骨架 · **deliver**（把一段文本送进指定会话）—— 老板流程**步骤 5**（发具体桥/传话）。
+
+契约见 ../SPEC.md（V26 §3）。基本版支持两种落地方式，按配置择一：
+  · `DELIVER_CMD`：交给本 harness 自己的命令/接口（可自证）；
+  · `DELIVER_METHOD=wmpaste`：调用平台的 `tools/inject_window.ps1`（界面注入，**实测 WM_PASTE 可靠**）；
+    此项会**抢前台** ⇒ `foreground` 必须如实标 `required`，平台据此先告知用户（V26 §7）。
+都不配 ⇒ 人工模式（把文本放进剪贴板并提示用户粘贴），返回 10。
+"""
+
+{{AC_COMMON}}
+
+HARNESS_ID = {{HARNESS_ID_LIT}}
+HARNESS_NAME = {{HARNESS_NAME_LIT}}
+DELIVER_CMD = {{DELIVER_CMD_LIT}}
+# 界面注入方式（"wmpaste" | "clipboard" | "sendkeys" | ""）
+DELIVER_METHOD = {{DELIVER_METHOD_LIT}}
+INJECT_SCRIPT = {{INJECT_SCRIPT_LIT}}
+WINDOW_TITLE_LIKE = {{WINDOW_TITLE_LIKE_LIT}}
+FOREGROUND = {{FOREGROUND_LIT}} or "optional"
+SUBMIT = {{SUBMIT_LIT}} or "1"
+CMD_TIMEOUT = 60.0
+
+
+class Deliver(Action):
+    action = "deliver"
+
+    def do(self, payload):
+        text = payload.get("text") or ""
+        if not str(text).strip():
+            raise Failed("缺少 text（要送进会话的内容）")
+        if DELIVER_CMD:
+            ok, out = run_command(DELIVER_CMD, timeout=CMD_TIMEOUT)
+            if not ok:
+                raise Failed(f"投递命令失败：{out[:200]}")
+            try:
+                blob = parse_json_blob(out)
+            except Failed:
+                raise Unverified(f"命令成功但没回报 JSON 证据：{out[:200]}")
+            return {"method": "cmd", "readback": str(blob.get("readback") or ""), "via": "cmd"}
+        if DELIVER_METHOD and INJECT_SCRIPT:
+            # 走界面注入：写临时文件把文本交给脚本，避免命令行长度/转义问题
+            import json as _json
+            import os as _os
+            import tempfile
+            fd, tmp = tempfile.mkstemp(prefix="ac_deliver_", suffix=".json")
+            with _os.fdopen(fd, "w", encoding="utf-8") as f:
+                _json.dump({"text": str(text)}, f, ensure_ascii=False)
+            args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", INJECT_SCRIPT,
+                    "-TextFile", tmp, "-Method", DELIVER_METHOD]
+            if WINDOW_TITLE_LIKE:
+                args += ["-TitleLike", WINDOW_TITLE_LIKE]
+            if str(SUBMIT) in ("1", "true", "True"):
+                args += ["-Enter"]
+            cmd = "powershell " + " ".join(f'"{a}"' if " " in str(a) else str(a) for a in args)
+            ok, out = run_command(cmd, timeout=CMD_TIMEOUT)
+            try:
+                _os.remove(tmp)
+            except OSError:
+                pass
+            if not ok:
+                raise Failed(f"界面注入失败：{out[:200]}")
+            if "is_foreground=True" not in out:
+                # 没拿到前台 ⇒ 键盘事件可能没落到目标会话，绝不当作成功（准则⑤）
+                raise Unverified(f"注入执行了但目标窗口未取得前台，无法确认送达：{out[-200:]}")
+            return {"method": DELIVER_METHOD, "readback": out[-300:], "via": "ui_inject"}
+        log("【人工模式】请把下面的内容**粘贴**到目标会话：")
+        log(str(text))
+        raise Unverified("未配置投递方式：已提示人工粘贴，平台按『未核实』处理")
+
+
+if __name__ == "__main__":
+    sys.exit(run_action(Deliver))

@@ -7,6 +7,8 @@
     workshops_assign.py      组长与成员编排
     workshops_task.py        任务树/资源/halt-and-reset
     workshops_common.py      共享辅助（_sv / _leader_* / _platform_base_url_safe）
+    workshops_session.py     会话建立与命名（老板流程 步骤 4/7/8/9，2026-10-08 新增）
+    workshops_recover.py     员工掉线抢救（老板口述②，2026-10-08 新增）
 
 拆分依据：拆分前实测「无跨组调用」——10 处跨组引用全部指向 common。
 本文件只负责聚合，server.py 的 `from .routers.workshops import router` 保持不变。
@@ -18,8 +20,11 @@ from .workshops_discuss import router as _discuss_router
 from .workshops_assign import router as _assign_router
 from .workshops_task import router as _task_router
 from .workshops_common import router as _common_router
+from .workshops_session import router as _session_router
+from .workshops_recover import router as _recover_router
 
 router = APIRouter()
 # 扁平展开而非 include_router：保持 router.routes / app.routes 自省可见
-for _sub in (_lifecycle_router, _discuss_router, _assign_router, _task_router, _common_router):
+for _sub in (_lifecycle_router, _discuss_router, _assign_router, _task_router,
+             _common_router, _session_router, _recover_router):
     router.routes.extend(_sub.routes)

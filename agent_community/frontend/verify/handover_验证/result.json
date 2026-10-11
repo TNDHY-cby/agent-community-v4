@@ -1,0 +1,66 @@
+{
+  "errors": [
+    "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+    "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+  ],
+  "nonGet": [
+    "POST /api/handover/receipt",
+    "POST /api/handover/receipt",
+    "POST /api/handover/receipt"
+  ],
+  "basic": {
+    "rulesHasRule": "每项完成声明至少带一种证据（commit/file/test）；无证据的回执一律拒收。",
+    "rcCount": "1 份",
+    "cards": 1,
+    "firstCard": "FE-01 | MiMo | ✔ 已送达 | 7 分钟前 | [1] 交付 FE-01 运维看板（设计稿 + ops.html + 8 条验收实测） | file：agent_community/frontend/ops.html; design-docs/FE-01_审计时间线与在线看板设计.md | test：playwright e2e 8/8；DSH 2号发言独立复核 7/10 通过（余 3 条浏览器项采信我的截图证据） | 送",
+    "deliveredBadge": "✔ 已送达",
+    "itemRows": 1
+  },
+  "err1": {
+    "shown": true,
+    "items": [
+      "第 1 项无证据：至少给一种（commit/file/test）——commit 号（如 76964df）／文件路径（相对仓库根）／测试输出摘要（命令 + 计数）"
+    ],
+    "hint": "每项完成声明至少带一种证据（commit/file/test）；delivered=True 必须给 reply_ref。",
+    "keptClaim": "空证据冒烟测试"
+  },
+  "err2": {
+    "shown": true,
+    "items": [
+      "delivered=True 但缺 reply_ref：送达必须有「对方可读回复」的凭据，否则视为未送达"
+    ]
+  },
+  "ok": {
+    "okShown": true,
+    "okText": "✔ 已受理：已受理。送达状态由 delivery.delivered + reply_ref 决定。",
+    "errShown": false,
+    "count": "2 份",
+    "topCard": "handover-ui-e2e | MiMo | ○ 未送达 | 刚刚 | [1] handover.html 表单提交链路冒烟测试（400×2 路径 + 本条 200） | test：playwright e2e：空证据400/送达缺凭据400/本条200，见 handover_验证",
+    "formReset": true
+  },
+  "expanded": {
+    "open": true,
+    "hasJson": true
+  },
+  "v1920": {
+    "vw": 1920,
+    "overflow": false,
+    "docW": 1920
+  },
+  "v1280": {
+    "vw": 1280,
+    "overflow": false,
+    "docW": 1280
+  },
+  "v1024": {
+    "vw": 1024,
+    "overflow": false,
+    "docW": 1024
+  },
+  "filt": {
+    "count": "1 份（共 1）",
+    "tasks": [
+      "FE-01"
+    ]
+  }
+}

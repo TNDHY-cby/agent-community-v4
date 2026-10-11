@@ -20,6 +20,47 @@ from ..identity import issue_agent_token as _issue_agent_token
 
 router = APIRouter()
 
+async def _maybe_pull_mcp_tools(info):
+    """MCP 类 harness：从远程 MCP 服务器的 `tools/list` 拉工具表并写回 `info.tools`。
+
+    ★2026-10-11：**这个函数原来根本不存在** —— `register_harness` 第 288 行调用它，
+    于是**任何用 `wakeup_method=mcp` 注册的请求都会 500（NameError）**（实测复现）。
+    典型的"半截功能"：注释写了"动态拉取并持久化"，函数从来没写。
+
+    行为（失败要说话，但不阻断注册）：
+      · 没有 `api_base_url` ⇒ 不动，交给调用方走原逻辑；
+      · URL 非法 / 拉取失败 ⇒ **原样返回**，并把原因打到日志（**不让注册 500**）；
+      · 拉到工具 ⇒ 写进 `info.tools`（调用方据此重新注册以持久化）。
+    为什么用 `mcp_client` 而不是自己写 HTTP：那是本项目**已有的** MCP 客户端
+    （`mcp_list_tools` / `validate_mcp_url`），一处实现、别处复用。
+    """
+    try:
+        from .. import mcp_client as _mc
+    except Exception as e:  # noqa: BLE001
+        print(f"[mcp] 客户端模块不可用，跳过工具拉取：{e}", flush=True)
+        return info
+    url = str(getattr(info, "api_base_url", "") or "").strip()
+    if not url:
+        print(f"[mcp] {getattr(info, 'harness_id', '?')} 未提供 api_base_url，跳过 tools/list", flush=True)
+        return info
+    try:
+        ok, why = _mc.validate_mcp_url(url)
+        if not ok:
+            print(f"[mcp] {getattr(info, 'harness_id', '?')} 的 MCP 地址不合法（{why}）——"
+                  f"注册继续，但拿不到工具清单", flush=True)
+            return info
+        tools = await asyncio.to_thread(_mc.mcp_list_tools, url)
+        if isinstance(tools, list) and tools:
+            names = [str((t or {}).get("name") or "") for t in tools if isinstance(t, dict)]
+            info.tools = [n for n in names if n]
+            print(f"[mcp] {getattr(info, 'harness_id', '?')} 拉到 {len(info.tools)} 个工具", flush=True)
+        else:
+            print(f"[mcp] {getattr(info, 'harness_id', '?')} tools/list 返回空", flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"[mcp] 拉取 tools/list 失败（注册继续，工具表留空）：{type(e).__name__}: {e}", flush=True)
+    return info
+
+
 @router.post("/api/harness/pre-register")
 async def harness_pre_register(request: Request):
     _audit_log.record("harness.pre_register", actor="user", target="", detail="初步注册")
@@ -29,7 +70,7 @@ async def harness_pre_register(request: Request):
     平台记下这个待完善注册意图，之后（阶段2）基于这些线索探测补齐技术配置。
     body: {
       "harness_id": "示例Harness-X",            # 必填：唯一标识
-      "harness_name": "示例Harness-X",          # 必填：显示名
+      "harness_name": "示例Harness-X",          # 可选：显示名（2026-10-10 实测：不填也能注册）
       "harness_type": "desktop-agent",   # 可选：类型猜测
       "process_hint": "示例进程名",       # 可选：进程名线索（供平台探测）
       "port_hint": 3721,                 # 可选：HTTP API 端口线索
@@ -197,10 +238,48 @@ async def register_harness(request: Request):
     from ..server import Utf8JSONResponse, _append_hall, _merge_experience_index, bcast_to_clients, save_state, validate_acp_command, validate_callback_url, validate_harness_api_url, validate_wakeup_dir
     """外部 Harness 注册接入"""
     body = await request.json()
+    # ── 2026-10-08 新增（V26 步骤 0）：harness 模板里的**动作脚本**配置 ──────────────
+    # 形如 {"scripts": {"new_session": {"NEW_SESSION_CMD": "...", "foreground": "never"}, ...}}
+    # 先取出来，避免污染 HarnessInfo（它不认识这个字段）。
+    from ..action_scripts import ACTIONS as _ACTIONS, set_config as _set_action_config
+    _scripts: dict = {}
+    if isinstance(body, dict):
+        _scripts = body.pop("scripts", None) or {}
+    if _scripts and not isinstance(_scripts, dict):
+        return Utf8JSONResponse({"error": "scripts 必须是对象：{动作名: {参数}}"}, status_code=400)
+    _bad_actions = [k for k in (_scripts or {}) if k not in _ACTIONS]
+    if _bad_actions:
+        return Utf8JSONResponse(
+            {"error": f"scripts 含未知动作 {_bad_actions}；可用动作 {list(_ACTIONS)}"}, status_code=400)
     try:
         info = HarnessInfo(**body)
     except Exception as e:
-        return Utf8JSONResponse({"error": f"参数错误: {e}"}, status_code=400)
+        # ★准则④「装好就能用」+ 准则⑤：**别把 pydantic 的英文报错与文档链接直接丢给接入方**。
+        # 实测（2026-10-08 首次接入审计）：只传 harness_id/harness_name 时接口返回
+        # 「参数错误: 1 validation error for HarnessAI / model_name / Field required
+        #  For further information visit https://errors.pydantic.dev/...」——
+        # 一个第一次接入的人**看不懂、也不知道该补什么**，直接卡在第一步。
+        _missing: list[str] = []
+        try:
+            for _err in (getattr(e, "errors", lambda: [])() or []):
+                if str(_err.get("type", "")).endswith("missing"):
+                    _missing.append(".".join(str(x) for x in (_err.get("loc") or [])))
+        except Exception:  # noqa: BLE001
+            pass
+        return Utf8JSONResponse({
+            "error": ("注册参数有问题：缺少必填字段 " + "、".join(_missing)) if _missing
+                     else f"注册参数有问题：{e}",
+            "必填": {"harness_id": "该 harness 的唯一标识",
+                     "ai.model_name": "所用模型名（必填，其余 ai 字段都有默认值）"},
+            "最小可用示例": {
+                "harness_id": "示例Harness-A", "harness_name": "示例Harness-A",
+                "harness_type": "desktop-agent", "wakeup_method": "file_poll",
+                "acp_command": "<你的可执行文件> --noop",
+                "ai": {"model_name": "示例模型"},
+            },
+            "提示": ("其余字段都有默认值；`scripts`（新建对话/重命名/投递）**可选**——"
+                    "不配则该 harness 的相关步骤走**人工模式**（平台会给出人工指引，不算失败）。"),
+        }, status_code=400)
     # ── 经验包登记（V1）：skill_index / knowledge_index 可放顶层或 metadata 内 ──
     _merge_experience_index(body, info)
     # 安全校验：回调 URL（防 SSRF）+ wakeup_dir 路径加固
@@ -224,6 +303,27 @@ async def register_harness(request: Request):
             return Utf8JSONResponse({"error": f"acp_command 校验失败: {err}"}, status_code=400)
     # 注册到 manager
     sess, bridge = harness_manager.register(info)
+    # ── V26 步骤 0：登记**动作脚本**配置（新建对话/重命名对话/投递）——幂等覆盖 ──
+    # 未配置的动作**不报错**：`available_actions()` 会如实报 manual，
+    # 流程里那一步就走人工模式并返回退出码 10（未核实），绝不假装自动完成（准则⑤）。
+    _action_status: dict = {}
+    if _scripts:
+        for _a, _cfg in (_scripts or {}).items():
+            _cfg = _cfg if isinstance(_cfg, dict) else {}
+            _params = _cfg.get("params")
+            if not isinstance(_params, dict):
+                # 允许扁平写法：除控制键外的其余键都当参数（接入者少写一层嵌套）
+                _params = {k: v for k, v in _cfg.items()
+                           if k not in ("params", "timeout", "foreground", "enabled")}
+            if _cfg.get("enabled") is False:
+                continue
+            _set_action_config(sess, _a, _params,
+                               foreground=str(_cfg.get("foreground") or ""))
+    try:
+        from ..action_scripts import available_actions as _avail
+        _action_status = _avail(sess)
+    except Exception as _e:  # noqa: BLE001
+        _action_status = {"error": f"动作脚本状态读取失败（不影响注册）: {_e}"}
     # ── MCP 客户端类型：tools 为空时从远程 MCP 服务器 tools/list 动态拉取并持久化 ──
     if getattr(info, "wakeup_method", None) == WakeupMethod.MCP:
         info = await _maybe_pull_mcp_tools(info)
@@ -316,7 +416,47 @@ async def register_harness(request: Request):
         "bridge_template": _l2,
         # V-15 步骤6：接入档位 + 引导（§10.1 时机1）。D 档含 §6.3 插件引导文案。
         "access_tier": _tier,
+        # V26 步骤0：动作脚本状态（configured=有命令可自动做；manual=只能人工，界面要如实说明）
+        "action_scripts": _action_status,
     }
+
+@router.get("/api/harness/{harness_id}/action-scripts")
+async def harness_action_scripts(harness_id: str):
+    """**给界面用**：这个 harness 的哪些流程步骤**能自动**、哪些**只能人工**（V26 §5 第 3 条）。
+
+    为什么单独出一个端点：准则⑤ 要求"失败要说话"——一个 harness 可能只有新建对话脚本、
+    没有重命名脚本。界面据此**如实显示**"第 8 步需要你手动做"，而不是等流程默默跳过。
+    `foreground` 同时给出每一步的打扰等级（never/optional/required），供界面提前告知用户。
+    """
+    from ..action_scripts import available_actions
+    from ..server import Utf8JSONResponse, harness_manager
+    sess = harness_manager.sessions.get(harness_id)
+    if not sess:
+        return Utf8JSONResponse({"error": "harness 不存在或未注册"}, status_code=404)
+    acts = available_actions(sess)
+    flow = [
+        {"step": 4, "action": "new_session", "what": "打开新对话",
+         "automatic": bool(acts["new_session"]["configured"]),
+         "foreground": acts["new_session"]["foreground"]},
+        {"step": 5, "action": "deliver", "what": "把具体桥与激活指令送进会话",
+         "automatic": bool(acts["deliver"]["configured"]),
+         "foreground": acts["deliver"]["foreground"]},
+        {"step": 8, "action": "rename_session", "what": "把会话重命名成平台给的名字",
+         "automatic": bool(acts["rename_session"]["configured"]),
+         "foreground": acts["rename_session"]["foreground"]},
+    ]
+    auto = [f["step"] for f in flow if f["automatic"]]
+    man = [f["step"] for f in flow if not f["automatic"]]
+    return {
+        "harness_id": harness_id,
+        "actions": acts,
+        "flow": flow,
+        "automatic_steps": auto,
+        "manual_steps": man,
+        "summary": (f"{len(flow)} 步中 {len(auto)} 步可自动，{len(man)} 步需人工"
+                    + (f"（步骤 {man}）" if man else "")),
+    }
+
 
 @router.post("/api/harness/launch")
 async def api_harness_launch(request: Request):

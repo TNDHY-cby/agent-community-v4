@@ -472,7 +472,13 @@ class TestSelectMembers:
         status, payload = unpack(run(wa.workshop_select_members(env.wid)))
         assert status == 200 and payload["success"] is True
         assert payload["members"] == []
-        assert "reason" in payload and "人工补充名单" in payload["reason"]
+        # ★2026-10-11（V40 走查 P0）：文案从含糊的"请人工补充名单"改成**可行动**的三条路。
+        #   断言相应加强：不只"有 reason"，还要**说清为什么 + 给怎么办 + 标出错误码**。
+        assert payload.get("reason"), "失败必须给原因"
+        assert payload.get("error_code") == "ai_picked_none"
+        assert "没有生成可用名单" in payload["reason"] and "不能据此断定" in payload["reason"], payload["reason"]
+        assert payload.get("advice"), "必须给怎么办（否则用户只能猜）"
+        assert "手工" in payload["advice"], "要提到可以手工指定"
         assert env.ws.members == [], "AI 选不出人时名单被清空（由 reason 提示人工补）"
         assert env.ws.status == "selecting"
 

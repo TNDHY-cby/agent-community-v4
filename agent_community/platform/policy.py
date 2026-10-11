@@ -44,7 +44,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DEFAULT_DATA_DIR = Path(os.environ.get("AC_DATA_DIR") or (Path(__file__).resolve().parent.parent / "data"))
 
 # ── 决策三态 ──────────────────────────────────────────────────────
 ALLOW = "allow"

@@ -168,6 +168,15 @@ def isolate_data_dirs(tmp_path, monkeypatch):
         monkeypatch.setattr(server, "DATA_DIR", tmp, raising=False)
         monkeypatch.setattr(server, "PLUGINS_FILE", tmp / "plugins.json", raising=False)
         monkeypatch.setattr(server, "PLUGIN_MODES_FILE", tmp / "workshop_modes.json", raising=False)
+        # 1b) **WORKSHOP_BASE（2026-10-07 补）**
+        #     此前这里**没隔离它**：`WORKSHOP_BASE` 是 import 时就算好的常量，
+        #     改 DATA_DIR 不会连带它。于是任何"建工作间"的测试都会把**真实**
+        #     `agent_community/data/workshops/` 当落点写（真实目录里已有 21 个条目）。
+        #     属"落盘单例必须在此登记"那条教训的同类。
+        #     ⚠️ 只隔离路径，**不重建 `workshops`/`tasks` 字典**：它们是
+        #     `from ..state import ...` 进来的**共享对象**，在此重绑会让 server 与各 router
+        #     各看一个字典（同一份数据两个视图），反而制造更难查的问题。
+        monkeypatch.setattr(server, "WORKSHOP_BASE", tmp / "workshops", raising=False)
 
     # 2) audit：模块级单例 audit_log 的目录与文件路径
     audit = _mod("agent_community.platform.audit")
@@ -218,6 +227,26 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     bt = _mod("agent_community.platform.tools.bridge_tool")
     if bt is not None:
         monkeypatch.setattr(bt, "_BRIDGES_ROOT", tmp / "platform_bridges", raising=False)
+
+    # 7) handover：V-23/V-24 交接体系的**全部落盘单例**
+    #    ⚠️ 2026-10-07 实测事故（**同一个坑踩了两次**，第二次是给本模块加 `aging_tracker`
+    #      时又忘了登记）：漏登记的回执/老化状态会被写进**真实** data/，触发会话级守卫
+    #      `guard_real_data_dir` 报红（指纹 `None -> (316, ...)` / `None -> (114, ...)`）。
+    #      教训：**给任何模块新加落盘单例时，必须同时在这里登记**——否则两层防护会拦下来，
+    #      但那是"事后发现"，不是"不写进去"。下面按模块逐个属性登记，新增单例请照样补一行。
+    ho = _mod("agent_community.platform.handover")
+    if ho is not None:
+        for _attr, _fname in (("handover_ledger", "handover_receipts.json"),
+                              ("aging_tracker", "aging_state.json")):
+            _obj = getattr(ho, _attr, None)
+            if _obj is None:
+                continue
+            monkeypatch.setattr(_obj, "data_dir", tmp, raising=False)
+            monkeypatch.setattr(_obj, "_path", tmp / _fname, raising=False)
+            if hasattr(_obj, "records"):
+                monkeypatch.setattr(_obj, "records", [], raising=False)
+            if hasattr(_obj, "state"):
+                monkeypatch.setattr(_obj, "state", {}, raising=False)
 
     # 6) **用户级配置** ~/.agent_community/config.json
     #    （2026-10-04 事故：测试调 POST /api/config 直接把真实配置覆写，

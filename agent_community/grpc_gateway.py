@@ -55,6 +55,10 @@ except ImportError:
 BASE_URL = os.environ.get("AC4_BASE_URL", "http://127.0.0.1:18920").rstrip("/")
 TOKEN = os.environ.get("AC4_TOKEN", "")
 
+# V18/候选C 边缘鉴权：与 9104 **同一决策函数**（D-C5「三面鉴权一致」）。
+# ⚠️ 2026-10-06 起 `platform/__init__` 已惰性导出，导入 identity 不会拽入 FastAPI。
+from .platform import identity as _identity  # noqa: E402
+
 # 超时（秒）：与既有 `_call`/`_post` 的默认值一致；客户端设了更短 deadline 则以更短者为准
 READ_TIMEOUT = 30.0
 WRITE_TIMEOUT = 60.0
@@ -293,6 +297,34 @@ if HAS_GRPC:
                 return agent_community_pb2.ProtocolsReply(
                     payload_json=json.dumps(resp, ensure_ascii=False))
 
+        # ── 稿A C1：绑**回环**（原 `[::]` 把无鉴权面送到网络；18920 保持 0.0.0.0 不动，见 D-A2）──
+        # ── 稿A C2 / 稿B §7：9105 与 9104 **同一鉴权决策函数的两个适配**（D-C5）──
+        _HTTP_TO_GRPC = {
+            401: grpc.StatusCode.UNAUTHENTICATED,      # 与 P1 的"缺凭据"同语义
+            403: grpc.StatusCode.PERMISSION_DENIED,    # 与 P1 的"校验失败"同语义
+        }
+
+        class _EdgeAuthInterceptor(grpc.ServerInterceptor):
+            """入站 Bearer 拦截器：metadata `authorization` → `identity.check_edge_bearer`。"""
+
+            def intercept_service(self, continuation, handler_call_details):
+                # ⚠️ grpc 1.84 的服务端 `_HandlerCallDetails` 是 NamedTuple，只有
+                #    `method` / **`invocation_metadata`** —— 没有 `.metadata`
+                #    （实测 `AttributeError: '...' has no attribute 'metadata'`）。
+                md = dict(getattr(handler_call_details, "invocation_metadata", None) or ())
+                auth = md.get("authorization", "") or md.get("Authorization", "") or ""
+                bearer = auth[7:].strip() if auth.startswith("Bearer ") else ""
+                verdict = _identity.check_edge_bearer(bearer)
+                if verdict:
+                    http_code, msg = verdict
+                    code = _HTTP_TO_GRPC.get(http_code, grpc.StatusCode.UNAUTHENTICATED)
+
+                    def abort(request, context, _c=code, _m=msg):
+                        context.abort(_c, _m)
+
+                    return grpc.unary_unary_rpc_method_handler(abort)
+                return continuation(handler_call_details)
+
         def build_server(port: int = 9105):
             """构建并**启动** gRPC server（不阻塞），返回 `(server, bound_port)`。
 
@@ -300,11 +332,14 @@ if HAS_GRPC:
             而 `serve()` 内部会 `wait_for_termination()` 永久阻塞。
             `port=0` 时由系统分配空闲端口，`bound_port` 返回实际绑定值（测试用它最省心）。
             """
-            server = grpc.server(futures.ThreadPoolExecutor(max_workers=8))
+            server = grpc.server(
+                futures.ThreadPoolExecutor(max_workers=8),
+                interceptors=(_EdgeAuthInterceptor(),),
+            )
             agent_community_pb2_grpc.add_AgentCommunityServicer_to_server(
                 AgentCommunityServicer(), server
             )
-            bound = server.add_insecure_port(f"[::]:{port}")
+            bound = server.add_insecure_port(f"127.0.0.1:{port}")
             server.start()
             return server, bound
 

@@ -407,6 +407,16 @@ class ManualAIProvider(AIProvider):
             raise
         if reply is None:
             return rule_classify_result(f"request_id={rec['request_id']}")
+        # ★2026-10-12：**先认 AI 错误文本** —— provider 把失败当**文本**返回
+        #   （`[Error: HTTP 402] {...}`，切片后是合法 JSON）⇒ 不判就会把"AI 没答"
+        #   当成"AI 选了空名单"。统一判据在 `ai_provider.ai_error_text`。
+        try:
+            from .ai_provider import ai_error_text as _aet
+            _err = _aet(reply)
+        except Exception:  # noqa: BLE001 — 判据不可用时不阻断（退化为原行为）
+            _err = ""
+        if _err:
+            return rule_classify_result(f"AI 调用失败：{_err[:160]}")
         try:
             start, end = reply.find("{"), reply.rfind("}") + 1
             if start >= 0 and end > start:

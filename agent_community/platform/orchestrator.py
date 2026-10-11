@@ -506,12 +506,23 @@ class Orchestrator:
                 mode_timeout=True,
                 label=f"orchestrator.analyze task={getattr(task, 'id', '')}",
             )
+            # ★2026-10-11 实测缺陷修复：**先认 AI 错误文本**。provider 层把失败当**文本**返回
+            #   （如 `[Error: HTTP 402] {"error":{"message":"Insufficient account balance"}}`），
+            #   而这段文本**切片后是合法 JSON** ⇒ 不判就会把"AI 根本没答"当成
+            #   "AI 分析了但内容为空"，最后静默 `return None`（调用方当成"分析不可用"，
+            #   而真正的原因——余额不足——一个字都没露出来）。这里如实打日志再走原语义。
+            from .ai_provider import ai_error_text as _ai_err
+            _err = _ai_err(reply)
+            if _err:
+                print(f"[Orchestrator] 任务分析未完成：AI 调用失败并非分析结果 —— {_err[:200]}", flush=True)
+                return None
             json_start = reply.find("{")
             json_end = reply.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
                 parsed = json.loads(reply[json_start:json_end])
                 print(f"[Orchestrator] AI 分析返回: {json.dumps(parsed, ensure_ascii=False)[:2000]}", flush=True)
                 return parsed
+            print(f"[Orchestrator] 任务分析未完成：AI 回复里没有 JSON 片段（前 200 字：{str(reply)[:200]!r}）", flush=True)
         except (json.JSONDecodeError, Exception) as e:
             print(f"[Orchestrator] 任务分析失败: {e}")
 

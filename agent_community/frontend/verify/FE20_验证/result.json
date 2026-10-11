@@ -1,0 +1,48 @@
+{
+  "pass": true,
+  "fail": [],
+  "live": {
+    "stage": "一级讨论",
+    "primary": 2,
+    "actsN": 2
+  },
+  "scenes": {
+    "discuss1": {
+      "p": 2,
+      "n": 2
+    },
+    "select": {
+      "p": 4,
+      "n": 4
+    },
+    "working": {
+      "p": 3,
+      "n": 4
+    },
+    "review": {
+      "p": 3,
+      "blocked": true
+    },
+    "fallback": true
+  },
+  "viewports": {
+    "1024": true,
+    "1280": true,
+    "1920": true
+  },
+  "nonGet": [
+    "POST /api/workshop/29b43085/discuss"
+  ],
+  "errors": [],
+  "screenshots": [
+    "01_活体.png",
+    "02_discuss1.png",
+    "03_select.png",
+    "04_working.png",
+    "05_review_blocked.png",
+    "06_降级500.png",
+    "07_1024.png",
+    "07_1280.png",
+    "07_1920.png"
+  ]
+}

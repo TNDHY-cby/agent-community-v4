@@ -1,0 +1,20 @@
+{
+  "errors": [],
+  "A": {
+    "hasSelectNotice": true,
+    "hasFallbackMark": true,
+    "hasDontMisread": true,
+    "tail": "藏着一个真实需求想顺便聊？\n2. 如果是真需求——\"大厅\"指的是什么场景的入口？是平台内的首页/广场，还是某个具体产品里的落地页？\n3. 期望的\"员工\"最后交出来的是什么形态：一段方案文档、一份原型、可运行的代码，还是别的？\n\n你随便挑着答就行，不用按顺序来。\n我\n需求明确了，开始选人吧\n平台AI\n我们再核对一下细节……\n⚑ 推进提示（规则兜底 rule_fallback）：需求已明确，可以选定员工了。注意——上方 AI 回复仍可能在聊细节，推进是规则判定的，别把它的话当成「已同意」。请直接在左侧员工列表点选成员。"
+  },
+  "B": {
+    "aiMarkerNotice": true,
+    "noRuleWordInAiNotice": true,
+    "noticeCount": 2
+  },
+  "C": {
+    "hasSelect": true,
+    "hasFallback": true,
+    "hasGuide": true,
+    "tail": "user23:18:19需求明确了，开始选人吧agent23:18:19好的，细节都对齐了。system23:18:19【规则兜底判定】需求已明确，可以选定员工了——请在左侧工作间列表进入该工作间，在员工列表点选成员。"
+  }
+}

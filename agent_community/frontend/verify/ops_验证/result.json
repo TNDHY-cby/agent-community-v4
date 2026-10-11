@@ -1,0 +1,121 @@
+{
+  "steps": [
+    {
+      "name": "加载",
+      "data": {
+        "title": "外端agent生产合作社 — 运维看板",
+        "errors": [
+          "console.error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+        ]
+      }
+    },
+    {
+      "name": "detail解析自测",
+      "data": {
+        "pass": 7,
+        "fail": []
+      }
+    },
+    {
+      "name": "DOM检查",
+      "data": {
+        "healthClass": "health ok",
+        "healthText": "running v4.7.0 · Agent 6",
+        "tlCount": "2 条",
+        "tlRows": 2,
+        "hasWorkshopChip": true,
+        "hbSummary": "在线 0失联 0共 0阈值 ×2",
+        "hbEmpty": true,
+        "bannerShown": false,
+        "containsUndefined": false,
+        "containsNaN": false,
+        "rows": [
+          "1 小时前 | user | dd4b6d75 | ↗ | dropped | → | removed | 丢弃 drop | 备注：removed",
+          "1 小时前 | user | dd4b6d75 | ↗ | created | → | dropped | 丢弃 drop"
+        ],
+        "chips": [
+          "dropped",
+          "removed",
+          "created",
+          "dropped"
+        ],
+        "acts": [
+          "丢弃 drop",
+          "丢弃 drop"
+        ]
+      }
+    },
+    {
+      "name": "畸形detail降级",
+      "data": {
+        "unparsedShown": false,
+        "unparsedText": "刚刚 | __opsTest__ | deadbeef | ↗ | open | → | closed | weird | 备注：任意 备注: 含冒号",
+        "parsedFuture": "刚刚 | __opsTest__ | deadbeef | ↗ | malformed garbage line未解析",
+        "stillAlive": 4
+      }
+    },
+    {
+      "name": "点击展开/收起",
+      "data": {
+        "opened": true,
+        "closed": true
+      }
+    },
+    {
+      "name": "筛选",
+      "data": {
+        "user": {
+          "count": "2 条",
+          "url": "http://127.0.0.1:18920/ops.html"
+        },
+        "emptyResult": "🗒\n无匹配记录\n当前筛选条件下没有记录，试试清空筛选。"
+      }
+    },
+    {
+      "name": "窄窗口",
+      "data": {
+        "w1280": {
+          "docW": 1280,
+          "winW": 1280
+        },
+        "w1024": {
+          "docW": 1024,
+          "winW": 1024
+        }
+      }
+    },
+    {
+      "name": "错误分支",
+      "data": {
+        "bannerShown": true,
+        "bannerText": "⚠ 后端未启动或无法访问（网络错误：Failed to fetch）。请先启动后端： | python -m agent_community.platform.server --port 18920 | 启动后本页会每 12 秒自动重试；也可点右上角「⟳ 刷新」立即重试。",
+        "healthText": "后端未连接",
+        "tlErr": "时间线加载失败：网络错误：Failed to fetch（）",
+        "hbErr": "心跳数据加载失败 —— /api/heartbeat：网络错误：Failed to fetch ｜ /api/heartbeat/stale：网络错误：Failed to fetch"
+      }
+    },
+    {
+      "name": "恢复",
+      "data": {
+        "bannerShown": false,
+        "health": "running v4.7.0 · Agent 6"
+      }
+    }
+  ],
+  "consoleErrors": [
+    "console.error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "console.error: Failed to load resource: net::ERR_FAILED",
+    "console.error: Failed to load resource: net::ERR_FAILED",
+    "console.error: Failed to load resource: net::ERR_FAILED",
+    "console.error: Failed to load resource: net::ERR_FAILED",
+    "console.error: Failed to load resource: net::ERR_FAILED"
+  ],
+  "nonGetRequests": [],
+  "screenshots": [
+    "01_1920x1080.png",
+    "02_畸形detail降级.png",
+    "03_1280x720.png",
+    "04_1024x768.png",
+    "05_错误态.png"
+  ]
+}

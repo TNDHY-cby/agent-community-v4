@@ -1,0 +1,4367 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "外端Agent生产合作社（External Agent Community） Platform v4",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/harness/{harness_id}/mirror": {
+      "get": {
+        "summary": "Harness Mirror",
+        "description": "Harness 监控室实时窗口映射（代码级，无需截图）。\n优先 CDP DOM 提取（需要宿主浏览器/Electron 开 --remote-debugging-port），\n探测不到则退回协议级状态/消息流映射。\nV-9 安全收敛：CDP 通道默认关闭，需环境变量 AC_CDP_MIRROR_ENABLED=1 显式开启。",
+        "operationId": "harness_mirror_api_harness__harness_id__mirror_get",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Harness Id"
+            }
+          },
+          {
+            "name": "debug_port",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Debug Port"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plugins": {
+      "get": {
+        "summary": "Api Plugins List",
+        "operationId": "api_plugins_list_api_plugins_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Api Plugins Add",
+        "operationId": "api_plugins_add_api_plugins_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plugins/{name}": {
+      "delete": {
+        "summary": "Api Plugins Del",
+        "operationId": "api_plugins_del_api_plugins__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plugins/{name}/invoke": {
+      "post": {
+        "summary": "Api Plugins Invoke",
+        "operationId": "api_plugins_invoke_api_plugins__name__invoke_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai/providers": {
+      "get": {
+        "summary": "Api Ai Providers",
+        "description": "v6 新增：返回当前可用的 AI Provider 列表和状态",
+        "operationId": "api_ai_providers_api_ai_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai/models": {
+      "get": {
+        "summary": "Api Ai Models",
+        "description": "V-16 §3.1：拉远端模型清单 —— 设置页「模型」下拉的数据源。\n\n**为什么必须有它**：下拉原先只读前端硬编码 `presets`，\n接新服务（如 mimo）时必然空清单，用户没有任何可选项。\n实测 mimo 的 `GET /v1/models` 返回标准 OpenAI 格式，完全可用。\n\n设计要点：\n- **用服务端已存的解密 key** —— 前端拿到的只是 `mask_api_key` 掩码，\n  由它来发请求只会 401；这也顺带避免密钥出现在前端。\n- **归一化 base_url**（同 P0-1 修复），否则 `/v1` 重复 -> 404。\n- **失败也返回 200** + `fallback:true`：设置页的唯一目标是让用户能选到模型，\n  拉不到时回落内置清单 + 给可读原因，比抛错让下拉空着更符合用途。\n- 走 V-14 `network.egress` 闸门（出厂 ALLOW，不造成 UI 摩擦）。",
+        "operationId": "api_ai_models_api_ai_models_get",
+        "parameters": [
+          {
+            "name": "base_url",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Base Url"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/config/status": {
+      "get": {
+        "summary": "Api Config Status",
+        "description": "返回当前配置状态：是否已配置、provider 类型、模型。",
+        "operationId": "api_config_status_api_config_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/config": {
+      "get": {
+        "summary": "Api Get Config",
+        "description": "返回当前配置（API Key 脱敏）。\n\nV-16 §四：额外回传三个自检开关与最近一次自检结论，供设置页显示\n「✅ 已连通 / ⚠️ 保存了但连不上：<原因>」。结论只是**缓存里的最近一次**，\n不在这里发请求（GET 不该产生计费流量）。",
+        "operationId": "api_get_config_api_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Api Save Config",
+        "operationId": "api_save_config_api_config_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai/pending": {
+      "get": {
+        "summary": "Api Ai Pending",
+        "description": "列出待外部接管的 AI 请求（manual 模式下由平台写入 data/ai_pending/*.json）。\nV-7 安全收敛：仅返回脱敏摘要（request_id/时间/提示摘要），\n不返回 prompt/system_prompt 全文与 extra 上下文，避免列表接口泄露完整对话内容。",
+        "operationId": "api_ai_pending_api_ai_pending_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai/reply": {
+      "post": {
+        "summary": "Api Ai Reply",
+        "operationId": "api_ai_reply_api_ai_reply_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/pre-register": {
+      "post": {
+        "summary": "Harness Pre Register",
+        "operationId": "harness_pre_register_api_harness_pre_register_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/probe-register": {
+      "post": {
+        "summary": "Harness Probe Register",
+        "operationId": "harness_probe_register_api_harness_probe_register_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/register": {
+      "post": {
+        "summary": "Register Harness",
+        "operationId": "register_harness_api_harness_register_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/launch": {
+      "post": {
+        "summary": "Api Harness Launch",
+        "operationId": "api_harness_launch_api_harness_launch_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/launch-log": {
+      "get": {
+        "summary": "Api Harness Launch Log",
+        "description": "v1 新增：查看 harness 启动历史。",
+        "operationId": "api_harness_launch_log_api_harness_launch_log_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/heartbeat": {
+      "post": {
+        "summary": "Harness Heartbeat",
+        "operationId": "harness_heartbeat_api_harness_heartbeat_post",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Harness Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/activation-result": {
+      "post": {
+        "summary": "Harness Activation Result",
+        "operationId": "harness_activation_result_api_harness_activation_result_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/{harness_id}": {
+      "delete": {
+        "summary": "Unregister Harness",
+        "operationId": "unregister_harness_api_harness__harness_id__delete",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Harness Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/message": {
+      "post": {
+        "summary": "Harness Message",
+        "operationId": "harness_message_api_harness_message_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/list": {
+      "get": {
+        "summary": "List Harnesses",
+        "description": "列出所有已接入的 Harness",
+        "operationId": "list_harnesses_api_harness_list_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/pending-activations": {
+      "get": {
+        "summary": "Harness Pending Activations",
+        "description": "harness 桥轮询：领取该 harness 名下的待激活任务。",
+        "operationId": "harness_pending_activations_api_harness_pending_activations_get",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Harness Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/pending-tasks": {
+      "get": {
+        "summary": "Harness Pending Tasks",
+        "description": "harness 桥轮询：领取该 harness 名下的待执行任务。",
+        "operationId": "harness_pending_tasks_api_harness_pending_tasks_get",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Harness Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/task-result": {
+      "post": {
+        "summary": "Harness Task Result",
+        "operationId": "harness_task_result_api_harness_task_result_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/api-probe": {
+      "post": {
+        "summary": "Harness Api Probe",
+        "operationId": "harness_api_probe_api_harness_api_probe_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/api-message": {
+      "post": {
+        "summary": "Harness Api Message",
+        "operationId": "harness_api_message_api_harness_api_message_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/{harness_id}/activation_prompt": {
+      "get": {
+        "summary": "Get Harness Activation Prompt",
+        "operationId": "get_harness_activation_prompt_api_harness__harness_id__activation_prompt_get",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Harness Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Harness Activation Prompt",
+        "operationId": "update_harness_activation_prompt_api_harness__harness_id__activation_prompt_patch",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Harness Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/auto-connect": {
+      "post": {
+        "summary": "Harness Auto Connect",
+        "operationId": "harness_auto_connect_api_harness_auto_connect_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/bridge-test": {
+      "post": {
+        "summary": "Harness Bridge Test",
+        "operationId": "harness_bridge_test_api_harness_bridge_test_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/pending-bridge-tests": {
+      "get": {
+        "summary": "Harness Pending Bridge Tests",
+        "description": "harness 桥轮询：领取该 harness 名下的桥测试任务。",
+        "operationId": "harness_pending_bridge_tests_api_harness_pending_bridge_tests_get",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Harness Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/bridge-test-result": {
+      "post": {
+        "summary": "Harness Bridge Test Result",
+        "operationId": "harness_bridge_test_result_api_harness_bridge_test_result_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/bridge-templates": {
+      "get": {
+        "summary": "Harness Bridge Templates",
+        "description": "列出平台内置桥模板库（按接口类型划分），供平台 Agent / 外部选择模板。",
+        "operationId": "harness_bridge_templates_api_harness_bridge_templates_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/{harness_id}/bridge/generate": {
+      "post": {
+        "summary": "Harness Bridge Generate",
+        "operationId": "harness_bridge_generate_api_harness__harness_id__bridge_generate_post",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Harness Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/bridge-path": {
+      "post": {
+        "summary": "Harness Bridge Path",
+        "operationId": "harness_bridge_path_api_harness_bridge_path_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/{harness_id}/activate": {
+      "post": {
+        "summary": "Harness Activate Window",
+        "operationId": "harness_activate_window_api_harness__harness_id__activate_post",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Harness Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/bridge-verify": {
+      "post": {
+        "summary": "Harness Bridge Verify",
+        "operationId": "harness_bridge_verify_api_harness_bridge_verify_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/prefill": {
+      "post": {
+        "summary": "Harness Prefill",
+        "operationId": "harness_prefill_api_harness_prefill_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/peer-route": {
+      "post": {
+        "summary": "Get Peer Route",
+        "operationId": "get_peer_route_api_harness_peer_route_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/{harness_id}/capabilities": {
+      "patch": {
+        "summary": "Update Harness Capabilities",
+        "operationId": "update_harness_capabilities_api_harness__harness_id__capabilities_patch",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Harness Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/{harness_id}/experience-index": {
+      "patch": {
+        "summary": "Update Harness Experience Index",
+        "operationId": "update_harness_experience_index_api_harness__harness_id__experience_index_patch",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Harness Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/mode": {
+      "get": {
+        "summary": "Api Workshop Mode Get",
+        "operationId": "api_workshop_mode_get_api_workshop__ws_id__mode_get",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Api Workshop Mode Set",
+        "operationId": "api_workshop_mode_set_api_workshop__ws_id__mode_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/parallel_limit": {
+      "get": {
+        "summary": "Api Workshop Parallel Limit Get",
+        "operationId": "api_workshop_parallel_limit_get_api_workshop__ws_id__parallel_limit_get",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Api Workshop Parallel Limit Set",
+        "operationId": "api_workshop_parallel_limit_set_api_workshop__ws_id__parallel_limit_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop": {
+      "post": {
+        "summary": "Create Workshop",
+        "operationId": "create_workshop_api_workshop_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshops": {
+      "get": {
+        "summary": "List Workshops",
+        "description": "列出所有工作间（大厅侧边栏用）：置顶优先，组内按创建时间倒序。",
+        "operationId": "list_workshops_api_workshops_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}": {
+      "patch": {
+        "summary": "Rename Workshop",
+        "operationId": "rename_workshop_api_workshop__ws_id__patch",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Workshop",
+        "operationId": "delete_workshop_api_workshop__ws_id__delete",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Get Workshop",
+        "operationId": "get_workshop_api_workshop__ws_id__get",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          },
+          {
+            "name": "after_seq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": -1,
+              "title": "After Seq"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/pin": {
+      "post": {
+        "summary": "Pin Workshop",
+        "operationId": "pin_workshop_api_workshop__ws_id__pin_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshops/stale": {
+      "get": {
+        "summary": "List Stale Workshops",
+        "operationId": "list_stale_workshops_api_workshops_stale_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshops/recycle-stale": {
+      "post": {
+        "summary": "Recycle Stale Workshops",
+        "operationId": "recycle_stale_workshops_api_workshops_recycle_stale_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/connect-artifact": {
+      "post": {
+        "summary": "Workshop Connect Artifact",
+        "description": "V-15 步骤5：生成 L3 接入产物，落进**本工作间的工作区**。\n\n── §八 安全边界（这个端点存在的根本原因）──────────────────\n❌ caller 传 out_dir  → 调用方定路径 ≈ 任意文件写入\n                       （`/api/harness/{id}/bridge/generate` 的 V-6 护栏拦它，\n                         **原样保留、不动**）\n✅ 本端点            → 路径只由 `ws.workspace_dir` 派生（建间期平台生成的 ws_<hex8>）\n**请求体不接受任何路径字段**，只接受 `member_id` 这类逻辑 id；\n即便调用方塞了 `out_dir` / `target_dir`，也**根本没人读它**（并直接 400）。\n\n按唤醒方式派生产物（§5.3）：script / contract / prompt ——\n对 http_api 型要求\"生成脚本\"这个要求本身就是错的，故给连接契约 JSON。",
+        "operationId": "workshop_connect_artifact_api_workshop__ws_id__connect_artifact_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/decision-mode": {
+      "get": {
+        "summary": "Get Decision Mode Api",
+        "operationId": "get_decision_mode_api_api_workshop__ws_id__decision_mode_get",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Decision Mode Api",
+        "operationId": "set_decision_mode_api_api_workshop__ws_id__decision_mode_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/discuss": {
+      "post": {
+        "summary": "Workshop Discuss",
+        "operationId": "workshop_discuss_api_workshop__ws_id__discuss_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/review": {
+      "post": {
+        "summary": "Workshop Review",
+        "operationId": "workshop_review_api_workshop__ws_id__review_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/continue": {
+      "post": {
+        "summary": "Workshop Continue",
+        "operationId": "workshop_continue_api_workshop__ws_id__continue_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/complete": {
+      "post": {
+        "summary": "Workshop Complete",
+        "operationId": "workshop_complete_api_workshop__ws_id__complete_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/start": {
+      "post": {
+        "summary": "Start Workshop",
+        "operationId": "start_workshop_api_workshop__ws_id__start_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/interject": {
+      "post": {
+        "summary": "Submit Interject",
+        "operationId": "submit_interject_api_workshop__ws_id__interject_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/interjects": {
+      "get": {
+        "summary": "List Interjects",
+        "operationId": "list_interjects_api_workshop__ws_id__interjects_get",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/interject/{it_id}/break": {
+      "post": {
+        "summary": "Interject Break",
+        "operationId": "interject_break_api_workshop__ws_id__interject__it_id__break_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          },
+          {
+            "name": "it_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "It Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/interject/{it_id}/execute": {
+      "post": {
+        "summary": "Interject Execute",
+        "operationId": "interject_execute_api_workshop__ws_id__interject__it_id__execute_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          },
+          {
+            "name": "it_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "It Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/interject/{it_id}/resolve": {
+      "post": {
+        "summary": "Interject Resolve",
+        "operationId": "interject_resolve_api_workshop__ws_id__interject__it_id__resolve_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          },
+          {
+            "name": "it_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "It Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/interject/{it_id}/dismiss": {
+      "post": {
+        "summary": "Interject Dismiss",
+        "operationId": "interject_dismiss_api_workshop__ws_id__interject__it_id__dismiss_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          },
+          {
+            "name": "it_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "It Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/interject/{it_id}/status": {
+      "post": {
+        "summary": "Interject Status",
+        "operationId": "interject_status_api_workshop__ws_id__interject__it_id__status_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          },
+          {
+            "name": "it_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "It Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/sm/resume": {
+      "post": {
+        "summary": "Sm Resume",
+        "operationId": "sm_resume_api_workshop__ws_id__sm_resume_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/sm/drop": {
+      "post": {
+        "summary": "Sm Drop",
+        "operationId": "sm_drop_api_workshop__ws_id__sm_drop_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/sm/status": {
+      "get": {
+        "summary": "Sm Status",
+        "operationId": "sm_status_api_workshop__ws_id__sm_status_get",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/leader-status": {
+      "post": {
+        "summary": "Workshop Leader Status",
+        "operationId": "workshop_leader_status_api_workshop__ws_id__leader_status_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/leader/assign": {
+      "post": {
+        "summary": "Workshop Leader Assign",
+        "description": "组长向指定成员细化/调整派发指令：校验成员与 harness 绑定后，\n复用 _dispatch_to_harness 派发「组长委派细化」任务，并写入讨论区 + assignments 持久化。",
+        "operationId": "workshop_leader_assign_api_workshop__ws_id__leader_assign_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/leader/redirect": {
+      "post": {
+        "summary": "Workshop Leader Redirect",
+        "description": "组长将任务从一名成员转向另一名成员：目标成员派发承接指令，\n原成员如有 harness 则派发移交通知，讨论区记录流转，assignments 持久化。",
+        "operationId": "workshop_leader_redirect_api_workshop__ws_id__leader_redirect_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/leader/assignments": {
+      "get": {
+        "summary": "Workshop Leader Assignments",
+        "description": "查看组长派发指令/转向记录（供前端组长工作台展示）。",
+        "operationId": "workshop_leader_assignments_api_workshop__ws_id__leader_assignments_get",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/select-members": {
+      "post": {
+        "summary": "Workshop Select Members",
+        "operationId": "workshop_select_members_api_workshop__ws_id__select_members_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/members": {
+      "post": {
+        "summary": "Workshop Save Members",
+        "operationId": "workshop_save_members_api_workshop__ws_id__members_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/confirm-members": {
+      "post": {
+        "summary": "Workshop Confirm Members",
+        "operationId": "workshop_confirm_members_api_workshop__ws_id__confirm_members_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/leader-workbench": {
+      "get": {
+        "summary": "Leader Workbench",
+        "operationId": "leader_workbench_api_workshop__ws_id__leader_workbench_get",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/halt-and-reset": {
+      "post": {
+        "summary": "Workshop Halt And Reset",
+        "operationId": "workshop_halt_and_reset_api_workshop__ws_id__halt_and_reset_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/resources": {
+      "get": {
+        "summary": "List Resources",
+        "operationId": "list_resources_api_workshop__ws_id__resources_get",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add Resource",
+        "operationId": "add_resource_api_workshop__ws_id__resources_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/resources/{rid}": {
+      "delete": {
+        "summary": "Remove Resource",
+        "operationId": "remove_resource_api_workshop__ws_id__resources__rid__delete",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          },
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/tree": {
+      "get": {
+        "summary": "Get Task Tree",
+        "operationId": "get_task_tree_api_workshop__ws_id__tree_get",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/tree/node": {
+      "post": {
+        "summary": "Create Tree Node",
+        "operationId": "create_tree_node_api_workshop__ws_id__tree_node_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/tree/node/{node_id}/status": {
+      "post": {
+        "summary": "Update Tree Node Status",
+        "operationId": "update_tree_node_status_api_workshop__ws_id__tree_node__node_id__status_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          },
+          {
+            "name": "node_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Node Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workshop/{ws_id}/tree/node/{node_id}/attach": {
+      "post": {
+        "summary": "Attach Resource To Node",
+        "operationId": "attach_resource_to_node_api_workshop__ws_id__tree_node__node_id__attach_post",
+        "parameters": [
+          {
+            "name": "ws_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ws Id"
+            }
+          },
+          {
+            "name": "node_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Node Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audit": {
+      "get": {
+        "summary": "Audit Query",
+        "description": "P2-1 审计面板：查询最近操作审计事件（只读）。\n\n参数：limit（默认 100，最大 500）、event（如 harness.register / workshop.create）、\nactor（user / system / 具体 harness_id）、target（V-20 工单化审计：工单号 = ws_id，\ntask.transition 事件的 target 即工作间 id）。按时间倒序返回。\n\nlimit 声明为 str 再手工夹紧：FastAPI 的 `limit: int` 会把 `?limit=abc` 直接判成\n422，与「非法值回落默认、不抛错」的输入健壮性约定不符（沿用 4.2.2 教训）。",
+        "operationId": "audit_query_api_audit_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "100",
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "event",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Event"
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Actor"
+            }
+          },
+          {
+            "name": "target",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Target"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/protocols": {
+      "get": {
+        "summary": "List Protocols",
+        "description": "返回协议目录（单一事实源）。\n\n每项含：id / name / direction / kind / status / best_for / example / requires / endpoint\nstatus: available（可用）| partial（部分实现）| not_implemented（规划中）",
+        "operationId": "list_protocols_api_protocols_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/protocol-brief": {
+      "get": {
+        "summary": "Protocol Brief",
+        "description": "平台协作协议简报（外端 AI onboarding 用）。",
+        "operationId": "protocol_brief_api_protocol_brief_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/policy": {
+      "get": {
+        "summary": "Api Policy Describe",
+        "description": "策略现状自省：让操作者能看清「现在到底按什么规则在放行/拦截」。",
+        "operationId": "api_policy_describe_api_policy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/policy/pending": {
+      "get": {
+        "summary": "Api Policy Pending",
+        "description": "待审批列表。`?all=1` 连已处理的也返回（历史查阅）。",
+        "operationId": "api_policy_pending_api_policy_pending_get",
+        "parameters": [
+          {
+            "name": "all",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "All"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/policy/pending/{pending_id}/resolve": {
+      "post": {
+        "summary": "Api Policy Resolve",
+        "description": "人工批准/拒绝一个待办。\n\nbody: ``{\"approve\": true|false, \"note\": \"...\"}``\n\n**AI 无决定权**：带 `X-Agent-Token` 的调用方一律 403。",
+        "operationId": "api_policy_resolve_api_policy_pending__pending_id__resolve_post",
+        "parameters": [
+          {
+            "name": "pending_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pending Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/policy/reload": {
+      "post": {
+        "summary": "Api Policy Reload",
+        "description": "重读 policy.json —— 证明「改配置文件即改策略」，不必重启服务。",
+        "operationId": "api_policy_reload_api_policy_reload_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions": {
+      "get": {
+        "summary": "List Sessions",
+        "description": "列出活跃会话（排除 closed）+ 全局状态计数。\n\n对应设计稿 §12.2.1 交付物「GET /api/sessions?harness_id=&workshop_id=」。",
+        "operationId": "list_sessions_api_sessions_get",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Harness Id"
+            }
+          },
+          {
+            "name": "workshop_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Workshop Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/companies": {
+      "get": {
+        "summary": "Api Companies List",
+        "description": "列出公司登记册全部条目（含过期状态），供弹窗「已授权公司」表格渲染。",
+        "operationId": "api_companies_list_api_companies_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Api Companies Register",
+        "description": "登记合作公司（幂等：company_id 已存在时只更新名称/备注，不重签令牌）。\n\nbody: {\"company_name\": \"...\", \"company_id\": \"可选，留空自动生成\", \"note\": \"可选\"}",
+        "operationId": "api_companies_register_api_companies_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/company/token/issue": {
+      "post": {
+        "summary": "Api Company Token Issue",
+        "description": "为公司签发（或重签）公司令牌。body: {\"company_id\": \"...\", \"days\": 0|N}。\n\ndays>0：N 天后过期；days=0 或缺省：永不过期。重签会覆盖旧的 expires_at（历史 token 仍有效，\n因为 HMAC 不变；吊销唯一手段是删除登记条目）。",
+        "operationId": "api_company_token_issue_api_company_token_issue_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/company/token/revoke": {
+      "post": {
+        "summary": "Api Company Token Revoke",
+        "description": "吊销公司令牌：从登记册删除条目，边缘鉴权即刻拒绝该 company_id 的入站请求。",
+        "operationId": "api_company_token_revoke_api_company_token_revoke_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/company/token/verify": {
+      "post": {
+        "summary": "Api Company Token Verify",
+        "description": "校验令牌是否对应当前登记公司且未过期（供弹窗自检 / 交付前核对）。\n\nbody: {\"company_id\": \"...\", \"token\": \"...\"}  → {\"valid\": true|false, \"reason\": \"...\"}",
+        "operationId": "api_company_token_verify_api_company_token_verify_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agents/register": {
+      "post": {
+        "summary": "Register Agent",
+        "operationId": "register_agent_api_agents_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentCard"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agents": {
+      "get": {
+        "summary": "List Agents",
+        "operationId": "list_agents_api_agents_get",
+        "parameters": [
+          {
+            "name": "online_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Online Only"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks": {
+      "get": {
+        "summary": "List Tasks",
+        "operationId": "list_tasks_api_tasks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms": {
+      "get": {
+        "summary": "List Rooms",
+        "operationId": "list_rooms_api_rooms_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/status": {
+      "get": {
+        "summary": "Api Status",
+        "description": "服务状态检查接口 — CLI start 自检用",
+        "operationId": "api_status_api_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/bus/stats": {
+      "get": {
+        "summary": "Api Bus Stats",
+        "description": "旧前端：业务统计",
+        "operationId": "api_bus_stats_api_bus_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/session/save": {
+      "post": {
+        "summary": "Api Session Save",
+        "description": "旧前端：保存会话",
+        "operationId": "api_session_save_api_session_save_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/session/restore": {
+      "get": {
+        "summary": "Api Session Restore",
+        "description": "旧前端：恢复会话",
+        "operationId": "api_session_restore_api_session_restore_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events": {
+      "get": {
+        "summary": "Api Events",
+        "description": "旧前端：获取事件流",
+        "operationId": "api_events_api_events_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/budget/{task_id}": {
+      "get": {
+        "summary": "Api Budget",
+        "description": "旧前端：任务预算查询",
+        "operationId": "api_budget_api_budget__task_id__get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/{task_id}/start": {
+      "post": {
+        "summary": "Task Start",
+        "description": "启动任务 — v4：AI 分析拆解 → 创建讨论室 → 拓扑执行 + 审查",
+        "operationId": "task_start_api_task__task_id__start_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/chat": {
+      "post": {
+        "summary": "Api Assistant Chat",
+        "description": "平台助手持续会话：用户在 register 页直聊窗口与平台 Agent 对话。\nbody: {\"message\": \"...\"}\n维护 assistant_history 全局上下文（含 system 注入的 harness 接入通知），\n复用 ReActLoop + ToolRegistry，工具集含通用文件/网页工具及\nlist_harness / launch_harness / bridge_test 三个 Harness 运维工具。\n返回 {\"reply\": \"...\", \"steps\": [...]}。",
+        "operationId": "api_assistant_chat_api_assistant_chat_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/history": {
+      "get": {
+        "summary": "Api Assistant History",
+        "description": "返回平台助手持续会话历史（含系统注入的 harness 接入通知）。",
+        "operationId": "api_assistant_history_api_assistant_history_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wakeup/trigger": {
+      "post": {
+        "summary": "Api Wakeup Trigger",
+        "description": "手动触发唤醒：向指定任务的所有 Harness 发送唤醒消息",
+        "operationId": "api_wakeup_trigger_api_wakeup_trigger_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wakeup/mutual": {
+      "post": {
+        "summary": "Api Wakeup Mutual",
+        "description": "互助唤醒：一个 Harness 内的 AI 请求唤醒其他 Harness\n请求格式：\n{\n    \"from_harness_id\": \"cursor-001\",\n    \"target_harness_ids\": [\"示例harness-a\", \"示例harness-b\"],\n    \"task_title\": \"需要帮忙分析这个函数\",\n    \"task_description\": \"详细的上下文描述...\",\n    \"reason\": \"需要视觉能力来理解截图\"\n}",
+        "operationId": "api_wakeup_mutual_api_wakeup_mutual_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wakeup/status": {
+      "get": {
+        "summary": "Api Wakeup Status",
+        "description": "查看唤醒 Agent 和所有 Harness 的唤醒配置",
+        "operationId": "api_wakeup_status_api_wakeup_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wakeup/response": {
+      "post": {
+        "summary": "Api Wakeup Response",
+        "description": "v5 新增：供外部 Harness 喊人专员回调举手判断结果。\n请求体：\n{\n    \"harness_id\": \"xxx\",\n    \"harness_name\": \"xxx\",\n    \"task_id\": \"xxx\",\n    \"hand_raised\": true/false,\n    \"capability_claim\": \"能贡献的能力和角色（100字以内）\",\n    \"model_used\": \"使用的 AI 模型名称\"\n}",
+        "operationId": "api_wakeup_response_api_wakeup_response_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/command": {
+      "post": {
+        "summary": "Api Command",
+        "operationId": "api_command_api_command_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/room/{room_id}": {
+      "get": {
+        "summary": "Get Room",
+        "operationId": "get_room_api_room__room_id__get",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/room/by-task/{task_id}": {
+      "get": {
+        "summary": "Get Room By Task",
+        "operationId": "get_room_by_task_api_room_by_task__task_id__get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/room/{room_id}/message": {
+      "post": {
+        "summary": "Room Message",
+        "description": "Agent 或用户向讨论室发送消息",
+        "operationId": "room_message_api_room__room_id__message_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/room/{room_id}/proposal": {
+      "post": {
+        "summary": "Submit Proposal",
+        "description": "提交分工提案",
+        "operationId": "submit_proposal_api_room__room_id__proposal_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/room/{room_id}/proposal/prefill": {
+      "post": {
+        "summary": "Prefill Proposal",
+        "description": "AI 根据讨论内容预填提案字段。",
+        "operationId": "prefill_proposal_api_room__room_id__proposal_prefill_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/room/{room_id}/vote": {
+      "post": {
+        "summary": "Cast Vote",
+        "description": "Agent 投票",
+        "operationId": "cast_vote_api_room__room_id__vote_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/room/{room_id}/consensus": {
+      "post": {
+        "summary": "Force Consensus",
+        "description": "手动触发共识（用户或管理员操作）",
+        "operationId": "force_consensus_api_room__room_id__consensus_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/room/{room_id}/proposal/{proposal_id}/edit": {
+      "post": {
+        "summary": "Edit Proposal",
+        "description": "编辑提案（仅用户提交的）",
+        "operationId": "edit_proposal_api_room__room_id__proposal__proposal_id__edit_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Proposal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/room/{room_id}/proposal/{proposal_id}/withdraw": {
+      "post": {
+        "summary": "Withdraw Proposal",
+        "description": "撤回提案（仅用户提交的）",
+        "operationId": "withdraw_proposal_api_room__room_id__proposal__proposal_id__withdraw_post",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Proposal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/{task_id}": {
+      "get": {
+        "summary": "Get Task",
+        "operationId": "get_task_api_task__task_id__get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/tree": {
+      "get": {
+        "summary": "List Tasks Tree",
+        "description": "全局任务树：按 parent_id 组装嵌套结构（根任务在前，含 children 子任务）。",
+        "operationId": "list_tasks_tree_api_tasks_tree_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/{task_id}/tree": {
+      "get": {
+        "summary": "Get Task Subtree",
+        "description": "以某任务为根的子树导航：返回该任务及其全部后代（children 嵌套）。",
+        "operationId": "get_task_subtree_api_task__task_id__tree_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/{task_id}/parent": {
+      "post": {
+        "summary": "Set Task Parent",
+        "description": "设置任务父节点，构建任务树。\n\nbody: {parent_id}\n- parent_id: 父任务 id（可选；空或省略则把任务设为根任务）\n- 校验：父任务必须存在；禁止挂到自身或自身子孙之下（防环）",
+        "operationId": "set_task_parent_api_task__task_id__parent_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/{task_id}/discuss": {
+      "post": {
+        "summary": "Api Task Discuss",
+        "description": "旧前端：进入讨论室 / 发送讨论消息",
+        "operationId": "api_task_discuss_api_task__task_id__discuss_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/bridge/pending": {
+      "get": {
+        "summary": "Api Bridge Pending",
+        "description": "旧前端：待处理的桥接请求",
+        "operationId": "api_bridge_pending_api_bridge_pending_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/bridge/{bridge_id}/response": {
+      "post": {
+        "summary": "Api Bridge Response",
+        "description": "旧前端：响应桥接请求",
+        "operationId": "api_bridge_response_api_bridge__bridge_id__response_post",
+        "parameters": [
+          {
+            "name": "bridge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bridge Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/bridge/{bridge_id}/cancel": {
+      "post": {
+        "summary": "Api Bridge Cancel",
+        "description": "旧前端：取消桥接请求",
+        "operationId": "api_bridge_cancel_api_bridge__bridge_id__cancel_post",
+        "parameters": [
+          {
+            "name": "bridge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bridge Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/stale": {
+      "get": {
+        "summary": "List Stale Tasks",
+        "description": "列出所有卡死任务（供前端/批量回收使用）。返回 stale 列表，含判定原因。",
+        "operationId": "list_stale_tasks_api_tasks_stale_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/task/{task_id}/recover": {
+      "post": {
+        "summary": "Recover Task",
+        "description": "回收卡死任务（单任务）。\n\nbody: {action: \"resume\" | \"archive\"}（可选，默认 archive）\n- archive：置为 archived 终态（写入 completed_at），任务归档不再参与活跃统计；\n- resume ：重置为可继续状态——有存活讨论室则回 in_discussion，否则回 broadcasting\n           （可重新广播/继续推进）。\n- 非卡死/终态任务返回 409，不破坏既有数据。",
+        "operationId": "recover_task_api_task__task_id__recover_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/recover-stale": {
+      "post": {
+        "summary": "Recover Stale Tasks",
+        "description": "批量回收全部卡死任务。\n\nbody: {task_ids?: [...], action?: \"resume\"|\"archive\"}（可选，默认回收全部卡死任务并归档）\n- 不传 task_ids：对 GET /api/tasks/stale 判定的全部卡死任务执行回收；\n- 传入 task_ids：仅对指定 id 中确实卡死的任务执行回收（非卡死/终态计入 skipped）。\n返回 {recycled: [...], skipped: [...]}。",
+        "operationId": "recover_stale_tasks_api_tasks_recover_stale_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/heartbeat": {
+      "get": {
+        "summary": "Api Heartbeat Status",
+        "description": "查看全部 Agent 心跳登记：在线 / 失联概览。",
+        "operationId": "api_heartbeat_status_api_heartbeat_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Api Heartbeat",
+        "description": "Agent 周期心跳上报。\n\nbody: {agent_id?, harness_id, harness_name?, status?: \"alive\"|\"idle\"|\"busy\", interval?: 秒, note?}\n- harness 必须已注册（仿 /api/wakeup/response 归属校验），未注册拒绝 403；\n- 未传 agent_id 时用 harness_id 兜底；\n- 纯内存登记，不落盘、不阻塞主流程（落盘交给 save_state 既有链路）。",
+        "operationId": "api_heartbeat_api_heartbeat_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/heartbeat/stale": {
+      "get": {
+        "summary": "Api Heartbeat Stale",
+        "description": "失联（超时未上报）Agent 列表。孤儿任务回收复用 V-18 端点。",
+        "operationId": "api_heartbeat_stale_api_heartbeat_stale_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentCard": {
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "title": "Agent Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": "1.0"
+          },
+          "lifecycle_mode": {
+            "$ref": "#/components/schemas/LifecycleMode",
+            "default": "stateless"
+          },
+          "endpoints": {
+            "items": {
+              "$ref": "#/components/schemas/AgentEndpoint"
+            },
+            "type": "array",
+            "title": "Endpoints"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "software": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Software"
+          },
+          "max_delegations": {
+            "type": "integer",
+            "title": "Max Delegations",
+            "default": 3
+          },
+          "registered_at": {
+            "type": "string",
+            "title": "Registered At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_id",
+          "name",
+          "endpoints"
+        ],
+        "title": "AgentCard"
+      },
+      "AgentEndpoint": {
+        "properties": {
+          "transport": {
+            "$ref": "#/components/schemas/TransportType"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "priority": {
+            "type": "integer",
+            "title": "Priority",
+            "default": 0
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transport",
+          "url"
+        ],
+        "title": "AgentEndpoint"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LifecycleMode": {
+        "type": "string",
+        "enum": [
+          "stateless",
+          "stateful"
+        ],
+        "title": "LifecycleMode",
+        "description": "Agent 生命周期模式（v4 MVP 新增）"
+      },
+      "TransportType": {
+        "type": "string",
+        "enum": [
+          "ws",
+          "http",
+          "sse",
+          "pipe",
+          "grpc",
+          "mcp",
+          "a2a"
+        ],
+        "title": "TransportType"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

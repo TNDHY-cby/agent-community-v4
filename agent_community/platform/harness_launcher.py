@@ -29,8 +29,8 @@ from typing import Optional
 
 from .protocol import HarnessInfo, HarnessStatus
 
-# 启动历史记录文件（与 server.py 的 DATA_DIR 对齐）
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+# 启动历史记录文件（与 server.py 的 DATA_DIR 对齐；同样支持 AC_DATA_DIR 隔离）
+DATA_DIR = Path(os.environ.get("AC_DATA_DIR") or (Path(__file__).resolve().parents[1] / "data"))
 LAUNCH_LOG = DATA_DIR / "harness_launch_log.json"
 
 # 已拉起的进程句柄（防止被 GC 回收导致进程被杀）

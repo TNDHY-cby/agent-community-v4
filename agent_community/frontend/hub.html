@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#121316">
+<title>流程说明</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="hub.css">
+</head>
+<body>
+<a class="skip-link" href="#stageMain">跳到主内容</a>
+<div class="app">
+
+  <!-- ===== topbar ===== -->
+  <header class="topbar">
+    <div class="logo"><span class="logo-mark">▣</span> 流程说明<span class="sub">· 全流程 · 只讲不做</span><span class="tag-proto">说明书 · 含示意</span></div>
+    <div class="position">从启动到交付的全流程 · 步骤 0→10 · 操作去正主页面</div>
+    <div class="spacer"></div>
+    <nav class="live-links">
+      <a href="http://127.0.0.1:18920/" target="_blank" rel="noopener">◈ 实时大厅</a>
+      <a href="http://127.0.0.1:18920/workshop.html" target="_blank" rel="noopener">💬 工作间</a>
+      <a href="http://127.0.0.1:18920/ops.html" target="_blank" rel="noopener">📡 看板</a>
+      <a href="http://127.0.0.1:18920/handover.html" target="_blank" rel="noopener">🧾 回执</a>
+      <a href="http://127.0.0.1:18920/booths.html" target="_blank" rel="noopener">🏗 隔间</a>
+    </nav>
+  </header>
+
+
+  <div class="scope-banner" role="note">◈ 本页是<b>流程说明</b>（全流程，<b>只讲不做</b>）：每步做什么、谁做、去哪个页面；<b>操作一律去正主页面</b>（接入页 / 工作间 / 大厅 / 看板）。</div>
+  <div class="layout">
+
+    <!-- ===== 左：流程轨道 ===== -->
+    <aside class="rail">
+      <div class="rail-head">流程说明 <span class="rail-sub">PROCESS 0 → 10</span></div>
+      <ol id="railList" class="rail-list"></ol>
+    </aside>
+
+    <!-- ===== 右：主舞台 ===== -->
+    <main class="stage" id="stageMain" tabindex="-1">
+      <div class="stage-head">
+        <div class="stage-no" id="stageNo">00</div>
+        <div>
+          <h1 id="stageTitle">—</h1>
+          <p id="stageUser" class="stage-user">—</p>
+        </div>
+        <div class="stage-api" id="stageApi">—</div>
+      </div>
+
+      <section id="stageBody" class="stage-body"><!-- JS 渲染 --></section>
+
+      <footer class="stage-foot">
+        <span>本页是<b>流程说明</b>：只讲不做；接入去接入页，讨论/工作/通道去工作间。</span>
+        <span class="demo-note">依据 V30 流程说明书内容基准 · RUNBOOK · 更新 2026-10-10</span>
+      </footer>
+    </main>
+  </div>
+</div>
+
+<!-- 模板：成员卡三问（JS 克隆用） -->
+<template id="tpl-member">
+  <article class="mcard">
+    <header class="mcard-top">
+      <span class="m-role"></span>
+      <span class="m-name"></span>
+      <span class="m-state"></span>
+    </header>
+    <div class="m-q">
+      <div class="q-label">Q1 它该干什么？</div>
+      <div class="q-answer"><span class="m-assign"></span><button class="mini copy" type="button">复制路径</button></div>
+      <div class="q-sub m-session"></div>
+    </div>
+    <div class="m-q">
+      <div class="q-label">Q2 这一步能不能自动？</div>
+      <div class="q-answer"><span class="m-auto"></span><span class="m-fg"></span></div>
+      <div class="q-sub m-hint"></div>
+    </div>
+    <div class="m-q">
+      <div class="q-label">Q3 做到哪了？</div>
+      <div class="q-answer"><span class="m-progress"></span><span class="m-verified"></span></div>
+      <div class="q-sub m-reason"></div>
+    </div>
+  </article>
+</template>
+
+<script src="hub.js"></script>
+</body>
+</html>

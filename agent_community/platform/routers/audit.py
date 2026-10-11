@@ -1,6 +1,6 @@
 """platform/routers/audit：P2-1 轻量操作审计查询（V-10 自 retired 副本回收）。
 
-只读端点：`GET /api/audit?limit=&event=&actor=`
+只读端点：`GET /api/audit?limit=&event=&actor=&target=`
 数据源：`platform/audit.py` 的 `audit_log` 单例（纯内存 ring buffer + 惰性落盘 data/audit.json）。
 
 拆包原则与其它 router 一致：APIRouter 由 server.py include_router 挂载；
@@ -17,11 +17,15 @@ from ..audit import audit_log as _audit_log  # noqa: E402  (router 之后导入�
 
 
 @router.get("/api/audit")
-async def audit_query(limit: str = "100", event: str = "", actor: str = ""):
+async def audit_query(limit: str = "100", event: str = "", actor: str = "", target: str = ""):
     """P2-1 审计面板：查询最近操作审计事件（只读）。
 
     参数：limit（默认 100，最大 500）、event（如 harness.register / workshop.create）、
-    actor（user / system / 具体 harness_id）。按时间倒序返回。
+    actor（user / system / 具体 harness_id）、target（V-20 工单化审计：工单号 = ws_id，
+    task.transition 事件的 target 即工作间 id）。按时间倒序返回。
+
+    返回：`{"events": [...], "total": N}`。`total` 为**过滤后、limit 截断前**的命中总数
+    （V-20.1 新增，供前端判断是否被截断）。
 
     limit 声明为 str 再手工夹紧：FastAPI 的 `limit: int` 会把 `?limit=abc` 直接判成
     422，与「非法值回落默认、不抛错」的输入健壮性约定不符（沿用 4.2.2 教训）。
@@ -30,4 +34,9 @@ async def audit_query(limit: str = "100", event: str = "", actor: str = ""):
         _lim = max(1, min(500, int(limit)))
     except (TypeError, ValueError):
         _lim = 100
-    return {"events": _audit_log.query(limit=_lim, event=event or None, actor=actor or None)}
+    # V-20.1（FE-01 接口变更申请 #2）：顶层增 `total` = **limit 截断前**的命中总数，
+    # 让前端能区分「只有这么多」与「被 limit 截断」。纯新增字段，向后兼容。
+    _events, _total = _audit_log.query_page(
+        limit=_lim, event=event or None, actor=actor or None, target=target or None
+    )
+    return {"events": _events, "total": _total}

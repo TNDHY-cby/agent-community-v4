@@ -43,6 +43,16 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+# ── 输出编码自保（2026-10-11 实测缺陷修复）──────────────────────────────
+# 同 filepoll_harness_bridge.py：本脚本也打印 ✓ / ✗，在中文 Windows（GBK 码页）上
+# 会抛 `UnicodeEncodeError: 'gbk' codec can't encode`，**把桥进程弄死**。
+# ⇒ 脚本自己把 stdout/stderr 改成 UTF-8 + errors="replace"，不要求用户记环境变量。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:  # noqa: BLE001 — 老解释器没有 reconfigure：退回原样，不因此崩
+    pass
+
 
 # ── HTTP 工具 ──────────────────────────────────────────────────
 

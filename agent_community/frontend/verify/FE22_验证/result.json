@@ -1,0 +1,19 @@
+{
+  "pass": true,
+  "fail": [],
+  "catalogCards": 4,
+  "specHead": "文件夹邮箱 file_poll\n你填：\n· 邮箱目录\n你的 agent 会监视的那个文件夹（平台把任务写成文件放这里）；留空则平台按你的隔间自动建一个\n<本机路径>\n· 叫醒命令（可选，但**不填就不会被叫醒**）\n收到任务后要执行的命令；你的 agent 若「盯着文件夹自己就会动」可以留空，否则**必须填**，不然桥只落盘、不去叫它\npython <本机路径>\n平台自动填：HARNESS_ID、PLATFORM_URL\n怎么自证：往「邮箱目录」里丢一个空文件，看你的 agent 有没有反应（有反应=这一型可行）\n常见坑：TRIGGER_CMD 留空",
+  "wakeColumn": true,
+  "selfCheckBack": true,
+  "nonGet": [
+    "POST /api/harness/harness-fe22-probe/wake",
+    "POST /api/workshop/123678e9/member/m0/self-check"
+  ],
+  "errors": [],
+  "screenshots": [
+    "01_选型与你填.png",
+    "02_wake写入.png",
+    "03_清单wake列.png",
+    "04_自检回跳.png"
+  ]
+}

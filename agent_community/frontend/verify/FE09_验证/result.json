@@ -1,0 +1,63 @@
+{
+  "errors": [],
+  "nonGet": [
+    "POST /api/workshop/0bf55075/discuss",
+    "POST /api/workshop/0bf55075/recover-scan",
+    "POST /api/workshop/0bf55075/member/m0/recover"
+  ],
+  "idleCard": {
+    "shown": true,
+    "summary": "无需抢救（1 名成员当前没有在进行的工作，空闲属正常）",
+    "cardCls": "of-card v-idle",
+    "verdictLabel": "当前无进行中的工作",
+    "why": "当前没有在进行的工作（空闲是正常态）",
+    "hasRescueBtn": false,
+    "contains_掉线_inCard": false,
+    "hasRedHard": false,
+    "hasUndefined": false,
+    "hasNaN": false
+  },
+  "scan": {
+    "shown": true,
+    "text": "本轮无需动作；另有 1 名成员当前没有在进行的工作，未打扰 | 空闲未打扰（idle_skipped）：m0",
+    "panelTxt": "🛡 掉线抢救\n无需抢救（1 名成员当前没有在进行的工作，空闲属正常）\n🔄 全间抢救扫描\n⟳ 刷新\n本轮无需动作；另有 1 名成员当前没有在进行的工作，未打扰\n空闲未打扰（idle_skipped）：m0\n码农\nharness-fe09-fake\n当前无进行中的工作\npending\n当前没有在进行的工作（空闲是正常态）",
+    "banned": false
+  },
+  "rescue": {
+    "found": true,
+    "cls": "of-card v-rescue esc",
+    "vLabel": "⚠ 需要抢救",
+    "escalated": true,
+    "hardTag": "联系不上（硬信号）",
+    "softInDetails": true,
+    "attempts": true,
+    "cooldown": true,
+    "hasBtn": true
+  },
+  "rec": {
+    "badge": "本轮动作：retry",
+    "cls": "sf-res show"
+  },
+  "soft": {
+    "hasHardTag": false,
+    "contains_联系不上": false,
+    "softDetails": true
+  },
+  "errCase": {
+    "err": "加载失败：工作间不存在"
+  },
+  "v": {
+    "v1600": {
+      "vw": 1600,
+      "overflow": false
+    },
+    "v1280": {
+      "vw": 1280,
+      "overflow": false
+    },
+    "v1024": {
+      "vw": 1024,
+      "overflow": false
+    }
+  }
+}

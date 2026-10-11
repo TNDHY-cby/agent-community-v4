@@ -11,6 +11,7 @@
 
 
 <title>外端agent生产合作社 — 工作间</title>
+<link rel="icon" href="data:,">
 
 
 <style>
@@ -113,6 +114,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 
 .sidebar-back:hover{background:#c25f3f;transform:translateY(-1px);box-shadow:0 5px 16px rgba(217,119,87,.45)}
+.hub-pill{position:fixed;top:12px;right:12px;z-index:86;display:flex;align-items:center;gap:5px;padding:9px 16px;font-size:12.5px;font-weight:800;color:var(--ink);text-decoration:none;background:var(--bg3);border:1.5px solid rgba(217,119,87,.55);border-radius:10px;transition:background-color .15s,border-color .15s}
+.hub-pill:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-strong)}
 
 
 .col-head,.col-header{padding:12px 18px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:8px;white-space:nowrap}
@@ -227,6 +230,17 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 
 .disc-zone{border:1px solid var(--rule);border-radius:14px;padding:16px 18px;margin-bottom:14px;background:var(--bg2);box-shadow:var(--sh-1)}
+/* ★2026-10-11（V40 P1）：**还没走到的阶段区先不显示**（走到再出现；已走过的保持可见）。
+   见 setPhase()：一级讨论时不该把二级/三级讨论的空面板和按钮摊在用户眼前。 */
+/* ★2026-10-11 二次修正（老板看到"三级讨论区没了"之后）：
+   我第一版是 `display:none` **把还没走到的阶段区藏起来** —— 老板的反应说明这么做是错的：
+   藏掉之后**看不到整条流程**，只会觉得"怎么少了一块"，与"一眼就会"正相反。
+   ⇒ 改为**保留、但变灰 + 标明"到哪一步自动可用"**：工序全在眼前，一眼能分辨
+     "现在能按 / 还没轮到"。同时**禁用它里面的控件**，避免用户按了没反应（那正是
+     老板原话「有一些按不了，我不知道怎么按」）。 */
+.stage-locked{opacity:.45;filter:grayscale(.45)}
+.stage-locked .side-head h2::after{content:"（到这一步自动可用）";font-size:10px;color:var(--muted);font-weight:400;margin-left:6px}
+.stage-locked button,.stage-locked textarea,.stage-locked input{pointer-events:none}
 
 
 .disc-zone.active{border-color:var(--accent);box-shadow:var(--sh-1),0 0 0 1px var(--accent-soft)}
@@ -408,6 +422,21 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 
 .dd-opt.muted{color:var(--dim)}
+/* FE-23 职业候选（role-catalog 一处真相）+ 孤儿提示 */
+.dd-group{font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--dim);padding:6px 12px 1px;background:var(--bg3)}
+.dd-custom{padding:6px 8px;border-bottom:1px solid var(--rule)}
+.dd-custom input{width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--rule);border-radius:6px;color:var(--ink);font-size:12px;padding:5px 7px;font-family:inherit}
+.dd-custom input:focus{outline:none;border-color:var(--accent)}
+.dd-note{font-size:10.5px;color:var(--muted);line-height:1.5;padding:6px 10px;border-top:1px dashed var(--rule);white-space:normal}
+.role-hint{font-size:10.5px;color:var(--muted);line-height:1.55;padding:0 10px 6px}
+.role-hint b{color:var(--accent)}
+.orphan-strip{margin:8px 8px 0;padding:9px 11px;border:1px solid rgba(208,116,104,.5);background:var(--red-soft);border-radius:10px;font-size:12px;line-height:1.65;color:#eab0a8}
+.orphan-strip b{font-size:12.5px}
+.orphan-strip .os-row{margin-top:5px;border-top:1px dashed rgba(208,116,104,.35);padding-top:5px;word-break:break-word}
+.orphan-strip .os-advice{color:var(--yellow);font-size:11px;margin-top:2px}
+.sf-orphan{margin:6px 0 2px;padding:7px 9px;border:1px solid rgba(208,116,104,.5);background:var(--red-soft);border-radius:8px;font-size:11.5px;line-height:1.6;color:#eab0a8;word-break:break-word}
+.sf-orphan .so-t{font-weight:800;color:var(--red)}
+.sf-orphan .so-a{color:var(--yellow);margin-top:3px}
 
 
 /* agent list */
@@ -488,6 +517,22 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 @keyframes spin{to{transform:rotate(360deg)}}
 
 
+/* ===== FE-20 本阶段该按的（stageBar）===== */
+.stage-bar{margin:8px;padding:9px 11px;border:1px solid var(--accent);border-radius:10px;background:linear-gradient(180deg,rgba(217,119,87,.10),rgba(217,119,87,.03))}
+.sb-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:7px}
+.sb-top b{font-size:13px;color:var(--ink)}
+.sb-idx{font-size:10.5px;color:var(--muted);font-family:var(--font-mono)}
+.sb-blocked{font-size:12px;line-height:1.65;color:#eab0a8;background:var(--red-soft);border:1px solid rgba(208,116,104,.45);border-radius:8px;padding:7px 9px;margin-bottom:7px;word-break:break-word}
+.sb-acts{display:flex;flex-direction:column;gap:6px}
+.sb-act{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;background:var(--bg3);border:1px solid var(--rule);border-radius:8px;padding:7px 9px;cursor:pointer;color:var(--ink);font-family:inherit;transition:all .15s}
+.sb-act:hover{border-color:var(--accent);background:var(--accent-soft)}
+.sb-act b{font-size:12.5px}
+.sb-act span{font-size:10.5px;color:var(--muted);line-height:1.5}
+.sb-act.ghost b{color:var(--muted)}
+.sb-more{margin-top:7px}
+.sb-more summary{font-size:11px;color:var(--muted);cursor:pointer;user-select:none;padding:3px 0}
+.sb-more[open] summary{margin-bottom:6px}
+.sb-note{font-size:11px;line-height:1.6;color:var(--yellow);background:var(--yellow-soft);border:1px solid rgba(217,171,83,.4);border-radius:8px;padding:6px 9px;margin-top:7px;word-break:break-word}
 @media(max-width:1100px){.col-left{width:200px}.col-right{width:264px}}
 
 
@@ -755,6 +800,106 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .wsv-mon-mini-body .mini-lamp i{width:8px;height:8px;border-radius:50%}
 .wsv-mon-mini-body .mini-hint{font-size:9.5px;color:#57606a;letter-spacing:.05em}
 .wsv-mon-mini-body:hover .mini-hint{color:#3fb950}
+/* FE-07 下一步指引条 */
+.nextstep{display:flex;align-items:center;gap:10px;margin:8px 14px 0;padding:9px 14px;background:var(--bg3);border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:10px;flex-wrap:wrap}
+.nextstep .ns-label{font-size:10.5px;font-weight:900;letter-spacing:.08em;color:var(--accent);flex:none}
+.nextstep .ns-text{font-size:12.5px;color:var(--ink);line-height:1.6;flex:1;min-width:180px}
+.nextstep .ns-actions{display:flex;gap:7px;flex-wrap:wrap;flex:none}
+.nextstep .ns-btn{font-size:11.5px;font-weight:800;padding:5px 12px;border:1px solid var(--rule-strong,var(--bg5));border-radius:8px;background:var(--bg4);color:var(--ink);cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
+.nextstep .ns-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+/* FE-08 会话流程面板（准则⑤：verified=false 绝不显示完成/成功） */
+.sf-summary{font-size:10.5px;font-weight:800;border-radius:999px;padding:2px 9px;margin-left:auto}
+.sf-summary.ok{background:var(--green-soft);color:var(--green)}
+.sf-summary.warn{background:var(--yellow-soft);color:var(--yellow)}
+.sf-card{background:var(--bg3);border:1px solid var(--rule);border-radius:10px;padding:10px 11px;margin-bottom:9px}
+.sf-head{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:6px}
+.sf-role{font-size:10.5px;font-weight:800;border-radius:6px;padding:2px 8px;background:var(--blue-soft);color:var(--blue);border:1px solid rgba(123,163,201,.35)}
+.sf-name{font-size:12.5px;font-weight:800}
+.sf-es{font-size:10px;font-weight:800;border-radius:5px;padding:1px 7px;background:var(--bg4);color:var(--muted);margin-left:auto;cursor:help}
+.sf-line{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-family:var(--font-mono);font-size:11px;color:#d8d2c6;margin-bottom:6px;word-break:break-all}
+.sf-copy{font-size:10px;border:1px solid var(--rule);background:var(--bg2);color:var(--muted);border-radius:5px;padding:1px 6px;cursor:pointer;font-family:inherit;flex:none}
+.sf-copy:hover{border-color:var(--accent);color:var(--accent)}
+.sf-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.sf-chip{font-size:10px;font-weight:800;border-radius:6px;padding:2px 7px}
+.sf-chip.auto{background:var(--cyan-soft);color:var(--cyan);border:1px solid rgba(100,181,180,.35)}
+.sf-chip.manual{background:var(--yellow-soft);color:var(--yellow);border:1px solid rgba(217,171,83,.35)}
+.sf-chip.fg{background:var(--red-soft);color:var(--red);border:1px solid rgba(208,116,104,.35)}
+.sf-meta{font-size:10.5px;color:var(--dim);margin-bottom:7px;line-height:1.6}
+.sf-acts{display:flex;gap:7px;flex-wrap:wrap}
+.sf-acts .btn{font-size:11.5px;padding:5px 11px}
+.sf-res{display:none;margin-top:8px;padding:9px 10px;border-radius:9px;border:1px solid var(--rule);background:var(--bg2)}
+.sf-res.show{display:block}
+.sf-res.ok{border-color:rgba(134,179,148,.5);background:linear-gradient(90deg,var(--green-soft),var(--bg2) 40%)}
+.sf-res.pending{border-color:rgba(217,171,83,.5);background:linear-gradient(90deg,var(--yellow-soft),var(--bg2) 40%)}
+.sf-res.fail{border-color:rgba(208,116,104,.55);background:var(--red-soft)}
+.sf-badge{font-size:11.5px;font-weight:900;margin-bottom:6px}
+.sf-res.ok .sf-badge{color:var(--green)}
+.sf-res.pending .sf-badge{color:var(--yellow)}
+.sf-res.fail .sf-badge{color:#eab0a8}
+.sf-steps{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.sf-step{font-size:10px;font-weight:800;border-radius:6px;padding:2px 7px;border:1px solid var(--rule);background:var(--bg4);color:var(--muted)}
+.sf-step.ok{background:var(--green-soft);color:var(--green);border-color:rgba(134,179,148,.4)}
+.sf-step.no{background:var(--yellow-soft);color:var(--yellow);border-color:rgba(217,171,83,.4)}
+.sf-manual{margin:0 0 6px 18px;font-size:11.5px;line-height:1.7;color:var(--muted)}
+.sf-manual li{margin-bottom:3px}
+.sf-note{font-size:11px;color:var(--dim);line-height:1.6;margin-bottom:6px}
+.sf-text{max-height:130px;overflow:auto;font-family:var(--font-mono);font-size:11px;background:#0c0c0b;border:1px solid var(--rule);border-radius:7px;padding:8px 10px;color:#d8d2c6;white-space:pre-wrap;word-break:break-word;margin-top:6px}
+.sf-path{font-family:var(--font-mono);font-size:10.5px;color:var(--dim);word-break:break-all;margin-top:4px}
+.sf-err{font-size:11.5px;color:#eab0a8;margin-top:6px;line-height:1.6}
+.sf-empty{font-size:12px;color:var(--dim);text-align:center;padding:12px 6px}
+/* FE-09 掉线抢救面板（verdict 三态；idle=中性不打扰；联系不上只认硬信号） */
+.sf-res.neutral{border-color:var(--rule)}
+.sf-res.neutral .sf-badge{color:var(--muted)}
+.sf-badge.act{color:var(--blue)}
+.of-summary{font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 9px;margin-left:8px;background:var(--bg4);color:var(--muted);max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help}
+.of-bar{display:flex;gap:7px;padding:6px 8px 4px}
+.of-bar .btn{font-size:11px;padding:3px 9px}
+.of-card{background:var(--bg3);border:1px solid var(--rule);border-radius:10px;padding:10px 11px;margin-bottom:9px}
+.of-card.v-idle{border-left:3px solid var(--bg5)}
+.of-card.v-healthy{border-left:3px solid var(--green)}
+.of-card.v-rescue{border-left:3px solid var(--yellow);background:linear-gradient(90deg,var(--yellow-soft),var(--bg3) 45%)}
+.of-card.esc{border-left-color:var(--red)}
+.of-head{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.of-v{font-size:10.5px;font-weight:800;border-radius:6px;padding:2px 8px}
+.of-v.idle{background:var(--bg4);color:var(--muted);border:1px solid var(--rule)}
+.of-v.healthy{background:var(--green-soft);color:var(--green);border:1px solid rgba(134,179,148,.4)}
+.of-v.rescue{background:var(--yellow);color:#241b07}
+.of-v.esc{background:var(--red);color:#fff;margin-left:auto}
+.of-hard{font-size:10.5px;font-weight:800;color:var(--red);border:1px solid rgba(208,116,104,.5);border-radius:6px;padding:2px 8px;background:var(--red-soft)}
+.of-why{font-size:11.5px;color:var(--muted);line-height:1.6;margin-bottom:6px}
+.of-meta{font-size:10.5px;color:var(--dim);margin-bottom:6px}
+.of-reasons{margin:0 0 6px 16px;font-size:11px;line-height:1.7;color:var(--muted)}
+.of-details{font-size:10.5px;color:var(--dim);margin-bottom:6px}
+.of-details summary{cursor:pointer;color:var(--dim);font-weight:700}
+.of-details ul{margin:4px 0 0 16px;line-height:1.7}
+.of-scan{margin:4px 8px 8px;padding:9px 11px;border:1px solid var(--rule);border-radius:9px;background:var(--bg2);font-size:11.5px;line-height:1.7;color:var(--muted)}
+.of-scan .t{font-size:12px;font-weight:800;color:var(--ink);margin-bottom:4px}
+.of-scan .grp{margin-top:6px}
+.of-scan .grp b{color:var(--blue)}
+.of-scan .grp.skip b{color:var(--muted)}
+.of-acts{display:flex;gap:7px;flex-wrap:wrap}
+.of-acts .btn{font-size:11.5px;padding:5px 11px}
+/* FE-12 通道状态与按钮（工作间成员卡） */
+.sf-chrow{margin:2px 0 8px;padding:8px 10px;border:1px dashed var(--rule);border-radius:9px;background:var(--bg2)}
+.sf-chline{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.ch-tag{font-size:11px;color:var(--muted);font-weight:800}
+.ch-badge{font-size:10.5px;font-weight:800;border-radius:6px;padding:2px 8px}
+.ch-badge.pending{background:var(--bg4);color:var(--muted);border:1px solid var(--rule)}
+.ch-badge.active{background:var(--green-soft);color:var(--green);border:1px solid rgba(134,179,148,.4)}
+.ch-badge.retired{background:var(--red-soft);color:var(--red);border:1px solid rgba(208,116,104,.45)}
+.ch-badge.unknown{background:transparent;color:var(--dim);border:1px dashed var(--bg5)}
+.ch-name{font-family:var(--font-mono);font-size:11px;color:#d8d2c6;word-break:break-all;max-width:100%}
+.ch-badge.retired ~ .ch-name,.sf-chrow.retired .ch-name{color:var(--muted);text-decoration:line-through(.5px)}
+.ch-acts{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:7px}
+.ch-acts .btn{font-size:11px;padding:4px 10px}
+.ch-acts select,.ch-acts input{background:var(--bg);border:1px solid var(--rule);border-radius:7px;padding:4px 8px;font-size:11px;color:var(--ink);outline:none;font-family:inherit;max-width:150px}
+.ch-acts input{font-family:var(--font-mono)}
+.ch-meta{font-size:10.5px;color:var(--dim);margin-top:5px;line-height:1.6}
+.ch-hist{display:none;margin-top:7px;border-top:1px dashed var(--rule);padding-top:6px;font-size:10.5px;color:var(--dim);line-height:1.8}
+.ch-hist.open{display:block}
+.ch-hist .row{font-family:var(--font-mono);word-break:break-all}
+.ch-note{margin-top:7px}
+.ch-none{font-size:11px;color:var(--dim)}
 
 </style>
 
@@ -778,6 +923,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 
       <a class="sidebar-back" href="/" title="返回大厅">← <span class="sb-text">返回大厅</span></a>
+      <a class="hub-pill" href="/hub.html" title="流程说明 · 全流程（只讲不做）">◈ 流程说明</a>
 
 
       <div class="col-header"><span class="nav-title">工作间</span><span class="ch-count" id="workshopCount">0</span><button class="nav-toggle" id="navToggle" onclick="toggleNav()" title="折叠/展开侧边栏">◀</button></div>
@@ -785,6 +931,11 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
       <div class="workshop-list" id="workshopList"><div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">加载中...</div></div>
 
+      <div style="padding:8px 10px 10px;display:flex;gap:10px;flex-wrap:wrap;border-top:1px solid var(--rule)">
+        <a href="/ops.html" title="运维看板 · 工单审计与Agent在线" style="font-size:11px;color:var(--muted);text-decoration:none">📡 看板</a>
+        <a href="/handover.html" title="交付回执台" style="font-size:11px;color:var(--muted);text-decoration:none">🧾 回执</a>
+        <a href="/booths.html" title="成员隔间与桥" style="font-size:11px;color:var(--muted);text-decoration:none">🏗 隔间</a>
+      </div>
 
     </div>
 
@@ -816,6 +967,13 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
         <div class="ws-status"><span class="ws-dot" id="wsDot"></span><span id="wsText">未连接</span><span class="ws-sm" title="自治边界状态机"><span class="ws-dot" id="smDot"></span><span id="smText">-</span></span></div>
 
 
+      </div>
+
+
+      <div class="nextstep" id="nextStepBar" style="display:none">
+        <span class="ns-label">下一步</span>
+        <span class="ns-text" id="nextStepText"></span>
+        <span class="ns-actions" id="nextStepActions"></span>
       </div>
 
 
@@ -990,12 +1148,26 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
       <div id="sidebar">
 
 
+        <!-- FE-20：本阶段该按的（FE-17 §4，数据来自 GET …/sidebar；失败=降级显示全部+提示） -->
+        <div id="stageBar" class="stage-bar" style="display:none">
+          <div class="sb-top"><b id="sbStage">—</b><span id="sbStageIdx" class="sb-idx"></span></div>
+          <div id="sbBlocked" class="sb-blocked" style="display:none"></div>
+          <div id="sbPrimary" class="sb-acts"></div>
+          <details id="sbMoreBox" class="sb-more" style="display:none"><summary id="sbMoreSum">更多 ⋯</summary><div id="sbMore" class="sb-acts"></div></details>
+          <div id="sbNote" class="sb-note" style="display:none"></div>
+        </div>
+        <!-- FE-23：孤儿成员横幅（GET …/orphans；只提示+给入口，绝不自动删） -->
+        <div id="orphanStrip" class="orphan-strip" style="display:none"></div>
+
+
         <div class="panel" style="margin:8px;border:1px solid var(--rule)">
 
 
           <div class="side-head"><h2>② 选定员工</h2></div>
+          <div class="role-hint" id="roleHint">职业自由填（候选来自平台职业表，加载中…）</div>
 
 
+          <div id="rosterBlock">
           <button class="btn" id="selectBtn" onclick="selectMembers()" style="margin-bottom:8px">让平台 AI 选定员工</button>
 
 
@@ -1005,7 +1177,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
           <div style="display:flex;gap:8px;margin-bottom:8px">
 
 
-            <button class="btn" onclick="addMemberRow()">+ 添加职位 / harness</button>
+            <button class="btn" id="addMemberBtn" onclick="addMemberRow()">+ 添加职位 / harness</button>
 
 
             <button class="btn" id="saveMembersBtn" onclick="saveMembers()" style="display:none">保存名单</button>
@@ -1015,12 +1187,32 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 
           <button class="btn" id="confirmBtn" onclick="confirmMembers()" style="display:none;margin-bottom:8px">确认名单，进入二级讨论</button>
+          </div><!-- /rosterBlock -->
 
 
+          <div id="sessionFlow" style="display:none">
+            <div class="col-header">📇 会话流程 <span class="sf-summary" id="sfSummary" style="display:none"></span></div>
+            <div id="sfBody" style="padding:0 8px 4px"></div>
+          </div>
+
+
+          <div id="offlinePanel" style="display:none">
+            <div class="col-header">🛡 成员状态 <span class="of-summary" id="ofSummary" style="display:none"></span></div>
+            <div class="of-bar">
+              <button class="btn" id="ofScanBtn" type="button" onclick="ofScan()">🔄 全间抢救扫描</button>
+              <button class="btn" id="ofRefreshBtn" type="button" onclick="loadOfflineReport()">⟳ 刷新</button>
+            </div>
+            <div class="of-scan" id="ofScan" style="display:none"></div>
+            <div id="ofBody" style="padding:0 8px 4px"></div>
+          </div>
+
+
+          <div id="harnessBlock">
           <div class="col-header">可用 Harness（能力）</div>
 
 
           <div id="harnessList"></div>
+          </div><!-- /harnessBlock -->
 
 
         </div>
@@ -1611,10 +1803,23 @@ async function wsvRefreshInterjectPanel(){
 }
 
 
-function setPhase(n){for(let i=1;i<=5;i++){const el=document.getElementById('p'+i);if(!el)continue;el.classList.toggle('active', i===n);el.classList.toggle('done', i<n);}
+function setPhase(n){
+  /* ★2026-10-11（V40 P1）：n 无效时**兜底到第 1 步**，别一个都不高亮。
+     实测：草稿/一级讨论的工作间原来 p1..p5 **全无 active** ⇒ 用户看不出自己站在第一步。 */
+  if(!(n>=1&&n<=5)) n=1;
+  _phase=n; for(let i=1;i<=5;i++){const el=document.getElementById('p'+i);if(!el)continue;el.classList.toggle('active', i===n);el.classList.toggle('done', i<n);}
 
 
-  // 三个讨论区间始终可见、上下排列；只高亮当前阶段对应的区间（不隐藏历史记录）
+  /* ★2026-10-11（V40 P1）：**后面的阶段区先别显示**。
+     原实现"三个讨论区间始终可见" ⇒ 在一级讨论时，二级/三级讨论的空面板连同里面的
+     按钮（组长检查员工状态 / 展开车间 …）全摆在眼前，用户按不动也不知道该按哪个
+     —— 这正是老板那句「有一些按不了，我不知道怎么按」的直接来源。
+     ⇒ 规则：**已走过的阶段保持可见**（历史可回看），**还没走到的先隐藏**，走到再出现。 */
+  /* ★二次修正：**不隐藏**，改为"灰显 + 到这一步自动可用"（老板反馈：藏起来就看不全流程了）。 */
+  const _lock=(el,locked)=>{ if(el) el.classList.toggle('stage-locked', !!locked); };
+  _lock(document.getElementById('zone2'), n<2);
+  _lock(document.getElementById('zone3'), n<5);
+  // 三个讨论区间上下排列；只高亮当前阶段对应的区间（不隐藏历史记录）
 
 
   document.getElementById('zone1').classList.toggle('active', n<=1);
@@ -1713,27 +1918,824 @@ function showLayout(){
 function showSidebar(){ /* 员工名单已常驻右栏 */ }
 
 
-function endDiscuss(){
-
-
-  setPhase(2);
-
-
-  showSidebar();
-
-
-  loadHarnesses().then(hs=>renderHarnessList(hs));
-
-
-  document.getElementById('endDiscussBtn').style.display='none';
-
-
+let _endingDiscuss=false;
+async function endDiscuss(){
+  if(!wsId||_endingDiscuss)return;
+  _endingDiscuss=true;
+  const btn=document.getElementById('endDiscussBtn');
+  if(btn)btn.disabled=true;
+  try{
+    const response=await fetch(`/api/workshop/${wsId}/begin-selecting`,{method:'POST'});
+    const result=await response.json();
+    if(!response.ok||!result.success)throw new Error(result.error||result.reason||'阶段推进失败');
+    _wsStatus=result.status;
+    setPhase(({selecting:2,division:3,running:4,review:5,done:5})[_wsStatus]||1);
+    renderNextStep();
+    showSidebar();
+    const hs=await loadHarnesses();
+    renderHarnessList(hs);
+    updateSelectionReadiness(hs);
+    if(btn)btn.style.display='none';
+    await loadStageBar();
+  }catch(error){
+    showSelectionNotice('未能结束讨论：'+error.message,'请重试；当前阶段保持不变。');
+    acToast('结束讨论失败：'+error.message,true);
+  }finally{
+    _endingDiscuss=false;
+    if(btn)btn.disabled=false;
+  }
 }
 
 
 function toggleSidebar(){ /* 员工名单已常驻右栏，无需折叠 */ }
 
 
+/* ===== FE-20 本阶段该按的（GET …/sidebar · FE-17 §4；端点失败=降级显示全部+提示）===== */
+let sbStageId='', sbOk=false, _phase=1, _orphanCount=0;
+function applyStageGates(stage){
+  const id=stage?stage.id:'';
+  const vis=(elx,v)=>{ if(elx) elx.style.display=v?'':'none'; };
+  const rb=document.getElementById('rosterBlock');
+  const hb=document.getElementById('harnessBlock');
+  const op=document.getElementById('offlinePanel');
+  const fab=document.getElementById('interjectFab');
+  const sBtn=document.getElementById('selectBtn');
+  const aBtn=document.getElementById('addMemberBtn');
+  const cfBtn=document.getElementById('confirmBtn');
+  if(!sbOk){
+    /* 降级（规则17）：显示全部，不藏任何入口；saveMembersBtn 维持它自己的"有改动才出现"逻辑 */
+    vis(rb,true); vis(hb,true); vis(op,true); vis(fab,true);
+    vis(sBtn,true); vis(aBtn,true); vis(cfBtn,true);
+    return;
+  }
+  /* 阶段门控（不渲染，不是置灰）：本地 _phase===2 兜"点结束讨论、后端没翻"的窗口；
+     _orphanCount>0 放开名单 —— 否则工作阶段连"移除孤儿成员"的入口都没有（FE-23 §2） */
+  vis(rb, id==='select'||_phase===2||_orphanCount>0);
+  vis(hb, id==='select'||_phase===2);
+  vis(op, id==='working'||_phase===4);
+  vis(fab, ['discuss2','working','review'].indexOf(id)>=0);
+  /* 同屏去重：这三个旧按钮由 stageBar 的同名主操作接管（名单行/输入照常可编辑） */
+  vis(sBtn,false); vis(aBtn,false); vis(cfBtn,false);
+}
+function renderActList(box, acts){
+  box.innerHTML='';
+  (acts||[]).forEach(a=>{
+    const b=document.createElement('button');
+    b.type='button';
+    b.className='sb-act'+(a.kind==='primary'?'':' ghost');
+    const t=document.createElement('b'); t.textContent=a.label||a.id||'（未名操作）';
+    const s=document.createElement('span'); s.textContent=a.effects||'';
+    b.append(t,s);
+    if(a.effects) b.title=a.effects;
+    b.addEventListener('click',()=>runStageAction(a.id));
+    box.appendChild(b);
+  });
+}
+function runStageAction(id){
+  const M={
+    discuss:()=>{
+      const target=document.getElementById(sbStageId==='discuss2'?'msgInput2':sbStageId==='review'?'msgInput3':'msgInput1');
+      if(target){ target.focus(); target.scrollIntoView({block:'center',behavior:'smooth'}); }
+    },
+    finish_discuss:()=>endDiscuss(),
+    select_members:()=>selectMembers(),
+    add_member:()=>addMemberRow(),
+    save_roster:()=>saveMembers(),
+    confirm_members:()=>confirmMembers(),
+    start_work:()=>startWork(),
+    rescue_scan:()=>ofScan(),
+    leader_check:()=>leaderStatus(),
+    register_resource:()=>addResource(),
+    activate_template:()=>manualActToggle(),
+    third_discuss:()=>startReview(),
+    continue_work:()=>continueWork(),
+    complete_task:()=>completeWork(),
+    integrate:()=>doIntegrate()
+  };
+  const f=M[id];
+  if(f) f();
+  else if(typeof acToast==='function') acToast('该操作（'+id+'）暂无界面接线，请在协作通道报 [前端缺陷]','err');
+}
+async function doIntegrate(){
+  /* FE-20 §4：后端白名单里有 integrate、前端原先无接线 —— 补上（POST …/integrate，按响应如实提示） */
+  if(!wsId) return;
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/integrate`,{method:'POST'}).then(x=>x.json());
+    if(r&&(r.success||r.ok)) acToast('已收口整合：'+(r.note||'清单已生成（见资料库 integration.md）'));
+    else acToast('整合失败：'+((r&&(r.error||r.detail))||'未知'),'err');
+  }catch(e){ acToast('整合失败：'+e.message,'err'); }
+}
+async function loadStageBar(){
+  const box=document.getElementById('stageBar');
+  if(!box) return;
+  if(!wsId){ box.style.display='none'; sbOk=false; sbStageId=''; applyStageGates(null); return; }
+  box.style.display='';
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/sidebar`).then(x=>{ if(!x.ok) throw new Error('HTTP '+x.status); return x.json(); });
+    if(!r||!r.stage||!Array.isArray(r.visible_actions)) throw new Error((r&&(r.error||r.detail))||'响应缺 stage');
+    sbOk=true; sbStageId=r.stage.id;
+    /* ★2026-10-11（V40 P1）：**阶段指示器必须跟着权威阶段走**。
+       此前 p1..p5 只在几个零散动作里被 setPhase 改过，本函数从不改它
+       ⇒ 走查实测：点了「结束讨论」后指示器仍高亮「01 一级讨论」，而下一步条已经进到"选定员工"，
+         刷新后更是各说各话。这里以 **后端 stage** 为唯一真相同步指示器。 */
+    if(r.stage.index!=null) setPhase(r.stage.index);
+    document.getElementById('sbStage').textContent=r.stage.label||sbStageId;
+    document.getElementById('sbStageIdx').textContent=(r.stage.index!=null?(r.stage.index+' / '+r.stage.total):'');
+    const blk=document.getElementById('sbBlocked');
+    if(r.blocked_reason){
+      blk.style.display='';
+      blk.textContent='⚠ '+(typeof r.blocked_reason==='string'?r.blocked_reason:JSON.stringify(r.blocked_reason));
+    }else blk.style.display='none';
+    renderActList(document.getElementById('sbPrimary'), r.visible_actions);
+    const more=r.more_actions||[];
+    const mb=document.getElementById('sbMoreBox');
+    mb.style.display=more.length?'':'none';
+    document.getElementById('sbMoreSum').textContent='更多 ⋯（'+more.length+'）';
+    renderActList(document.getElementById('sbMore'), more);
+    document.getElementById('sbNote').style.display='none';
+  }catch(e){
+    sbOk=false; sbStageId='';
+    document.getElementById('sbStage').textContent='（阶段未取到）';
+    document.getElementById('sbStageIdx').textContent='';
+    document.getElementById('sbBlocked').style.display='none';
+    document.getElementById('sbPrimary').innerHTML='';
+    document.getElementById('sbMoreBox').style.display='none';
+    const nt=document.getElementById('sbNote');
+    nt.style.display='';
+    nt.textContent='阶段接口暂不可用（'+((e&&e.message)||'')+'）：下方显示全部按钮，不隐藏任何入口。';
+  }
+  applyStageGates(sbOk?{id:sbStageId}:null);
+}
+/* 测试钩子（fe20_check：场景注入后 reload/gates；只读，不发写请求） */
+window.__stageBar={ reload:loadStageBar, gates:applyStageGates, state:()=>({stageId:sbStageId, ok:sbOk, phase:_phase}) };
+
+
+/* ── FE-08 会话流程面板（DSH 30 号过审；准则⑤：verified=false 绝不显示完成/成功） ── */
+const SF_STEPS=[['4_new_session','4建会话'],['5_deliver','5送桥'],['8_rename_session','8重命名']];
+let _sfLast={};
+function sfEl(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;}
+function sfCopy(text,btn){
+  if(!text)return;
+  const done=()=>{const o=btn.textContent;btn.textContent='已复制';setTimeout(()=>{btn.textContent=o;},1400);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>{btn.textContent='复制失败';setTimeout(()=>{btn.textContent='复制';},1400);});}
+}
+function _sfFgSuffix(steps,key){
+  const s=(steps||{})[key];
+  return (s&&s.foreground&&s.foreground!=='never')?'（会占用桌面）':'';
+}
+/* ===== FE-23 孤儿成员横幅（GET …/orphans；只提示+给入口，绝不自动删） ===== */
+async function loadOrphans(){
+  const strip=document.getElementById('orphanStrip');
+  if(!strip) return;
+  if(!wsId){ strip.style.display='none'; _orphanCount=0; return; }
+  try{
+    const o=await fetch(`/api/workshop/${wsId}/orphans`).then(x=>x.ok?x.json():null).catch(()=>null);
+    renderOrphans(o);
+  }catch(e){}
+}
+function renderOrphans(o){
+  const strip=document.getElementById('orphanStrip');
+  if(!strip) return;
+  _orphanCount=(o&&Array.isArray(o.orphans))?o.orphans.length:0;
+  if(!_orphanCount){
+    strip.style.display='none'; strip.innerHTML='';
+    if(sbOk) applyStageGates({id:sbStageId});
+    return;
+  }
+  strip.style.display='';
+  strip.innerHTML='<b>⚠ '+esc(o.headline||('有 '+_orphanCount+' 个成员的 agent 已经不在了（它们接不到活）'))+'</b>'
+    +(o.orphans||[]).map(x=>
+      '<div class="os-row">· '+esc((x.role||x.member_id)+(x.display_name?('（'+x.display_name+'）'):''))
+      +'<div>'+esc(x.text||'')+'</div>'
+      +'<div class="os-advice">'+esc(x.advice||'')+'</div></div>').join('')
+    +'<button class="btn" type="button" id="osGoRoster" style="margin-top:7px">去名单移除（选定员工区）</button>';
+  const b=document.getElementById('osGoRoster');
+  if(b) b.onclick=()=>{
+    const t=document.getElementById('rosterBlock');
+    if(t){ t.scrollIntoView({block:'center',behavior:'smooth'});
+      t.style.outline='2px solid var(--accent)'; setTimeout(()=>{t.style.outline='';},1600); }
+  };
+  if(sbOk) applyStageGates({id:sbStageId});   /* 孤儿时放开名单（FE-20 门控联动） */
+}
+
+async function loadSessionFlow(){
+  const panel=document.getElementById('sessionFlow');
+  if(!panel)return;
+  if(!wsId){panel.style.display='none';return;}
+  panel.style.display='';
+  const body=document.getElementById('sfBody');
+  body.innerHTML='<div class="sf-empty">加载中…</div>';
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/members-status`).then(x=>x.json());
+    if(r===null||(r.success===undefined&&!Array.isArray(r.members))){
+      body.innerHTML='';body.append(sfEl('div','sf-err','加载失败：'+(r&&(r.error||r.detail)||'无响应')));return;
+    }
+    if(r.success===false&&!Array.isArray(r.members)){
+      body.innerHTML='';body.append(sfEl('div','sf-err','加载失败：'+(r.error||r.detail||'未知错误')));return;
+    }
+    renderSessionFlow(r);
+    await loadOrphans();   /* FE-23：成员卡孤儿字段来自 members-status；横幅另拉 /orphans（读接口） */
+  }catch(e){
+    body.innerHTML='';body.append(sfEl('div','sf-err','加载失败：'+e.message));
+  }
+}
+function renderSessionFlow(r){
+  const body=document.getElementById('sfBody');
+  const sum=document.getElementById('sfSummary');
+  const members=Array.isArray(r.members)?r.members:[];
+  if(r.summary){
+    sum.style.display='';
+    if(r.summary.all_steps_automatic){sum.className='sf-summary ok';sum.textContent='全员可自动';}
+    else{sum.className='sf-summary warn';sum.textContent=((r.summary.manual_members||[]).length)+' 名成员有需人工步骤';}
+  }else{sum.style.display='none';}
+  body.innerHTML='';
+  if(!members.length){body.append(sfEl('div','sf-empty','尚无成员（先选定员工）。'));return;}
+  members.forEach(m=>body.appendChild(_sfCard(m)));
+}
+function _sfCard(m){
+  const card=sfEl('div','sf-card');
+  const head=sfEl('div','sf-head');
+  head.append(sfEl('span','sf-role',m.role||'成员'));
+  head.append(sfEl('span','sf-name',m.display_name||m.member_id||''));
+  const es=sfEl('span','sf-es',m.entry_state||m.status||'—');
+  es.title='entry_state='+(m.entry_state||'')+' · status='+(m.status||'')+'（进度读 entry_state）';
+  head.append(es);
+  card.append(head);
+  /* FE-23 / 106 号②：孤儿成员显著标出（members-status 的 orphan* 三字段原文；只提示不代删） */
+  if(m.orphan){
+    const ob=sfEl('div','sf-orphan');
+    ob.append(sfEl('div','so-t','⚠ 孤儿成员：它的 agent 已经不在平台'));
+    ob.append(sfEl('div','so-x', m.orphan_text||'这个成员的 agent 已不在平台上了 —— 它现在接不到任何活'));
+    ob.append(sfEl('div','so-a', m.orphan_advice||'要恢复：重新接入那个 agent；不要它了：在名单里移除这个成员'));
+    card.append(ob);
+  }
+  /* 步骤7：会话名恒显 + 复制 */
+  const nameLine=sfEl('div','sf-line');
+  nameLine.append(document.createTextNode('📇 '+(m.session_name||'（未生成）')));
+  if(m.session_name){
+    const cp=sfEl('button','sf-copy','复制');
+    cp.type='button';
+    cp.onclick=()=>sfCopy(m.session_name,cp);
+    nameLine.append(cp);
+  }
+  card.append(nameLine);
+  card.append(sfChannelRow(m));
+  /* 步骤可用性 chips */
+  const chips=sfEl('div','sf-chips');
+  SF_STEPS.forEach(pair=>{
+    const st=(m.steps||{})[pair[0]];
+    if(!st)return;
+    chips.append(sfEl('span','sf-chip '+(st.automatic?'auto':'manual'), pair[1]+' '+(st.automatic?'自动':'需人工')));
+    if(st.foreground&&st.foreground!=='never') chips.append(sfEl('span','sf-chip fg','⚠ 会占用桌面'));
+  });
+  card.append(chips);
+  /* 隔间实况（v1.1 字段拆分：root_files=产物 / output_files=成果） */
+  const c=m.compartment||{};
+  const mb=c.mailbox_pending||{};
+  const mbSum=(Number(mb.inbox)||0)+(Number(mb.replies)||0);
+  const metaParts=[];
+  metaParts.push('隔间'+(c.exists?'已建':'未建'));
+  metaParts.push('成果 '+(c.output_files!=null?c.output_files:0));
+  metaParts.push('产物 '+(c.root_files!=null?c.root_files:0));
+  if(mbSum)metaParts.push('邮箱积压 '+mbSum);
+  if(Array.isArray(m.bridge_files)&&m.bridge_files.length)metaParts.push('桥产物 '+m.bridge_files.length+' 项');
+  const sr=m.session_ref&&Object.keys(m.session_ref).length;
+  metaParts.push(sr?'会话已登记':'会话未建立');
+  card.append(sfEl('div','sf-meta',metaParts.join(' · ')));
+  /* 动作 */
+  const acts=sfEl('div','sf-acts');
+  const b1=sfEl('button','btn','建立会话 4/8/9'+_sfFgSuffix(m.steps,'4_new_session'));
+  b1.type='button';
+  b1.onclick=()=>sfEstablish(m.member_id,b1);
+  const b2=sfEl('button','btn','送出具体桥 5'+_sfFgSuffix(m.steps,'5_deliver'));
+  b2.type='button';
+  b2.onclick=()=>sfDeliver(m.member_id,b2);
+  acts.append(b1,b2);
+  card.append(acts);
+  const res=sfEl('div','sf-res');
+  res.id='sfRes_'+m.member_id;
+  card.append(res);
+  const last=_sfLast[m.member_id];
+  if(last)_sfShowResult(res,last.r,last.kind);
+  return card;
+}
+function _sfShowResult(res,r,kind){
+  res.className='sf-res show';
+  res.innerHTML='';
+  /* 失败路径（网络错/HTTP非2xx）：与 verified:false 的"待人工"严格分开——失败是失败 */
+  if(kind==='err'||!r||(r.error&&r.success!==true)){
+    res.classList.add('fail');
+    res.append(sfEl('div','sf-badge','✗ 请求失败：'+((r&&(r.error||r.detail))||'网络错误')));
+    return;
+  }
+  const ok=kind==='establish'?!!r.all_verified:!!r.verified;
+  res.classList.add(ok?'ok':'pending');
+  /* 反向断言锚点：!ok 时唯一总态文案 = 下面这句，绝无"完成/成功" */
+  res.append(sfEl('div','sf-badge',ok?'✔ 完成（脚本自证）':'⚠ 待人工 / 未核实'));
+  /* 逐 step 徽章 */
+  const stepsBox=sfEl('div','sf-steps');
+  if(kind==='establish'&&r.verified){
+    SF_STEPS.forEach(pair=>{
+      if(Object.prototype.hasOwnProperty.call(r.verified,pair[0])){
+        stepsBox.append(sfEl('span','sf-step '+(r.verified[pair[0]]?'ok':'no'),pair[1]+' '+(r.verified[pair[0]]?'✔':'⚠')));
+      }
+    });
+  }else if(kind==='deliver'){
+    stepsBox.append(sfEl('span','sf-step '+(r.verified?'ok':'no'),'5送桥 '+(r.verified?'✔':'⚠')));
+    if(r.bridge&&r.bridge.ok===false) stepsBox.append(sfEl('span','sf-step no','桥产物失败'));
+  }
+  if(stepsBox.childNodes.length)res.append(stepsBox);
+  /* manual 指引原样渲染 */
+  if(Array.isArray(r.manual)&&r.manual.length){
+    const ul=sfEl('ul','sf-manual');
+    r.manual.forEach(x=>{
+      ul.append(sfEl('li',null,'【步骤 '+x.step+' · '+(x.action||'')+'】'+(x.hint||'')));
+    });
+    res.append(ul);
+  }
+  /* establish 特有：会话名/引用 */
+  if(kind==='establish'){
+    if(r.name){
+      const ln=sfEl('div','sf-line');
+      ln.append(document.createTextNode('📇 '+r.name));
+      const cp=sfEl('button','sf-copy','复制');cp.type='button';
+      cp.onclick=()=>sfCopy(r.name,cp);
+      ln.append(cp);
+      res.append(ln);
+    }
+    if(r.session_ref&&Object.keys(r.session_ref).length){
+      const p=sfEl('div','sf-path','session_ref: '+JSON.stringify(r.session_ref));
+      res.append(p);
+    }
+  }
+  /* deliver 特有：投递文本 */
+  if(kind==='deliver'){
+    if(r.text_path){res.append(sfEl('div','sf-path','text_path: '+r.text_path));}
+    if(r.text){
+      const row=sfEl('div','sf-acts');
+      row.style.marginTop='6px';
+      const cp=sfEl('button','btn','📄 复制投递文本');cp.type='button';
+      cp.style.fontSize='11px';cp.style.padding='4px 10px';
+      cp.onclick=()=>sfCopy(r.text,cp);
+      row.append(cp);
+      res.append(row);
+      res.append(sfEl('div','sf-text',r.text));
+    }
+  }
+  if(r.note){res.append(sfEl('div','sf-note',r.note));}
+}
+async function sfEstablish(mid,btn){
+  if(btn.disabled)return;
+  const orig=btn.textContent;
+  btn.disabled=true;btn.textContent='建立中…';
+  try{
+    const x=await fetch(`/api/workshop/${wsId}/member/${encodeURIComponent(mid)}/establish-session`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+    const r=await x.json().catch(()=>null);
+    _sfLast[mid]={r:r||{success:false,error:'响应不可解析'},kind:x.ok?'establish':'err'};
+    await loadSessionFlow();
+  }catch(e){
+    _sfLast[mid]={r:{success:false,error:e.message},kind:'err'};
+    await loadSessionFlow();
+  }finally{
+    btn.disabled=false;btn.textContent=orig;
+  }
+}
+async function sfDeliver(mid,btn){
+  if(btn.disabled)return;
+  const orig=btn.textContent;
+  btn.disabled=true;btn.textContent='投递中…';
+  try{
+    const x=await fetch(`/api/workshop/${wsId}/member/${encodeURIComponent(mid)}/deliver-bridge`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+    const r=await x.json().catch(()=>null);
+    _sfLast[mid]={r:r||{success:false,error:'响应不可解析'},kind:x.ok?'deliver':'err'};
+    await loadSessionFlow();
+  }catch(e){
+    _sfLast[mid]={r:{success:false,error:e.message},kind:'err'};
+    await loadSessionFlow();
+  }finally{
+    btn.disabled=false;btn.textContent=orig;
+  }
+}
+/* ── FE-12 通道状态与停用/新建（DSH 59 过审；v1.1：时间转本地、路径不外显、none 不改状态） ── */
+const _chNotes={}; /* mid -> {cls,text} 跨刷新保留 */
+/* ★V41：读某成员 harness 的**通用桥模板**（裁定 1B 后至多一条）。
+   带缓存，避免成员卡每帧都打接口。返回 {name,kind}；没有任何模板时返回 {none:true}。 */
+const _mbTplCache={};
+/*: 已注册 harness 的 id 集合（本轮页面生命周期内缓存）。用途见下方 loadMemberBridgeTemplate：
+    孤儿成员不该去发那个必然 404 的请求 —— 浏览器会把失败响应记成控制台红错。 */
+let _registeredHids=null;
+async function loadMemberBridgeTemplate(mid){
+  if(_mbTplCache[mid]!==undefined) return _mbTplCache[mid];
+  try{
+    const flow=await fetch(`/api/workshop/${wsId}/members-status`).then(x=>x.ok?x.json():null).catch(()=>null);
+    const mine=(flow&&(flow.members||[]).find(m=>m.member_id===mid))||null;
+    const hid=(mine&&mine.harness_id)||'';
+    if(!hid){ _mbTplCache[mid]={none:true,why:'该成员未绑定 harness'}; return _mbTplCache[mid]; }
+    /* ⚠️ 孤儿成员（它的 harness 已被删）会让 `bridge-templates` 回 **404**；
+       而**浏览器只要收到失败响应就会往控制台记一条红错**，JS 里判 `resp.status===404`
+       **挡不住那条日志**（实测：我先试过这个办法，红错照旧）。
+       ⇒ 正确做法：**先查注册表**（`/api/harness/list`，孤儿成员必然不在里面），
+         确认它**还在**才去查模板 —— 从根上不发那个必然失败的请求。 */
+    if(_registeredHids===null){
+      try{
+        const rl=await fetch('/api/harness/list');
+        const dl=rl.ok?await rl.json():{};
+        _registeredHids=new Set(((dl&&dl.harnesses)||[]).map(h=>h.harness_id));
+      }catch(e){ _registeredHids=new Set(); }
+    }
+    if(!_registeredHids.has(hid)){
+      _mbTplCache[mid]={none:true,hid,why:'该 harness 已不在平台上（孤儿成员）'};
+      return _mbTplCache[mid];
+    }
+    const resp=await fetch(`/api/harness/${encodeURIComponent(hid)}/bridge-templates`);
+    const d=resp.ok?await resp.json():null;
+    const t=(d&&(d.templates||[]).find(x=>!x.superseded))||(d&&(d.templates||[])[0])||null;
+    _mbTplCache[mid]=t?{name:t.name,kind:t.kind,hid}:{none:true,hid};
+  }catch(e){ _mbTplCache[mid]={none:true,why:String(e&&e.message||e)}; }
+  return _mbTplCache[mid];
+}
+function _chAbs(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');}
+function _chBase(p){return String(p||'').split(/[\\/]/).pop()||'';}
+function _chTime(sec){if(!sec)return '';const d=new Date(sec*1000);return isNaN(d)?'':('自 '+_chAbs(d));}
+function _chRetiredTime(sec){if(!sec)return '';const d=new Date(sec*1000);return isNaN(d)?'':('停用于 '+_chAbs(d));}
+function sfChannelRow(m){
+  const row=sfEl('div','sf-chrow');
+  const ch=m.channel;
+  const line=sfEl('div','sf-chline');
+  line.append(sfEl('span','ch-tag','🔗 通道'));
+  if(!ch||!ch.state){
+    line.append(sfEl('span','ch-badge unknown','信息未取到'));
+    row.append(line);
+    row.append(sfEl('div','ch-none','后端尚未提供该成员的 channel 字段（旧实例或未加载新代码）。'));
+    return row;
+  }
+  const st=String(ch.state);
+  const label=st==='active'?'运行中':(st==='retired'?('已停用'+(ch.retired_count?(' ×'+ch.retired_count):'')):(st==='pending'?'未接入':st));
+  line.append(sfEl('span','ch-badge '+(['pending','active','retired'].indexOf(st)>=0?st:'unknown'),label));
+  if(ch.seq!=null)line.append(sfEl('span','ch-tag','#'+ch.seq));
+  const nm=sfEl('span','ch-name',ch.name||'（未命名）');
+  line.append(nm);
+  if(st==='active'){
+    const hb=sfEl('button','sf-copy','历史');
+    hb.type='button';
+    hb.onclick=()=>chToggleHist(m.member_id,row);
+    line.append(hb);
+  }
+  row.append(line);
+  const metaParts=[];
+  if(ch.since!=null)metaParts.push(_chTime(ch.since));
+  if(st==='retired'&&ch.retired_at!=null)metaParts.push(_chRetiredTime(ch.retired_at));
+  if(ch.retired_count)metaParts.push('历史通道 '+ch.retired_count+' 个');
+  if(metaParts.length)row.append(sfEl('div','ch-meta',metaParts.join(' · ')));
+  /* 动作区：互斥 */
+  const acts=sfEl('div','ch-acts');
+  if(st==='active'){
+    const sel=document.createElement('select');
+    ['用户不满意','上下文老化','其他'].forEach(r=>{const o=document.createElement('option');o.value=r;o.textContent=r;sel.append(o);});
+    const b=sfEl('button','btn','停用通道');
+    b.type='button';
+    b.onclick=()=>{
+      const reason=sel.value;
+      acModal.show({
+        title:'停用通道',
+        message:'停用该成员当前通道（'+(ch.name||('#'+ch.seq))+'）？\n不删除任何数据：桥将归档，隔间产物全部保留。\n原因：'+reason,
+        danger:true,
+        onConfirm:()=>chRetire(m.member_id,reason)
+      });
+    };
+    acts.append(sel,b);
+  }else{
+    const inp=document.createElement('input');
+    inp.type='text'; inp.placeholder='新通道名（留空=平台生成）';
+    const b=sfEl('button','btn','新建通道');
+    b.type='button';
+    b.onclick=()=>chEstablish(m.member_id,inp.value.trim());
+    acts.append(inp,b);
+  }
+  row.append(acts);
+  /* ★V41：**显式显示"这条通道用的是哪条通用桥模板"**（裁定 1B 后至多一条）。
+     此前用户完全看不到平台挑了哪条 ⇒ 猜错也无从察觉。这里异步补一行；没有模板时
+     就地给"去建一条"的指引（而不是让用户对着"新建通道"按钮干瞪眼）。 */
+  const tplLine=sfEl('div','ch-meta','桥模板：读取中…');
+  row.append(tplLine);
+  loadMemberBridgeTemplate(m.member_id).then(t=>{
+    if(!t||t.none){
+      tplLine.textContent='桥模板：**还没有** —— 先到「🔌 注册 Harness」为这个 agent 登记一条，再回来建通道。';
+      tplLine.style.color='var(--yellow)';
+    }else{
+      tplLine.textContent='桥模板：'+(t.name||'（未命名）')+(t.kind?('（'+t.kind+'）'):'')+' · 平台不会替你猜';
+    }
+  }).catch(()=>{ tplLine.textContent='桥模板：读取失败'; });
+  const hist=sfEl('div','ch-hist');
+  hist.id='chHist_'+m.member_id;
+  row.append(hist);
+  const note=_chNotes[m.member_id];
+  if(note){
+    const n=sfEl('div','sf-res show ch-note '+(note.cls==='ok'?'ok':note.cls==='pending'?'pending':note.cls==='fail'?'fail':'neutral'));
+    n.append(sfEl('div','sf-badge',note.text));
+    row.append(n);
+  }
+  if(st==='retired')row.classList.add('retired');
+  return row;
+}
+async function chToggleHist(mid,row){
+  const box=row.querySelector('.ch-hist');
+  if(!box)return;
+  if(box.classList.contains('open')){box.classList.remove('open');box.innerHTML='';return;}
+  box.classList.add('open');
+  box.textContent='加载中…';
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/member/${mid}/channels`).then(x=>x.json());
+    if(!r||(!r.current&&!Array.isArray(r.history))){box.textContent='加载失败：'+((r&&(r.error||r.detail))||'无响应');return;}
+    box.innerHTML='';
+    const hist=Array.isArray(r.history)?r.history:[];
+    if(!hist.length){box.append(sfEl('div',null,'无历史通道。'));return;}
+    hist.forEach(h=>{
+      const t=new Date((h.retired_at||0)*1000);
+      const arch=Array.isArray(h.archived)?h.archived.length:0;
+      const line=sfEl('div','row','#'+(h.seq!=null?h.seq:'?')+' '+(h.name||'（未命名）')
+        +' · '+(isNaN(t)?'':_chAbs(t))
+        +' · '+(h.reason||'—')
+        +(arch?(' · 归档 '+arch+' 项'):'')
+        +(h.queue_cleared?' · 队列已清':''));
+      box.append(line);
+    });
+  }catch(e){box.textContent='加载失败：'+e.message;}
+}
+async function chRetire(mid,reason){
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/member/${mid}/channel/retire`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:reason||'用户不满意'})}).then(x=>x.json());
+    if(r&&r.action==='none'){
+      _chNotes[mid]={cls:'neutral',text:'当前没有可停用的通道（如实回报，未执行停用）。'};
+    }else if(r&&r.success!==false&&(r.action||r.channel_state)){
+      _chNotes[mid]={cls:'neutral',text:'已停用。'+(r.action?('（action='+r.action+'）'):'')};
+    }else{
+      _chNotes[mid]={cls:'fail',text:'停用失败：'+((r&&(r.error||r.detail))||'网络错误')};
+    }
+  }catch(e){_chNotes[mid]={cls:'fail',text:'停用失败：'+e.message};}
+  await loadSessionFlow();
+}
+async function chEstablish(mid,name){
+  try{
+    const body={};
+    if(name)body.new_name=name;
+    /* ★V41 裁定（老板 2026-10-11）：通用桥模板是"注册 harness 的产物"，**架桥必须显式指定它**。
+       此前这里只传通道名 ⇒ 平台只能 `pick_for` 猜"用哪条模板"，**猜错用户也看不出来**
+       —— 正是"没有挑桥这一步"。现在：把该成员的通用桥模板名一起传给平台。
+       裁定 1B 后每个 harness 只有一条模板，所以"选"这件事退化为"**显示它 + 用它**"；
+       若一条都没有 ⇒ 如实提示"去建一条"，而不是让平台猜。 */
+    try{
+      const t=await loadMemberBridgeTemplate(mid);
+      if(t&&t.name){ body.template_name=t.name; }
+      else if(t&&t.none){ _chNotes[mid]={cls:'fail',text:'这个成员还没有通用桥模板：先到「🔌 注册 Harness」为它登记一条，再回来建通道。'}; await loadSessionFlow(); return; }
+    }catch(e){ /* 取不到不阻断：按平台既有回落逻辑走，但下面会如实说明 */ }
+    body.reason='按需新建通道';
+    const r=await fetch(`/api/workshop/${wsId}/member/${mid}/channel/establish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(x=>x.json());
+    if(!r||r.success===false){
+      _chNotes[mid]={cls:'fail',text:'新建失败：'+((r&&(r.error||r.detail))||'网络错误')};
+    }else{
+      const dv=r.deliver;
+      let t='通道已建立'+(r.channel_name?('：'+r.channel_name):'')+(r.channel_seq!=null?('（#'+r.channel_seq+'）'):'')+'。';
+      if(dv){
+        t+=dv.verified?('投递已自证完成。'):('投递待人工/未核实。'+(dv.text_path?('文本：'+_chBase(dv.text_path)):('')));
+      }
+      _chNotes[mid]={cls:(dv&&dv.verified)?'ok':'pending',text:t};
+    }
+  }catch(e){_chNotes[mid]={cls:'fail',text:'新建失败：'+e.message};}
+  await loadSessionFlow();
+}
+/* ── FE-09 掉线抢救面板（DSH 36 号过审；老板「没活别打扰」+ 硬/软信号契约） ── */
+let _ofLast={};
+async function loadOfflineReport(){
+  const panel=document.getElementById('offlinePanel');
+  if(!panel)return;
+  if(!wsId){panel.style.display='none';return;}
+  /* FE-20：成员状态是④工作中的阶段专属面板；stageBar 端点降级(sbOk=false)时按旧逻辑放开 */
+  panel.style.display=(!sbOk||(sbStageId==='working'||_phase===4))?'':'none';
+  const body=document.getElementById('ofBody');
+  body.innerHTML='<div class="sf-empty">加载中…</div>';
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/offline-report`).then(x=>x.json());
+    if(!r||(!Array.isArray(r.members)&&r.error)){
+      body.innerHTML='';body.append(sfEl('div','sf-err','加载失败：'+((r&&(r.error||r.detail))||'无响应')));return;
+    }
+    renderOffline(r);
+  }catch(e){
+    body.innerHTML='';body.append(sfEl('div','sf-err','加载失败：'+e.message));
+  }
+}
+function renderOffline(r){
+  const body=document.getElementById('ofBody');
+  const sum=document.getElementById('ofSummary');
+  if(r.summary){
+    sum.style.display='';sum.textContent=String(r.summary).replace(/\*\*/g,'');
+    sum.title='需要抢救 '+(r.needs_rescue||[]).length+' · 空闲 '+(r.idle||[]).length+' · 已上报 '+(r.escalated||[]).length+'（文案不用 offline_count）';
+  }else{sum.style.display='none';}
+  body.innerHTML='';
+  const members=Array.isArray(r.members)?r.members:[];
+  if(!members.length){body.append(sfEl('div','sf-empty','尚无成员。'));return;}
+  members.forEach(m=>body.appendChild(_ofCard(m)));
+}
+function _ofCard(m){
+  const v=m.verdict||'healthy';
+  const card=sfEl('div','of-card v-'+v+(m.escalated?' esc':''));
+  const head=sfEl('div','of-head');
+  head.append(sfEl('span','sf-role',m.role||'成员'));
+  head.append(sfEl('span','sf-name',m.display_name||m.member_id||''));
+  /* verdict 三态：idle=中性措辞，全文不出现「掉线」 */
+  const vLabel=v==='idle'?'当前无进行中的工作':(v==='rescue'?'⚠ 需要抢救':'正常');
+  const vb=sfEl('span','of-v '+v,vLabel);
+  vb.title='verdict='+v+'（状态主判据；idle=没活干属正常态）';
+  head.append(vb);
+  if(m.escalated){head.append(sfEl('span','of-v esc','需要你处理'));}
+  else{
+    const es=sfEl('span','sf-es',m.entry_state||'—');
+    es.title='entry_state='+(m.entry_state||'')+'（读它不读 status）';
+    head.append(es);
+  }
+  card.append(head);
+  if(v==='idle'){
+    card.append(sfEl('div','of-why',m.pending_work_why||'当前没有在进行的工作（空闲是正常态）'));
+  }else if(m.pending_work){
+    card.append(sfEl('div','of-why','有活在进行。'));
+  }else if(m.pending_work_why){
+    card.append(sfEl('div','of-why',m.pending_work_why));
+  }
+  if(v==='rescue'){
+    const bits=[];
+    if(m.attempts!=null)bits.push('尝试 '+m.attempts+'/'+(m.max_attempts!=null?m.max_attempts:'?'));
+    if(m.cooldown_left>0)bits.push('冷却 '+Math.ceil(m.cooldown_left)+'s');
+    if(bits.length)card.append(sfEl('div','of-meta',bits.join(' · ')));
+    const hard=Array.isArray(m.hard_reasons)?m.hard_reasons:[];
+    const soft=Array.isArray(m.soft_reasons)?m.soft_reasons:[];
+    if(hard.length){
+      const hb=sfEl('span','of-hard','联系不上（硬信号）');
+      hb.title=hard.join('；');
+      card.append(hb);
+      const ul=sfEl('ul','of-reasons');
+      hard.forEach(x=>ul.append(sfEl('li',null,x)));
+      card.append(ul);
+    }
+    if(!hard.length&&!soft.length&&Array.isArray(m.reasons)&&m.reasons.length){
+      const ul=sfEl('ul','of-reasons');
+      m.reasons.forEach(x=>ul.append(sfEl('li',null,x)));
+      card.append(ul);
+    }
+    if(soft.length){
+      const det=sfEl('details','of-details');
+      det.append(sfEl('summary',null,'软信号详情（心跳在本项目中可选）'));
+      const ul=document.createElement('ul');
+      soft.forEach(x=>{const li=document.createElement('li');li.textContent=x;ul.append(li);});
+      det.append(ul);
+      card.append(det);
+    }
+    const acts=sfEl('div','of-acts');
+    const b=sfEl('button','btn','对该成员抢救');
+    b.type='button';
+    b.onclick=()=>ofRecover(m.member_id,b);
+    acts.append(b);
+    card.append(acts);
+    const res=sfEl('div','sf-res');
+    card.append(res);
+    const last=_ofLast[m.member_id];
+    if(last)_ofShowResult(res,last);
+  }
+  return card;
+}
+function _ofShowResult(res,p){
+  res.className='sf-res show';
+  res.innerHTML='';
+  if(!p.r||p.r.success!==true){
+    res.classList.add('fail');
+    res.append(sfEl('div','sf-badge','✗ 请求失败：'+((p.r&&(p.r.error||p.r.detail))||'网络错误')));
+    return;
+  }
+  const act=p.r.action;
+  if(act==='idle'){
+    res.classList.add('neutral');
+    res.append(sfEl('div','sf-badge','⚑ 空闲，未执行任何动作'));
+  }else if(!act||act==='none'){
+    res.classList.add('neutral');
+    res.append(sfEl('div','sf-badge','本轮无需动作'));
+  }else{
+    res.append(sfEl('div','sf-badge act','本轮动作：'+act));
+  }
+  const bits=[];
+  if(p.r.attempts!=null)bits.push('attempts='+p.r.attempts);
+  if(Array.isArray(p.r.reasons)&&p.r.reasons.length)bits.push(p.r.reasons.join('；'));
+  if(p.r.revive!=null)bits.push('revive='+p.r.revive);
+  if(bits.length)res.append(sfEl('div','of-meta',bits.join(' · ')));
+  const t=sfEl('details','of-details');
+  t.append(sfEl('summary',null,'原始返回'));
+  t.append(sfEl('div','sf-text',JSON.stringify(p.r,null,1)));
+  res.append(t);
+}
+async function ofRecover(mid,btn){
+  if(btn.disabled)return;
+  const orig=btn.textContent;btn.disabled=true;btn.textContent='抢救中…';
+  try{
+    const x=await fetch(`/api/workshop/${wsId}/member/${encodeURIComponent(mid)}/recover`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const r=await x.json().catch(()=>null);
+    _ofLast[mid]={r};
+    await loadOfflineReport();
+  }catch(e){
+    _ofLast[mid]={r:{success:false,error:e.message}};
+    await loadOfflineReport();
+  }finally{btn.disabled=false;btn.textContent=orig;}
+}
+async function ofScan(){
+  const btn=document.getElementById('ofScanBtn');
+  if(btn.disabled)return;
+  btn.disabled=true;btn.textContent='扫描中…';
+  const box=document.getElementById('ofScan');
+  try{
+    const x=await fetch(`/api/workshop/${wsId}/recover-scan`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const r=await x.json().catch(()=>null);
+    box.style.display='';
+    box.innerHTML='';
+    if(!r||r.success!==true){
+      box.append(sfEl('div','sf-err','扫描请求失败：'+((r&&(r.error||r.detail))||'网络错误')));
+    }else{
+      box.append(sfEl('div','t',String(r.summary||'（无摘要）').replace(/\*\*/g,'')));
+      const acted=r.acted&&typeof r.acted==='object'?Object.entries(r.acted):[];
+      const skipped=Array.isArray(r.idle_skipped)?r.idle_skipped:[];
+      if(acted.length){
+        const g=sfEl('div','grp');
+        g.append(sfEl('b',null,'本轮动作（acted）：'));
+        g.append(document.createTextNode(acted.map(pair=>pair[0]+' → '+pair[1]).join('，')));
+        box.append(g);
+      }
+      if(skipped.length){
+        const g=sfEl('div','grp skip');
+        g.append(sfEl('b',null,'空闲未打扰（idle_skipped）：'));
+        g.append(document.createTextNode(skipped.join('，')));
+        box.append(g);
+      }
+    }
+    await loadOfflineReport();
+  }catch(e){
+    box.style.display='';box.innerHTML='';
+    box.append(sfEl('div','sf-err','扫描请求失败：'+e.message));
+  }finally{btn.disabled=false;btn.textContent='🔄 全间抢救扫描';}
+}
+/* ── FE-07 下一步指引条：status → 文案与出口（DSH 22 号过审的 §1 映射） ── */
+let _wsStatus='';
+let _wsHall='';   /* 大厅任务原文（GET /workshop 回传）：draft 态要不要说"回大厅发任务"全看它 */
+/* ★2026-10-11（V40 P2）：已接入 agent 数。**0 个时必须提前说话** ——
+   否则"下一步"条会引导用户去点「结束讨论，选定员工」，点完才发现没人可选（走查实测的卡点）。
+   老板口径：**允许先发布、先讨论（不打断想法）**，但要把后面的路说清、并给接入入口。 */
+let _harnessCount=null;
+function _noAgentWarn(){ return _harnessCount===0; }
+function _agentWarnText(){
+  return '⚠ 平台上还没有接入任何 agent，现在**没人能干这个活**；可以先把需求聊清楚，'
+       + '执行前请先接入一个 agent（右上「🔌 注册 Harness」，或下方按钮）。';
+}
+function _nsFlash(id){
+  const el=document.getElementById(id);
+  if(!el){return;}
+  el.scrollIntoView({block:'center',behavior:'smooth'});
+  el.style.outline='2px solid var(--accent)';
+  setTimeout(()=>{el.style.outline='';},1600);
+}
+function _nsOpen(hash){
+  window.open('booths.html?ws_id='+encodeURIComponent(wsId)+(hash||''), '_blank');
+}
+function renderNextStep(){
+  const bar=document.getElementById('nextStepBar');
+  if(!bar)return;
+  if(!wsId){bar.style.display='none';return;}
+  bar.style.display='';
+  const t=document.getElementById('nextStepText');
+  const act=document.getElementById('nextStepActions');
+  act.innerHTML='';
+  const S=_wsStatus||'discussing';
+  const MAP={
+    /* 通道 90 号缺陷：大厅发过任务的间（hall_content 非空）status 仍是 draft，
+       原 draft 文案却让人"回大厅发布任务" ⇒ 自相矛盾。有任务 ⇒ 按一级讨论指引走。 */
+    draft: _wsHall
+      ? ['任务已发布。下一步：与平台AI明确需求，或直接点「结束讨论，选定员工 →」进入选人。',[['结束讨论，选定员工 →',()=>endDiscuss()]]]
+      : ['该工作间尚在草稿；回大厅发布任务继续。',[['回大厅',()=>{location.href='/';}]]],
+    discussing:['与平台AI明确需求；说“开始选人”，或点按钮结束讨论去选人。',[['结束讨论，选定员工 →',()=>endDiscuss()]]],
+    selecting:['在右侧员工列表初选：点「让平台 AI 选定员工」或手工勾选；名单确认后进入二级讨论。',[['确认成员',()=>_nsFlash('confirmBtn')]]],
+    division:['分工安排已按当前名单更新（library/plan.md）。在讨论里发一条「分工可以，开始工作」，等平台AI回复「分工已明确，可以开始工作」后点「🚀 开始工作」。',[['📚 资料库',()=>_nsOpen('#libPanel')],['🏗 隔间与桥',()=>_nsOpen('')],['🚀 开始工作',()=>_nsFlash('startWorkBtn')]]],
+    running:['成员在各自隔间作业；完成后走 review 收口。',[['🏗 隔间与桥',()=>_nsOpen('')],['📚 资料库',()=>_nsOpen('#libPanel')]]],
+    review:['完成复核与收口；可查隔间成果。',[['🏗 隔间与桥',()=>_nsOpen('')]]],
+    done:['任务完成；隔间与资料库可回看留档。',[['🏗 隔间与桥',()=>_nsOpen('')]]]
+  };
+  let m=MAP[S]||['当前状态：'+S+' · 可查看隔间与共享资料库。',[['🏗 隔间与桥',()=>_nsOpen('')],['📚 资料库',()=>_nsOpen('#libPanel')]]];
+  /* ★2026-10-11（V40 P2）：**还没接入任何 agent** ⇒ 就地补一句实话 + 接入入口。
+     走查实测：0 个 agent 时，"下一步"条照样引导「结束讨论，选定员工 →」，
+     用户照做、点完才发现没人可选 ⇒ 卡住而不知道为什么。这里**提前说**（不硬拦发布）。 */
+  if(_noAgentWarn() && (S==='draft'||S==='discussing'||S==='selecting')){
+    m=[m[0]+' '+_agentWarnText(), m[1].concat([['🔌 去接入 agent',()=>window.open('/register.html','_blank')]])];
+  }
+  t.textContent=m[0];
+  m[1].forEach(pair=>{
+    const b=document.createElement('button');
+    b.type='button'; b.className='ns-btn'; b.textContent=pair[0]; b.onclick=pair[1];
+    act.appendChild(b);
+  });
+}
 async function sendDiscuss(zone){
 
 
@@ -1804,10 +2806,17 @@ async function sendDiscuss(zone){
 
 
       const act=(r&&r.action)?r.action:'';
+      const asrc=(r&&r.action_source)?r.action_source:'';
+      _wsStatus=r.status||_wsStatus; renderNextStep();
+      /* 恒等式（DSH 15/16号实测）：后端 _l1_action_by_rule() 只返回 "select"
+         ⇒ rule_fallback ⇒ action==='select'。非 select 分支无需 rule_fallback 提示（原死代码已删）。 */
       if(act==='select'){
         setPhase(2);
         showSidebar();
         loadHarnesses().then(hs=>renderHarnessList(hs));
+        addMsg('notice', asrc==='rule_fallback'
+          ? '⚑ 推进提示（规则兜底 rule_fallback）：需求已明确，可以选定员工了。注意——上方 AI 回复仍可能在聊细节，推进是规则判定的，别把它的话当成「已同意」。请直接在左侧员工列表点选成员。'
+          : '✅ 需求已明确，可以选定员工了——请在左侧员工列表点选成员（AI 初选可改，确认后进入下一阶段）。', rz);
       }else if(act==='start'){
         setPhase(3);
         document.getElementById('startWorkBtn').style.display='';
@@ -1874,16 +2883,24 @@ async function leaderStatus(){
 
 
 async function loadHarnesses(){
-
-
-  try{const d=await fetch('/api/harness/list').then(x=>x.json());return d.harnesses||[];}catch(e){return [];}
-
-
+  /* ★2026-10-11（V40 P2）：这里是**取数**汇点（渲染有多个入口，取数只有一个）
+     ⇒ 顺手记住"有没有 agent"。0 个时"下一步"条要提前说实话（否则会引用户去点选人然后卡住）。
+     ⚠️ 教训：我第一版把这句放进 `renderHarnessList`，而首屏根本没走那条渲染路径
+     （它只调 loadHarnesses 拿名单）⇒ 警告不出现。**计数要跟着取数，不要跟着渲染。** */
+  try{
+    const d=await fetch('/api/harness/list').then(x=>x.json());
+    const list=d.harnesses||[];
+    syncAgentAwareness(list);
+    return list;
+  }catch(e){return [];}
 }
 
 
 function renderHarnessList(harnesses){
-
+  /* ★2026-10-11（V40 P2）：这里是"agent 列表"的唯一渲染汇点 ⇒ 顺手记住"有没有 agent"。
+     "下一步"条据此在**0 个 agent 时提前说实话**（否则会引导用户去点选人、然后卡住）。
+     放在本函数里而不是逐个调用点：调用点有 6 处，逐个改必然漏。 */
+  syncAgentAwareness(harnesses);
 
   const el=document.getElementById('harnessList');
 
@@ -1918,7 +2935,42 @@ function renderHarnessList(harnesses){
 }
 
 
-const POSITIONS=['组长','码农','画师','搜索者'];
+/* FE-23 / 106 号①：职业候选一处真相 = GET /api/role-catalog（原 POSITIONS 写死四职业已删） */
+let ROLE_CATALOG=null;
+async function loadRoleCatalog(){
+  if(ROLE_CATALOG) return ROLE_CATALOG;
+  try{
+    const d=await fetch('/api/role-catalog').then(x=>x.ok?x.json():null);
+    if(d&&d.success&&d.groups){ ROLE_CATALOG=d; renderRoleHint(d); return d; }
+  }catch(e){}
+  ROLE_CATALOG={success:false, groups:{}, count:0, legacy_aliases:{},
+    note:'职业目录暂不可用 —— 下面可直接自由输入职业（不影响保存）', failed:true};
+  renderRoleHint(ROLE_CATALOG);
+  return ROLE_CATALOG;
+}
+function renderRoleHint(d){
+  const el=document.getElementById('roleHint');
+  if(!el) return;
+  if(d.failed){ el.textContent=d.note; return; }
+  const gN=Object.keys(d.groups||{}).length;
+  const alias=Object.keys(d.legacy_aliases||{}).map(k=>k+' → '+d.legacy_aliases[k]).join('、');
+  el.innerHTML='<b>职业自由填</b>（候选 '+esc(d.count||0)+' 个 / '+gN+' 组，来自平台职业表；只是推荐，不会拦你手填）'
+    +(alias?('<br>旧叫法提示：'+esc(alias)):'')
+    +(d.note?('<br>'+esc(d.note)):'');
+}
+function roleListHtml(){
+  const cat=ROLE_CATALOG;
+  let h='<div class="dd-custom"><input type="text" class="role-custom" placeholder="自由输入职业（回车确认）" autocomplete="off"></div>';
+  const groups=(cat&&cat.groups)||{};
+  Object.keys(groups).forEach(g=>{
+    const list=groups[g]||[];
+    if(!list.length) return;
+    h+='<div class="dd-group">'+esc(g)+'</div>';
+    list.forEach(r=>{ h+='<div class="dd-opt" data-role="'+esc(r)+'">'+esc(r)+'</div>'; });
+  });
+  if(cat&&cat.note) h+='<div class="dd-note">'+esc(cat.note)+'</div>';
+  return h;
+}
 
 
 function makeRosterRow(member, harnesses){
@@ -1951,7 +3003,7 @@ function makeRosterRow(member, harnesses){
       <button type="button" class="dd-btn role-btn">${esc(roleDisp)} ▾</button>
 
 
-      <div class="dd-list">${POSITIONS.map(p=>`<div class="dd-opt" data-role="${esc(p)}">${esc(p)}</div>`).join('')}</div>
+      <div class="dd-list">${roleListHtml()}</div>
 
 
     </div>
@@ -2041,6 +3093,22 @@ function makeRosterRow(member, harnesses){
   });
 
 
+  /* FE-23：自由文本职业（回车/失焦采用；候选只是提示，不是白名单） */
+  const rc=row.querySelector('.role-custom');
+  if(rc){
+    const applyRole=()=>{
+      const v=(rc.value||'').trim();
+      if(!v) return;
+      row.querySelector('.role-btn').textContent=v+' ▾';
+      row.querySelectorAll('.dd-list').forEach(l=>l.classList.remove('open'));
+      syncMembers();
+    };
+    rc.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); applyRole(); } });
+    rc.addEventListener('blur',applyRole);
+    rc.addEventListener('click',e=>e.stopPropagation());
+  }
+
+
   return row;
 
 
@@ -2050,9 +3118,10 @@ function makeRosterRow(member, harnesses){
 document.addEventListener('click',()=>document.querySelectorAll('.dd-list.open').forEach(l=>l.classList.remove('open')));
 
 
-function renderRoster(members, harnesses){
+async function renderRoster(members, harnesses){
 
 
+  await loadRoleCatalog();   /* FE-23：先取职业目录，再建行（下拉候选=一处真相） */
   const el=document.getElementById('roster');
 
 
@@ -2065,9 +3134,10 @@ function renderRoster(members, harnesses){
 }
 
 
-function addMemberRow(){
+async function addMemberRow(){
 
 
+  await loadRoleCatalog();   /* FE-23：先取职业目录 */
   loadHarnesses().then(hs=>{
 
 
@@ -2126,6 +3196,12 @@ function syncMembers(){
 
 
       document.getElementById('lastAction').textContent='名单已同步到后端';
+
+
+      loadSessionFlow();
+
+
+      loadOfflineReport();
 
 
     }
@@ -2224,13 +3300,58 @@ function saveMembers(){
 }
 
 
+function showSelectionNotice(reason,advice,registerUrl){
+  let box=document.getElementById('selectionNotice');
+  if(!box){
+    box=document.createElement('div');box.id='selectionNotice';
+    box.setAttribute('role','status');
+    box.style.cssText='margin:8px 0;padding:10px;border:1px solid var(--rule);border-radius:8px;line-height:1.6';
+    const btn=document.getElementById('selectBtn');
+    if(btn)btn.insertAdjacentElement('afterend',box);
+  }
+  box.replaceChildren();
+  const text=document.createElement('div');text.textContent=reason||'';box.appendChild(text);
+  if(advice){const next=document.createElement('div');next.textContent=advice;box.appendChild(next);}
+  if(registerUrl){
+    const link=document.createElement('a');link.href='/register.html';link.target='_blank';link.rel='noopener';
+    link.textContent='接入员工（保留当前工作间）';box.appendChild(link);
+    const retry=document.createElement('button');retry.className='btn mini';retry.textContent='接入后刷新员工';
+    retry.onclick=async()=>{const hs=await loadHarnesses();renderHarnessList(hs);updateSelectionReadiness(hs);};
+    box.appendChild(retry);
+  }
+  box.hidden=!reason;
+}
+function syncAgentAwareness(hs){
+  /* 记住"有没有 agent"，让"下一步"条能提前说实话（V40 P2）。 */
+  if(!Array.isArray(hs))return;
+  const before=_harnessCount;
+  _harnessCount=hs.length;
+  if(before!==_harnessCount) renderNextStep();
+}
+function updateSelectionReadiness(hs){
+  if(!Array.isArray(hs))return;
+  if(hs.length===0){
+    showSelectionNotice('还没有接入员工。任务和讨论已保留，你可以先把需求聊清楚。','选人前，请先接入一个能执行任务的 agent。','/register.html');
+  }else{
+    showSelectionNotice('已接入 '+hs.length+' 个员工，可以按任务需要选人。','点击「让平台 AI 选定员工」，或手工指定名单。');
+  }
+}
 async function selectMembers(){
 
 
   const btn=document.getElementById('selectBtn'); btn.disabled=true; btn.textContent='选定中...';
 
 
-  const r=await fetch(`/api/workshop/${wsId}/select-members`,{method:'POST'}).then(x=>x.json());
+  let r;
+  try{
+    const response=await fetch(`/api/workshop/${wsId}/select-members`,{method:'POST'});
+    r=await response.json();
+    if(!response.ok)throw new Error(r.error||r.reason||'HTTP '+response.status);
+  }catch(error){
+    btn.disabled=false;btn.textContent='重试选人';
+    showSelectionNotice('选人失败：'+error.message,'当前名单未改动，请重试。');
+    return;
+  }
 
 
   btn.disabled=false; btn.textContent='重新选定';
@@ -2245,7 +3366,10 @@ async function selectMembers(){
   if(r.success){
 
 
+    _wsStatus='selecting'; renderNextStep(); loadSessionFlow(); loadOfflineReport(); loadStageBar();
     renderRoster(r.members, hs);
+    setPhase(2);
+    showSelectionNotice(r.reason||(r.members.length?'已生成候选名单，请检查后确认。':'本次没有选出员工。'),r.advice,r.register_url);
 
 
     document.getElementById('confirmBtn').style.display='';
@@ -2257,7 +3381,8 @@ async function selectMembers(){
   }else{
 
 
-    acToast('选定失败：'+(r.error||''), true);
+    showSelectionNotice(r.reason||r.error||'本次未能选定员工。',r.advice||'请检查接入员工后重试。',r.register_url);
+    acToast('选定失败：'+(r.reason||r.error||'请查看选人区提示'), true);
 
 
   }
@@ -2343,6 +3468,8 @@ function startWork(){
   addMsg('notice','正在激活员工，拉取各 harness 的新会话...（激活状态请看右侧列表）',2);
   fetch(`/api/workshop/${wsId}/start`,{method:'POST'}).then(x=>x.json()).then(d=>{
     if(d.success){
+      _wsStatus=d.status||'running'; renderNextStep(); loadStageBar();
+      addMsg('notice','工作已启动——每位成员在自己的隔间作业。隔间与共享资料库：booths.html?ws_id='+wsId+'（或用上方「下一步」条的按钮直达）。',2);
       if(d.action==='complete'){ setPhase(5); }
       else { setPhase(4); pollWorkStatus(); }
     }
@@ -2521,6 +3648,7 @@ function confirmMembers(){
 
 
       // 进入二级讨论：平台 AI 退出，组长接管（后端 confirm-members 已真实派发组长激活任务）
+      _wsStatus=d.status||'division'; renderNextStep(); loadSessionFlow(); loadOfflineReport(); loadStageBar();
 
 
       setPhase(3);
@@ -2551,6 +3679,7 @@ function loadWorkshop(id){
 
 
     wsId=id;
+    loadRoleCatalog();   /* FE-23：职业目录预取（提示行与 roster 下拉共用） */
     if(typeof wsvModeLoad==='function')wsvModeLoad();
     if(typeof syncManualActBtn==='function')syncManualActBtn();
 
@@ -2572,6 +3701,12 @@ function loadWorkshop(id){
     });
     _msgSeenSeq=maxSeq;
 
+    /* 90 号：先按首屏 status 渲染"下一步"条（不等首轮 AI 讨论，避免草稿文案长时间挂着） */
+    _wsStatus=d.status||'';
+    if(typeof d.hall_content==='string'){ _wsHall=d.hall_content.trim(); }
+    renderNextStep();
+    let stAuto='';   /* 首轮自动讨论回来后的最新 status（首屏 d.status 可能过期） */
+
 
     if(msgs.length===0){
 
@@ -2587,6 +3722,12 @@ function loadWorkshop(id){
       try{
         const r=await fetch(`/api/workshop/${id}/discuss`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:d.hall_content})}).then(x=>x.json());
         if(r.reply) addMsg('ai', r.reply, (typeof r.zone==='number')?r.zone:1);
+        /* 90 号：讨论回来刷新真实 status；但用户若已推进到选人/之后阶段，迟到的 draft/discussing 不许把条翻回去 */
+        if(r&&r.status){
+          stAuto=r.status;
+          if(_wsStatus===''||_wsStatus==='draft'||_wsStatus==='discussing'){ _wsStatus=r.status; }
+          renderNextStep();
+        }
       } finally {
         const t=document.getElementById('thinking'); if(t)t.remove();
       }
@@ -2606,6 +3747,9 @@ function loadWorkshop(id){
 
 
     // 若已到选定/分工阶段，显示侧栏并恢复名单
+    /* 90 号：首轮讨论后的 status 优先于首屏值；同样受阶段守卫——用户已推进则不回退 */
+    if(_wsStatus===''||_wsStatus==='draft'||_wsStatus==='discussing'){ _wsStatus=stAuto||d.status||''; }
+    renderNextStep(); loadSessionFlow(); loadOfflineReport();
 
 
     if(d.status!=='discussing' && d.status!=='draft'){
@@ -2621,6 +3765,7 @@ function loadWorkshop(id){
 
 
       renderHarnessList(hs);
+      if(_wsStatus==='selecting')updateSelectionReadiness(hs);
 
 
       if(d.members&&d.members.length){renderRoster(d.members, hs); document.getElementById('confirmBtn').style.display='';}
@@ -2639,6 +3784,14 @@ function loadWorkshop(id){
     if(d.status!=='draft' && d.status!=='done'){ startMsgPolling(); }
     refreshSmLight();
     refreshResources();
+    /* ★2026-10-11（V40 P2）：**首屏就要知道"有没有 agent"**。
+       实测：首屏（一级讨论阶段）从不请求 `/api/harness/list`（harness/list 请求次数=0）——
+       因为取名单只发生在"选人及以后"的分支里，而 0 个 agent 的用户**根本走不到那儿**。
+       ⇒ 于是"下一步"条一路引导他去点选人，点完才发现没人可选（走查实测的卡点）。
+       这里在首屏无条件探一次；`renderNextStep()` 已在上面渲染过，计数变化会自己刷新它。 */
+    loadHarnesses();
+    await loadStageBar();   /* FE-20：拉权威阶段并施门控（放在最后，保证门控生效顺序） */
+    await loadOrphans();    /* FE-23：孤儿横幅（并联动放开名单） */
 
 
   });

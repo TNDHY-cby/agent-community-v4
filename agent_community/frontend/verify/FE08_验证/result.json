@@ -1,0 +1,86 @@
+{
+  "errors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "nonGet": [
+    "POST /api/workshop/491a6776/discuss",
+    "POST /api/workshop/491a6776/member/m0/establish-session",
+    "POST /api/workshop/491a6776/member/m0/establish-session",
+    "POST /api/workshop/491a6776/member/m0/deliver-bridge",
+    "POST /api/workshop/491a6776/member/nope/establish-session"
+  ],
+  "render": {
+    "shown": true,
+    "summary": "1 名成员有需人工步骤",
+    "summaryCls": "sf-summary warn",
+    "cards": 1,
+    "sessionName": "📇 491a6776-FE08验收-自建-码农-m0复制",
+    "chips": [
+      "4建会话 需人工",
+      "⚠ 会占用桌面",
+      "5送桥 需人工",
+      "⚠ 会占用桌面",
+      "8重命名 需人工",
+      "⚠ 会占用桌面"
+    ],
+    "meta": "隔间未建 · 成果 0 · 产物 0 · 会话未建立",
+    "buttons": [
+      "建立会话 4/8/9（会占用桌面）",
+      "送出具体桥 5（会占用桌面）"
+    ],
+    "entryState": "pending",
+    "hasUndefined": false,
+    "hasNaN": false
+  },
+  "est": {
+    "shown": true,
+    "cls": "sf-res show pending",
+    "badge": "⚠ 待人工 / 未核实",
+    "steps": [
+      "4建会话 ⚠",
+      "8重命名 ⚠"
+    ],
+    "manualCount": 2,
+    "manualFirst": "【步骤 4 · new_session】请在你的 harness 里**新建一个对话**（随后平台会把它重命名成：491a6776-FE08验收-自建-码农-m0）",
+    "greenOkBadge": false,
+    "bodyHasMySuccessClaim": false
+  },
+  "reverse": {
+    "pass": true,
+    "badge": "⚠ 待人工 / 未核实",
+    "okSteps": 0
+  },
+  "canned": {
+    "cls": "sf-res show ok",
+    "badge": "✔ 完成（脚本自证）",
+    "okSteps": 2
+  },
+  "del": {
+    "cls": "sf-res show pending",
+    "badge": "⚠ 待人工 / 未核实",
+    "hasText": true,
+    "hasPath": true,
+    "hasCopyBtn": true,
+    "manualFirst": "【步骤 5 · deliver】该 harness 未配置 deliver 脚本：请把 deliver_text.md 的内容粘贴进它的会话"
+  },
+  "v": {
+    "v1600": {
+      "vw": 1600,
+      "overflow": false
+    },
+    "v1280": {
+      "vw": 1280,
+      "overflow": false
+    },
+    "v1024": {
+      "vw": 1024,
+      "overflow": false
+    }
+  },
+  "errCase": {
+    "status": 404,
+    "body": {
+      "error": "成员不存在"
+    }
+  }
+}

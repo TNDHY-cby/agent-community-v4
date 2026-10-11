@@ -124,6 +124,10 @@ async def file_poll_send(
         replies = sorted(reply_dir.glob(reply_pattern))
         if replies:
             try:
+                # 注意：这里读的是**被叫醒的 agent 写回的回复文件**（`waker_reply_*.json`），
+                # **不是** AI provider 的回复 ⇒ **不要**套 `ai_provider.ai_error_text` 那套判据
+                # （那是给 `[Error: HTTP 402] {...}` 这种 provider 错误文本用的，这里不适用）。
+                # 文件坏了/不是合法 JSON 时，下面的 except 会**如实**报"读取回复失败"（准则⑤）。
                 data = json.loads(replies[0].read_text(encoding="utf-8"))
                 replies[0].unlink()  # 消费回复
                 resp_text = json.dumps(data, ensure_ascii=False)

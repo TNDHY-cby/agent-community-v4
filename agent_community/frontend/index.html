@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>多 Agent 社区 · 工作大厅</title>
+<link rel="icon" href="data:,">
 <style>
 :root{--bg:#121316;--bg2:#191b20;--bg3:#21242a;--bg4:#2b2f37;--bg5:#363b45;--ink:#e8e6e1;--muted:#9b978e;--dim:#66625a;--rule:#26292f;--accent:#d97757;--accent-soft:rgba(217,119,87,.13);--accent-strong:#e58968;--green:#86b394;--green-soft:rgba(134,179,148,.13);--yellow:#d9ab53;--yellow-soft:rgba(217,171,83,.13);--red:#d07468;--red-soft:rgba(208,116,104,.13);--blue:#7ba3c9;--blue-soft:rgba(123,163,201,.13);--cyan:#64b5b4;--cyan-soft:rgba(100,181,180,.13);--purple:#a08cc0;--purple-soft:rgba(160,140,192,.13);--shadow-1:0 1px 2px rgba(0,0,0,.35),0 3px 10px rgba(0,0,0,.18);--shadow-2:0 8px 24px rgba(0,0,0,.38);--radius-lg:14px;--radius-md:10px;--radius-sm:7px;--focus-ring:0 0 0 3px rgba(217,119,87,.22);--font-mono:"JetBrains Mono","Cascadia Code",Consolas,"Courier New",monospace}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -79,10 +80,18 @@ body.nav-collapsed .workshop-item .wi-ico{display:inline-block;font-size:15px;li
 .hall-view{flex:1;display:flex;flex-direction:column;overflow:hidden}
 .hall-view.hide{display:none}
 .hall-messages{flex:1;overflow-y:auto;padding:22px 28px;display:flex;flex-direction:column;gap:10px}
-.hall-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--dim);text-align:center;gap:6px}
+.hall-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--dim);text-align:center;gap:6px;position:relative}
 .hall-empty .he-icon{font-size:44px;margin-bottom:6px;opacity:.35}
 .hall-empty .he-title{font-size:17px;font-weight:700;color:var(--muted)}
 .hall-empty .he-sub{font-size:12.5px;color:var(--dim)}
+/* 功能入口坞：空白区左上角，未来功能区入口依次往里加（FE-10 修订） */
+.hall-entries{position:absolute;top:16px;left:16px;right:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;z-index:2}
+.hall-entry{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:208px;padding:13px 15px;background:var(--bg2);border:1px solid var(--rule);border-radius:12px;cursor:pointer;text-decoration:none;color:var(--ink);transition:background-color .15s,border-color .15s,transform .15s;text-align:left}
+.hall-entry:hover{background:var(--accent-soft);border-color:var(--accent);transform:translateY(-1px)}
+.hall-entry .he-i{font-size:20px;color:var(--accent);line-height:1}
+.hall-entry .he-t{font-size:14.5px;font-weight:900}
+.hall-entry .he-s{font-size:11px;color:var(--muted);line-height:1.5}
+.view-tab[href]{display:flex;align-items:center;text-decoration:none}
 .hmsg{padding:12px 16px;border-radius:12px;font-size:13px;animation:msgIn .25s ease-out;max-width:84%;border:1px solid rgba(255,255,255,.045);box-shadow:var(--shadow-1)}
 @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .hmsg .hm-meta{display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:11px;color:var(--muted)}
@@ -201,6 +210,9 @@ body.nav-collapsed .workshop-item .wi-ico{display:inline-block;font-size:15px;li
 .agent-card .ac-caps{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .agent-card .cap-tag{font-size:10px;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
 .agent-card .ac-sw{font-size:10px;color:var(--muted);margin-top:4px}
+/* ★2026-10-11（老板要求）：Harness 列表要能看出「框架特点 + 适配大模型」 */
+.ac-fw{font-size:10.5px;color:var(--ink);margin-top:4px;line-height:1.45}
+.ac-model{font-size:10.5px;color:var(--ink);margin-top:2px;line-height:1.45}
 .agent-card{position:relative}
 .ac-more{margin-left:auto;background:transparent;border:none;color:var(--dim);font-size:16px;line-height:1;padding:2px 6px;cursor:pointer;border-radius:6px;transition:all .15s;flex-shrink:0}
 .ac-more:hover{background:var(--accent-soft);color:var(--accent)}
@@ -333,6 +345,16 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
 .setup-btn-primary{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;width:100%}
 .setup-btn-primary:hover{filter:brightness(1.15);box-shadow:0 0 16px var(--accent-soft)}
 .setup-btn-primary:disabled{opacity:.4;cursor:not-allowed}
+/* FE-07 主流程阶段条 */
+.flowstrip{display:flex;align-items:center;gap:8px;padding:2px 110px 9px 0;flex-wrap:wrap}
+.fs-dot{font-size:11px;font-weight:800;color:var(--dim);border:1px solid var(--rule);border-radius:999px;padding:3px 10px;background:var(--bg3);transition:all .15s}
+.fs-dot.done{color:var(--green);border-color:rgba(134,179,148,.35);background:var(--green-soft)}
+.fs-dot.on{color:#1a120b;background:var(--accent);border-color:var(--accent);box-shadow:0 0 8px rgba(217,119,87,.45)}
+.fs-arrow{color:var(--dim);font-size:10px}
+.fs-status{font-size:10.5px;font-weight:800;border-radius:6px;padding:2px 8px;background:var(--bg4);color:var(--muted);border:1px solid var(--rule);margin-left:auto}
+.fs-status.unknown{border-style:dashed}
+.fs-enter{font-size:11.5px;font-weight:800;color:var(--accent);text-decoration:none;border:1px solid rgba(217,119,87,.4);border-radius:7px;padding:3px 10px;transition:all .15s}
+.fs-enter:hover{background:var(--accent-soft)}
 
 </style>
 </head>
@@ -344,6 +366,9 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
     <div class="spacer"></div>
     <button class="btn" onclick="openSettings()">⚙ 设置</button>
     <button class="btn" onclick="location.href='/register.html'">🔌 注册 Harness</button>
+    <button class="btn" onclick="location.href='/ops.html'" title="运维看板 · 工单审计与Agent在线">📡 看板</button>
+    <button class="btn" onclick="location.href='/handover.html'" title="交付回执台 · 无证据不回执">🧾 回执</button>
+    <button class="btn" onclick="location.href='/booths.html'" title="成员隔间与桥">🏗 隔间</button>
     <button class="btn" onclick="saveSession()">保存</button>
     <button class="btn" onclick="restoreSession()">恢复</button>
   </div>
@@ -356,21 +381,30 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
       <div class="view-tabs">
         <div class="view-tab active" id="tabHall" onclick="switchView('hall')">🏛️ 大厅</div>
         <div class="view-tab" id="tabWorkshop" onclick="switchView('workshop')" style="display:none">🔧 工作间</div>
+        <a class="view-tab" href="/hub.html" title="流程说明 · 全流程（只讲不做）">◈ 流程说明</a>
       </div>
       <div class="hall-view" id="hallView">
-        <div class="hall-messages" id="hallMessages"><div class="hall-empty"><div class="he-icon">🏛️</div><div class="he-title">社区大厅</div><div class="he-sub">输入指令广播任务，Agent 们会在此讨论并进入工作间执行</div></div></div>
+        <div class="hall-messages" id="hallMessages"><div class="hall-empty"><div class="hall-entries">
+            <a class="hall-entry" href="/hub.html" title="流程说明 · 全流程（只讲不做）">
+              <span class="he-i">◈</span>
+              <span class="he-t">流程说明</span>
+              <span class="he-s">使用说明书 · 流程 · 接口</span>
+            </a>
+          </div><div class="he-icon">🏛️</div><div class="he-title">社区大厅</div><div class="he-sub">发布任务后，先与平台 AI 明确需求，再选员工分工执行</div>
+        </div></div>
         <div class="hall-input">
           <div class="hi-row">
-            <textarea id="cmdInput" placeholder="输入指令，例如：写一首关于秋天的诗" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+            <textarea id="cmdInput" placeholder="描述你想完成的任务，例如：做一个本地记账工具" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
             <button class="send-btn" id="sendBtn" onclick="sendCommand()">发布</button>
           </div>
-          <div class="hi-hint">Enter 发布 · Shift+Enter 换行 · 任务发布后在左侧生成工作间</div>
+          <div class="hi-hint">Enter 发布 · Shift+Enter 换行 · 可先发布和讨论；执行前需接入员工。<a href="/register.html" target="_blank" rel="noopener">接入员工</a></div>
         </div>
       </div>
       <div class="workshop-view" id="workshopView">
         <div class="workflow-section" id="workflowSection">
           <button class="workflow-toggle" id="workflowToggle" onclick="toggleWorkflow()">折叠工作流 ▾</button>
           <div class="ws-title"><span id="wsTaskTitle">工作流</span><span class="ws-status-tag" id="wsTaskStatus" style="display:none"></span></div>
+          <div class="flowstrip" id="flowStrip" style="display:none"></div>
           <div class="workflow-canvas" id="workflowCanvas"></div>
         </div>
         <div class="ds-resizer" id="dsResizer"></div>
@@ -387,7 +421,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
       </div>
     </div>
     <div class="col-right">
-      <div class="col-header">Agent 列表</div>
+      <div class="col-header">Harness 列表</div>
       <div id="agentList" style="flex:1;overflow-y:auto"><div style="padding:20px;text-align:center;color:var(--dim);font-size:12px"><span class="spinner"></span> 加载中...</div></div>
       <div class="col-header">任务预算</div>
       <div class="budget-panel" id="budgetPanel">
@@ -580,11 +614,54 @@ function setWSStatus(s){const d=document.getElementById('wsDot'),t=document.getE
 function appendMessage(msg,isHistory){if(!msg)return;const mt=msg.message_type||'text',tid=msg.task_id||'',isBc=msg.to_agent==='broadcast'||msg.to_agent==='所有人',isHall=isBc||!tid||mt==='text'||mt==='result';if(isHall)addToHall(msg,isHistory);if(tid){if(!taskMessages[tid])taskMessages[tid]=[];taskMessages[tid].push(msg);if(currentWorkshopId===tid)addToDiscussion(msg)}if(!isHistory&&mt==='bridge_waiting'&&tid)showBridgePanel(tid,msg.metadata?.bridge_prompt||msg.content||'');if(!isHistory&&(mt==='bridge_timeout'||mt==='bridge_response')&&tid===bridgeTaskId)hideBridgePanel()}
 function addToHall(msg,isHistory){const s=document.getElementById('hallMessages');const h=s.querySelector('.hall-empty');if(h)h.remove();const d=document.createElement('div');const mt=msg.message_type||'text',ts=msg.timestamp||new Date().toISOString(),time=formatTime(ts),from=msg.from_agent||'system',to=msg.to_agent||'broadcast',toD=to==='broadcast'?'所有人':to;const l={text:'消息',task_assign:'分派',task_complete:'完成',budget_warning:'预算',budget_cutoff:'熔断',memory_restore:'记忆',context_lost:'丢失',bridge_waiting:'桥接',bridge_timeout:'超时',bridge_response:'响应',result:'结果'};const tl=l[mt]||mt;let c=msg.content||'';if(c.startsWith('{')&&c.endsWith('}')){try{c=JSON.stringify(JSON.parse(c),null,2)}catch(e){}}const isUB=to==='broadcast'&&mt==='text'&&from==='user'&&!isHistory;if(isUB){d.className='broadcast-banner';d.innerHTML=`<div class="bb-label">📢 任务广播</div><div>${esc(c)}</div><div style="font-size:10px;color:var(--dim);margin-top:4px">${time}</div>`}else{d.className=`hmsg type-${mt}`;d.innerHTML=`<div class="hm-meta"><span class="hm-from">${esc(from)}</span><span class="hm-arrow">→</span><span class="hm-to">${esc(toD)}</span><span class="hm-type">${tl}</span><span class="hm-time">${time}</span></div><div class="hm-content">${esc(c)}</div>`}if(isHistory)s.insertBefore(d,s.firstChild);else{s.appendChild(d);s.scrollTop=s.scrollHeight}}
 function switchView(v){currentView=v;const tH=document.getElementById('tabHall'),tW=document.getElementById('tabWorkshop'),hV=document.getElementById('hallView'),wV=document.getElementById('workshopView');if(v==='hall'){tH.classList.add('active');tW.classList.remove('active');hV.classList.remove('hide');wV.classList.remove('show')}else{tH.classList.remove('active');tW.classList.add('active');hV.classList.add('hide');wV.classList.add('show')}}
-function openWorkshop(tid){currentWorkshopId=tid;switchView('workshop');const t=tasks.find(x=>x.task_id===tid);if(!t)return;const wname=t.title||'未命名任务';document.getElementById('wsTaskTitle').textContent=wname;document.getElementById('tabWorkshop').style.display='flex';document.getElementById('tabWorkshop').innerHTML='🔧 '+esc(wname);document.getElementById('dsWorkshopName').textContent=wname;const se=document.getElementById('wsTaskStatus');const sl={pending:'待处理',discussing:'讨论中',routing:'路由中',executing:'执行中',completed:'已完成',failed:'失败',budget_cutoff:'预算熔断'};se.textContent=sl[t.status]||t.status;se.style.display='inline-block';const sc={completed:['var(--green-soft)','var(--green)'],failed:['var(--red-soft)','var(--red)'],budget_cutoff:['var(--red-soft)','var(--red)'],executing:['var(--blue-soft)','var(--blue)'],routing:['var(--blue-soft)','var(--blue)']};const c=sc[t.status]||['var(--yellow-soft)','var(--yellow)'];se.style.background=c[0];se.style.color=c[1];const cb=document.getElementById('dsConfirmBtn');if(cb){if(t.status==='discussing'){cb.style.display='';cb.textContent='✓ 确认开始';cb.style.opacity='1';cb.style.background='var(--green-soft)';cb.style.color='var(--green)';cb.onclick=confirmStartTask}else{cb.style.display='none'}}renderWorkflow(t);renderDiscussion(tid);refreshBudget();document.querySelectorAll('.workshop-item').forEach(e=>e.classList.remove('active'));const it=document.querySelector(`[data-task-id="${tid}"]`);if(it)it.classList.add('active')}
+function openWorkshop(tid){currentWorkshopId=tid;switchView('workshop');_flowWsId=null;_flowWsStatus='';_flowWsErr='';renderFlowStrip();fetch('/api/tasks/'+encodeURIComponent(tid)+'/workshop').then(x=>{if(x.status===404){_flowWsErr='404';return null;}return x.ok?x.json():null;}).then(w=>{if(w&&w.workshop_id){_flowWsId=w.workshop_id;_flowWsStatus=w.status||'';}renderFlowStrip();}).catch(()=>{renderFlowStrip();});const t=tasks.find(x=>x.task_id===tid);if(!t)return;const wname=t.title||'未命名任务';document.getElementById('wsTaskTitle').textContent=wname;document.getElementById('tabWorkshop').style.display='flex';document.getElementById('tabWorkshop').innerHTML='🔧 '+esc(wname);document.getElementById('dsWorkshopName').textContent=wname;const se=document.getElementById('wsTaskStatus');const sl={pending:'待处理',discussing:'讨论中',routing:'路由中',executing:'执行中',completed:'已完成',failed:'失败',budget_cutoff:'预算熔断'};se.textContent=sl[t.status]||t.status;se.style.display='inline-block';const sc={completed:['var(--green-soft)','var(--green)'],failed:['var(--red-soft)','var(--red)'],budget_cutoff:['var(--red-soft)','var(--red)'],executing:['var(--blue-soft)','var(--blue)'],routing:['var(--blue-soft)','var(--blue)']};const c=sc[t.status]||['var(--yellow-soft)','var(--yellow)'];se.style.background=c[0];se.style.color=c[1];const cb=document.getElementById('dsConfirmBtn');if(cb){if(t.status==='discussing'){cb.style.display='';cb.textContent='✓ 确认开始';cb.style.opacity='1';cb.style.background='var(--green-soft)';cb.style.color='var(--green)';cb.onclick=confirmStartTask}else{cb.style.display='none'}}renderWorkflow(t);renderDiscussion(tid);refreshBudget();document.querySelectorAll('.workshop-item').forEach(e=>e.classList.remove('active'));const it=document.querySelector(`[data-task-id="${tid}"]`);if(it)it.classList.add('active')}
 function renderWorkflow(task){const cv=document.getElementById('workflowCanvas');cv.innerHTML='';let aa=[];try{aa=JSON.parse(task.assigned_agents||'[]')}catch(e){}let result='';try{result=JSON.parse(task.result||'{}').result||task.result||''}catch(e){result=task.result||''}const st=task.status||'pending',isD=st==='completed',isE=st==='executing'||st==='routing',isEr=st==='failed'||st==='budget_cutoff';const nodes=[];nodes.push({id:'start',type:'start',icon:'▶',label:'开始',detail:task.description||task.title||'',status:'done',x:20,y:40});nodes.push({id:'router',type:'router',icon:'⬡',label:'任务路由',detail:`意图: ${task.intent||'general'}\n分派: ${aa.length} 个 Agent`,status:isD||isE?'done':(isEr?'error':'active'),x:240,y:40});let ay=40;aa.forEach((aid,i)=>{const ag=agents.find(a=>a.agent_id===aid);nodes.push({id:`agent-${i}`,type:'agent',icon:'🤖',label:ag?ag.name:aid,detail:`${aid}\n来源: ${ag?ag.software_context:''}`,status:isD?'done':(isE?'active':''),x:460,y:ay});ay+=100});if(isD||result)nodes.push({id:'result',type:'result',icon:'✓',label:'结果',detail:result.substring(0,200)+(result.length>200?'...':''),status:isD?'done':'active',x:680,y:40});const mx=Math.max(...nodes.map(n=>n.x))+220,my=Math.max(...nodes.map(n=>n.y))+120;cv.style.width=mx+'px';cv.style.height=my+'px';const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('wf-svg');svg.setAttribute('width',mx);svg.setAttribute('height',my);const conns=[];conns.push({from:'start',to:'router',status:'done'});aa.forEach((_,i)=>conns.push({from:'router',to:`agent-${i}`,status:isD?'done':(isE?'flowing':'active')}));if(nodes.find(n=>n.id==='result')&&aa.length>0)conns.push({from:`agent-${aa.length-1}`,to:'result',status:isD?'done':''});const nm={};nodes.forEach(n=>nm[n.id]=n);conns.forEach(cn=>{const f=nm[cn.from],t=nm[cn.to];if(!f||!t)return;const x1=f.x+180,y1=f.y+30,x2=t.x,y2=t.y+30,mx2=(x1+x2)/2;const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',`M ${x1},${y1} C ${mx2},${y1} ${mx2},${y2} ${x2},${y2}`);if(cn.status==='flowing')p.classList.add('flowing');else if(cn.status==='done')p.classList.add('done');else if(cn.status==='active')p.classList.add('active');svg.appendChild(p)});cv.appendChild(svg);nodes.forEach(n=>{const el=document.createElement('div');el.className=`wf-node type-${n.type}`;if(n.status==='active')el.classList.add('active');if(n.status==='done')el.classList.add('done');if(n.status==='error')el.classList.add('error');el.style.left=n.x+'px';el.style.top=n.y+'px';const st2=n.status==='done'?'<span class="wn-status" style="background:var(--green-soft);color:var(--green)">完成</span>':n.status==='active'?'<span class="wn-status" style="background:var(--blue-soft);color:var(--blue)">执行中</span>':n.status==='error'?'<span class="wn-status" style="background:var(--red-soft);color:var(--red)">错误</span>':'';el.innerHTML=`<div class="wn-header"><div class="wn-icon">${n.icon}</div><span class="wn-label">${esc(n.label)}</span>${st2}</div><div class="wn-body"><div class="wn-detail">${esc(n.detail)}</div></div>`;cv.appendChild(el)})}
 function renderDiscussion(tid){const l=document.getElementById('discussionList');const ms=taskMessages[tid]||[];if(ms.length===0){l.innerHTML='<div style="padding:8px;color:var(--dim);font-size:11px;text-align:center">暂无讨论</div>';return}l.innerHTML=ms.map(m=>{const f=m.from_agent||'system',t=formatTime(m.timestamp||new Date().toISOString());let c=m.content||'';if(c.length>300)c=c.substring(0,300)+'...';return `<div class="ds-item"><span class="dsi-from">${esc(f)}</span><span class="dsi-time">${t}</span><div>${esc(c)}</div></div>`}).join('');l.scrollTop=l.scrollHeight}
 function addToDiscussion(msg){const l=document.getElementById('discussionList');const h=l.querySelector('div[style*="text-align:center"]');if(h)l.innerHTML='';const f=msg.from_agent||'system',t=formatTime(msg.timestamp||new Date().toISOString());let c=msg.content||'';if(c.length>300)c=c.substring(0,300)+'...';const d=document.createElement('div');d.className='ds-item';d.innerHTML=`<span class="dsi-from">${esc(f)}</span><span class="dsi-time">${t}</span><div>${esc(c)}</div>`;l.appendChild(d);l.scrollTop=l.scrollHeight}
-function renderWorkshops(){const l=document.getElementById('workshopList');document.getElementById('workshopCount').textContent=workshops.length;document.getElementById('statWorkshops').textContent=workshops.length;if(workshops.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无工作间<br><span style="font-size:11px">在大厅发布任务后自动创建</span></div>';return}const sl={draft:'草稿',discussing:'一级讨论',selecting:'选定员工',division:'二级讨论',running:'工作中',review:'三级讨论',done:'已完成'};const ico={draft:'📝',discussing:'💬',selecting:'👥',division:'🧩',running:'⚙️',review:'📋',done:'✅'};l.innerHTML=workshops.map(w=>{const s=w.status||'draft',sl2=sl[s]||s,ic=ico[s]||'📋';const tm=w.created_at?new Date(w.created_at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';return `<div class="workshop-item ${currentWorkshopId===w.workshop_id?'active':''}" data-ws-id="${w.workshop_id}" onclick="openWorkshopPage('${w.workshop_id}')"><div class="wi-top"><span class="wi-status-dot ${s}"></span><span class="wi-ico">${w.pinned?'📌':ic}</span><span class="wi-title">${w.pinned?'📌 ':''}${esc(w.name||'(无标题)')}</span></div><div class="wi-agents">${(w.members||[]).map(m=>esc(m.role)).join(', ')||'未选员工'}</div><div class="wi-time">${sl2} · ${tm}</div><div class="wi-actions"><button class="wi-act" title="置顶" onclick="event.stopPropagation();togglePin('${w.workshop_id}',${w.pinned?'false':'true'})">${w.pinned?'📌':'📍'}</button><button class="wi-act" title="重命名" onclick="event.stopPropagation();renameWs('${w.workshop_id}')">✏️</button><button class="wi-act" title="删除" onclick="event.stopPropagation();deleteWs('${w.workshop_id}')">🗑️</button></div></div>`}).join('')}
+function renderWorkshops(){const l=document.getElementById('workshopList');document.getElementById('workshopCount').textContent=workshops.length;document.getElementById('statWorkshops').textContent=workshops.length;if(workshops.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无工作间<br><span style="font-size:11px">在大厅发布任务后自动创建</span></div>';renderFlowStrip();return}const sl={draft:'草稿',discussing:'一级讨论',selecting:'选定员工',division:'二级讨论',running:'工作中',review:'三级讨论',done:'已完成'};const ico={draft:'📝',discussing:'💬',selecting:'👥',division:'🧩',running:'⚙️',review:'📋',done:'✅'};l.innerHTML=workshops.map(w=>{const s=w.status||'draft',sl2=sl[s]||s,ic=ico[s]||'📋';const tm=w.created_at?new Date(w.created_at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';return `<div class="workshop-item ${currentWorkshopId===w.workshop_id?'active':''}" data-ws-id="${w.workshop_id}" onclick="openWorkshopPage('${w.workshop_id}')"><div class="wi-top"><span class="wi-status-dot ${s}"></span><span class="wi-ico">${w.pinned?'📌':ic}</span><span class="wi-title">${w.pinned?'📌 ':''}${esc(w.name||'(无标题)')}</span></div><div class="wi-agents">${(w.members||[]).map(m=>esc(m.role)).join(', ')||'未选员工'}</div><div class="wi-time">${sl2} · ${tm}</div><div class="wi-actions"><button class="wi-act" title="置顶" onclick="event.stopPropagation();togglePin('${w.workshop_id}',${w.pinned?'false':'true'})">${w.pinned?'📌':'📍'}</button><button class="wi-act" title="重命名" onclick="event.stopPropagation();renameWs('${w.workshop_id}')">✏️</button><button class="wi-act" title="删除" onclick="event.stopPropagation();deleteWs('${w.workshop_id}')">🗑️</button></div></div>`}).join('');renderFlowStrip()}
+/* ── FE-07 主流程阶段条：task 视角打开 → 一次性反查工作间 → 状态珠 + 入口 ── */
+let _flowWsId=null, _flowWsStatus='', _flowWsErr='';
+function renderFlowStrip(){
+  const el=document.getElementById('flowStrip');
+  if(!el)return;
+  if(!currentWorkshopId){el.style.display='none';return;}
+  el.style.display='';
+  el.innerHTML='';
+  let st=_flowWsStatus||'';
+  if(_flowWsId&&typeof workshops!=='undefined'){
+    const wsw=workshops.find(x=>x.workshop_id===_flowWsId);
+    if(wsw&&wsw.status)st=wsw.status;
+  }
+  const steps=['广播','讨论','选人','分工','工作'];
+  const activeOf={draft:-1,discussing:1,selecting:2,division:3,running:4,review:4,done:4};
+  const active=Object.prototype.hasOwnProperty.call(activeOf,st)?activeOf[st]:-1;
+  steps.forEach((name,i)=>{
+    if(i>0){const a=document.createElement('span');a.className='fs-arrow';a.textContent='→';el.appendChild(a);}
+    const c=document.createElement('span');
+    c.className='fs-dot'+(active>=0&&i<active?' done':'')+(active===i?' on':'');
+    c.textContent=(i+1)+' '+name;
+    if(active===i)c.title='当前阶段';
+    else if(active>=0&&i<active)c.title='已完成';
+    el.appendChild(c);
+  });
+  const chip=document.createElement('span');
+  const known=Object.prototype.hasOwnProperty.call(activeOf,st);
+  chip.className='fs-status'+(st&&!known?' unknown':'');
+  chip.textContent=st?('状态 '+st):(_flowWsErr==='404'?'尚未建间':'状态 —');
+  chip.title=known?'workshop.status（取自 workshops 列表/反查）':'未知状态原样显示，不猜';
+  el.appendChild(chip);
+  if(_flowWsId){
+    const a=document.createElement('a');
+    a.className='fs-enter'; a.href='/workshop.html?ws_id='+encodeURIComponent(_flowWsId);
+    a.textContent='进入工作间 →';
+    el.appendChild(a);
+  }else if(_flowWsErr==='404'){
+    const s=document.createElement('span');
+    s.className='fs-none'; s.style.fontSize='11px'; s.style.color='var(--yellow)';
+    s.textContent='该任务还没有自动建成的现工作间';
+    el.appendChild(s);
+  }
+}
 function toggleNav(){const c=document.body.classList.toggle('nav-collapsed');document.getElementById('navToggle').textContent=c?'▶':'◀';try{localStorage.setItem('navCollapsed',c?'1':'0')}catch(e){}}
 function initNav(){try{if(localStorage.getItem('navCollapsed')==='1'){document.body.classList.add('nav-collapsed');document.getElementById('navToggle').textContent='▶'}}catch(e){}}
 function openWorkshopPage(wid){location.href='/workshop.html?ws_id='+wid}
@@ -610,13 +687,29 @@ if(d.reply){addToDiscussion({from_agent:d.from_agent||'agent',content:d.reply,ti
 else if(d.messages&&Array.isArray(d.messages)){d.messages.forEach(m=>addToDiscussion(m))}
 else{/* 原实现缺这一支：失败/404/空结果一律被静默吞掉 */
 addToDiscussion({from_agent:'system',content:'讨论未获得回复：'+(d.error||('HTTP '+r.status))||'服务未返回内容',timestamp:new Date().toISOString()})}
+/* 恒等式（DSH 15/16号）：rule_fallback ⇒ action==='select'，select 分支已带【规则兜底判定】前缀；
+   此处原「非 select 的 rule_fallback」兜底分支为死代码，已删。 */
+if(d.action==='select'){addToDiscussion({from_agent:'system',content:(d.action_source==='rule_fallback'?'【规则兜底判定】':'')+'需求已明确，可以选定员工了——请在左侧工作间列表进入该工作间，在员工列表点选成员。',timestamp:new Date().toISOString()})}
 }catch(e){clearTimeout(_wd);const t=document.getElementById('dsThinking');if(t)t.remove();console.error('讨论发送失败',e);addToDiscussion({from_agent:'system',content:'讨论请求失败：'+e.message,timestamp:new Date().toISOString()})}}
 async function confirmStartTask(){if(!currentWorkshopId)return;const btn=document.getElementById('dsConfirmBtn');if(!btn)return;btn.textContent='启动中...';btn.style.opacity='0.6';btn.onclick=null;try{const r=await fetch(`/api/task/${currentWorkshopId}/start`,{method:'POST'});const d=await r.json();if(d.success){btn.textContent='✓ 已开始';btn.style.background='var(--green)';btn.style.color='#fff';document.getElementById('lastAction').textContent='任务已启动';if(d.result){appendMessage({from_agent:d.agents?.[0]?.agent_id||'agent',to_agent:'user',content:d.result,message_type:'result',task_id:currentWorkshopId,timestamp:new Date().toISOString()})}}else{btn.textContent='✓ 确认开始';btn.style.opacity='1';btn.onclick=confirmStartTask;appendMessage({from_agent:'system',to_agent:'user',content:d.error||d.result||'启动失败',message_type:'text',timestamp:new Date().toISOString()})}await refreshTasks()}catch(e){btn.textContent='✓ 确认开始';btn.style.opacity='1';btn.onclick=confirmStartTask;console.error('启动失败',e)}}
 function handleDiscussKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendDiscussMessage()}}
 function initDsResizer(){const resizer=document.getElementById('dsResizer');const ds=document.querySelector('.discussion-section');let isDragging=false,startY=0,startH=0;if(!resizer||!ds)return;resizer.addEventListener('mousedown',e=>{isDragging=true;startY=e.clientY;startH=ds.offsetHeight;resizer.classList.add('dragging');document.body.style.cursor='ns-resize';document.body.style.userSelect='none';e.preventDefault()});window.addEventListener('mousemove',e=>{if(!isDragging)return;const dy=e.clientY-startY;const newH=Math.max(100,Math.min(startH-dy,window.innerHeight*0.8));ds.style.height=newH+'px';ds.style.flex='none'});window.addEventListener('mouseup',()=>{if(isDragging){isDragging=false;resizer.classList.remove('dragging');document.body.style.cursor='';document.body.style.userSelect=''}})}
 function toggleWorkflow(){const sec=document.getElementById('workflowSection'),btn=document.getElementById('workflowToggle');if(!sec||!btn)return;const collapsed=sec.classList.toggle('collapsed');btn.textContent=collapsed?'展开工作流 ▸':'折叠工作流 ▾';if(collapsed){document.querySelector('.discussion-section').style.flex='1'}}
 async function refreshAgents(){try{const r=await fetch('/api/agents');const d=await r.json();agents=d.agents||[];renderAgents();document.getElementById('statAgents').textContent=agents.filter(a=>a.status==='online').length}catch(e){}}
-function renderAgents(){const l=document.getElementById('agentList');if(agents.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无注册 Agent</div>';return}l.innerHTML=agents.map(a=>{let caps=[];try{const c=typeof a.agent_card==='string'?JSON.parse(a.agent_card):a.agent_card;caps=c?.capabilities||[]}catch(e){}return `<div class="agent-card"><div class="ac-top"><span class="ac-status ${a.status}"></span><span class="ac-name">${esc(a.name||a.agent_id)}</span>${a.is_harness?`<button class="ac-more" data-aid="${esc(a.agent_id)}" onclick="toggleAgentMenu(this,event)" title="设置">⋯</button>`:''}</div><div class="ac-id">${esc(a.agent_id)}</div>${caps.length?`<div class="ac-caps">${caps.map(c=>`<span class="cap-tag">${c}</span>`).join('')}</div>`:''}<div class="ac-sw">${esc(a.software_context||'unknown')}</div>${a.is_harness?`<div class="ac-menu hidden" data-aid="${esc(a.agent_id)}" onclick="onAgentMenuClick(this,event)"><button data-act="prompt">✎ 唤醒提示词</button><button data-act="caps">✎ 精化能力列表</button><button class="danger" data-act="del">🗑 删除成员</button></div>`:''}</div>`}).join('')}
+function renderAgents(){
+  /* ★2026-10-11（老板要求）：
+     ① 标题由「Agent 列表」改为「Harness 列表」（列表里装的就是接入的 harness，名副其实）；
+     ② 每条要能看出**框架特点 + 适配的大模型** —— 此前只有一行软件名，
+        用户点进去才知道接的是什么；这两项现在由后端 `/api/agents` 直接给
+        （`framework` / `framework_note` / `model` / `model_provider`），
+        取不到就**不编**（这里全部按"有才显示"处理）。 */
+  const l=document.getElementById('agentList');
+  if(agents.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无已接入的 harness</div>';return}
+  l.innerHTML=agents.map(a=>{
+    let caps=[];try{const c=typeof a.agent_card==='string'?JSON.parse(a.agent_card):a.agent_card;caps=c?.capabilities||[]}catch(e){}
+    const fw=a.framework?`<div class="ac-fw">🧩 框架：<b>${esc(a.framework)}</b>${a.framework_note?(' · '+esc(a.framework_note)):''}</div>`:'';
+    const md=(a.model||a.model_provider)?`<div class="ac-model">🤖 适配模型：<b>${esc(a.model||'（未填）')}</b>${a.model_provider?(' · '+esc(a.model_provider)):''}${a.model_version?(' · '+esc(a.model_version)):''}</div>`:'';
+    return `<div class="agent-card"><div class="ac-top"><span class="ac-status ${a.status}"></span><span class="ac-name">${esc(a.name||a.agent_id)}</span>${a.is_harness?`<button class="ac-more" data-aid="${esc(a.agent_id)}" onclick="toggleAgentMenu(this,event)" title="设置">⋯</button>`:''}</div><div class="ac-id">${esc(a.agent_id)}</div>${fw}${md}${caps.length?`<div class="ac-caps">${caps.map(c=>`<span class="cap-tag">${c}</span>`).join('')}</div>`:''}<div class="ac-sw">${esc(a.software_context||'unknown')}</div>${a.is_harness?`<div class="ac-menu hidden" data-aid="${esc(a.agent_id)}" onclick="onAgentMenuClick(this,event)"><button data-act="prompt">✎ 唤醒提示词</button><button data-act="caps">✎ 精化能力列表</button><button class="danger" data-act="del">🗑 删除成员</button></div>`:''}</div>`}).join('')}
 function toggleAgentMenu(btn,e){if(e)e.stopPropagation();const aid=btn.dataset.aid;document.querySelectorAll('.ac-menu').forEach(m=>{if(m.dataset.aid!==aid)m.classList.add('hidden')});const menu=document.querySelector('.ac-menu[data-aid="'+CSS.escape(aid)+'"]');if(menu)menu.classList.toggle('hidden')}
 function onAgentMenuClick(menu,e){e.stopPropagation();const aid=menu.dataset.aid;const act=(e.target.dataset&&e.target.dataset.act)||'';if(act==='prompt')viewHarnessPrompt(aid);else if(act==='caps')editHarnessCaps(aid);else if(act==='del')deleteHarnessAgent(aid)}
 async function viewHarnessPrompt(aid){const a=agents.find(x=>x.agent_id===aid&&x.is_harness);if(!a)return;const hid=a.harness_id||aid.replace(/^harness-/,'');let cur='';try{const r=await fetch('/api/harness/'+encodeURIComponent(hid)+'/activation_prompt');const d=await r.json();cur=d.prompt||''}catch(err){acToast('加载失败: '+err.message,true);return}acModal.show({title:'唤醒提示词 · '+(a.name||aid),message:'激活工作间成员时下发给该 HA 的提示词模板。含 {role}/{workspace_dir} 占位符，激活时由平台自动填充；保存后重新注册不会覆盖。',input:cur,rows:12,placeholder:'请输入唤醒提示词模板…',onSubmit:async function(v){if(v==null)return;if(!(v||'').trim()){acToast('提示词不能为空',true);return}try{const r=await fetch('/api/harness/'+encodeURIComponent(hid)+'/activation_prompt',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:v})});const d=await r.json();if(d.success){acToast('唤醒提示词已保存');document.getElementById('lastAction').textContent='已保存 '+a.name+' 的唤醒提示词'}else{acToast(d.error||'保存失败',true)}}catch(err){acToast('保存失败: '+err.message,true)}}})}
@@ -696,7 +789,12 @@ async function loadRemoteModels(){
     _appendManual(sel);
     _keepModel(sel, saved);
     if(hint){ hint.style.color='var(--yellow)';
-      hint.textContent='清单获取失败：'+((d&&d.error)||'未知')+' —— 可手动输入模型名'; }
+      /* ★2026-10-11（规则 20：后端口径变了，界面同一次跟上）：
+         后端现在会回 hint（比如"base_url 多带了路径"）与实际请求的地址。
+         这类"配置填错"原来只显示一句 HTTP 404，用户看不出是自己地址写错了，只会觉得"接口有问题"。 */
+      hint.textContent='清单获取失败：'+((d&&d.error)||'未知')
+        +((d&&d.hint)?(' —— ' + d.hint):'')
+        +' —— 可手动输入模型名（不影响保存与调用）'; }
   }
 }
 function onModelChange(){

@@ -29,6 +29,45 @@ from ..state import interject_store, pending_activations, task_state_machine, ta
 
 router = APIRouter()
 
+
+# ── 一级讨论 → 选定员工 的**规则兜底**（2026-10-07 实测异常驱动）────────────
+# 现状：流转押在"AI 在回复末尾原样输出口令『需求已明确，可以选定员工』"上。
+# 实测（隔离实例 18941）：用户**明确说了**"需求明确了，开始选人吧"，
+# 而 AI 两轮都没吐那句口令 -> `action` 恒为 "none" -> 前端无从得知"该选人了"，
+# 只能靠用户自己知道要点按钮。**靠 LLM 记得背口令来驱动流程是不可靠的。**
+#
+# 故加一层**纯规则兜底**（不调 LLM、可单测）：仅在「一级讨论中」且用户**明确要求推进**时生效。
+# 保留 AI 口令为主（`action_source="ai_marker"`），兜底命中时标 `rule_fallback`，
+# 让"这次流转是谁决定的"变成可审计的事实，而不是猜。
+L1_SELECT_KEYWORDS = (
+    "选定员工", "选员工", "选人", "选成员", "挑人", "定人",
+    "需求已明确", "需求明确了", "可以开始", "开始干活", "就这样", "没问题了",
+)
+
+
+def _l1_action_by_rule(user_msg: str, ws) -> str:
+    """纯规则判定一级讨论是否该进入「选定员工」。命中返回 `"select"`，否则 `""`。
+
+    保守为先：只在**讨论态**、且用户话里**明确表达推进意图**时才生效；
+    不做语义推断，避免把"再聊聊"误判成"开始选人"。
+    """
+    if getattr(ws, "status", "") != "discussing":
+        return ""
+    msg = (user_msg or "").strip()
+    if not msg:
+        return ""
+    # 疑问句一律不推进（用户还在问，不该替他拍板）
+    # 注意"吗/呢"结尾也算疑问——写测试时我自己踩过这个坑：
+    # `可以开始选人了吗` 含关键词且不以 ?/？ 结尾，第一版规则会**误触发**。
+    if msg.endswith(("？", "?", "吗", "呢")) or msg.startswith(
+            ("为什么", "怎么", "是不是", "能不能", "可以吗", "要不要")):
+        return ""
+    for kw in L1_SELECT_KEYWORDS:
+        if kw in msg:
+            return "select"
+    return ""
+
+
 @router.post("/api/workshop/{ws_id}/discuss")
 async def workshop_discuss(ws_id: str, request: Request):
     from ..server import Utf8JSONResponse, _activate_by_hooks, _append_msg, _discussion_ctx, _dispatch_leader_review_discuss, _leader_division_discuss, _member_progress_summary, _review_sufficiency_check
@@ -115,6 +154,7 @@ async def workshop_discuss(ws_id: str, request: Request):
         _review_sufficiency_check(ws)
     # 阶段流转去文本化：由服务端按原有关键词判定 action（与 reply 文本并存，前端优先读 action）
     action = "none"
+    action_source = ""
     if "任务已完成" in reply:
         action = "complete"
     elif "可以继续工作" in reply:
@@ -123,12 +163,25 @@ async def workshop_discuss(ws_id: str, request: Request):
         action = "start"
     elif "需求已明确，可以选定员工" in reply:
         action = "select"
-    return {"success": True, "reply": reply, "status": ws.status, "stage": "orchestrator", "zone": user_zone, "action": action}
+    if action != "none":
+        action_source = "ai_marker"
+    else:
+        # AI 没背出那句口令 —— 用纯规则兜底（实测 AI 确实会漏，见本文件顶部说明）
+        _rule = _l1_action_by_rule(user_msg, ws)
+        if _rule:
+            action, action_source = _rule, "rule_fallback"
+    return {"success": True, "reply": reply, "status": ws.status, "stage": "orchestrator",
+            "zone": user_zone, "action": action, "action_source": action_source}
 
 @router.post("/api/workshop/{ws_id}/review")
 async def workshop_review(ws_id: str):
-    from ..server import Utf8JSONResponse, _append_msg, save_state
-    """进入三级讨论（依进度讨论）。"""
+    from ..server import Utf8JSONResponse, _activate_remaining_members, _append_msg, save_state
+    """进入三级讨论（依进度讨论）。
+
+    **老板主流程 ⑦**：「开三级讨论（**激活其他员工新对话与桥**，架桥时告知共享资料库路径）」。
+    此前本端点只改状态 + 发 notice，**不激活任何员工**——`_dispatch_leader_review_discuss`
+    还只认组长、且组长没进场就静默跳过，于是三级讨论里除了组长没人能发言。
+    """
     ws = workshops.get(ws_id)
     if not ws:
         return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
@@ -138,11 +191,17 @@ async def workshop_review(ws_id: str):
     ws._review_notified = False  # 新进入 review：允许 poll 兜底唤醒组长一次
     ws._auto_review_done = False  # 手动进入：重置自动触发防重标记，允许后续阶段再次自动进入
     ws._review_suff_notified = False  # 重置充分性判定防重标记
+    # ⑦：把还没进场的员工拉进来（每人自己的会话 + 自己隔间里的桥 + 被告知共享区路径）。
+    # 只处理 pending/blocked，不打断已在干活的人；单人失败不拖累其他人。
+    _activated = _activate_remaining_members(ws, reason="review")
     _append_msg(ws, "notice", "【三级讨论】一个阶段工作已告一段落，进入阶段复盘。规则：① 平台 AI 主持，与用户、组长、员工同台讨论；② 组长转为「汇报+讨论」角色，汇报本阶段进展/卡点/下一步；③ 员工的回报会实时出现在这里；④ 讨论充分后，平台 AI 会判定进入「继续工作」或「任务已完成」。请说说这一阶段的进展：完成得怎么样、有没有卡点、下一步想怎么走？", zone=3)
     # P2-1 审计：进入三级讨论
-    _audit_log.record("workshop.review", actor="user", target=ws_id, detail="进入三级讨论")
+    _audit_log.record("workshop.review", actor="user", target=ws_id,
+                      detail=f"进入三级讨论；补激活 {len(_activated)} 名"
+                             + (f"：{_activated}" if _activated else ""))
     save_state()
-    return {"success": True, "status": ws.status, "action": "review"}
+    return {"success": True, "status": ws.status, "action": "review",
+            "activated": _activated}
 
 @router.post("/api/workshop/{ws_id}/continue")
 async def workshop_continue(ws_id: str):

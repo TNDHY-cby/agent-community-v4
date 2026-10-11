@@ -1,0 +1,136 @@
+{
+  "pass": true,
+  "failures": [],
+  "evidence": [
+    {
+      "page": "ops",
+      "state": "真实零值",
+      "values": [
+        {
+          "text": "孤儿 0 人",
+          "title": "所有成员都对着还在的 agent",
+          "color": "rgb(155, 151, 142)"
+        },
+        {
+          "text": "未送达 0 条",
+          "title": "所有成员的消息都已送达",
+          "color": "rgb(155, 151, 142)"
+        }
+      ]
+    },
+    {
+      "page": "ops",
+      "state": "非零汇总",
+      "values": [
+        {
+          "text": "孤儿 2 人",
+          "title": "有2名孤儿",
+          "color": "rgb(217, 171, 83)"
+        },
+        {
+          "text": "未送达 5 条",
+          "title": "有5条未送达",
+          "color": "rgb(217, 171, 83)"
+        }
+      ]
+    },
+    {
+      "page": "ops",
+      "state": "接口失败",
+      "values": [
+        {
+          "text": "孤儿 加载失败",
+          "title": "汇总暂不可用",
+          "color": "rgb(155, 151, 142)"
+        },
+        {
+          "text": "未送达 加载失败",
+          "title": "汇总暂不可用",
+          "color": "rgb(155, 151, 142)"
+        }
+      ]
+    },
+    {
+      "page": "ops",
+      "state": "未选择",
+      "values": [
+        {
+          "text": "孤儿 —",
+          "title": "",
+          "color": "rgb(155, 151, 142)"
+        },
+        {
+          "text": "未送达 —",
+          "title": "",
+          "color": "rgb(155, 151, 142)"
+        }
+      ]
+    },
+    {
+      "page": "booths",
+      "state": "真实零值",
+      "values": [
+        {
+          "text": "孤儿 0 人",
+          "title": "所有成员都对着还在的 agent",
+          "color": "rgb(155, 151, 142)"
+        },
+        {
+          "text": "未送达 0 条",
+          "title": "所有成员的消息都已送达",
+          "color": "rgb(155, 151, 142)"
+        }
+      ]
+    },
+    {
+      "page": "booths",
+      "state": "非零汇总",
+      "values": [
+        {
+          "text": "孤儿 2 人",
+          "title": "有2名孤儿",
+          "color": "rgb(217, 171, 83)"
+        },
+        {
+          "text": "未送达 5 条",
+          "title": "有5条未送达",
+          "color": "rgb(217, 171, 83)"
+        }
+      ]
+    },
+    {
+      "page": "booths",
+      "state": "接口失败",
+      "values": [
+        {
+          "text": "孤儿 加载失败",
+          "title": "汇总暂不可用",
+          "color": "rgb(155, 151, 142)"
+        },
+        {
+          "text": "未送达 加载失败",
+          "title": "汇总暂不可用",
+          "color": "rgb(155, 151, 142)"
+        }
+      ]
+    },
+    {
+      "page": "booths",
+      "state": "未选择",
+      "values": [
+        {
+          "text": "孤儿 —",
+          "title": "",
+          "color": "rgb(155, 151, 142)"
+        },
+        {
+          "text": "未送达 —",
+          "title": "",
+          "color": "rgb(155, 151, 142)"
+        }
+      ]
+    }
+  ],
+  "writes": [],
+  "errors": []
+}

@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>外端agent生产合作社 — 交付回执台</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--bg:#121316;--bg2:#191b20;--bg3:#21242a;--bg4:#2b2f37;--bg5:#363b45;--ink:#e8e6e1;--muted:#9b978e;--dim:#66625a;--rule:#26292f;--accent:#d97757;--accent-soft:rgba(217,119,87,.13);--accent-strong:#e58968;--green:#86b394;--green-soft:rgba(134,179,148,.13);--yellow:#d9ab53;--yellow-soft:rgba(217,171,83,.13);--red:#d07468;--red-soft:rgba(208,116,104,.13);--blue:#7ba3c9;--blue-soft:rgba(123,163,201,.13);--purple:#a08cc0;--purple-soft:rgba(160,140,192,.13);--radius-lg:14px;--radius-md:10px;--font-mono:"JetBrains Mono","Cascadia Code",Consolas,"Courier New",monospace}
+*{margin:0;padding:0;box-sizing:border-box}
+*{scrollbar-width:thin;scrollbar-color:var(--bg4) transparent}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.app{display:grid;grid-template-rows:52px 1fr 26px;height:100vh}
+/* topbar */
+.topbar{display:flex;align-items:center;gap:12px;padding:0 16px;background:linear-gradient(180deg,#1d2026,#181a20);border-bottom:1px solid var(--rule);min-width:0}
+.topbar .logo{font-size:15px;font-weight:800;color:var(--accent);letter-spacing:.03em;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.topbar .logo .sub{color:var(--muted);font-weight:600;font-size:12.5px}
+.health{display:flex;align-items:center;gap:.45rem;font-size:11px;color:var(--muted);background:var(--bg3);border:1px solid var(--rule);border-radius:999px;padding:3px 12px;white-space:nowrap}
+.health .dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.health.ok .dot{background:var(--green);box-shadow:0 0 6px var(--green)}
+.health.bad .dot{background:var(--red)}
+.health.checking .dot{background:var(--yellow);animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.spacer{flex:1;min-width:8px}
+.refresh-info{font-size:11px;color:var(--dim);white-space:nowrap;font-family:var(--font-mono)}
+.btn{font-size:12px;padding:6px 14px;border:1px solid var(--rule);border-radius:8px;background:var(--bg3);color:var(--ink);cursor:pointer;transition:all .15s;font-weight:500;font-family:inherit;white-space:nowrap}
+.btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#1a120b;font-weight:800}
+.btn.primary:hover{filter:brightness(1.1);color:#1a120b}
+.btn .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--dim);border-top-color:var(--accent);border-radius:50%;animation:rot .7s linear infinite;vertical-align:-1px;margin-right:5px}
+@keyframes rot{to{transform:rotate(360deg)}}
+.navlink{font-size:11.5px;color:var(--muted);text-decoration:none;border:1px solid var(--rule);border-radius:8px;padding:5px 11px;transition:all .15s;white-space:nowrap}
+.navlink:hover{border-color:var(--accent);color:var(--accent)}
+/* banner */
+.banner{display:none;margin:10px 16px 0;padding:11px 15px;border-radius:10px;font-size:13px;line-height:1.7;border:1px solid rgba(208,116,104,.45);background:var(--red-soft);color:#eab0a8}
+.banner.show{display:block}
+.banner code{font-family:var(--font-mono);font-size:12px;background:rgba(0,0,0,.35);padding:1px 7px;border-radius:5px;color:#f0d9d4}
+/* main */
+.main{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:14px;padding:14px 16px;overflow:hidden;min-height:0}
+.panel{background:var(--bg2);border:1px solid var(--rule);border-radius:var(--radius-lg);display:flex;flex-direction:column;overflow:hidden;min-height:0;min-width:0}
+.panel-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--rule);flex:none;flex-wrap:wrap}
+.panel-title{font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.panel-title b{color:var(--ink)}
+.count-pill{background:var(--accent-soft);color:var(--accent);padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700}
+.panel-body{flex:1;overflow-y:auto;padding:12px 14px 16px;min-height:0}
+.filters{display:flex;gap:8px;padding:10px 14px;border-bottom:1px solid var(--rule);flex:none;align-items:center;flex-wrap:wrap}
+.filters input,.filters select{background:var(--bg2);border:1px solid var(--rule);border-radius:8px;padding:6px 10px;font-size:12.5px;color:var(--ink);outline:none;font-family:inherit;min-width:0}
+.filters input{width:180px;font-family:var(--font-mono)}
+.filters input:focus,.filters select:focus{border-color:var(--accent)}
+.filters input::placeholder{color:var(--dim);font-family:inherit}
+.filters .lbl{font-size:11px;color:var(--dim);font-weight:700}
+.err-strip{display:none;margin:0 0 10px;padding:9px 12px;border-radius:9px;font-size:12.5px;line-height:1.6;border:1px solid rgba(208,116,104,.4);background:var(--red-soft);color:#eab0a8}
+.err-strip.show{display:block}
+/* empty / skeleton */
+.empty{text-align:center;padding:34px 18px;color:var(--muted)}
+.empty .ico{font-size:26px;line-height:1;margin-bottom:10px;opacity:.75}
+.empty .t{font-size:13.5px;font-weight:700;color:var(--ink);margin-bottom:5px}
+.empty .s{font-size:12px;line-height:1.7;color:var(--dim);max-width:360px;margin:0 auto}
+.skel{border-radius:9px;background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:sh 1.3s infinite;margin-bottom:9px}
+@keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+/* receipt card */
+.rc{background:var(--bg3);border:1px solid var(--rule);border-radius:var(--radius-md);padding:11px 13px;margin-bottom:10px;cursor:pointer;transition:border-color .15s}
+.rc:hover{border-color:var(--bg5)}
+.rc.open{border-color:rgba(217,119,87,.35)}
+.rc-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px}
+.rc-task{font-family:var(--font-mono);font-size:13px;font-weight:800;color:var(--accent-strong)}
+.rc-who{font-size:10.5px;font-weight:800;border-radius:6px;padding:2px 8px;background:var(--purple-soft);color:var(--purple);border:1px solid rgba(160,140,192,.35)}
+.rc-del{font-size:10px;font-weight:800;border-radius:6px;padding:2px 8px;margin-left:auto}
+.rc-del.yes{background:var(--green);color:#0e1a12}
+.rc-del.no{background:var(--bg4);color:var(--dim);border:1px solid var(--rule)}
+.rc-time{font-size:11px;color:var(--dim);font-family:var(--font-mono);cursor:help}
+.rc-item{margin-bottom:7px;padding-left:10px;border-left:2px solid var(--rule)}
+.rc-item .claim{font-size:13px;line-height:1.6;word-break:break-word}
+.rc-ev{font-family:var(--font-mono);font-size:11px;color:var(--muted);line-height:1.7;word-break:break-all;margin-top:3px}
+.rc-ev .k{color:var(--dim);display:inline-block;min-width:56px}
+.rc-ev .v{color:#d8d2c6}
+.rc-noev{display:inline-block;font-size:10px;font-weight:800;color:#fff;background:var(--red);border-radius:5px;padding:1px 7px;margin-top:4px}
+.rc-ref{font-family:var(--font-mono);font-size:11px;color:var(--green);word-break:break-all;margin-top:5px}
+.rc-ref .k{color:var(--dim)}
+.rc-note{font-size:11.5px;color:var(--muted);font-style:italic;margin-top:5px;word-break:break-word}
+.rc-expand{display:none;margin-top:9px;padding-top:9px;border-top:1px dashed var(--rule);font-family:var(--font-mono);font-size:11px;line-height:1.7;color:var(--muted);white-space:pre-wrap;word-break:break-all}
+.rc.open .rc-expand{display:block}
+/* form */
+.rules{background:var(--bg3);border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12px;line-height:1.7;color:var(--ink-soft,#c9c5bc)}
+.rules b{color:var(--ink)}
+.rules .r2{color:var(--muted);margin-top:5px}
+.submit-err{display:none;margin-bottom:12px;padding:11px 13px;border-radius:10px;border:1px solid rgba(208,116,104,.55);background:var(--red-soft)}
+.submit-err.show{display:block}
+.submit-err h4{font-size:12.5px;color:#eab0a8;margin-bottom:7px;display:flex;align-items:center;gap:7px}
+.submit-err ol{margin:0 0 6px 20px;font-size:12.5px;line-height:1.8;color:#eab0a8}
+.submit-err .hint{font-size:11.5px;color:var(--muted);line-height:1.6}
+.submit-ok{display:none;margin-bottom:12px;padding:10px 13px;border-radius:10px;border:1px solid rgba(134,179,148,.45);background:var(--green-soft);color:#a8d4b6;font-size:12.5px}
+.submit-ok.show{display:block}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:5px}
+.field label .req{color:var(--red)}
+.field input,.field textarea{width:100%;background:var(--bg2);border:1px solid var(--rule);border-radius:8px;padding:7px 10px;font-size:12.5px;color:var(--ink);outline:none;font-family:inherit;transition:border-color .15s}
+.field input:focus,.field textarea:focus{border-color:var(--accent)}
+.field input::placeholder,.field textarea::placeholder{color:var(--dim)}
+.field.mono input{font-family:var(--font-mono);font-size:12px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.item-row{background:var(--bg3);border:1px solid var(--rule);border-radius:var(--radius-md);padding:10px 11px;margin-bottom:9px}
+.item-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+.item-no{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.05em}
+.item-del{font-size:10.5px;background:none;border:1px solid var(--rule);border-radius:6px;color:var(--dim);cursor:pointer;padding:2px 8px;font-family:inherit}
+.item-del:hover{border-color:var(--red);color:var(--red)}
+.item-row textarea{width:100%;background:var(--bg2);border:1px solid var(--rule);border-radius:8px;padding:7px 10px;font-size:12.5px;color:var(--ink);outline:none;font-family:inherit;resize:vertical;min-height:52px;transition:border-color .15s}
+.item-row textarea:focus{border-color:var(--accent)}
+.ev-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:7px}
+.ev-grid input{background:var(--bg2);border:1px solid var(--rule);border-radius:7px;padding:6px 8px;font-size:11.5px;color:var(--ink);outline:none;font-family:var(--font-mono);min-width:0;transition:border-color .15s}
+.ev-grid input:focus{border-color:var(--accent)}
+.ev-grid input::placeholder{font-family:inherit;color:var(--dim)}
+.ev-grid .full{grid-column:1/-1}
+.add-item{width:100%;border:1px dashed var(--rule);background:none;color:var(--muted);border-radius:9px;padding:7px;font-size:12px;cursor:pointer;font-family:inherit;transition:all .15s;margin-bottom:11px}
+.add-item:hover{border-color:var(--accent);color:var(--accent)}
+.delivery{background:var(--bg3);border:1px solid var(--rule);border-radius:var(--radius-md);padding:10px 11px;margin-bottom:12px}
+.delivery .chk{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;cursor:pointer;margin-bottom:8px;color:var(--ink)}
+.delivery .chk input{accent-color:var(--accent);width:14px;height:14px}
+.delivery .sub{margin-bottom:8px}
+.delivery .sub:last-child{margin-bottom:0}
+.delivery .hint-off{font-size:11px;color:var(--dim);margin-top:4px}
+.form-actions{display:flex;gap:8px}
+.form-actions .btn{flex:1}
+.local-hint{font-size:11.5px;color:var(--yellow);margin-bottom:9px;display:none;line-height:1.6}
+.local-hint.show{display:block}
+/* statusbar */
+.statusbar{display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--bg2);border-top:1px solid var(--rule);font-size:10.5px;color:var(--dim);overflow:hidden;white-space:nowrap}
+.statusbar .sep{color:var(--rule)}
+/* responsive */
+@media (max-width:1399px){.main{grid-template-columns:minmax(0,1fr) 380px}}
+@media (max-width:1099px){
+  html,body{overflow:auto}
+  .app{height:auto;min-height:100vh;grid-template-rows:52px auto 26px}
+  .main{grid-template-columns:1fr;overflow:visible}
+  .panel-form{order:-1}
+  .panel{min-height:340px}
+  .filters input{width:100%;flex:1 1 160px}
+  .ev-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="logo">🧾 交付回执台<span class="sub">· 交接体系</span></div>
+    <div class="health checking" id="health"><span class="dot"></span><span id="healthText">检测中…</span></div>
+    <div class="spacer"></div>
+    <span class="refresh-info" id="refreshInfo">尚未刷新</span>
+    <button class="btn" id="refreshBtn" onclick="HOps.tick(true)">⟳ 刷新</button>
+    <a class="navlink" href="/ops.html">📡 运维看板</a>
+    <a class="navlink" href="/booths.html">🏗 隔间</a>
+    <a class="navlink" href="/">◈ 大厅</a>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <main class="main">
+    <!-- 左：回执列表 -->
+    <section class="panel list-panel">
+      <div class="panel-head">
+        <span class="panel-title">已受理<b>回执</b></span>
+        <span class="count-pill" id="rcCount">–</span>
+      </div>
+      <div class="filters">
+        <span class="lbl">筛选</span>
+        <input id="fTaskQ" type="text" placeholder="按 task_id 过滤，如 FE-01" autocomplete="off">
+        <select id="fLimit" title="拉取条数">
+          <option value="20">20 条</option>
+          <option value="50" selected>50 条</option>
+          <option value="100">100 条</option>
+        </select>
+      </div>
+      <div class="panel-body">
+        <div class="err-strip" id="listErr"></div>
+        <div id="rcList"></div>
+      </div>
+    </section>
+
+    <!-- 右：提交回执 -->
+    <section class="panel panel-form">
+      <div class="panel-head">
+        <span class="panel-title">提交<b>回执</b></span>
+        <span class="count-pill" style="background:var(--red-soft);color:var(--red)">无证据不回执</span>
+      </div>
+      <div class="panel-body">
+        <div class="rules" id="rulesBox">
+          <b>规则加载中…</b>
+          <div class="r2">正在从后端拉取回执规则模板。</div>
+        </div>
+        <div class="submit-ok" id="submitOk"></div>
+        <div class="submit-err" id="submitErr">
+          <h4>⛔ 后端拒收：回执不合规</h4>
+          <ol id="errList"></ol>
+          <div class="hint" id="errHint"></div>
+        </div>
+        <div class="local-hint" id="localHint"></div>
+
+        <div class="row2">
+          <div class="field mono">
+            <label>任务号 task_id <span class="req">*</span></label>
+            <input id="fTask" type="text" placeholder="如 FE-01" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>交付人 who <span class="req">*</span></label>
+            <input id="fWho" type="text" placeholder="MiMo / DSH" autocomplete="off">
+          </div>
+        </div>
+
+        <div id="itemRows"></div>
+        <button class="add-item" type="button" onclick="HOps.addItem()">＋ 再加一项</button>
+
+        <div class="delivery">
+          <label class="chk"><input type="checkbox" id="fDelivered"> 已送达（必须附 reply_ref 凭据）</label>
+          <div class="field sub mono" id="replyBox">
+            <label>reply_ref · 对方可读回复的凭据</label>
+            <input id="fReply" type="text" placeholder="如 10-7/2-DSH发言-….md" autocomplete="off">
+            <div class="hint-off" id="replyHint">勾选「已送达」后此项必填，否则后端 400。</div>
+          </div>
+          <div class="field sub">
+            <label>备注 note（选填）</label>
+            <input id="fNote" type="text" placeholder="补充说明" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn" id="tplBtn" type="button" onclick="HOps.loadTemplate()">从模板预填</button>
+          <button class="btn primary" id="submitBtn" type="button" onclick="HOps.submit()">提交回执</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <span>数据源 /api/handover/receipts · /api/handover/receipt · /api/handover/template</span>
+    <span class="sep">|</span>
+    <span>每项完成声明至少一种证据（commit/file/test）</span>
+    <span class="sep">|</span>
+    <span>送达必须有 reply_ref</span>
+    <span class="spacer"></span>
+    <span id="sbClock"></span>
+  </footer>
+</div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+function el(tag, cls, text){const e=document.createElement(tag); if(cls)e.className=cls; if(text!=null)e.textContent=text; return e;}
+function pad(n){return String(n).padStart(2,'0');}
+function fmtAbs(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());}
+function relOf(d){
+  const s=Math.max(0,Math.round((Date.now()-d.getTime())/1000));
+  if(s<5) return '刚刚';
+  if(s<60) return s+' 秒前';
+  if(s<3600) return Math.floor(s/60)+' 分钟前';
+  if(s<86400) return Math.floor(s/3600)+' 小时前';
+  return Math.floor(s/86400)+' 天前';
+}
+/* 统一请求：保留完整返回体（400 的 errors 数组必须拿到） */
+async function req(path, opts){
+  try{
+    const res=await fetch(path, opts);
+    let data=null; try{ data=await res.json(); }catch(e){ data=null; }
+    const msg=(data&&typeof data==='object')?(data.error||data.detail):null;
+    return {ok:res.ok, status:res.status, data, msg:msg||((!res.ok)?('HTTP '+res.status):null)};
+  }catch(e){ return {ok:false, status:0, data:null, msg:'网络错误：'+e.message}; }
+}
+function msgOf(r){ return r.msg||'未知错误'; }
+
+/* ===== 状态 ===== */
+let receipts=[], tpl=null, running=false, timer=null, itemSeq=0;
+
+/* ===== 列表渲染 ===== */
+function evLine(k, v){
+  if(!v||!String(v).trim()) return null;
+  const d=el('div','rc-ev');
+  d.append(el('span','k',k+'：'), el('span','v',String(v)));
+  return d;
+}
+function rcCard(r){
+  const c=el('div','rc');
+  const head=el('div','rc-head');
+  head.append(el('span','rc-task',r.task_id||'（无任务号）'));
+  head.append(el('span','rc-who',r.who||'（无交付人）'));
+  const d=el('span','rc-del '+(r.delivered?'yes':'no'), r.delivered?'✔ 已送达':'○ 未送达');
+  head.append(d);
+  if(r.ts!=null){
+    const dt=new Date(r.ts*1000);
+    const t=el('span','rc-time',relOf(dt));
+    t.title='受理时间 '+fmtAbs(dt)+'（epoch '+r.ts+'）';
+    head.append(t);
+  }
+  c.append(head);
+  const items=Array.isArray(r.items)?r.items:[];
+  items.forEach(it=>{
+    const box=el('div','rc-item');
+    box.append(el('div','claim',(it.n!=null?('['+it.n+'] '):'')+(it.claim||'（空声明）')));
+    const ev=it.evidence||{};
+    const lines=[evLine('commit',ev.commit),evLine('file',ev.file),evLine('test',ev.test)].filter(Boolean);
+    if(lines.length) lines.forEach(l=>box.append(l));
+    else box.append(el('span','rc-noev','⚠ 无证据（不应被受理）'));
+    c.append(box);
+  });
+  if(r.delivered&&r.reply_ref){
+    const ref=el('div','rc-ref');
+    ref.append(el('span','k','送达凭据 reply_ref：'), document.createTextNode(String(r.reply_ref)));
+    c.append(ref);
+  }
+  if(r.note&&String(r.note).trim()) c.append(el('div','rc-note','“'+r.note+'”'));
+  const ex=el('div','rc-expand', JSON.stringify(r,null,1));
+  c.append(ex);
+  return c;
+}
+function renderList(res){
+  const err=$('listErr'), list=$('rcList'), count=$('rcCount');
+  if(!res.ok){
+    err.textContent='回执列表加载失败：'+msgOf(res);
+    err.classList.add('show');
+    if(!receipts.length){ list.innerHTML=''; count.textContent='–'; }
+    return;
+  }
+  err.classList.remove('show');
+  receipts=(res.data&&Array.isArray(res.data.receipts))?res.data.receipts:[];
+  const q=$('fTaskQ').value.trim();
+  const shown=q?receipts.filter(r=>String(r.task_id||'')===q):receipts;
+  count.textContent=shown.length+' 份'+(q?('（共 '+receipts.length+'）'):'');
+  list.innerHTML='';
+  if(!shown.length){
+    const em=el('div','empty');
+    if(q){
+      em.append(el('div','ico','🔍'),el('div','t','该 task_id 无匹配回执'),
+        el('div','s','换个 task_id 试试，或清空筛选查看全部。'));
+    }else{
+      em.append(el('div','ico','🗃'),el('div','t','还没有受理过回执'),
+        el('div','s','完成一项工作后，带上证据来提交第一份——无证据的回执会被后端拒收。'));
+    }
+    list.append(em);
+    return;
+  }
+  shown.forEach(r=>list.append(rcCard(r)));
+}
+
+/* ===== 规则 / 模板 ===== */
+function renderRules(){
+  const box=$('rulesBox');
+  box.innerHTML='';
+  if(!tpl){
+    box.append(el('b','规则加载中…'), el('div','r2','正在从后端拉取回执规则模板（可手动点「从模板预填」重试）。'));
+    return;
+  }
+  box.append(el('b',null,tpl.rule||'每项完成声明至少带一种证据（commit/file/test）。'));
+  const r2=el('div','r2',tpl.delivery_rule||'delivered=True 时必须给 reply_ref。');
+  box.append(r2);
+  const hints=tpl.evidence_hint||{};
+  const r3=el('div','r2','证据栏含义：commit = '+(hints.commit||'commit 号')+'；file = '+(hints.file||'文件路径')+'；test = '+(hints.test||'测试输出摘要'));
+  box.append(r3);
+  if(tpl.item_placeholders){
+    /* 模板带占位内容时用其 placeholder */
+  }
+}
+async function loadTemplate(){
+  const r=await req('/api/handover/template?'+new URLSearchParams({kind:'receipt',task_id:$('fTask').value.trim()||'',title:''}));
+  if(r.ok&&r.data&&r.data.template){ tpl=r.data.template; renderRules(); resetItems(tpl.items); }
+  else if(!tpl){ $('rulesBox').innerHTML=''; $('rulesBox').append(el('b',null,'规则模板拉取失败：'+msgOf(r)), el('div','r2','不影响手动填写与提交；后端仍会做最终校验。')); }
+}
+function resetItems(seed){
+  $('itemRows').innerHTML='';
+  const n=(seed&&seed.length)?seed.length:1;
+  for(let i=0;i<n;i++) addItem(seed&&seed[i]);
+}
+
+/* ===== 表单：声明条目 ===== */
+function addItem(seed){
+  itemSeq++;
+  const row=el('div','item-row');
+  row.dataset.i=itemSeq;
+  const head=el('div','item-head');
+  head.append(el('span','item-no','声明 #'+( $('itemRows').children.length+1 )));
+  const del=el('button','item-del','移除');
+  del.type='button';
+  del.onclick=()=>{ row.remove(); renumberItems(); };
+  head.append(del);
+  row.append(head);
+  const ta=document.createElement('textarea');
+  ta.placeholder='claim：完成声明（做了什么）——必填';
+  ta.value=(seed&&seed.claim)?seed.claim:'';
+  row.append(ta);
+  const grid=el('div','ev-grid');
+  const ev=(seed&&seed.evidence)||{};
+  function input(placeholder,val){ const i=document.createElement('input'); i.type='text'; i.placeholder=placeholder; i.value=val||''; return i; }
+  const iCommit=input('commit 号（如 76964df）',ev.commit);
+  const iFile=input('文件路径（相对仓库根）',ev.file); iFile.className='full';
+  const iTest=input('测试输出摘要（命令 + 计数）',ev.test); iTest.className='full';
+  grid.append(iCommit,iFile,iTest);
+  row.append(grid);
+  $('itemRows').append(row);
+}
+function renumberItems(){
+  [...$('itemRows').children].forEach((row,i)=>{
+    row.querySelector('.item-no').textContent='声明 #'+(i+1);
+  });
+}
+function collectItems(){
+  return [...$('itemRows').children].map(row=>{
+    const inputs=row.querySelectorAll('input');
+    return {
+      claim: row.querySelector('textarea').value.trim(),
+      evidence:{ commit:inputs[0].value.trim(), file:inputs[1].value.trim(), test:inputs[2].value.trim() }
+    };
+  });
+}
+
+/* ===== 提交 ===== */
+function showSubmitErr(errors, hint){
+  const box=$('submitErr'), ol=$('errList');
+  ol.innerHTML='';
+  (errors||[]).forEach(e=>{ const li=document.createElement('li'); li.textContent=e; ol.append(li); });
+  $('errHint').textContent=hint||'';
+  $('errHint').style.display=hint?'':'none';
+  box.classList.add('show');
+  box.scrollIntoView({block:'nearest'});
+}
+function showSubmitOk(text){
+  const box=$('submitOk');
+  box.textContent=text;
+  box.classList.add('show');
+  setTimeout(()=>box.classList.remove('show'),6000);
+}
+function localHint(text){
+  const h=$('localHint');
+  if(text){ h.textContent=text; h.classList.add('show'); }
+  else{ h.classList.remove('show'); }
+}
+async function submit(){
+  $('submitErr').classList.remove('show');
+  $('submitOk').classList.remove('show');
+  localHint('');
+  const task_id=$('fTask').value.trim(), who=$('fWho').value.trim();
+  const items=collectItems();
+  if(!task_id){ localHint('请填写任务号 task_id。'); $('fTask').focus(); return; }
+  if(!who){ localHint('请填写交付人 who。'); $('fWho').focus(); return; }
+  if(!items.length){ localHint('至少要有一项完成声明。'); return; }
+  const badIdx=items.findIndex(it=>!it.claim);
+  if(badIdx>=0){ localHint('第 '+(badIdx+1)+' 项的 claim 为空：完成声明不能空白。'); return; }
+  const delivered=$('fDelivered').checked;
+  const body={
+    task_id, who, items,
+    delivery:{ delivered, reply_ref:$('fReply').value.trim(), note:$('fNote').value.trim() }
+  };
+  const btn=$('submitBtn');
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span>提交中…';
+  try{
+    const r=await req('/api/handover/receipt',{
+      method:'POST',
+      headers:{'Content-Type':'application/json; charset=utf-8'},
+      body:JSON.stringify(body)
+    });
+    if(r.ok){
+      showSubmitOk('✔ 已受理'+((r.data&&r.data.note)?('：'+r.data.note):''));
+      resetForm();
+      await tick(false);
+    }else{
+      const d=r.data||{};
+      const errors=Array.isArray(d.errors)?d.errors:[msgOf(r)];
+      showSubmitErr(errors, d.hint||'');
+    }
+  }finally{
+    btn.disabled=false; btn.textContent='提交回执';
+  }
+}
+function resetForm(){
+  $('fTask').value=''; $('fWho').value='';
+  $('fDelivered').checked=false; $('fReply').value=''; $('fNote').value='';
+  resetItems(null);
+}
+
+/* ===== status / 主循环 ===== */
+function renderStatus(res){
+  const h=$('health'), ht=$('healthText'), banner=$('banner');
+  if(res.ok&&res.data&&res.data.status==='running'){
+    h.className='health ok';
+    ht.textContent='running v'+(res.data.version||'?');
+    banner.classList.remove('show');
+  }else{
+    h.className='health bad';
+    ht.textContent='后端未连接';
+    banner.innerHTML='';
+    banner.append(el('div',null,'⚠ 后端未启动或无法访问'+(res.msg?('（'+res.msg+'）'):'')+'。请先启动后端：'));
+    banner.append(el('code',null,'python -m agent_community.platform.server --port 18920'));
+    banner.append(el('div',null,'本页会每 30 秒自动重试；表单在后端恢复前无法提交。'));
+    banner.classList.add('show');
+  }
+}
+function listURL(){
+  const p=new URLSearchParams();
+  p.set('limit',$('fLimit').value);
+  const q=$('fTaskQ').value.trim(); if(q) p.set('task_id',q);
+  return '/api/handover/receipts?'+p.toString();
+}
+async function tick(manual){
+  if(running) return;
+  running=true;
+  const btn=$('refreshBtn');
+  if(manual){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>刷新中…'; }
+  try{
+    const [st, list]=await Promise.all([req('/api/status'), req(listURL())]);
+    renderStatus(st);
+    renderList(list);
+    $('refreshInfo').textContent='上次刷新 '+fmtAbs(new Date());
+  }catch(e){
+    console.error('handover tick error', e);
+    $('refreshInfo').textContent='刷新出错：'+e.message;
+  }finally{
+    running=false;
+    if(manual){ btn.disabled=false; btn.innerHTML='⟳ 刷新'; }
+  }
+}
+function startTimer(){ if(timer) clearInterval(timer); timer=setInterval(()=>tick(false),30000); }
+
+/* ===== 交互 ===== */
+let fTimer=null;
+$('fTaskQ').addEventListener('input',()=>{ clearTimeout(fTimer); fTimer=setTimeout(()=>tick(false),400); });
+$('fLimit').addEventListener('change',()=>tick(false));
+$('rcList').addEventListener('click',e=>{
+  const card=e.target.closest('.rc');
+  if(card) card.classList.toggle('open');
+});
+$('fDelivered').addEventListener('change',()=>{
+  const on=$('fDelivered').checked;
+  $('replyHint').textContent=on?'已送达必须填 reply_ref，否则后端 400。':'勾选「已送达」后此项必填，否则后端 400。';
+  $('fReply').style.borderColor=on?'var(--yellow)':'';
+});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){ if(timer){ clearInterval(timer); timer=null; } }
+  else{ tick(false); startTimer(); }
+});
+setInterval(()=>{ $('sbClock').textContent='本机时间 '+fmtAbs(new Date()); },1000);
+$('sbClock').textContent='本机时间 '+fmtAbs(new Date());
+
+const HOps={
+  tick, addItem, submit, loadTemplate,
+  resetForm
+};
+
+/* ===== 启动 ===== */
+resetItems(null);
+loadTemplate();
+tick(false);
+startTimer();
+</script>
+</body>
+</html>

@@ -124,22 +124,82 @@ def fake_rest():
     srv.server_close()
 
 
+EDGE_SECRET = "unit-test-secret-20261006"
+EDGE_HARNESS_ID = "h-edge-test"
+EDGE_TOKEN = {"value": ""}   # gateway 夹具算出的合法 Bearer（供 stub 与内联通道取用）
+
+
+def _prepare_edge_auth(monkeypatch) -> str:
+    """38 号边缘鉴权的测试前置（**不写用户 config**、不依赖真实 data 目录）。
+
+    - 把 `identity._ensure_secret` 钉成测试密钥 → `issue_agent_token` 不会触发"生成并持久化"写盘；
+    - 把 `identity.known_harness_ids` 钉成一个已登记 harness → 边缘鉴权的归属范围可控。
+    """
+    from agent_community.platform import identity as _ident
+
+    monkeypatch.setattr(_ident, "_ensure_secret", lambda: EDGE_SECRET)
+    monkeypatch.setattr(_ident, "known_harness_ids", lambda: [EDGE_HARNESS_ID])
+    return _ident.issue_agent_token(EDGE_HARNESS_ID)
+
+
 @pytest.fixture
 def gateway(fake_rest, monkeypatch):
-    """把网关的 BASE_URL/TOKEN 指向假 REST，并起一个真 gRPC server。"""
+    """把网关的 BASE_URL/TOKEN 指向假 REST，并起一个真 gRPC server（入站 Bearer 鉴权已启用）。"""
     CALLS.clear()
     SCENARIO.update(status=None, body=None, sleep=0.0)
     monkeypatch.setattr(gw, "BASE_URL", fake_rest)
     monkeypatch.setattr(gw, "TOKEN", "test-token")
+    EDGE_TOKEN["value"] = _prepare_edge_auth(monkeypatch)
     server, bound = gw.build_server(0)
     yield bound
     server.stop(0)
 
 
+def _channel(port, token: str):
+    """带入站 Bearer 的通道。
+
+    ⚠️ 不能用 `options=[("default_metadata", ...)]` —— gRPC 通道参数只接受
+    int / bytes / behavior，实测报 `TypeError: Expected int, bytes, or behavior`。
+    改用**客户端拦截器**给该通道的所有 RPC 注入 `authorization` 元数据。
+    """
+    from collections import namedtuple
+
+    _Details = namedtuple(
+        "_ClientCallDetails",
+        ("method", "timeout", "metadata", "credentials", "wait_for_ready", "compression"),
+    )
+
+    class _AuthClientInterceptor(grpc.UnaryUnaryClientInterceptor):
+        def __init__(self, tok: str):
+            self._md = (("authorization", f"Bearer {tok}"),)
+
+        def intercept_unary_unary(self, continuation, client_call_details, request):
+            md = tuple(client_call_details.metadata or ()) + self._md
+            return continuation(
+                _Details(
+                    client_call_details.method,
+                    client_call_details.timeout,
+                    md,
+                    client_call_details.credentials,
+                    client_call_details.wait_for_ready,
+                    client_call_details.compression,
+                ),
+                request,
+            )
+
+    # ⚠️ 客户端拦截器必须经 `grpc.intercept_channel()` 包装 —— `insecure_channel()`
+    #    **没有** `interceptors=` 参数（实测 `TypeError: unexpected keyword argument`）。
+    ch = grpc.intercept_channel(
+        grpc.insecure_channel(f"127.0.0.1:{port}"),
+        _AuthClientInterceptor(token),
+    )
+    grpc.channel_ready_future(ch).result(timeout=10)
+    return ch
+
+
 @pytest.fixture
 def stub(gateway):
-    ch = grpc.insecure_channel(f"127.0.0.1:{gateway}")
-    grpc.channel_ready_future(ch).result(timeout=10)
+    ch = _channel(gateway, EDGE_TOKEN["value"])
     yield pb2_grpc.AgentCommunityStub(ch)
     ch.close()
 
@@ -196,7 +256,7 @@ class TestEdges:
 
     def test_no_token_means_no_auth_header(self, gateway, monkeypatch):
         monkeypatch.setattr(gw, "TOKEN", "")
-        ch = grpc.insecure_channel(f"127.0.0.1:{gateway}")
+        ch = _channel(gateway, EDGE_TOKEN["value"])   # 入站边缘鉴权仍需合法 Bearer
         try:
             grpc.channel_ready_future(ch).result(timeout=10)
             pb2_grpc.AgentCommunityStub(ch).SendMessage(pb2.HarnessMessage(payload_json="{}"))
@@ -259,7 +319,7 @@ class TestErrorMapping:
     def test_connection_refused_maps_unavailable(self, gateway, monkeypatch):
         """D3：平台不可达不得塌成 UNKNOWN。"""
         monkeypatch.setattr(gw, "BASE_URL", "http://127.0.0.1:1")
-        ch = grpc.insecure_channel(f"127.0.0.1:{gateway}")
+        ch = _channel(gateway, EDGE_TOKEN["value"])
         try:
             grpc.channel_ready_future(ch).result(timeout=10)
             with pytest.raises(grpc.RpcError) as ei:
@@ -297,17 +357,39 @@ class TestTokenForwarding:
                                              agent_token="tok-x"))
         assert CALLS[-1]["agent_token"] == "tok-x"
 
-    def test_gateway_does_not_verify_locally(self, stub):
-        """R3：网关**不本地校验** —— 假 token 照常转发，平台回 401 时才翻译成 UNAUTHENTICATED。
+    def test_edge_auth_rejects_bad_bearer_without_forwarding(self, gateway):
+        """38 号 C2（**取代 V18 R3 的"边缘不校验"**）：边缘无凭据/凭据错 → 直接拒绝，**不发上游**。
 
-        这条同时守住 R4：401 不得被改写成别的码。
+        - 缺 `authorization` → 401 → gRPC `UNAUTHENTICATED`
+        - 有但错 → 403 → gRPC `PERMISSION_DENIED`（与平台 P1 同语义）
         """
+        CALLS.clear()
+        ch_missing = _channel(gateway, "")          # Bearer 为空 → 边缘判 401
+        ch_bad = _channel(gateway, "bogus-token")   # 凭据错 → 边缘判 403
+        try:
+            with pytest.raises(grpc.RpcError) as e1:
+                pb2_grpc.AgentCommunityStub(ch_missing).SendMessage(
+                    pb2.HarnessMessage(payload_json='{"harness_id":"h1"}'))
+            assert e1.value.code() == grpc.StatusCode.UNAUTHENTICATED
+
+            with pytest.raises(grpc.RpcError) as e2:
+                pb2_grpc.AgentCommunityStub(ch_bad).SendMessage(
+                    pb2.HarnessMessage(payload_json='{"harness_id":"h1"}'))
+            assert e2.value.code() == grpc.StatusCode.PERMISSION_DENIED
+        finally:
+            ch_missing.close()
+            ch_bad.close()
+        assert not CALLS, "被边缘拒绝的请求不得到达上游"
+
+    def test_forwarded_agent_token_field_still_not_locally_validated(self, stub):
+        """R3 中**仍然成立**的部分：边缘鉴权只看 `authorization` 元数据；
+        消息里的 `agent_token` 字段原样转发、由平台 P1 判决（平台 401 时照旧翻译成 UNAUTHENTICATED）。"""
         SCENARIO.update(status=401, body={"error": "缺少身份凭证头 x-agent-token"}, sleep=0.0)
         with pytest.raises(grpc.RpcError) as ei:
             stub.SendMessage(pb2.HarnessMessage(payload_json='{"harness_id":"h1"}',
-                                                 agent_token="bogus"))
-        assert CALLS and CALLS[-1]["agent_token"] == "bogus", "网关不得在本地把请求毙掉"
-        assert ei.value.code() == grpc.StatusCode.UNAUTHENTICATED
+                                                 agent_token="bogus-field"))
+        assert CALLS and CALLS[-1]["agent_token"] == "bogus-field", "字段应原样转发给平台"
+        assert ei.value.code() == grpc.StatusCode.UNAUTHENTICATED, "平台 401 语义不得被改写"
 
     def test_list_protocols_and_gettask_never_inject_token(self, stub):
         """R2：不涉及该字段的 RPC 不得注入头。"""

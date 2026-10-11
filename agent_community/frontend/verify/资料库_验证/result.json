@@ -1,0 +1,64 @@
+{
+  "pass": true,
+  "fail": [],
+  "errors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "nonGet": [],
+  "unit": {
+    "pending": "pending",
+    "dispatched": "dispatched",
+    "acked": "acked",
+    "entered": "entered",
+    "blocked": "blocked",
+    "timeout": "timeout",
+    "needs_human": "needs_human",
+    "unknown": "other"
+  },
+  "ws": "ed222404",
+  "A": {
+    "panelShown": true,
+    "badge": "未创建",
+    "body": "共享区（成员都能读）；成员只在自己的隔间里写文件。　·　<本机路径>\n📂\n资料库尚未创建\n资料库在建间时随共享区自动生成（README/plan/framework）；本工作间早于该功能或尚未建库。"
+  },
+  "B": {
+    "badge": "已创建",
+    "count": "4 个文件",
+    "files": [
+      ".gitignore190 B",
+      "framework.md198 B",
+      "plan.md590 B",
+      "README.md1.4 KB"
+    ],
+    "summaries": [
+      "分工安排 plan.md ▶",
+      "framework.md ▶ ▶",
+      "索引与规矩 README.md ▶"
+    ],
+    "planLen": 312,
+    "planHasRole": true,
+    "rule": "共享区（成员都能读）；成员只在自己的隔间里写文件。　·　<本机路径>",
+    "hasUndefined": false,
+    "hasNaN": false
+  },
+  "C": {
+    "err": "工作间加载失败：工作间不存在 ｜ 隔间实况加载失败（已降级为公式推导，路径非权威）：工作间不存在 ｜ 资料库加载失败：工作间不存在（展示可能不完整）",
+    "libBadge": "未取到"
+  },
+  "v": {
+    "v1920": {
+      "vw": 1920,
+      "overflow": false
+    },
+    "v1280": {
+      "vw": 1280,
+      "overflow": false
+    },
+    "v1024": {
+      "vw": 1024,
+      "overflow": false
+    }
+  }
+}

@@ -156,6 +156,23 @@ async def workshop_select_members(ws_id: str):
     if not _sv().ai_provider:
         return Utf8JSONResponse({"error": "AI Provider 未配置"}, status_code=400)
     harnesses = harness_manager.list_sessions()
+    # ★2026-10-11（V40 走查发现 P0）：**一个 harness 都没有时，别去问 AI**。
+    #   实测（全新空实例）：点「让平台 AI 选定员工」→ 这里照常调 AI → AI 回空名单 →
+    #   用户看到的原因却是「可能已注册 harness 与任务需求不匹配」——**误导**：
+    #   真实情况是**一个 agent 都还没接**。更糟的是界面把原因吞了，点击毫无反馈。
+    #   ⇒ 就地拦住，说清"为什么 + 怎么接"（准则⑤ 失败要说话）。
+    if not harnesses:
+        return {
+            "success": False,
+            "members": [],
+            "error_code": "no_harness",
+            "reason": "平台上还**没有接入任何 agent** —— 没有员工可选，所以选不出人",
+            "advice": ("先去「🔌 注册 Harness」接入一个 agent，再回来点这个按钮；"
+                       "也可以点「+ 添加职位 / harness」手工填名单"),
+            "register_url": "/register.html",
+            "hall_content": (ws.hall_content or "")[:120],
+        }
+
     harness_desc = "\n".join(
         f"- {h['harness_id']}（{h['harness_name']}）：模型 {h['ai'].get('model_name', '')}，"
         f"能力 {', '.join(h['ai'].get('capabilities', []))}"
@@ -169,17 +186,33 @@ async def workshop_select_members(ws_id: str):
     if _rep_bonus:
         harness_desc = harness_desc + "\n\n" + _rep_bonus
     context = f"任务：{ws.hall_content}\n\n讨论（最近10条）：\n" + _discussion_ctx(ws, limit=10)
+    # ★2026-10-11 老板：「职业列表落后了」⇒ 职业表抽成 `platform/role_catalog.py`（一处真相），
+    #   提示词从这里取。改前这里写死「职业从 组长/码农/画师/搜索者 里选」——
+    #   封闭四个 ⇒ 选不出产品/测试/运维/数据这类角色（做非"写代码画图"的项目就明显不够）。
+    from .. import role_catalog as _roles
+    from ..ai_provider import ai_error_text
     system = (
         "你是 外端Agent生产合作社（External Agent Community） 的员工选定助手。根据任务需求 + 讨论内容 + 已注册 harness 列表，选定员工填入名单。只输出 JSON，不要解释。\n"
         '输出格式：{"members":[{"role":"","display_name":"","harness_ids":[""]}]}\n'
-        "规则：组长必须有（负责设计/分配/检查/纠错）；职业从 组长/码农/画师/搜索者 里选（按任务需要）；"
-        "display_name 和 harness_ids 用已注册 harness 的完整名；没有合适 harness 的职业就不填。"
+        + _roles.prompt_rules()
     )
     try:
         reply = await ai_external_run_ai_call(
             _sv().ai_provider.chat(system, f"已注册 harness：\n{harness_desc}\n\n{context}"),
             label="server.member_select",
         )
+        # ★2026-10-11 实测缺陷修复：**AI 调用失败是以文本返回的，不是抛异常**，例如
+        #   `[Error: HTTP 402] {"error":{"message":"Insufficient account balance"}}`
+        #   —— 这段文本切片后是**合法 JSON**（`{"error":{...}}`）⇒ 原来会被当成"AI 回了，
+        #   只是没填人" ⇒ 接口回 `success=True` + 空名单 + 文案说"可能是 AI 返回空名单"，
+        #   **真正的 402 余额不足一个字都没提**（典型的"看起来成功"死状态）。
+        _err = ai_error_text(reply)
+        if _err:
+            return {"success": False, "error_code": "ai_unavailable",
+                    "error": f"平台 AI 调用失败：{_err[:300]}",
+                    "advice": "这不是「没有合适的员工」，而是**平台 AI 根本没答上来**。"
+                              "请检查平台 AI 配置/额度后重试；也可以点「+ 添加职位 / harness」手工指定名单。",
+                    "harness_count": len(harnesses)}
         start, end = reply.find("{"), reply.rfind("}") + 1
         data = json.loads(reply[start:end]) if start >= 0 and end > start else {}
     except Exception as e:
@@ -208,7 +241,26 @@ async def workshop_select_members(ws_id: str):
         for i, m in enumerate(cleaned)
     ]
     ws.status = "selecting"
-    _selected_note = {} if cleaned else {"reason": "AI 未选出合适成员：可能已注册 harness 与任务需求不匹配或 AI 返回空名单，请人工补充名单"}
+    # ⑥ 共享资料库：**名单变了就重生成 `plan.md`（分工安排）**。
+    # 此前只在建间与手动 `library/update` 时写，于是选完人后 `plan.md` 仍写着「（尚无成员）」
+    # —— 恰好在老板流程 ⑥「更新共享资料库：分工安排」那一刻是过期的。2026-10-07 补。
+    try:
+        from ..workshop import write_library as _wl
+        _wl(ws)
+    except Exception as _e:  # noqa: BLE001 — 资料库刷新失败不影响选人
+        print(f"[library] 选人后刷新 plan.md 失败（不影响选人）: {_e}", flush=True)
+    # ★2026-10-11：说清"为什么没选出 + 怎么办"。
+    #   旧的含糊句（"可能…不匹配或 AI 返回空名单，请人工补充名单"）把三种不同情况混成一句，
+    #   用户无法判断该做什么。这里按**数量**给出可行动的原因（准则⑤）。
+    _selected_note = {} if cleaned else {
+        "error_code": "ai_picked_none",
+        "reason": ("本次没有生成可用名单（已接入 %d 个 agent）。可能是 AI 返回空名单，"
+                   "或回复格式不符合要求；不能据此断定员工不适合任务。" % len(harnesses)),
+        "advice": ("三条路：①接入一个更对口的 agent 再点一次；"
+                   "②点「+ 添加职位 / harness」**手工**指定谁来做；"
+                   "③把任务写得更具体（说明要写代码？做图？查资料？），AI 更好判断"),
+        "harness_count": len(harnesses),
+    }
     return {
         "success": True,
         "members": [
@@ -278,6 +330,12 @@ async def workshop_save_members(ws_id: str, request: Request):
                 m.status = old_hid2m[hid].status
                 m.session = old_hid2m[hid].session
     ws.members = new_members
+    # ⑥ 名单变了 -> 重生成 `plan.md`（同上面 select-members 的理由）
+    try:
+        from ..workshop import write_library as _wl
+        _wl(ws)
+    except Exception as _e:  # noqa: BLE001
+        print(f"[library] 加/删成员后刷新 plan.md 失败: {_e}", flush=True)
     save_state()
     return {
         "success": True,
@@ -285,6 +343,41 @@ async def workshop_save_members(ws_id: str, request: Request):
         "added": added,
         "removed": removed,
     }
+
+@router.post("/api/workshop/{ws_id}/begin-selecting")
+async def workshop_begin_selecting(ws_id: str):
+    """★2026-10-11（V40 走查 P0 修复）：**结束一级讨论 → 真的进入「选定员工」**。
+
+    **为什么要新加这个端点**（走查实测）：
+    前端 `endDiscuss()` 只是把浏览器里的一个变量改成 `selecting`，**根本没通知后端** ——
+    代码注释自己都写着「端点仍可能回 discuss1，门控用 `_phase` 兜」。
+    ⇒ 后端 `ws.status` 永远停在 `discussing` ⇒ 阶段指示器一直显示"一级讨论"、
+    刷新一下又跳回去 ⇒ 用户不知道自己在哪一步（正是 V40 记的结构性缺口之一）。
+
+    **语义**：把状态从 `discussing` 推进到 `selecting`（幂等：已经在选人/更后面就原样返回）。
+    只做状态推进，不选人（选人是 `select-members`）。
+    """
+    from ..server import Utf8JSONResponse, save_state
+    # ⚠️ 本模块**没有**模块级的 `_audit_log`（我今天第三次因"猜变量名"栽了：前两次是 `_pkg`/`_os`）。
+    #    这里自己 import，别再猜。
+    from ..audit import audit_log as _audit_log
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    before = ws.status or ""
+    # 幂等：已经走过这一步的，不要往回拖
+    if before not in ("discussing", "draft"):
+        return {"success": True, "changed": False, "status": before,
+                "note": "已经过了「选定员工」这一步，状态原样保留"}
+    ws.status = "selecting"
+    try:
+        save_state()
+    except Exception as _e:  # noqa: BLE001 — 落盘失败也要把内存态推进，失败要说话
+        print(f"[begin-selecting] 落盘失败（内存态已推进）: {_e}", flush=True)
+    _audit_log.record("workshop.begin_selecting", actor="user", target=ws_id,
+                      detail=f"{before} -> selecting（结束一级讨论）")
+    return {"success": True, "changed": True, "status": ws.status, "previous": before}
+
 
 @router.post("/api/workshop/{ws_id}/confirm-members")
 async def workshop_confirm_members(ws_id: str, request: Request):
@@ -308,6 +401,13 @@ async def workshop_confirm_members(ws_id: str, request: Request):
             for i, m in enumerate(members_raw)
         ]
     ws.status = "division"
+    # ⑥ 名单确认 -> 重生成 `plan.md`。老板流程 ⑥ 原话就是「**完成后更新共享资料库（分工安排）**」，
+    # 所以这一刻必须是最新的（否则前端在 division 阶段展示的分工是过期的）。2026-10-07 补。
+    try:
+        from ..workshop import write_library as _wl
+        _wl(ws)
+    except Exception as _e:  # noqa: BLE001
+        print(f"[library] 确认成员后刷新 plan.md 失败: {_e}", flush=True)
     # 自治边界：进入分工讨论 → discussing 态
     task_state_machine.set_state(ws_id, DISCUSSING, stage="division")
     _append_msg(ws, "notice", "【二级讨论】员工名单已确认，进入分工讨论。组长将接管对话：请等待组长的真实发言，或直接在下方输入消息与组长讨论分工；组长的回复会实时出现在这里。", zone=2)

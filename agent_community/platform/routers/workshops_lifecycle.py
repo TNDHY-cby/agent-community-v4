@@ -11,6 +11,7 @@ from ..audit import audit_log as _audit_log
 import asyncio
 import json
 import os
+from pathlib import Path
 from uuid import uuid4
 from ..workshop import write_workspace_files
 from ..state import interject_store, pending_activations, task_state_machine, tasks, workshops
@@ -92,6 +93,20 @@ async def create_workshop(request: Request):
         ],
         created_at=now_iso(),
     )
+    # ★2026-10-11 修复（老板口径 + MiMo 94 号实测报告）：
+    #   大厅「发布」走的就是这条（`index.html:670` → body `{hall_content}`）。
+    #   修前：构造不设 status ⇒ 落默认 `draft`；而 `POST …/discuss` 里那句
+    #         `if ws.status not in ("division","review","running"): ws.status = "discussing"`
+    #         只会在**用户发出第一条消息时**才把状态掰过来 ⇒
+    #         表现为「进去先显示草稿态，发了消息才变讨论中」，与老板要的
+    #         「大厅发任务 → 自动建好工作间 → **进去就能直接开始聊**（一级讨论）」不符。
+    #   修后：**有任务内容就进一级讨论**，与另一条自动建间入口一致
+    #         （`server.py:1365` `_ws.status = "discussing"  # 自动建间即进入一级讨论`）；
+    #         **没有任务内容仍保留 `draft`**（纯手工建的空间，不假装在讨论）。
+    #   状态机权威：`workshop.py:80` draft → discussing → selecting → division → running → review → done
+    # 注：讨论端点里那句"发消息即掰成 discussing"是**兜底自愈**，保留不动（历史 draft 工作间仍能救回）。
+    if hall.strip():
+        ws.status = "discussing"
     # V-13 修复：工作间总数上限，防无限创建耗尽磁盘（每个工作间含工作区目录文件）
     if len(workshops) >= MAX_WORKSHOPS:
         return Utf8JSONResponse({"error": f"工作间总数已达上限 {MAX_WORKSHOPS}，请清理旧工作间后再试"}, status_code=429)
@@ -403,6 +418,256 @@ async def workshop_connect_artifact(ws_id: str, request: Request):
             "artifact": out, "harness_id": hid, "guidance": _g}
 
 
+@router.get("/api/workshop/{ws_id}/library")
+async def workshop_library(ws_id: str):
+    """**共享资料库**（老板主流程 ⑥）的只读视图：目录 + 文件实况 + 内容预览。
+
+    形态（老板 2026-10-07）：「可以是一个自动建立的文件夹，也可以是 git 之类的库」。
+    当前实现=**自动建立的文件夹** `<工作间目录>/library/`，布局为纯文本，
+    日后 `git init` 即可升格为库，不需要改结构。
+    """
+    from ..server import Utf8JSONResponse
+    from ..workshop import LIBRARY_DIRNAME
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    d = Path(ws.workspace_dir) / LIBRARY_DIRNAME
+    files = []
+    if d.is_dir():
+        for p in sorted(d.iterdir()):
+            if p.is_file():
+                files.append({"name": p.name, "size": p.stat().st_size})
+    # ★2026-10-08 补：**把子目录也列出来**（尤其"每个员工一个 `<agent名>-<职位>/` 分工文件夹"）。
+    # 原实现只列文件 ⇒ 界面上**永远看不到员工分工文件夹**（老板明确要的东西，接口却没给）。
+    # 新增 `directories` 字段，对既有消费方**向后兼容**（files/preview 原样保留）。
+    directories = []
+    try:
+        for p in sorted(d.iterdir()):
+            if not p.is_dir():
+                continue
+            _sub = []
+            try:
+                for q in sorted(p.iterdir()):
+                    if q.is_file():
+                        _sub.append({"name": q.name, "size": q.stat().st_size})
+            except Exception:  # noqa: BLE001
+                pass
+            _entry = {"name": p.name, "files": _sub, "count": len(_sub)}
+            _ap = p / "assignment.md"
+            if _ap.is_file():
+                try:
+                    _entry["assignment_preview"] = _ap.read_text(encoding="utf-8")[:1200]
+                except Exception:  # noqa: BLE001
+                    _entry["assignment_preview"] = ""
+            directories.append(_entry)
+    except Exception:  # noqa: BLE001
+        pass
+    preview = {}
+    for name in ("plan.md", "framework.md", "README.md", "model.md"):
+        p = d / name
+        if p.is_file():
+            try:
+                preview[name] = p.read_text(encoding="utf-8")[:1200]
+            except Exception:  # noqa: BLE001
+                preview[name] = ""
+    # ★V29 项目模型（老板 2026-10-10 拍板）：只读状态给界面（是否存在/执笔人/版本/缺哪些块）
+    try:
+        from ..workshop import read_framework_info as _rfi, read_model_info as _rmi
+        _model = _rmi(ws)
+        _framework = _rfi(ws)
+    except Exception as e:  # noqa: BLE001
+        _model = {"exists": False, "error": f"{type(e).__name__}: {e}"}
+        _framework = {"exists": False, "error": f"{type(e).__name__}: {e}"}
+    return {
+        "workshop_id": ws_id, "dir": str(d), "exists": d.is_dir(),
+        "files": files, "directories": directories, "preview": preview,
+        "model": _model,
+        "framework": _framework,
+        "rule": "共享区（成员都能读）；成员只在自己的隔间里写文件。",
+        "form": "folder（可日后 git init 升格）",
+        "note": ("`directories` 里是**每个员工的分工文件夹** `<agent名>-<职位>/`，"
+                 "内含 `assignment.md`（他该做什么，附 `assignment_preview`）——外端 agent 拿路径自己去看。"),
+    }
+
+
+@router.post("/api/workshop/{ws_id}/library/update")
+async def workshop_library_update(ws_id: str, request: Request):
+    """**更新**共享资料库（老板流程 ⑥「更新共享资料库：分工安排、项目框架」）。
+
+    body（都可选）：
+      - `framework`: 项目框架正文。给了就写入 `framework.md`；**不给则不覆盖已有内容**
+        （尊重人的编辑）。`plan.md`（分工安排）永远按当前名单+委派记录重新生成。
+    """
+    from ..server import Utf8JSONResponse, save_state
+    from ..workshop import write_library
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    _fw = str((body or {}).get("framework") or "")
+    # ★V29：`model` 可以是**五块字典**（goal/parts/roles/deps/outputs），也可以是**整篇 markdown 文本**；
+    # `author` = 执笔人（组长/整合者/用户）——平台**没有**身份 ACL，故如实记录执笔人而不是假装拦得住。
+    _model_raw = (body or {}).get("model")
+    _model_blocks = _model_raw if isinstance(_model_raw, dict) else None
+    _model_text = _model_raw if isinstance(_model_raw, str) else ""
+    _author = str((body or {}).get("author") or "")
+    out = write_library(ws, framework=_fw, updated_by="api",
+                        model=_model_blocks, model_text=_model_text, model_author=_author)
+    if not out.get("ok"):
+        return Utf8JSONResponse({"error": "更新失败", "detail": out.get("error")}, status_code=500)
+    _mo = out.get("model") or {}
+    try:
+        _audit_log.record("library.update", actor="user", target=ws_id,
+                          detail=(f"framework={'yes' if _fw.strip() else 'no'} "
+                                  f"model={('v%s' % _mo.get('version')) if _mo.get('ok') else 'no'} "
+                                  f"author={_author or '-'} files={len(out.get('written') or [])}"),
+                          extra={"framework_written": bool(_fw.strip()),
+                                 "model_written": bool(_mo.get("ok")),
+                                 "model_version": _mo.get("version") or 0,
+                                 "model_author": _author,
+                                 "model_missing": _mo.get("missing") or []})
+    except Exception:  # noqa: BLE001
+        pass
+    save_state()
+    _note = ("plan.md 已按当前名单重生成；framework.md "
+             + ("已写入" if _fw.strip() else "保持已有内容（未传 framework）"))
+    if _mo.get("ok"):
+        _note += (f"；model.md 已写入 v{_mo.get('version')}（执笔：{_author or '未记录'}）"
+                  + (f"，缺 {len(_mo.get('missing') or [])} 块（界面应显示未完成）" if _mo.get("missing") else ""))
+    elif _mo.get("error") and _mo.get("error") != "未提供 model":
+        _note += f"；⚠️ model.md 写入失败：{_mo.get('error')}"
+    return {"success": True, "workshop_id": ws_id, "dir": out["dir"],
+            "written": out.get("written", []),
+            "model": _mo,
+            "note": _note}
+
+
+@router.post("/api/workshop/{ws_id}/integrate")
+async def workshop_integrate(ws_id: str):
+    """**阶段整合**（老板流程 ⑧ 后半：「阶段完成**由一个 agent 整合**」）。
+
+    做三件事，顺序固定：
+      1. **收产物**：把每个成员隔间 `output/` 里的文件列成清单（`collect_member_outputs`，只读）；
+      2. **落清单**：写 `<工作间>/library/integration.md`，交给整合者按路径去取；
+      3. **派活**：把「去整合」这件事派给**整合者**（默认组长）的真实 harness。
+
+    ⚠️ 准则⑤ **失败要说话**：若所有成员 `output/` 都是空的，**照样出清单但明确标"无产物可整合"**，
+    响应里 `has_output=false`，**绝不在这种状态下说"整合成功"**。
+
+    与批次汇总的分工：`_parallel_batch_summary` 汇总的是**文字回报**；本端点汇总的是**磁盘产物**。
+    """
+    from ..server import Utf8JSONResponse, _append_msg, _dispatch_to_harness, save_state
+    from ..workshop import collect_member_outputs, write_integration_manifest
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    members = list(ws.members or [])
+    if not members:
+        return Utf8JSONResponse(
+            {"error": "名单为空，没有可整合的成员", "hint": "先选人（select-members / members）再整合"},
+            status_code=409)
+    _leader = next((m for m in members if m.role == "组长"), None) or members[0]
+    man = write_integration_manifest(ws, integrator=f"{_leader.display_name or _leader.member_id}（{_leader.role}）")
+    _has = man["total_files"] > 0
+
+    # 讨论区留痕（用户能在房间里看到"该整合了/有没有东西可整合"）
+    _msg = (f"【阶段整合】整合者：{_leader.display_name or _leader.member_id}。"
+            f"产物清单：`{man['path']}`。"
+            + (f"共 {man['total_files']} 个产物，来自 {len(man['with_output'])} 名成员；"
+               f"**未产出：{','.join(man['without_output']) or '无'}**。"
+               if _has else
+               "**所有成员 output/ 均为空——本次无产物可整合**（不是整合完成）。"))
+    try:
+        _append_msg(ws, "notice", _msg, zone=3)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # 派活给整合者
+    _hid = (_leader.harness_ids or [None])[0]
+    _disp_ok, _disp_note = (False, "整合者未绑定 harness")
+    if _hid:
+        _col = collect_member_outputs(ws)
+        _paths = "\n".join(
+            f"- {r['display_name'] or r['member_id']}（{r['role']}）：{r['output_dir']}"
+            + (f" —— {r['file_count']} 个产物" if r["file_count"] else " —— **无产物**")
+            for r in _col["members"])
+        _lib = os.path.join(str(ws.workspace_dir), "library")
+        _prompt = (
+            "你是本工作间的**整合者**（阶段成果汇总）。老板流程规定：**阶段完成由一个 agent 整合**。\n"
+            f"整合清单（含每人产物路径与文件名）：{man['path']}\n"
+            f"共享资料库：{_lib}\n\n"
+            "各成员产物（在**他们各自隔间**的 output/ 下，**平台不搬动，你自己去取**）：\n"
+            f"{_paths}\n\n"
+            "请：① 逐个核对路径、确认产物真的在；② 整合成一份阶段成果，写进共享资料库；"
+            "③ **如实报告缺项**——谁没交、交的对不对，别把缺的算成有。"
+        )
+        _disp_ok, _disp_note = _dispatch_to_harness(_hid, {
+            "type": "task", "kind": "integrate", "workshop_id": ws_id,
+            "role": "组长", "integrator": _leader.member_id,
+            "manifest_path": man["path"], "message": _prompt, "task": _prompt,
+        }, kind="task")
+
+    try:
+        _audit_log.record("workshop.integrate", actor="user", target=ws_id,
+                          detail=f"integrator={_leader.member_id} files={man['total_files']} "
+                                 f"dispatched={bool(_disp_ok)}",
+                          extra={"integrator": _leader.member_id, "total_files": man["total_files"],
+                                 "without_output": man["without_output"], "has_output": _has,
+                                 "manifest": man["path"], "dispatched": bool(_disp_ok)})
+    except Exception:  # noqa: BLE001
+        pass
+    save_state()
+    return {
+        "success": True,
+        "integrator": _leader.member_id,
+        "integrator_role": _leader.role,
+        "manifest": man["path"],
+        "total_files": man["total_files"],
+        "with_output": man["with_output"],
+        "without_output": man["without_output"],
+        "has_output": _has,                       # ← 前端据此决定措辞，别把"无产物"说成成功
+        "dispatched": bool(_disp_ok), "dispatch_note": _disp_note,
+        "note": man["note"] or _msg,
+    }
+
+
+@router.get("/api/workshop/{ws_id}/compartments")
+async def workshop_compartments(ws_id: str):
+    """**每个成员隔间的磁盘实况**（只读）。
+
+    应答 FE-03 §7 的接口变更申请（MiMo 2026-10-07）：
+    前端原本靠"镜像后端路径公式 + 读 bridge.auto 审计"间接展示隔间，
+    但**审计只能证明"何时发过桥、落在哪"，证明不了目录/文件此刻在不在**；
+    而公式镜像会随后端改动漂移。故由后端直接给出实况与权威路径。
+
+    ⚠️ 回给前端的 `dir` 是**权威路径**，前端不得再自行推导（见 compartment.py 的定义块）。
+    """
+    from ..server import Utf8JSONResponse
+    from .. import compartment as _cmp
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    rows = []
+    for m in (ws.members or []):
+        row = _cmp.inspect_compartment(ws.workspace_dir, m.role, m.member_id)
+        row["display_name"] = getattr(m, "display_name", "")
+        row["status"] = getattr(m, "status", "")
+        row["entry_state"] = getattr(m, "entry_state", "")
+        row["subdir_names"] = list(_cmp.SUBDIRS)     # 规范分区名，供前端展示"应含分区"
+        rows.append(row)
+    return {
+        "workshop_id": ws_id,
+        "workspace_dir": ws.workspace_dir,           # 共享区（非成员可写）
+        "compartments": rows,
+        "count": len(rows),
+        "exists_count": sum(1 for r in rows if r.get("exists")),
+        "rule": "一个会话 = 一个隔间 + 一个具体桥；隔间在「架起具体桥」那一步创建。",
+        "path_authority": "dir 由后端给出，前端不要自行推导路径（会随公式改动漂移）。",
+    }
+
 @router.get("/api/workshop/{ws_id}")
 async def get_workshop(ws_id: str, after_seq: int = -1):
     from ..server import Utf8JSONResponse, _normalize_discussion
@@ -453,3 +718,241 @@ async def set_decision_mode_api(ws_id: str, request: Request):
     mode = _set_decision_mode(ws_id, str(body.get("mode") or ""))
     return {"success": True, "workshop_id": ws_id, "decision_mode": mode}
 
+
+@router.post("/api/workshop/{ws_id}/library/model/draft")
+async def workshop_model_draft(ws_id: str):
+    """**项目模型草案**（V29 §2「路径 B」）：配了 AI 时，平台把讨论内容整理成五块草案。
+
+    **不落盘** —— 草案只是给组长改的起点；确认后用 `POST .../library/update` 带 `model` 保存
+    （即「人确认后才算建立」，准则⑤）。**未配 AI 就明确报错 + 给手工填写指引，不假装生成**。
+    """
+    import json as _json
+
+    from ..ai_external import run_ai_call
+    from ..server import Utf8JSONResponse, _discussion_ctx
+    from ..workshop import MODEL_SECTIONS
+    from .workshops_common import _sv
+
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    prov = getattr(_sv(), "ai_provider", None)
+    if not prov:
+        return Utf8JSONResponse({
+            "error": "未配置 AI：无法生成草案",
+            "hint": "手工填五块即可（界面「建立模型」里有骨架提示）；配好 AI 后可回来一键生成。",
+            "sections": [tt for _k, tt, _h in MODEL_SECTIONS],
+        }, status_code=400)
+
+    roster = "、".join(f"{m.role}（{m.display_name or m.member_id}）" for m in (ws.members or [])) or "（尚无成员）"
+    ctx = (f"任务（大厅内容）：\n{ws.hall_content}\n\n"
+           f"当前成员：{roster}\n\n讨论历史（最近 12 条）：\n" + _discussion_ctx(ws, limit=12))
+    system = ("你在给一个协作项目**建模**：把上面的讨论收敛成一份项目模型草案，"
+              "**严格输出 JSON**（不要解释、不要 markdown 代码块），键固定五个："
+              '{"goal":"…","parts":"…","roles":"…","deps":"…","outputs":"…"}；'
+              "含义：goal=目标与验收；parts=组成（模块/任务分解）；roles=分工对应（谁负责哪块）；"
+              "deps=依赖与顺序；outputs=产物落点（放谁的 output/）。"
+              "讨论里没有依据的部分**留空字符串**，不要编造。中文，每项可含少量换行与项目符号。")
+    try:
+        reply = await run_ai_call(prov.chat(system, ctx), label="server.model_draft")
+    except Exception as e:  # noqa: BLE001
+        return {"success": False, "draft": {}, "error": f"AI 调用失败：{type(e).__name__}: {e}"}
+    txt = str(reply or "")
+    if txt.startswith(("[Error:", "[AI 讨论失败:", "[AI 降级]")):
+        return {"success": False, "draft": {}, "error": txt[:200]}
+    i, j = txt.find("{"), txt.rfind("}")
+    if i < 0 or j <= i:
+        return {"success": False, "draft": {}, "raw": txt[:800],
+                "error": "AI 返回不是合法 JSON（草案未生成）"}
+    try:
+        d = _json.loads(txt[i:j + 1])
+    except Exception as e:  # noqa: BLE001
+        return {"success": False, "draft": {}, "raw": txt[:800],
+                "error": f"解析草案 JSON 失败：{type(e).__name__}"}
+    draft = {}
+    for _k, _title, _hint in MODEL_SECTIONS:
+        _v = d.get(_k)
+        draft[_k] = "" if _v is None else str(_v).strip()
+    return {
+        "success": True,
+        "draft": draft,
+        "filled": [k for k, v in draft.items() if v],
+        "missing": [title for k, title, _h in MODEL_SECTIONS if not draft.get(k)],
+        "verified": False,
+        "note": "这是**草案**（未经组长确认）：请修改后点「保存」写入 library/model.md；"
+                "缺块会被如实标为未完成（准则⑤：不许当已建立）",
+    }
+
+
+# ── ★FE-17 §4：右侧栏「按阶段收敛」的权威判据 ────────────────────────────────
+# 为什么放后端：**"现在该按哪几个按钮"是业务规则**，散在前端会变成前后端两套口径；
+# 放这一处可测、可审计、可记录改动（FE-17 §4 原话）。
+#
+# 老板原话（2026-10-10 真机测试）：「工作间右侧边栏内容太复杂，有一些按不了，
+# 我不知道怎么按，没办法使用」⇒ 实测该页**不同文案的按钮共 58 个**。
+# 契约目标：**任何时刻"当前该按的"主操作 ≤5 个**，阶段专属且用不上的**直接不渲染**
+# （不是置灰 —— 置灰正是"按不了"的来源）。
+#
+# ⚠️ 本端点是**只读**的：不得触发激活、不得改状态（对齐 V17 那次的教训）。
+_FE17_STAGES = {
+    "discuss1": {"index": 1, "label": "一级讨论"},
+    "select":   {"index": 2, "label": "选定员工"},
+    "discuss2": {"index": 3, "label": "二级讨论"},
+    "working":  {"index": 4, "label": "工作中"},
+    "review":   {"index": 5, "label": "三级讨论"},
+    "done":     {"index": 5, "label": "已完成"},
+}
+
+# 后端 status -> FE-17 的阶段 id（FE-17 §1 的表；status 取值源自 `workshop.py:80`）
+_FE17_STATUS_TO_STAGE = {
+    "draft": "discuss1", "discussing": "discuss1", "entered": "discuss1",
+    "selecting": "select", "division": "discuss2",
+    "running": "working", "active": "working", "activating": "working", "idle": "working",
+    "review": "review",
+    "done": "done",
+    "blocked": "working", "dropped": "done", "pending_approval": "working",
+}
+
+# 通用动作（多个阶段都可能出现；`stages` 为它所属阶段集合）
+_FE17_ACTIONS = {
+    "discuss": {
+        "label": "发送", "kind": "primary",
+        "effects": "把你的发言发给平台 AI（一级讨论）或组长（二级讨论）",
+        "endpoint": "POST /api/workshop/{ws_id}/discuss",
+    },
+    "finish_discuss": {
+        "label": "结束讨论，选定员工 →", "kind": "primary",
+        "effects": "结束一级讨论，进入「选定员工」阶段（此后平台 AI 退出）",
+        "endpoint": "POST /api/workshop/{ws_id}/select-members",
+    },
+    "select_members": {
+        "label": "让平台 AI 选定员工", "kind": "primary",
+        "effects": "平台按任务方向自动初选成员并填入名单（可改）",
+        "endpoint": "POST /api/workshop/{ws_id}/select-members",
+    },
+    "add_member": {
+        "label": "+ 添加职位 / harness", "kind": "primary",
+        "effects": "手工往名单里加一行（AI 没配或你想自己选时用）",
+        "endpoint": "（界面本地的名单编辑）",
+    },
+    "save_roster": {
+        "label": "保存名单", "kind": "primary",
+        "effects": "把当前名单存进工作间（不改阶段）",
+        "endpoint": "POST /api/workshop/{ws_id}/members",
+    },
+    "confirm_members": {
+        "label": "确认名单，进入二级讨论", "kind": "primary",
+        "effects": "确认成员并进入二级讨论；平台会派发组长开始对接",
+        "endpoint": "POST /api/workshop/{ws_id}/confirm-members",
+    },
+    "start_work": {
+        "label": "🚀 开始工作", "kind": "primary",
+        "effects": "按名单激活成员（建会话/送桥并绑定），进入工作阶段",
+        "endpoint": "POST /api/workshop/{ws_id}/start",
+    },
+    "rescue_scan": {
+        "label": "🔄 全间抢救扫描", "kind": "primary",
+        "effects": "检查全间谁掉线了，能救的救、救不了的上报给你",
+        "endpoint": "POST /api/workshop/{ws_id}/recover-scan",
+    },
+    "leader_check": {
+        "label": "📋 组长检查员工状态", "kind": "more",
+        "effects": "让组长扫一遍成员状态与进度",
+        "endpoint": "POST /api/workshop/{ws_id}/leader-status",
+    },
+    "register_resource": {
+        "label": "⬆️ 登记到资源库", "kind": "more",
+        "effects": "把当前成果登记进资源库",
+        "endpoint": "POST /api/workshop/{ws_id}/resources",
+    },
+    "activate_template": {
+        "label": "📋 手动激活模板", "kind": "more",
+        "effects": "取该成员的激活提示词（没配脚本时人工用）",
+        "endpoint": "POST /api/workshop/{ws_id}/member/{member_id}/establish-session",
+    },
+    "third_discuss": {
+        "label": "📋 进行三级讨论", "kind": "primary",
+        "effects": "让全员回报进展，进入三级讨论（复盘与下一步）",
+        "endpoint": "POST /api/workshop/{ws_id}/review",
+    },
+    "continue_work": {
+        "label": "▶ 继续工作", "kind": "primary",
+        "effects": "三级讨论后继续推进（不回退阶段）",
+        "endpoint": "POST /api/workshop/{ws_id}/continue",
+    },
+    "complete_task": {
+        "label": "✅ 完成任务", "kind": "primary",
+        "effects": "收口本工作间（此后再往下就是整合产出）",
+        "endpoint": "POST /api/workshop/{ws_id}/complete",
+    },
+    "integrate": {
+        "label": "📦 收口整合产出", "kind": "primary",
+        "effects": "把各成员的 output/ 收成清单交给整合者",
+        "endpoint": "POST /api/workshop/{ws_id}/integrate",
+    },
+}
+
+# 阶段 -> (主操作, 收进「更多 ⋯」的) —— 与 FE-17 §2 的白名单表逐行对应
+_FE17_BY_STAGE = {
+    "discuss1": (["discuss", "finish_discuss"],
+                 ["leader_check", "register_resource", "activate_template"]),
+    "select":   (["select_members", "add_member", "save_roster", "confirm_members"],
+                 ["rescue_scan", "leader_check"]),
+    "discuss2": (["discuss", "start_work"],
+                 ["leader_check", "register_resource"]),
+    "working":  (["rescue_scan", "leader_check", "integrate"],
+                 ["register_resource", "activate_template"]),
+    "review":   (["third_discuss", "continue_work", "complete_task"],
+                 ["register_resource"]),
+    "done":     ([], ["integrate"]),
+}
+
+
+@router.get("/api/workshop/{ws_id}/sidebar")
+async def workshop_sidebar(ws_id: str):
+    """★FE-17 §4：右侧栏「**当前该按哪几个按钮**」的权威判据（只读、无副作用）。
+
+    返回 `stage`（阶段）+ `visible_actions`（主操作，**≤5**）+ `more_actions`（收进「更多 ⋯」）
+    + `blocked_reason`（非空时必须显著显示原因与下一步）。
+
+    ⚠️ 界面**不得盲信**：本端点失败时，前端应**降级为"显示全部 + 提示"**，
+    不许因为接口挂了就让用户无从下手（协作书规则 17「自服务标准」）。
+    """
+    from ..server import Utf8JSONResponse
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+
+    status = str(getattr(ws, "status", "") or "")
+    stage_id = _FE17_STATUS_TO_STAGE.get(status, "discuss1")
+    stage_meta = _FE17_STAGES[stage_id]
+    primary_ids, more_ids = _FE17_BY_STAGE.get(stage_id, ([], []))
+
+    def _act(aid):
+        a = dict(_FE17_ACTIONS[aid])
+        a["id"] = aid
+        return a
+
+    # 失败要说话：异常状态必须给出**原因 + 怎么办**，不能只给一个灰按钮
+    blocked_reason = None
+    if status in ("blocked", "dropped", "pending_approval"):
+        blocked_reason = {
+            "blocked": "该工作间被标记为受阻。先看「组长检查员工状态」或运维看板，"
+                       "确认卡在哪一步，再决定继续还是收口。",
+            "dropped": "该工作间已放弃。如仍需推进，请在大厅重新发布任务。",
+            "pending_approval": "有一步在等人工批准（策略闸门）。批准后流程才会继续。",
+        }.get(status, f"状态异常：{status}")
+
+    return {
+        "success": True,
+        "workshop_id": ws_id,
+        "status": status,                     # 原样给后端权威状态，界面不得改名
+        "stage": {"id": stage_id, "label": stage_meta["label"],
+                  "index": stage_meta["index"], "total": 5},
+        "visible_actions": [_act(x) for x in primary_ids],
+        "more_actions": [_act(x) for x in more_ids],
+        "blocked_reason": blocked_reason,
+        "member_count": len(getattr(ws, "members", []) or []),
+        "note": "主操作 ≤5（FE-17 §2）；阶段专属且用不上的按钮**不渲染**（不是置灰）。"
+                "端点失败时前端应降级为显示全部并提示，不要留白。",
+    }

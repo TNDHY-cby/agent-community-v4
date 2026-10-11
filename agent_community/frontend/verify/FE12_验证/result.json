@@ -1,0 +1,59 @@
+{
+  "errors": [
+    "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+  ],
+  "nonGet": [
+    "POST /api/workshop/2c9e0692/discuss",
+    "POST /api/workshop/2c9e0692/member/m0/channel/establish",
+    "POST /api/workshop/2c9e0692/member/m0/channel/retire",
+    "POST /api/workshop/2c9e0692/member/m0/channel/establish",
+    "POST /api/workshop/2c9e0692/member/m0/channel/retire",
+    "POST /api/workshop/2c9e0692/member/m0/channel/establish"
+  ],
+  "init": {
+    "badge": "未接入",
+    "text": "🔗 通道 | 未接入 | #1 | （未命名） | 新建通道",
+    "hasEstablishBtn": true,
+    "hasRetireBtn": false
+  },
+  "afterNew": {
+    "badge": "运行中",
+    "name": "2c9e0692-FE12验收-自建-码农-m0",
+    "meta": "自 2026-10-10 00:20:52",
+    "note": "通道已建立：2c9e0692-FE12验收-自建-码农-m0（#1）。投递待人工/未核实。文本：deliver_text.md",
+    "noteCls": "sf-res show ch-note pending",
+    "hasRetireBtn": true,
+    "driveInRow": false
+  },
+  "afterRetire": {
+    "badge": "已停用 ×1",
+    "retiredClass": true,
+    "meta": "自 2026-10-10 00:20:52 · 停用于 2026-10-10 00:20:56 · 历史通道 1 个",
+    "note": "已停用。（action=retired）",
+    "noteHas停用成功": true,
+    "noteHasNone伪装": false,
+    "hasEstablishBtn": true
+  },
+  "noneTest": {
+    "note": "当前没有可停用的通道（如实回报，未执行停用）。",
+    "banned": false
+  },
+  "rejectTest": {
+    "note": "新建失败：该成员已有运行中的通道，请先停用后再新建。",
+    "hasError": true
+  },
+  "v": {
+    "v1600": {
+      "vw": 1600,
+      "overflow": false
+    },
+    "v1280": {
+      "vw": 1280,
+      "overflow": false
+    },
+    "v1024": {
+      "vw": 1024,
+      "overflow": false
+    }
+  }
+}

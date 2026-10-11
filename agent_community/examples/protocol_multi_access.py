@@ -137,10 +137,24 @@ def demo_a2a():
             print(f"       · {iface.get('protocolBinding')} v{iface.get('protocolVersion')}  {iface.get('url', '')}")
 
         # 用 A2A JSON-RPC 查询 Agent
+        # 38 号拍板 D-A3/D-C1「**本机不豁免鉴权**」：示例改为**自带 Bearer**
+        # （与平台同一 secret、同一已登记 harness 本地重签；不靠"本机放行"削弱边缘鉴权）。
+        _headers = {"Content-Type": "application/json"}
+        try:
+            from agent_community.platform import identity as _ident
+
+            _ids = _ident.known_harness_ids()
+            _edge_token = _ident.issue_agent_token(_ids[0]) if _ids else ""
+        except Exception:  # noqa: BLE001
+            _edge_token = ""
+        if _edge_token:
+            _headers["Authorization"] = f"Bearer {_edge_token}"
+        else:
+            print("  ⚠️ 未取得 edge token（无已登记 harness 或鉴权未就绪），POST 将被 401 拒绝")
         body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "GetExtendedAgentCard", "params": {}}).encode()
         req = urllib.request.Request(
             A2A_URL + "/", data=body,
-            headers={"Content-Type": "application/json"}, method="POST",
+            headers=_headers, method="POST",
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
             result = json.loads(resp.read().decode("utf-8", "replace"))

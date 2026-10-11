@@ -859,9 +859,46 @@ class HarnessBridge:
             delegation_id=del_req.id,
             payload={"ok": bool(text), "manual": True, "source": source},
         )
+    async def _claim_unit(self, exec_msg: ExecuteMessage):
+        """V-20 原子所有权**兜底层**：交付单元级领取，堵住绕过 execute_layers 的直接派发。
+
+        与 discussion_engine.execute_layers 用**同一 key**（delegation:{id}）与**同一 owner**
+        （任务 id），故正常链路下是同 owner 重入 → 续租，不会自锁。
+        返回 (ok, reason)；本兜底自身出错时**放行**（宁可放行也不误杀既有派发）。
+        """
+        try:
+            from .state import ownership
+            from .task_ownership import delegation_key
+
+            del_req = exec_msg.delegation
+            owner = str(
+                getattr(exec_msg.context, "task_id", "")
+                or getattr(del_req, "task_id", "")
+                or "unknown"
+            ).strip()
+            key = delegation_key(del_req.id)
+            lease = await ownership.acquire(key, owner)
+            if lease is None:
+                held = ownership.owner_of(key) or "其他 owner"
+                return False, f"已被 {held} 领取，拒绝重复执行（原子所有权兜底）"
+            return True, ""
+        except Exception as e:  # noqa: BLE001 — 兜底锁异常不改既有行为
+            print(f"[ownership] 兜底领取失败（放行）: {e}", flush=True)
+            return True, ""
+
     async def execute_subtask(self, exec_msg: ExecuteMessage) -> HarnessMessage:
 
         """v4 MVP：将带完整上下文的执行消息转发给 Harness 并等待结果"""
+        # V-20 兜底：交付单元已被他人领取 ⇒ 直接拒绝，不空等桥的 300s 超时
+        _claimed, _reason = await self._claim_unit(exec_msg)
+        if not _claimed:
+            return HarnessMessage(
+                harness_id=self.session.harness_id,
+                direction="from_harness",
+                msg_type=HarnessMessageType.RESULT,
+                content=f"[拒绝] {_reason}",
+                delegation_id=exec_msg.delegation.id,
+            )
         # manual 接管：外端 harness 无额度时，不再空等桥的 300s 超时
         if manual_takeover_enabled():
             return await self._manual_execute_subtask(exec_msg)

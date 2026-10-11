@@ -1,0 +1,36 @@
+{
+  "pass": true,
+  "fail": [],
+  "catalog": {
+    "count": 12,
+    "groups": 7
+  },
+  "dd": {
+    "open": true,
+    "groups": 7,
+    "opts": 12,
+    "hasCustom": true,
+    "note": "职业是自由文本：这些只是**推荐**，用户可按任务自己命名"
+  },
+  "roleFree": "产品经理X ▾",
+  "orphan": {
+    "card": "⚠ 孤儿成员：它的 agent 已经不在平台\n它的 agent（harness-fe23-probe）已经不在平台上了 —— 这个成员现在**接不到任何活**\n要恢复：重新接入那个 agent（注册后名字一样就能接上）；不要它了：在工作间里把这个成员移除（名单操作）",
+    "strip": "⚠ 有 1 个成员的 agent 已经不在了（它们接不到活）\n· 组长（示例Harness-A）\n它的 agent（harness-fe23-probe）已经不在平台上了 —— 这个成员现在**接不到任何活**\n要恢复：重新接入那个 agent（注册后名字一样就能接上）；不要它了：在工作间里把这个成员移除（名单操作）\n去名单移除（选定员工区）",
+    "rosterShown": true
+  },
+  "viewports": {
+    "1024": true,
+    "1920": true
+  },
+  "nonGet": [
+    "POST /api/workshop/9c04edd3/discuss",
+    "POST /api/workshop/9c04edd3/members",
+    "POST /api/workshop/9c04edd3/members"
+  ],
+  "errors": [],
+  "screenshots": [
+    "02_孤儿提示.png",
+    "03_去名单入口.png",
+    "04_职业下拉与自由输入.png"
+  ]
+}

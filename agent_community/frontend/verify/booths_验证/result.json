@@ -1,0 +1,65 @@
+{
+  "pass": true,
+  "fail": [],
+  "errors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "nonGet": [],
+  "unit": {
+    "formula": {
+      "pass": 6,
+      "fail": []
+    },
+    "classifyNew": "new",
+    "classifyOld": "old",
+    "emptyState": "🏗\n请选择一个工作间\n用顶栏下拉框选择工作间后，这里会显示每位成员的隔间（后端权威路径 + 磁盘实况），以及他那一份桥。"
+  },
+  "ws": "ff9dd69e",
+  "render": {
+    "count": "2 名成员",
+    "exCount": "已建隔间 0/2",
+    "cards": 2,
+    "shared": "<本机路径>",
+    "firstCard": "码农 | m0 | pending | harness-booths-e2e | harness：harness-booths-e2e · 唤醒：clipboard | 📁 隔间 | 未创建 | 复制 | <本机路径>",
+    "pathMatchesApi": true,
+    "pathsLen": 2,
+    "dirsLen": 2,
+    "apiErr": null,
+    "apiExistsCount": "0/2",
+    "realityText": "磁盘实况：隔间尚未创建（「架起具体桥」时才建） · 路径由后端给出",
+    "subdirsOff": 6,
+    "exBadges": [
+      "未创建",
+      "未创建"
+    ],
+    "bridges": [
+      "bridge none :: ○ 尚未架桥",
+      "bridge none :: ○ 尚未架桥"
+    ],
+    "hasUndefined": false,
+    "hasNaN": false
+  },
+  "switched": {
+    "url": "?ws_id=ff9dd69e",
+    "cards": 2
+  },
+  "del": {
+    "err": "工作间加载失败：工作间不存在 ｜ 隔间实况加载失败（已降级为公式推导，路径非权威）：工作间不存在 ｜ 资料库加载失败：工作间不存在（展示可能不完整）",
+    "errShown": true,
+    "body": "👥\n该工作间还没有成员\n成员在工作间的「选人/分工」环节加入后，隔间卡会出现在这里。"
+  },
+  "v1920": {
+    "vw": 1920,
+    "overflow": false
+  },
+  "v1280": {
+    "vw": 1280,
+    "overflow": false
+  },
+  "v1024": {
+    "vw": 1024,
+    "overflow": false
+  }
+}

@@ -16,7 +16,51 @@
 from __future__ import annotations
 
 import time
-from typing import Optional
+from typing import Callable, Optional
+
+# ── V-20 审计埋点（工单化审计，47 号任务书 DSH 侧）──────────────────
+# 背景：本模块的迁移此前只 append 到 st["logs"]（每 key 仅留 20 条，且 to_dict() 显式排除）
+# ⇒ 不落盘、重启即失，任务生命周期没有任何可追溯台账。
+#
+# 出口走**可注入 sink**，以守住文首「纯函数 + 依赖注入：不 import 主模块全局单例」的原则：
+#   1) 构造参数 auditor 优先级最高（测试可注入 fake，断言调用序列，且完全不碰真实落盘）；
+#   2) 其次模块级 set_audit_sink(fn)；
+#   3) 都没有时，在**函数体内惰性**导入 audit.audit_log（与 policy.py / ai_verify.py 同范式）。
+# 埋点全链路 try/except 包裹：审计失败绝不影响状态迁移（不阻塞主流程、失败不炸）。
+_AUDIT_EVENT = "task.transition"
+# V-20.1（2026-10-07，FE-01 接口变更申请 #1）：出口签名由 3 参扩为 4 参，
+# 第 4 个 `extra` 是**结构化明细**（event_name/from/to/action/note），随事件一并落盘，
+# 使前端不必再正则解析 `detail`。`detail` 保留不变。
+_audit_sink: Optional[Callable[[str, str, str, dict], None]] = None
+
+
+def set_audit_sink(fn: Optional[Callable[[str, str, str, dict], None]]) -> None:
+    """注入审计出口 ``fn(actor, target, detail, extra)``；传 None 恢复惰性默认（走 audit_log）。"""
+    global _audit_sink
+    _audit_sink = fn
+
+
+def _resolve_auditor() -> Optional[Callable[[str, str, str, dict], None]]:
+    """解析默认审计出口：优先模块级 sink，否则惰性取 audit_log。取不到返回 None。"""
+    if _audit_sink is not None:
+        return _audit_sink
+    try:
+        from .audit import audit_log
+    except Exception:
+        return None
+    return lambda actor, target, detail, extra: audit_log.record(
+        _AUDIT_EVENT, actor=actor, target=target, detail=detail, extra=extra
+    )
+
+
+def _actor_of(ctx: Optional[dict]) -> str:
+    """从迁移上下文里取「谁」：member_id > by > leader > actor > agent_id，缺省 system。"""
+    for k in ("member_id", "by", "leader", "actor", "agent_id"):
+        v = (ctx or {}).get(k)
+        if v:
+            return str(v)
+    return "system"
+
 
 # ── 状态常量 ─────────────────────────────────────────────────
 CREATED = "created"
@@ -60,10 +104,38 @@ ACT_DROP = "drop"
 class TaskStateMachine:
     """事件驱动状态机（每个工作间/任务一条状态记录）。纯规则，零 token。"""
 
-    def __init__(self, timeout_sec: float = 300.0, max_auto_retry: int = 1):
+    def __init__(
+        self,
+        timeout_sec: float = 300.0,
+        max_auto_retry: int = 1,
+        auditor: Optional[Callable[[str, str, str], None]] = None,
+    ):
         self.timeout_sec = timeout_sec
         self.max_auto_retry = max_auto_retry
         self._states: dict[str, dict] = {}  # key=ws_id/task_id -> {state, ts, last_ts, retries, ctx, logs}
+        # V-20：审计出口（None = 用模块级 sink / 惰性 audit_log）
+        self._auditor = auditor
+
+    # ── V-20 审计出口 ────────────────────────────────────────
+    def _emit(self, key: str, event: str, from_state: str, to_state: str,
+              action: str, note: str, ctx: Optional[dict] = None) -> None:
+        """落一条 task.transition 审计。**任何失败都吞掉**，绝不阻塞状态迁移。"""
+        try:
+            fn = self._auditor or _resolve_auditor()
+            if fn is None:
+                return
+            detail = f"{event}: {from_state}→{to_state} action={action} note={note}"
+            # 结构化明细：与 detail 同源，供前端直接取字段（不必正则解析）
+            extra = {
+                "event_name": event,
+                "from": from_state,
+                "to": to_state,
+                "action": action,
+                "note": note,
+            }
+            fn(_actor_of(ctx), str(key), detail, extra)
+        except Exception as e:  # noqa: BLE001 — 审计失败不影响业务
+            print(f"[audit] 任务迁移审计失败（忽略）: {e}", flush=True)
 
     # ── 基础访问 ─────────────────────────────────────────────
     def get_state(self, key: str) -> str:
@@ -79,8 +151,19 @@ class TaskStateMachine:
         return self._states[key]
 
     def set_state(self, key: str, state: str, **ctx) -> dict:
-        """外部直接置位（正常流程推进：created→assigned→…→done，非异常路径）。"""
-        st = self.ensure(key, initial=state)
+        """外部直接置位（正常流程推进：created→assigned→…→done，非异常路径）。
+
+        V-20.1 修（2026-10-07）：**新建 key 时先在 `created` 建账，再置到目标状态**。
+        原实现是 `ensure(key, initial=state)`，于是新建 key 的 `from_state` 恒等于 `state`，
+        审计里第一条迁移就成了无意义的 `X→X`（例：`executing→executing`）——
+        而工单时间线（前端 FE-01）正是要渲染这个，`X→X` 没有任何信息量。
+
+        终点状态、`ctx`、时间戳与改动前**完全一致**；**只有 `from_state` 的取值变正确**
+        （`created→X`，与 `on_event` 新建 key 时的行为对齐）。已核对全仓：无任何调用方
+        或测试依赖旧的 `from_state` 取值。
+        """
+        _is_new = key not in self._states
+        st = self.ensure(key, initial=(CREATED if _is_new else state), **ctx)
         from_state = st["state"]
         st["state"] = state
         st["last_ts"] = time.time()
@@ -89,6 +172,7 @@ class TaskStateMachine:
         st["logs"] = (st.get("logs") or [])[-19:] + [
             {"t": time.time(), "event": "set_state", "from": from_state, "to": state, "action": ACT_NOOP}
         ]
+        self._emit(key, "set_state", from_state, state, ACT_NOOP, "", st.get("ctx"))
         return {"action": ACT_NOOP, "state": state, "from_state": from_state,
                 "retries": st.get("retries", 0), "note": ""}
 
@@ -143,18 +227,29 @@ class TaskStateMachine:
             note = f"ignored:{event}@{from_state}"
 
         st["state"] = new_state
-        st["last_ts"] = time.time()
+        # V-20 修正：`last_ts` 只在**状态真正迁移**时更新。
+        # 此前无条件 `st["last_ts"] = time.time()` 会把「被终态拒绝 / 被忽略」的事件也当成一次活动，
+        # 与本模块声明的「终态幂等：终态之后任何事件都不再改变状态」相矛盾，
+        # 也让 test_concurrency_fault::test_terminal_state_is_idempotent 变成**依赖时钟粒度的脆弱测试**
+        # （Windows 上 time.time() 精度约 15.6ms，改前只是侥幸同刻度；V-20 埋点耗时放大后被击穿）。
+        # 语义上也更正确：被忽略的事件不是进展，不该重置 tick() 的超时基准。
+        if new_state != from_state:
+            st["last_ts"] = time.time()
         st["logs"] = (st.get("logs") or [])[-19:] + [
             {"t": time.time(), "event": event, "from": from_state,
              "to": new_state, "action": action, "note": note}
         ]
+        self._emit(key, event, from_state, new_state, action, note, st.get("ctx"))
         return {"action": action, "state": new_state, "from_state": from_state,
                 "retries": st.get("retries", 0), "note": note}
 
     def remove(self, key: str) -> bool:
         """删除指定任务/工作间的状态机记录（回收/清理时调用，彻底退出状态机）。"""
         existed = key in self._states
-        self._states.pop(key, None)
+        st = self._states.pop(key, None)
+        if existed:
+            self._emit(key, "remove", (st or {}).get("state", CREATED), "removed",
+                       ACT_DROP, "removed", (st or {}).get("ctx"))
         return existed
 
     def tick(self, now: Optional[float] = None) -> list:

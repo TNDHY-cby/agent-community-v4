@@ -81,7 +81,11 @@ _PROTOCOLS: list[dict[str, Any]] = [
         "status": "available",
         "best_for": "外部 A2A 生态 Agent（Google ADK / LangGraph / AutoGen）发现与派发",
         "example": "GET http://127.0.0.1:9104/.well-known/agent-card.json",
-        "requires": "独立进程：python -m agent_community.a2a_server",
+        # 38 号实施任务书（候选C / 稿A C1+C4）：默认绑回环 + 入站 Bearer 鉴权（读卡公开、调用须凭据）
+        "requires": (
+            "独立进程：python -m agent_community.a2a_server（默认绑 127.0.0.1；"
+            "非回环需鉴权就绪，否则 fail-closed 拒绝监听）；POST 调用带 Authorization: Bearer <agent_token>"
+        ),
     },
     {
         "id": "sse",
@@ -101,7 +105,11 @@ _PROTOCOLS: list[dict[str, Any]] = [
         "status": "available" if _grpc_available() else "disabled",
         "best_for": "高性能二进制传输（A2A 第二绑定）",
         "example": "python -m agent_community.grpc_gateway --port 9105",
-        "requires": "pip install grpcio grpcio-tools（可选依赖，未装则本协议自动禁用）",
+        # 38 号实施任务书（稿A C1+C2）：默认绑回环 + 入站 Bearer 拦截器（与 9104 同一决策函数）
+        "requires": (
+            "pip install grpcio grpcio-tools（可选依赖，未装则本协议自动禁用）；"
+            "默认绑 127.0.0.1；调用需 metadata authorization: Bearer <agent_token>"
+        ),
     },
 ]
 

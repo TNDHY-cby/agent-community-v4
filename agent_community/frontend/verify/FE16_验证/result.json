@@ -1,0 +1,65 @@
+{
+  "pass": true,
+  "fail": [],
+  "aiConfigured": true,
+  "ws": "43c2075f",
+  "s1": {
+    "draftBtnForm": 1,
+    "mSave": 1,
+    "draftBtnText": 0
+  },
+  "s2": {
+    "stubbed": true,
+    "msg": "未生成：未配置 AI：无法生成草案　｜　手工填五块即可（界面「建立模型」里有骨架提示）；配好 AI 后可回来一键生成。",
+    "after": [
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "modelExists": false,
+    "writesBeforeSave": 0,
+    "consoleExpected": 1
+  },
+  "s3": {
+    "bar": "AI 草案 · 待确认（未落盘）—— 修改后点「保存」才写入 model.md",
+    "msg": "草案已生成（未落盘 · 待确认）：填了 4 块，缺 1 块（4. 依赖与顺序）　·　请修改后点「保存」才写入",
+    "vals": [
+      "目标：做成看板",
+      "组成：前端+后端",
+      "分工：码农做前端",
+      "",
+      "产物：码农 output/"
+    ]
+  },
+  "s4": {
+    "bar": 0,
+    "msg": "已保存 · 缺 1 块（未完成）：4. 依赖与顺序　·　v1　·　执笔：组长",
+    "tag": "缺 1 块"
+  },
+  "lib_final": {
+    "exists": true,
+    "v": 1
+  },
+  "viewports": {
+    "1024": true,
+    "1280": true,
+    "1920": true
+  },
+  "nonGet": [
+    "POST /api/workshop/43c2075f/library/model/draft",
+    "POST /api/workshop/43c2075f/library/model/draft",
+    "POST /api/workshop/43c2075f/library/update"
+  ],
+  "errors": [],
+  "screenshots": [
+    "01_按钮可见.png",
+    "02_400未配AI.png",
+    "03_草案填充.png",
+    "04_确认保存.png",
+    "05_1024.png",
+    "05_1280.png",
+    "05_1920.png"
+  ]
+}

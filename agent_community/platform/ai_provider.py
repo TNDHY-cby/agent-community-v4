@@ -32,6 +32,36 @@ from typing import Optional
 
 
 # ═══════════════════════════════════════════════════════════════
+# ★AI 调用失败的统一识别（2026-10-11 实测缺陷后补）
+# ═══════════════════════════════════════════════════════════════
+# 背景（真机上发生的）：本层把失败**以文本形式返回**，而不是抛异常，例如
+#     "[Error: HTTP 402] {"error": {"message": "Insufficient account balance"}}"
+# 危险在于：这段文本**切片后是合法 JSON**（`{"error":{...}}`）⇒ 凡
+# `reply.find("{") … json.loads(...)` 的调用点都会把它**当成一次正常返回**，
+# 于是"AI 根本没答"被显示成"AI 返回空名单"（实测：选人接口 `success=True` + 空名单，
+# 文案还说"可能是 AI 返回空名单"——**真正的 402 余额不足一个字都没提**）。
+#
+# ⇒ 统一在这里给判据；**凡是要解析 AI 输出的地方，先过 `ai_error_text()`**。
+#   （只把错误原文**显示**给人的调用点不需要它——那本来就是对的。）
+AI_ERROR_PREFIX = "[Error:"
+
+
+def ai_error_text(reply) -> str:
+    """`reply` 是错误文本则原样返回（供如实显示）；正常回复返回空串。"""
+    s = reply if isinstance(reply, str) else ""
+    if not s:
+        return ""
+    if s.lstrip().startswith(AI_ERROR_PREFIX) or (AI_ERROR_PREFIX + " HTTP") in s:
+        return s
+    return ""
+
+
+def ai_is_error(reply) -> bool:
+    """`reply` 是不是错误文本（便捷判断）。"""
+    return bool(ai_error_text(reply))
+
+
+# ═══════════════════════════════════════════════════════════════
 # 共享数据结构
 # ═══════════════════════════════════════════════════════════════
 
@@ -298,6 +328,15 @@ class OpenAICompatibleProvider(AIProvider):
 
         reply = await self.chat(system_prompt, user_message)
 
+        # ★2026-10-12：**先认 AI 错误文本**（本模块顶部有 `ai_error_text`）。
+        #   provider 把失败当**文本**返回（如 `[Error: HTTP 402] {...}`），
+        #   而它切片后**是合法 JSON** ⇒ 不判就会把"AI 根本没答"当成
+        #   "AI 选了空名单"，只留一句"无法解析 AI 回复" —— 典型的假状态（准则⑤）。
+        _err = ai_error_text(reply)
+        if _err:
+            return {"selected": [], "reason": f"平台 AI 调用失败：{_err[:200]}",
+                    "error_code": "ai_unavailable"}
+
         # 解析 JSON
         try:
             # 尝试从回复中提取 JSON
@@ -453,6 +492,12 @@ class OllamaProvider(AIProvider):
 
         reply = await self.chat(system_prompt, user_message)
 
+        # ★2026-10-12：先认 AI 错误文本（否则"AI 没答"会被当成"选了空名单"）
+        _err = ai_error_text(reply)
+        if _err:
+            return {"selected": [], "reason": f"平台 AI 调用失败：{_err[:200]}",
+                    "error_code": "ai_unavailable"}
+
         try:
             start = reply.find("{")
             end = reply.rfind("}") + 1
@@ -557,6 +602,11 @@ class HTTPCallbackProvider(AIProvider):
                 return {"selected": [], "reason": f"HTTP {r.status_code}"}
 
             reply = r.text
+            # ★2026-10-12：HTTP 200 也可能是**错误正文**（网关/回调方把错误塞进 body）⇒ 同样先判
+            _err = ai_error_text(reply)
+            if _err:
+                return {"selected": [], "reason": f"平台 AI 调用失败：{_err[:200]}",
+                        "error_code": "ai_unavailable"}
             try:
                 start = reply.find("{")
                 end = reply.rfind("}") + 1

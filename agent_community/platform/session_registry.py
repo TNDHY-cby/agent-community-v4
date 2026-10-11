@@ -27,12 +27,13 @@ session_id，故不能只用 session_id 作 key。
 """
 from __future__ import annotations
 
+import os
 import threading
 import time
 from pathlib import Path
 from typing import Any, Optional
 
-DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DEFAULT_DATA_DIR = Path(os.environ.get("AC_DATA_DIR") or (Path(__file__).resolve().parent.parent / "data"))
 
 # 会话来源（与唤醒档位对应，见 V-15 §六）
 SRC_ACP = "acp"          # 桥协议层建

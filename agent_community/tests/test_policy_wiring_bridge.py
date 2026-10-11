@@ -79,6 +79,13 @@ def harness_env(tmp_path, monkeypatch):
     monkeypatch.setattr(hm.harness_manager, "bridges", {}, raising=False)
     import time as _t
     monkeypatch.setattr(_t, "sleep", lambda *a, **k: None)
+    # ★2026-10-11：把「桥是否已在看着某邮箱」的**扫进程**探测换成桩。
+    #   为什么必须桩：该探测是用 `subprocess.run` 实现的，而 `subprocess.run` **内部就是 Popen**
+    #   ⇒ 测试里的 `_stub_popen` 会把"探测"也计成一次桥启动（实测 calls.n 由 1 变 2，
+    #   看起来像"端点重复启动了桥"，其实是探测被误计）。
+    #   生产语义不变（真实环境仍走扫进程，并已排除平台自己的子进程）。
+    from agent_community.platform.routers import harness_messaging as _hm
+    monkeypatch.setattr(_hm, "_WATCH_PROBE", lambda _inbox: 0, raising=False)
     return inbox
 
 
