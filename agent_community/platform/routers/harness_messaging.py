@@ -302,14 +302,19 @@ def _probe_pids_watching(needle: str) -> list:
         #   ② **确实是在跑桥脚本**（`*bridge.py*`）。
         #   只按①判会把我自己（或用户）任何"命令行里提到这个 harness_id"的进程都算成桥 ——
         #   实测：一个 `python -c "...traecode-harness-01..."` 的调用脚本被计成了第 5 只桥。
+        #   ③ ★只认**解释器**（`Name -like 'python*'`）：powershell/cmd 包裹进程的命令行里
+        #     同样含脚本路径，混进来会让"链根"变成那个包裹进程，而且
+        #     **同一个 powershell 里连起两只桥时会被归并成一只（漏数）**。
+        #     （实测：`bridge_pids` 里曾混进 powershell 的 43440 —— 归并侥幸答对，但靠运气。）
         ps = ("$needle = $env:AC_NEEDLE; "
               "$me = [int]$env:AC_SELF_PID; "
               "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and "
               "$_.CommandLine -like '*bridge.py*' -and "
+              "$_.Name -like 'python*' -and "
               "$_.ParentProcessId -ne $me -and "
               "($_.CommandLine -like ('*' + $needle + '*') -or "
               " $_.CommandLine -like ('*' + ($needle -replace '\\\\','/') + '*')) } | "
-              "Select-Object -ExpandProperty ProcessId | ConvertTo-Json -Compress")
+              "Select-Object ProcessId,ParentProcessId | ConvertTo-Json -Compress")
         env = dict(_o2.environ)
         env["AC_NEEDLE"] = needle
         env["AC_SELF_PID"] = str(_o2.getpid())
@@ -319,26 +324,54 @@ def _probe_pids_watching(needle: str) -> list:
         if not out or out == "null":
             return []
         v = _json.loads(out)
-        if isinstance(v, int):
-            return [v]
-        return [int(x) for x in (v or [])]
+        if isinstance(v, int):          # 只有一个结果时 ConvertTo-Json 返回标量
+            v = [v]
+        if isinstance(v, dict):         # 单个对象（无数组）也包一层
+            v = [v]
+        out_p = []
+        for x in (v or []):
+            try:
+                out_p.append({"pid": int(x.get("ProcessId") or x.get("pid")),
+                              "ppid": int(x.get("ParentProcessId") or x.get("ppid") or 0)})
+            except Exception:  # noqa: BLE001
+                continue
+        return out_p
     except Exception:  # noqa: BLE001
         return []
 
 
+def _chain_roots(matches):
+    """把匹配到的桥进程归并成**逻辑桥**：父子链算一只，只数**链根**。
+
+    ★为什么必须按链根数：`python.exe` 可能是**外壳**（它会重新拉起真正的解释器，
+      命令行一模一样）⇒ 一只桥对应两个同名进程。按进程数计 ⇒ 每只桥被数成 2 倍，
+      **给用户报假的"重复桥"告警**（2026-10-12 实测发生过）。
+    判据：父进程**不在**匹配集合里 ⇒ 它是这条链的根 ⇒ 计 1。
+      A→B→C（都匹配）⇒ 只数 A；两次独立启动（父都是 powershell）⇒ 数 2。
+    """
+    matched = {m.get("pid") for m in (matches or [])}
+    # ★取的是**链根自己的 pid**（父进程不在匹配集合里的那些），不是父 pid —— 我第一版写反过
+    return sorted(m.get("pid") for m in (matches or [])
+                  if m.get("ppid") not in matched)
+
+
 def bridge_instances(harness_id: str) -> dict:
     """这个 harness 名下**有几只桥在跑**（供响应体如实报告，别让用户蒙在鼓里）。"""
-    pids = _probe_pids_watching(harness_id)
-    return {"count": len(pids), "pids": pids,
-            "warning": ("" if len(pids) <= 1 else
+    matches = _probe_pids_watching(harness_id)
+    roots = _chain_roots(matches)                 # ★逻辑桥数（链根），不是进程数
+    pids = [m.get("pid") for m in matches]
+    return {"count": len(roots), "pids": pids, "logical_pids": roots,
+            "warning": ("" if len(roots) <= 1 else
                         ("⚠️ 检测到该 harness 名下**同时有 %d 只在跑的桥** —— "
                          "同一 harness 多只桥会导致**重复投递 / 竞争取件 / 心跳互相覆盖**。"
                          "请只保留一只：把多余的停掉（它们通常是失败重试时多起的）。\n"
+                         "（计数口径：**按「逻辑桥」数** —— 父子进程链算一只，不是按进程数，"
+                         "所以 ≥2 才真的是有两只桥在跑。）\n"
                          "（说明：**新版桥脚本已自带单实例锁** —— 同 work-dir 起第二只会被"
                          "**拒绝启动并说明理由**。所以这里出现多只，通常是"
                          "① 用的是旧版桥脚本，或 ② 这几只是在加锁之前起的。"
                          "把多余的停掉、用同一条命令重起一只即可。）"
-                         % len(pids)))}
+                         % len(roots)))}
 
 
 def _bridge_pid_watching(harness_id: str, inbox: str) -> int:

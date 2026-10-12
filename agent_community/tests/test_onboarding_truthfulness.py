@@ -273,6 +273,9 @@ def test_duplicate_bridges_are_detected_and_reported():
     # ★判据必须同时要求"在跑桥脚本"，否则任何命令行提到 harness_id 的进程都会被算成桥
     #   （实测：一个 python -c 调用脚本被计成了第 5 只桥）
     assert "bridge.py" in src, "扫描必须要求'确实在跑桥脚本'，否则会误计"
+    # ★只认解释器：powershell/cmd 包裹进程的命令行里也含脚本路径，
+    #   混进来会让"链根"变成包裹进程，且同一 powershell 连起两只时会被归并成一只（漏数）
+    assert "python*" in src, "扫描必须限定只认解释器（Name -like 'python*'），否则会把包裹进程算进去"
     # ★绝不能对非路径线索做 GetFullPath（会把 harness_id 解析成不存在的路径 ⇒ 永远匹配不到）
     assert "GetFullPath" not in src, \
         "不要把线索当路径解析 —— harness_id 会被解析成不存在的路径，导致永远扫不到"
@@ -282,6 +285,41 @@ def test_duplicate_bridges_are_detected_and_reported():
     bsrc = inspect.getsource(hb)
     assert "bridges_running" in bsrc and "bridge_warning" in bsrc, \
         "bridge-test 必须把'名下有几只桥'报出来"
+
+
+def test_bridge_count_is_logical_bridges_not_processes():
+    """★计数必须是**逻辑桥**（父子链算一只），不是进程数。
+
+    ★2026-10-12 实测：这台机器上 `python.exe` 是**外壳**
+    （`D:\\Scripts\\python.exe` 会重新拉起真正的 `D:\\python.exe`，**命令行一模一样**）
+    ⇒ **一只桥 = 两个同名进程**。而我原先按**进程数**计 ⇒ 每只桥被数成 2 倍，
+    **给用户报假的"重复桥"告警**（traecode-desktop-01 明明只有一只，我却报 2；
+     上一轮我还据此报"trae-ide-agent 有 2 只"）。
+    ⇒ 「看起来有问题」也是假警报，同样要修 —— 这次是我的判据错了。
+    """
+    from agent_community.platform.routers.harness_messaging import _chain_roots
+
+    # 场景 1：外壳 + 解释器（父是 100，两条都是桥）⇒ **1 只**
+    assert _chain_roots([{"pid": 100, "ppid": 55},
+                         {"pid": 101, "ppid": 100}]) == [100], \
+        "父子链应归并成 1 只逻辑桥（父 55=powershell，不是桥）"
+
+    # 场景 2：三代链 A→B→C ⇒ **1 只**
+    assert _chain_roots([{"pid": 10, "ppid": 99},
+                         {"pid": 11, "ppid": 10},
+                         {"pid": 12, "ppid": 11}]) == [10]
+
+    # 场景 3：**两次独立启动**（父都是 powershell 99）⇒ **2 只**
+    assert _chain_roots([{"pid": 10, "ppid": 99},
+                         {"pid": 20, "ppid": 99}]) == [10, 20], \
+        "两个独立链根 = 两只真桥，不能归并"
+
+    # 场景 4：两个链根 + 各自外壳 ⇒ 计 2（不是 4）
+    assert _chain_roots([{"pid": 1, "ppid": 99}, {"pid": 2, "ppid": 1},
+                         {"pid": 3, "ppid": 99}, {"pid": 4, "ppid": 3}]) == [1, 3]
+
+    # 场景 5：空
+    assert _chain_roots([]) == [] and _chain_roots(None) == []
 
 
 def test_bridge_instances_shape_is_honest():

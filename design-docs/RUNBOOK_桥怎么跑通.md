@@ -119,6 +119,10 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
      （有重复桥 ⇒ 停掉多余的只留一只）。判定依据是**扫活进程**，不是心跳。
    - 手工核对仍可用：`Get-CimInstance Win32_Process -Filter "Name='python.exe'" | ? CommandLine -match 'bridge.py'`，
      多个就只留一个。
+     ⚠️**别按进程数下结论**（2026-10-12 实测）：`python.exe` 可能是**外壳**（`D:\Scripts\python.exe`
+     会再拉起真 `D:\python.exe`，**命令行一模一样**）⇒ **一只桥常见 2 个同名进程**。
+     判"是不是真有多只"要看**父进程链**：父子同名的算**同一只**；两个都直接挂在同一个
+     shell 下、互为父子链之外的才是**两只**。平台的 `bridges_running` 已按此口径计（逻辑桥）。
    ⚠️坑（写给我自己）：加锁时我第一版**忘了 `f.seek(0)`** —— `open(lock,"a+")` 是追加模式、
    指针在 EOF，而 `msvcrt.locking` 锁的是"从当前指针起的 N 字节" ⇒ 两只桥**锁在不同字节上、毫无冲突**。
    **源码看着全对，实测完全不拦** ⇒ 这类互斥**必须真起两个进程验**，源码断言测不出来。
