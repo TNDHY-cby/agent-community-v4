@@ -107,10 +107,21 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 3. **桥是常驻进程**：不要挂在"可被取消的后台作业"下（继承书 §6 第 22 条，我因此把服务全杀过一次）。
 4. **`delivered/` 会一直涨**：桥只搬不删，久了要清（本次 4 条已清）。
 5. **`inbox/replies/failed/` 里的东西 = 平台没收下的回报**：出问题先看这里。
-6. ★**同一个邮箱只能有一个桥在跑**（我实测踩到过：调通过程里留下**两个** bridge 进程，`pid=3888` 与 `38292`）。
-   两个桥抢同一个 `inbox` ⇒ **同一批任务会被投递两次**。平台**不会**阻止你起第二个（没有互斥）。
-   ⇒ 起桥前先查：`Get-CimInstance Win32_Process | ? CommandLine -match 'bridge.py'`，
-   多个就**只留一个**（这也是一条该由平台兜的产品缺口：桥的存活与唯一性应被平台管起来 —— V37 第 3 步）。
+6. ★**同一个邮箱 / 同一个 work-dir 只能有一个桥在跑**（我实测踩到过：调通过程里留下
+   **两个** bridge 进程，`pid=3888` 与 `38292`）。两个桥抢同一个 `inbox` ⇒
+   **同一批任务会被投递两次**。
+   ★**2026-10-12 更新 —— 本条原写「平台不会阻止你起第二个（没有互斥）」，现已不成立**：
+   - **桥自己会拦**：`pending_poll_bridge.py` / `filepoll_harness_bridge.py` 已加**单实例锁** ——
+     同 work-dir 起第二只会**直接拒绝启动**（退出码 2），打印
+     「另一只桥正在使用同一个 work-dir（拒绝重复启动）」。**这是正常保护，不是故障**；
+     要重启**先停掉原来那只**再起。
+   - **平台也会说**：`POST /api/harness/bridge-test` 回 `bridges_running` >1 时带 `bridge_warning`
+     （有重复桥 ⇒ 停掉多余的只留一只）。判定依据是**扫活进程**，不是心跳。
+   - 手工核对仍可用：`Get-CimInstance Win32_Process -Filter "Name='python.exe'" | ? CommandLine -match 'bridge.py'`，
+     多个就只留一个。
+   ⚠️坑（写给我自己）：加锁时我第一版**忘了 `f.seek(0)`** —— `open(lock,"a+")` 是追加模式、
+   指针在 EOF，而 `msvcrt.locking` 锁的是"从当前指针起的 N 字节" ⇒ 两只桥**锁在不同字节上、毫无冲突**。
+   **源码看着全对，实测完全不拦** ⇒ 这类互斥**必须真起两个进程验**，源码断言测不出来。
 
 ---
 

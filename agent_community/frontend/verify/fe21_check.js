@@ -110,7 +110,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       'PYTHONIOENCODING=utf-8', 'wake.cmd', 'unrecognized arguments',
       'wakeup_method',
       /* 第 5 步（持久跑桥）与"验的是什么范围"—— 这两组是 2026-10-12 新增的必须项 */
-      'bridge/generate', 'launch_hint', '常驻', 'verified_scope', 'delivered_confirmed'];
+      'bridge/generate', 'launch_hint', '常驻', 'verified_scope', 'delivered_confirmed',
+      /* ★2026-10-12 二次同步：桥脚本加了**单实例锁**，话术必须教用户"第二只会被拒 = 正常保护"，
+         否则用户重起时看到拒绝会以为是桥坏了（改文案不同改断言 = 两边打架） */
+      '单实例锁', '拒绝重复启动'];
     needPrompt.forEach(k => { if (!promptTxt.includes(k)) fail.push('① aiPrompt 缺「' + k + '」'); });
     if (promptTxt.includes('三步接入')) fail.push('① aiPrompt 仍写「三步接入」（旧口径残留）');
     if (promptTxt.includes('四步接入')) fail.push('① aiPrompt 仍写「四步接入」（已补第 5 步，须与五步一致）');
