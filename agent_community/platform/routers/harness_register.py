@@ -75,6 +75,9 @@ async def harness_pre_register(request: Request):
       "process_hint": "示例进程名",       # 可选：进程名线索（供平台探测）
       "port_hint": 3721,                 # 可选：HTTP API 端口线索
       "path_hint": "",                   # 可选：安装路径线索
+      # ★注意：上面三个 hint **不是 HarnessInfo 的字段**，平台会把它们存进
+      #   `metadata["probe_hints"]`，供 `POST /api/harness/{hid}/probe` 主动探测时使用。
+      #   （2026-10-12 之前它们**填了就被静默丢弃** —— 文档承诺了、平台没存。）
       "capabilities": [...],             # 可选：能力声明
       "description": "..."               # 可选：说明
     }
@@ -208,6 +211,20 @@ async def harness_probe_register(request: Request):
         ok, err = validate_harness_api_url(info_dict["api_base_url"])
         if not ok:
             return Utf8JSONResponse({"error": f"api_base_url 校验失败: {err}", "probe": probe_text[:500]}, status_code=400)
+    # ★2026-10-12：**把线索真正存下来**。
+    #   背景：`process_hint` / `port_hint` / `path_hint` 这三个键 **HarnessInfo 根本没有**
+    #   （会被 pydantic 静默丢弃），而 pre-register 的文档一直在教外端 agent 填它们
+    #   ⇒ **填了就等于没填**（平台自己提供的主动探测 `POST /api/harness/{hid}/probe`
+    #     反而拿不到线索，只能靠人在请求里再给一次）。这就是"看起来能填、其实丢掉"。
+    #   ⇒ 存进 `metadata["probe_hints"]`：`harness_probe.probe_harness()` 已支持从这里读
+    #     （合并口径：显式传入 > metadata 里存过的 > 空）。
+    _hints = {k: v for k, v in (("process_hint", process_hint),
+                                ("port_hint", port_hint),
+                                ("path_hint", path_hint)) if v not in (None, "")}
+    if _hints:
+        _meta = dict(info_dict.get("metadata") or {})
+        _meta["probe_hints"] = _hints
+        info_dict["metadata"] = _meta
     try:
         info = HarnessInfo(**info_dict)
     except Exception as e:

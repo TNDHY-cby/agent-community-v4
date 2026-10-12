@@ -236,6 +236,9 @@ body: {
   "harness_name": "我的显示名",
   "harness_type": "desktop-agent",      // 可选：类型猜测（cli-agent/ide-agent/desktop-agent/api-proxy/custom）
   "transports": ["http"],                // 可选：我支持的通信协议（ws/http/sse/pipe/grpc/mcp/a2a），默认 http
+  // ★下面三个 hint **不是注册字段**（不在 harness 信息模型里）：平台会把它们收进 metadata，
+  //   供「平台主动探测」用（`POST /api/harness/<你的id>/probe` 拿它去扫进程 / 探端口）。
+  //   ⇒ 你**测不出自己**时填它们最有用；不填也不影响注册。
   "process_hint": "我的进程名线索",       // 可选：让平台能扫到我的进程（如 electron/我的进程名/python）
   "port_hint": 3721,                     // 可选：我的 HTTP API 端口（若有）
   "path_hint": "我的安装路径",            // 可选
