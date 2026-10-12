@@ -63,3 +63,10 @@ aoci.meta.txt
 aoci.code.txt
 aoci.database.txt
 .aoci/
+
+# 2026-10-12: 工作间产物 `library/`（成员任务书/分工）是**运行期数据**，不是源码。
+#   正常情况下它落在 `<workspace_dir>/library/`；只要有代码路径用了空/相对的
+#   workspace_dir（测试或某次调用），它就会掉到**仓库根**变成 `library/` ——
+#   实测 2026-10-12 在 oss 里跑 pytest 时又出现了一次，直接顶掉发布前的
+#   "工作树必须干净"闸门。与 data/ 同类：不入库。（dev 侧早已有此规则，oss 侧漏了。）
+library/
