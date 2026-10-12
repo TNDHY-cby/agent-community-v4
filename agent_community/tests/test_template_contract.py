@@ -92,13 +92,27 @@ def test_template_wakeup_method_values_are_legal():
 
     # 话术里以反引号/代码形式出现的 wakeup_method 取值
     bad = []
-    for m in re.finditer(r"`(http|file_poll|clipboard|acp|http_api|mcp|cli_acp|pending_poll|script_framework)`", tpl):
+    # ★判据要**精确**：桥型名（cli_acp / pending_poll / script_framework）在散文里
+    #   当"桥型/桥模板"讲是**完全正当**的（第 5 步就在教 `{"template":"pending_poll"}`）。
+    #   真正会出事的是**它们出现在 `wakeup_method` 的赋值处** —— 注册会被 400 拒。
+    #   （2026-10-12 修：原来按"附近有没有'桥型'字样"判断，把正当用法也误报了两次。）
+    bridge_kinds = ("cli_acp", "pending_poll", "script_framework")
+    for m in re.finditer(r"[\"']?wakeup_method[\"']?\s*[:：=]\s*[\"']?([A-Za-z_]+)", tpl):
         v = m.group(1)
-        if v in ("cli_acp", "pending_poll", "script_framework"):
-            # 这三个只允许出现在"**不是** wakeup_method / 桥型名"的说明语境里
-            ctx = tpl[max(0, m.start() - 120): m.start() + 120]
-            if "桥型" not in ctx and "不是" not in ctx and "别把" not in ctx:
-                bad.append(v)
+        if v in bridge_kinds:
+            bad.append(v)
+    # 兜底：反引号包着的桥型名，若与 `wakeup_method` 出现在**同一行**也算误用 ——
+    # ⚠️但**必须排除"否定语境"**：话术里那句
+    #   「`cli_acp` / `pending_poll` / `script_framework` 是**桥型名**，**不是** `wakeup_method`」
+    #   是**教科书式的正确用法**，只按"该行含 wakeup_method"判会把它误报
+    #   （2026-10-12 实测：我就这么误报了自己一次）。
+    for m in re.finditer(r"`(cli_acp|pending_poll|script_framework)`", tpl):
+        line = tpl[tpl.rfind("\n", 0, m.start()) + 1: tpl.find("\n", m.start())]
+        if "wakeup_method" not in line:
+            continue
+        if any(k in line for k in ("不是", "别把", "桥型")):
+            continue          # 否定/说明语境 ⇒ 正当用法
+        bad.append(m.group(1))
     assert not bad, ("话术把桥型名当成 wakeup_method 教人填了（注册会被 400 拒）：%s" % bad)
     assert legal == {"http", "file_poll", "clipboard", "acp", "http_api", "mcp"}, legal
 
@@ -127,11 +141,14 @@ def test_template_field_names_are_real_or_annotated():
         if w.endswith(("_id", "_dir", "_cmd", "_url", "_path", "_method", "_name")) \
                 and w not in fields and w not in hints:
             suspect.add(w)
-    # 已知的**响应字段**与散文词（不是注册 body 的字段，但话术里出现是合理的）：
+    # 已知的**其它端点的真实字段/响应字段**，以及散文词
+    # （它们不是 `HarnessInfo` 的注册字段，但话术里出现是**合理**的）：
     #   probe_id    —— 自检探针 id（自检返回）
     #   request_id  —— AI 手工模式请求 id
     #   wrapper_path—— `GET /api/harness/{hid}/wake` **返回**的包装脚本路径（实测确认存在）
-    suspect -= {"probe_id", "request_id", "wrapper_path"}
+    #   out_dir     —— `POST /api/harness/{hid}/bridge/generate` 的**真实请求字段**
+    #                  （实测：必须在平台 `bridges/` 目录内，否则 400）
+    suspect -= {"probe_id", "request_id", "wrapper_path", "out_dir"}
     assert not suspect, "话术里出现疑似写错的字段名：%s" % sorted(suspect)
 
 

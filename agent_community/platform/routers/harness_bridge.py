@@ -72,11 +72,35 @@ async def harness_bridge_test(request: Request):
         if not ok:
             return Utf8JSONResponse({"error": "写入 inbox 失败（wakeup_dir 不可写）"}, status_code=500)
         print(f"[bridgetest] file_poll 已写 inbox: {hid} test_id={test_id}", flush=True)
+        _channel = "inbox"
     else:
         _pending_push(pending_bridge_tests, hid, payload)
         print(f"[bridgetest] 已入 pending 队列: {hid} test_id={test_id}", flush=True)
+        _channel = "pending_queue"
     _register_bridge_test_inflight(hid, test_id)  # V-17：登记待回报测试，供回报归属校验
-    return {"success": True, "harness_id": hid, "test_id": test_id, "sent_via": method}
+    # ★★2026-10-12 实测修两处误导（真机材料：那个 agent 把本响应读成了 ✅ 绿）：
+    #   ① `sent_via` 原来回的是 **`wakeup_method`**（如 `clipboard`），而**真实投递通道**
+    #      是 `inbox`（file_poll 型）或 `pending_queue`（其余型）—— 词汇又被混用了，
+    #      而且会让接入方以为"通过 clipboard 送达了"（根本没这回事）。
+    #   ② **`success: true` 在这里只代表"平台把测试件投出去了"**，
+    #      **既不等于桥收到、也不等于通道测通**（桥没在跑时它照样回 success）。
+    #      ⇒ 必须把"未确认"说出来，并指明**怎么才算确认**。
+    #      （这正是本项目反复修的毛病：别让"看起来成功"被当成成功。）
+    return {
+        "success": True,
+        "harness_id": hid, "test_id": test_id,
+        "sent_via": _channel,                    # 真实投递通道（不是 wakeup_method）
+        "wakeup_method": method,                 # 想知道的仍然给
+        "queued": True,
+        "delivered_confirmed": False,            # ★仅"投出去了"，**尚未确认桥收到**
+        "note": ("⚠️ `success:true` **只表示平台把测试件投出去了**（%s）—— "
+                 "**不等于桥收到、也不等于通道测通**（桥没在跑时同样是 success）。"
+                 "要确认测通：等桥回报后看 `GET /api/harness/%s/wake` 里的 `bridge_test` 记录，"
+                 "或直接用 `POST /api/harness/%s/verify`（它会**等回报并给结论**）。"
+                 % (_channel, hid, hid)),
+        "confirm_url": "/api/harness/%s/wake" % hid,
+        "verify_url": "/api/harness/%s/verify" % hid,
+    }
 
 @router.get("/api/harness/pending-bridge-tests")
 async def harness_pending_bridge_tests(harness_id: str):

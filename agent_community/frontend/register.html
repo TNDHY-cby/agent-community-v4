@@ -354,19 +354,44 @@ body: {"harness_id": "我的唯一标识"}
           架桥 → 发一条真测试消息 → 等你的 agent 回话 → **跑通了才**把实测配置写进桥模板
           → 然后**连桥一起拆掉，只留模板**。
         返回里的关键字段：
-          state=ok          通了（桥取走了 + 你的 agent 回话了）⇒ 这一步就绿了
-          state=no_reply    桥取走了，但**你的 agent 没回话**
-          state=not_picked  消息还躺在邮箱里 ⇒ **桥没在运行**
+          state=ok          通了 ⇒ 这一步就绿了
+          state=no_reply    桥把测试件取走了，但**没等到回话**
+          state=not_picked  **桥没来取**（按 `advice` 排查：多半是桥没在跑）
           committed.success=true  ⇒ 已把"跑通"的配置写进模板并标记「已验证」
+          ── ★**但一定要看 `committed.verified_scope`**：它写明**这次到底验了什么** ↓
+             · `file_mailbox` 通道 ⇒ 「完整链路：平台 → 桥 → 你的 agent → 回报」
+             · 非邮箱型（如 `pending_poll`）⇒「**仅桥配置**（…且那只桥是**平台在验证间里
+               启动的**）—— harness 侧是否运行该桥、agent 能否回话，**本次未验证**」
+             ⇒ 别把后者读成"整条链路都通了"。
           gate_note         ⇒ 一句话说明"这次有没有写模板"（**没跑通就不会写**）
           torndown.removed=true   ⇒ 验证间已拆掉（只留模板）
+          persistent_bridge ⇒ ★**怎么持久跑桥**（见第 5 步）；它会说明
+                              **验证间隔间是一次性的、跑完即删**，别去那儿找桥脚本。
         ⇒ 拿到 no_reply/not_picked 时，按返回的 advice 做，再重跑一次。
-        （另一条路：若你已经被指派到某个工作间，也可以用
-          POST /api/workshop/{工作间}/member/{成员}/self-check —— 那是"在工作间里验某个成员"，
-          区别只是**需要已经有工作间和成员**；刚接入时用上面那条 `{hid}/verify` 更合适。）
 
-之后告诉我注册结果：harness_id + wakeup_method + 四步各自的结果（四步都绿才算接入完成）。
+第 5 步 ★★**把桥持久跑起来**（**这一步不做完，你就还没真正接入**）：
+        前 4 步验的是"**配置可行**"。要**真正接到活**，你必须在**自己这边常驻**跑一只桥 ——
+        否则平台派的活只会**躺在队列里没人取**。
+          1) 生成桥（平台按你已「已验证」的模板渲染，并返回现成的启动命令）：
+             POST http://127.0.0.1:{PORT}/api/harness/{我的harness_id}/bridge/generate
+             body: {"template": "pending_poll"}          ← **省略 out_dir**，平台自己选落点
+             · 返回 `bridge_file` / `bridge_dir` / **`launch_hint`（照它跑就行）**
+             · ⚠️ 若要自己指定 `out_dir`，它**必须在平台的 `bridges/` 目录内**，否则报 400。
+          2) 用 `launch_hint` 把那只桥**常驻**跑起来（它按间隔轮询平台领件）。
+             ⚠️ 启动命令里**脚本路径含空格时必须带引号**（实测：不加引号会被拆断、
+                报 `can't open file '...（External'`、进程秒退）。
+          3) 探活：POST http://127.0.0.1:{PORT}/api/harness/bridge-test
+             body: {"harness_id": "我的唯一标识"}
+             ⚠️ 它的 `success:true` **只表示"平台把测试件投出去了"**
+                （`delivered_confirmed:false`、`queued:true`）—— **不等于桥收到、更不等于测通**。
+                要确认测通：看 `GET /api/harness/{我的harness_id}/wake` 里的 `bridge_test` 记录，
+                或者干脆再跑一次第 4 步 `{hid}/verify`（它会**等回报并给结论**）。
+
+之后告诉我注册结果：harness_id + wakeup_method + **五步**各自的结果
+（前 4 步绿 = "配置可行"；**第 5 步绿 = "真的接上了"** —— 别把前者当后者）。
 还要告诉我：**用户那条"叫醒命令"是什么**（我据此判断该配哪种桥）。
+若你的自测结论是 **D 档·人工中转（`wakeup_method=clipboard`）**：你没有"叫醒命令"这回事，
+第 2 步的空命令回 `mode:manual` 就是**正常完成**；第 5 步照上面起 `pending_poll` 桥即可。
 
 【第二通道：外端 AI ↔ 平台 AI 直接沟通（遇到问题用这个！）】
 
