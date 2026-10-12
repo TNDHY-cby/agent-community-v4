@@ -1,0 +1,223 @@
+# -*- coding: utf-8 -*-
+"""★**规则 19 验收**（老板 2026-10-11 定的铁律，验收可查）：
+
+    任何功能都不得预设"只有我这台机器才有的东西"（我的路径、真实 harness 名、
+    固定端口/目录、某产品的专用分支）。
+    **验收判据 = 换一个目录 + 换一个完全不同的 agent 名，不改一行代码就能走通；做不到即未完成。**
+
+**为什么要做成测试**：2026-10-12 我用这个判据（一个临时脚本）跑了一次**真验收**，
+第一次 **1/10 通过** —— 当场抓到两个真缺陷：
+  ① `wakeup_method=file_poll` 注册被 400 拒（"acp_command 不能为空"）——**用不到也索要**；
+  ② hint 线索只在 `probe-register` 存了，`register` 这条入口**仍被丢弃**（两个入口只改一个）。
+两个都不是"我这条路通不通"，而是**新用户第一步就卡**。⇒ 这个判据值得每次回归都跑。
+
+**本测试怎么保证"换名换目录"**：
+  · harness 名/ID 用 `uuid` **每次随机**（不写死任何真实名字）；
+  · 一切落在 pytest 的 `tmp_path`（**每次不同**），邮箱/包装脚本/假 agent 全在它下面；
+  · 走的是**真实端点函数**（注册 → 桥模板 → 唤配置 → 验证间），不是替身。
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import sys
+import uuid
+
+import pytest
+
+# 平台真实端点函数（与 HTTP 层同一批）
+from agent_community.platform.routers import harness_bridge as hb
+from agent_community.platform.routers import harness_register as hr
+
+
+class _Req:
+    """最小请求替身（这些端点只用 `.json()`）。"""
+
+    def __init__(self, body=None):
+        self._body = body or {}
+        self.headers = {}
+        self.query_params = {}
+
+    async def json(self):
+        return self._body
+
+
+def _as_dict(out):
+    """端点可能返回 dict，也可能返回 Utf8JSONResponse —— 统一取 body。"""
+    if isinstance(out, dict):
+        return out
+    body = getattr(out, "body", None)
+    if body is not None:
+        try:
+            return json.loads(body.decode("utf-8"))
+        except Exception:  # noqa: BLE001
+            pass
+    return {"_raw": str(out)[:200]}
+
+
+@pytest.fixture()
+def fresh(tmp_path, monkeypatch):
+    """★"换名换目录"：随机名 + 每次不同的 tmp_path；并隔离落盘与桥进程登记。"""
+    import agent_community.platform.server as srv
+    from agent_community.platform import bridge_procs as bp
+
+    hid = "r19-" + uuid.uuid4().hex[:8]
+    work = tmp_path / ("work_" + hid)
+    work.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(srv, "save_state", lambda: None, raising=False)
+    monkeypatch.setattr(bp, "_procs", {}, raising=False)
+    # ⚠️叫醒包装脚本的落点是**写死的仓库相对路径**
+    #   （`bridge_wake.RUNTIME_SUBDIR = "agent_community/data/runtime/wake"`）⇒
+    #   测试里会写进**真仓库**（被 conftest 的"污染真实数据"守卫抓到）。
+    #   这里是"在测试里显式 monkeypatch 掉落盘函数"的处置；**根治**要让该模块改从
+    #   `server.DATA_DIR` 取根（与其它落盘点一致）——已记入待办，此处先隔离。
+    from agent_community.platform import bridge_wake as bw
+    monkeypatch.setattr(bw, "RUNTIME_SUBDIR", str(tmp_path / "runtime_wake"), raising=False)
+    # 安全网：本文件会驱动**真实注册/架桥**路径，这些路径都写审计 ⇒ 再补一道审计落点隔离
+    #   （conftest 已做，但实测 teardown 仍报 audit.json 被写；宁可多补一道，
+    #    也绝不让测试污染真实数据 —— 这条纪律的代价项目已经付过一次。）
+    try:
+        from agent_community.platform.audit import audit_log as _al
+        monkeypatch.setattr(_al, "_path", tmp_path / "audit.json", raising=False)
+        monkeypatch.setattr(_al, "data_dir", tmp_path, raising=False)
+        monkeypatch.setattr(_al, "events", [], raising=False)
+    except Exception:  # noqa: BLE001
+        pass
+    yield {"hid": hid, "work": work, "srv": srv}
+    try:
+        srv.harness_manager.unregister(hid)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _make_fake_agent(work, inbox_abs: str, py_exe: str) -> str:
+    """造一个"外端 agent"+它的包装脚本（纯 ASCII、无 BOM —— 实测 cmd 的坑）。
+
+    按平台约定：**trigger 不带参数**；假 agent 从自己旁边的 `inbox.txt` 读邮箱路径，
+    任务在 `inbox/delivered/`（桥是**先搬走再叫醒**，实测确认）。
+    """
+    agent = work / "my_agent.py"
+    # ★读**inbox 根里的 `task_*.json`** —— 平台自己的话术就是这么教的
+    #   （实测取证：桥是**先执行 trigger、之后才搬文件**；我一开始以为"先搬走再叫醒"，
+    #     结果假 agent 去 `delivered/` 找、永远 `handled 0`、自检只能得 no_reply）。
+    #   回话写 `replies/reply_<probe_id>.json` —— 桥会转发回去。
+    #   ★**两个地方都找**：`inbox/` 根 与 `inbox/delivered/`。
+    #     实测取证（桥日志）：被叫醒时任务**已经在 `delivered/` 里**（桥是"先搬走、再执行
+    #     trigger"）—— 我一度以为相反、只读 inbox 根，于是永远 `handled 0`、自检只能 no_reply。
+    #     对 agent 来说"两处都找"本来也是更稳的写法（不依赖桥的搬运时机）。
+    #     脚本还会把它**实际看到什么**打进桥日志 —— 出问题不用猜。
+    agent.write_text(
+        "import json,os,sys\n"
+        "here=os.path.dirname(os.path.abspath(__file__))\n"
+        "INBOX=open(os.path.join(here,'inbox.txt'),encoding='utf-8-sig').read().strip()\n"
+        "r=os.path.join(INBOX,'replies')\n"
+        "os.makedirs(r,exist_ok=True)\n"
+        "spots=[INBOX, os.path.join(INBOX,'delivered')]\n"
+        "print('AGENT-SEES %r' % [(s, os.path.isdir(s),\n"
+        "      sorted(os.listdir(s)) if os.path.isdir(s) else None) for s in spots])\n"
+        "n=0\n"
+        "for s in spots:\n"
+        "    for f in (sorted(os.listdir(s)) if os.path.isdir(s) else []):\n"
+        "        p=os.path.join(s,f)\n"
+        "        if not os.path.isfile(p) or not f.endswith('.json'):\n"
+        "            continue\n"
+        "        try:\n"
+        "            b=json.load(open(p,encoding='utf-8-sig')); pid=str(b.get('probe_id') or '')\n"
+        "            if pid:\n"
+        "                json.dump({'type':'self_check_ack','probe_id':pid,'from':'r19-agent',\n"
+        "                           'ok':True},\n"
+        "                          open(os.path.join(r,'reply_%s.json'%pid),'w',encoding='utf-8'),\n"
+        "                          ensure_ascii=False); n+=1\n"
+        "        except Exception as e: print('AGENT-ERR',e)\n"
+        "print('handled',n)\n",
+        encoding="utf-8")
+    (work / "inbox.txt").write_text(inbox_abs, encoding="utf-8")
+    wrap = work / "wake.cmd"
+    # ★纯 ASCII、无 BOM：带 BOM 时 cmd 会把 `@echo off` 当命令、把中文注释当命令执行（实测）
+    with open(wrap, "w", encoding="ascii", newline="") as f:
+        f.write("@echo off\r\nrem bare trigger (platform calls it with no args)\r\n")
+        f.write('"%s" "%%~dp0my_agent.py"\r\n' % py_exe)
+    return str(wrap)
+
+
+def test_rule19_fresh_name_and_dir_end_to_end(fresh):
+    """★核心：随机名 + 全新目录，走完 注册 → 桥模板 → 唤配置 → 验证间跑通 → 拆掉。"""
+    hid, work, srv = fresh["hid"], fresh["work"], fresh["srv"]
+
+    # ① 注册：**只带身份**（不提供 acp_command —— file_poll 用不到；
+    #    邮箱路径也给个占位，稍后按平台真正用的那处改写模板）
+    out = asyncio.run(hr.register_harness(_Req({
+        "harness_id": hid, "harness_name": "示例Harness-" + hid[-4:],
+        "harness_type": "desktop-agent", "wakeup_method": "file_poll",
+        "wakeup_dir": str(work), "ai": {"model_name": "示例模型"},
+        "process_hint": "r19-probe",
+    })))
+    d = _as_dict(out)
+    assert d.get("success") is True, (
+        "★file_poll 这种**不需要平台拉起**的方式，不该被索要 acp_command：%s" % d)
+
+    sess = srv.harness_manager.sessions.get(hid)
+    assert sess is not None
+    hints = (sess.info.metadata or {}).get("probe_hints") or {}
+    assert hints.get("process_hint") == "r19-probe", (
+        "★hint 线索必须真的存进 metadata['probe_hints']（两个入口都要！）：%r" % hints)
+
+    # ② 桥模板：**邮箱用平台自己的隔间路径**（它在运行时才算得出，别自己拼 ——
+    #    我第一版自己拼，结果和平台实际用的不是同一个目录 ⇒ 桥在空目录里等文件、
+    #    自检永远 no_reply。这正是"两个邮箱"那个坑，今天已踩第二次。）
+    from agent_community.platform.verify_sandbox import draft_template_from, _bt_mailbox
+    from agent_community.platform.verify_sandbox import ensure_sandbox
+
+    ws = ensure_sandbox(srv.workshops, hid, data_dir=str(srv.DATA_DIR),
+                        harness_name="示例Harness")
+    member = ws.members[0]
+    inbox = os.path.abspath(str(_bt_mailbox(ws, member)))
+    os.makedirs(inbox, exist_ok=True)
+    wrap = _make_fake_agent(work, inbox, sys.executable)
+
+    out = asyncio.run(hb.harness_bridge_template_put(hid, _Req({
+        "name": "r19桥", "kind": "file_poll",
+        "params": {"INBOX_DIR": inbox, "TRIGGER_CMD": 'cmd.exe /c "%s"' % wrap},
+    })))
+    d = _as_dict(out)
+    assert d.get("success") is True, d
+    assert (d.get("wake_synced") or {}).get("path"), \
+        "模板里的 TRIGGER_CMD 必须同步成**桥真正使用的那一处**（P3 单一真相）"
+
+    # ③ 验证间：建 → 架桥 → 真自检 → 跑通才回写 → 拆掉
+    out = asyncio.run(hb.harness_verify_bridge(hid, _Req({"wait": 16, "teardown": True})))
+    v = _as_dict(out)
+    assert v.get("stage") == "selfcheck", "应跑到自检阶段：%s" % json.dumps(v, ensure_ascii=False)[:300]
+    assert v.get("state") == "ok", (
+        "★全新名字+全新目录下应能真跑通（平台→桥→agent→回报）；实得 state=%r reason=%r"
+        % (v.get("state"), v.get("reason")))
+    assert (v.get("committed") or {}).get("success") is True, \
+        "★跑通了就必须把实测配置写进模板并标记已验证：%s" % (v.get("committed"),)
+    td = v.get("torndown") or {}
+    assert td.get("removed") is True, "★拆掉：连桥一起，只留模板：%s" % td
+    from agent_community.platform.verify_sandbox import sandbox_dir_name as _sdn
+    os_ws = os.path.join(str(srv.DATA_DIR), "verify_sandbox", _sdn(hid))
+    assert not os.path.isdir(os_ws), "验证间目录应已清理"
+
+
+def test_fresh_registration_does_not_require_a_launch_command(fresh):
+    """★独立锁一条：**用不到拉起命令的接入方式，不该被索要它**。
+
+    这是 2026-10-12 规则 19 验收抓到的第一个缺陷（新用户第一步就卡）。
+    """
+    hid, work, srv = fresh["hid"], fresh["work"], fresh["srv"]
+    for wm in ("file_poll", "http_api", "clipboard"):
+        out = asyncio.run(hr.register_harness(_Req({
+            "harness_id": "%s-%s" % (hid, wm), "harness_name": "示例Harness-" + wm,
+            "harness_type": "desktop-agent", "wakeup_method": wm,
+            "wakeup_dir": str(work), "ai": {"model_name": "示例模型"},
+            **({"api_base_url": "http://127.0.0.1:1"} if wm == "http_api" else {}),
+        })))
+        d = _as_dict(out)
+        assert d.get("success") is True, (
+            "wakeup_method=%s 不需要 acp_command，不该被拒：%s" % (wm, d))
+        try:
+            srv.harness_manager.unregister("%s-%s" % (hid, wm))
+        except Exception:  # noqa: BLE001
+            pass

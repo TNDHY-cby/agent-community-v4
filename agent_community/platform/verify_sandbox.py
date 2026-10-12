@@ -244,8 +244,16 @@ def start_bridge(kind: str, *, harness_id: str, inbox: str, platform: str,
     #   ⇒ 落 `verify_sandbox/_bridge_logs/<harness>.log`，既不会阻塞、又留得下证据。
     logpath = ""
     try:
-        logdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data",
-                              SANDBOX_SUBDIR, "_bridge_logs")
+        # ⚠️2026-10-12：日志要落在**平台真正使用的 data 目录**（`server.DATA_DIR`），
+        #   不要用 `__file__` 反推 —— 测试里 DATA_DIR 被重定向到 tmp，用 __file__ 反推会把
+        #   日志写进**仓库目录**（实测被 conftest 的"污染真实数据"守卫抓到，报
+        #   `verify_sandbox\_bridge_logs\r19-….log: None -> (1919, …)`）。
+        try:
+            from .server import DATA_DIR as _DD
+            _data_root = str(_DD)
+        except Exception:  # noqa: BLE001
+            _data_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
+        logdir = os.path.join(_data_root, SANDBOX_SUBDIR, "_bridge_logs")
         os.makedirs(logdir, exist_ok=True)
         logpath = os.path.join(logdir, f"{harness_id}.log")
     except Exception:  # noqa: BLE001
