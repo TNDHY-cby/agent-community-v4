@@ -227,6 +227,31 @@ def test_commit_verified_records_what_was_actually_verified():
     assert '"channel"' in rs, "路由层必须把探针通道一并传给 commit_verified"
 
 
+# ── H. 别把"持久跑桥"指到"一次性的验证间"去 ─────────────────────────────
+def test_verify_tells_where_to_run_a_persistent_bridge():
+    """★验证间隔间**跑完即删** ⇒ 建议必须把人**指到正确的地方**去持久跑桥。
+
+    （真机材料：那个 agent 收到「在成员隔间目录里运行 bridge.py」后，打算去
+      `verify_sandbox/vs_<hid>/验证员_v0/` 找桥脚本 —— 而那里**已经被删了**。
+      它去找只会一无所获，然后怀疑自己或平台。）
+
+    本用例同时锁住"给的路必须是**实测走通**的"：
+      `out_dir` 必须在平台 `bridges/` 内（否则 400）⇒ 文档里不能让人填"你自己的目录"。
+    """
+    import inspect
+
+    from agent_community.platform import verify_sandbox as vs
+
+    src = inspect.getsource(vs.verify_bridge)
+    assert "persistent_bridge" in src, "验证结果里要给出'怎么持久跑桥'的指引"
+    assert "sandbox_dir_deleted" in src, "要明确说验证间目录已删（别去那儿找）"
+    assert "bridge/generate" in src, "要指向平台的构桥 API"
+    assert "launch_hint" in src, "要用返回的现成启动命令（launch_hint）"
+    # 不能让人填平台目录以外的 out_dir（实测 400）
+    assert "在平台的 `bridges/` 目录内" in src or "bridges/` 目录内" in src, \
+        "必须写明 out_dir 只能落在平台的 bridges/ 内（实测否则 400）"
+
+
 # ── D. 话术第 4 步：不需要工作间 ─────────────────────────────────────────
 def test_template_step4_needs_no_workshop():
     """★话术第 4 步必须指向 `{hid}/verify`（刚注册就能自检），而不是必须先有工作间的那个端点。"""

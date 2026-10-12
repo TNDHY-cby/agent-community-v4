@@ -491,13 +491,48 @@ async def verify_bridge(workshops: dict, harness_id: str, *, data_dir: str,
     finally:
         # **无论成败都停桥**：验证间的桥是临时的，不能留常驻进程
         stopped = stop_bridge_proc(started)
+    # ★★2026-10-12 实测修一处**指路指到了废墟**（真机材料）：
+    #   那个真实 agent 收到过「在成员隔间目录里运行 bridge.py」这类指引，于是打算去
+    #   `verify_sandbox/vs_<hid>/验证员_v0/` 找 `bridge.py` 与 `deliver_text.md` ——
+    #   **而验证间隔间在 teardown 时就被删了**（`compartment_removed: true`），
+    #   它去找只会一无所获，然后怀疑自己或平台。
+    #   ⇒ 印证一句话：**验证间是"一次性"的，别把它当"持久桥的落脚点"**。
+    #   要在 harness 侧**持久运行**，正确出口是平台的构桥 API
+    #   （`POST /api/harness/{hid}/bridge/generate` → 生成到你自己的目录并登记坐标）。
+    _persist_hint = {
+        "sandbox_dir_deleted": True,
+        "why": ("验证间（`verify_sandbox/vs_%s/...`）是**一次性的**：验证跑完就拆、"
+                "隔间与里面的 `bridge.py` **一并删除**。"
+                "⇒ **不要**去那里找桥脚本（找不到是正常的，不是你没找对）。" % harness_id),
+        # ⚠️★这段文字是**实测核对过**的（我第一版写成「out_dir 填你自己的目录」——
+        #   实测被 400 拒：「out_dir 必须位于平台 bridges 目录内」。差点又给出一条走不通的指引。）
+        "how_to_run_persistently": (
+            "生成并持久运行桥（**实测核对过的两条**）：\n"
+            "  1) POST /api/harness/%s/bridge/generate  "
+            '{"template": "%s"}\n'
+            "     · **省略 `out_dir`** ⇒ 平台落到 `<平台>/agent_community/bridges/<harness_id>/bridge.py`；\n"
+            "     · 若要自己指定，`out_dir` **必须在平台的 `bridges/` 目录内**（否则 400）；\n"
+            "     · 返回里有 `bridge_file` / `bridge_dir` / **`launch_hint`（现成的启动命令，照它跑）**。\n"
+            "  2) 用返回的 `launch_hint` 把桥**常驻**跑起来（它按间隔轮询平台领件）；\n"
+            "  3) 之后随时用 `POST /api/harness/bridge-test` 探它是否还活着。"
+            % (harness_id, kind or "pending_poll")),
+        "template_verified": True,
+    }
+    # ⚠️`bridge_selfcheck` 给的 advice 里会有「在**成员隔间目录**里运行 bridge.py」——
+    #   那句话对**工作间**是对的（隔间是持久的），但在**验证间**里是错的：隔间验证完就删。
+    #   这里补一句把方向掰正（不改 `bridge_selfcheck`，因为它在工作间场景仍是对的）。
+    _adv = str(chk.get("advice") or "")
+    _adv += ("\n⚠️ 注意：**验证间的隔间是一次性的**（验证完就删，里面的 `bridge.py` 也一并没了）——"
+             "别去验证间目录里找桥脚本。要在 harness 侧**持久运行**，见本响应里的 "
+             "`persistent_bridge.how_to_run_persistently`。")
     return {"success": bool(chk.get("success")), "stage": "selfcheck",
             "state": chk.get("state"), "reason": chk.get("reason"),
-            "advice": chk.get("advice"), "detail": chk.get("detail") or {},
+            "advice": _adv, "detail": chk.get("detail") or {},
             "sandbox_id": ws.workshop_id, "member_id": m.member_id,
             "draft_made": bool(draft_made), "had_template": had_template,
             "bridge_kind": kind, "bridge_started": bool(started),
-            "bridge_start_error": start_err, "bridge_stopped": stopped}
+            "bridge_start_error": start_err, "bridge_stopped": stopped,
+            "persistent_bridge": _persist_hint}
 
 
 def _bt_mailbox(ws: Any, m: Any) -> str:
