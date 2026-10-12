@@ -81,10 +81,14 @@ async def harness_bridge_test(request: Request):
     # ★2026-10-12：**顺便报告"这个 harness 名下有几只桥在跑"**。
     #   实测：某个 harness 名下同时跑了 **4 只桥**（失败重试时多起的），而平台**一个字都没说** ——
     #   用户只会看到"有时消息重复、有时没人取"这种玄学现象。
+    # ⚠️★必须用**异步版**（`bridge_instances_async`）：同步版内部会跑 PowerShell，
+    #   在 async 端点里直接调会**卡死整个事件循环** —— 实测本端点因此从 0.02s 涨到 **1.28s**，
+    #   机器忙时可达 30s（`timeout` 上限），外部症状是 watchdog 报 `TimeoutError` +
+    #   "进程还在却不收连接"并自动重启（**差点查错方向**）。
     _inst = {}
     try:
-        from .harness_messaging import bridge_instances as _bi
-        _inst = _bi(hid)
+        from .harness_messaging import bridge_instances_async as _bi_a
+        _inst = await _bi_a(hid)
     except Exception:  # noqa: BLE001
         _inst = {}
     # ★★2026-10-12 实测修两处误导（真机材料：那个 agent 把本响应读成了 ✅ 绿）：

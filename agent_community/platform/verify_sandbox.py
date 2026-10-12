@@ -617,11 +617,14 @@ async def teardown(workshops: dict, harness_id: str, *, stop_bridge=None) -> dic
         except Exception as e:  # noqa: BLE001
             removed["bridge_stopped"] = f"停桥失败（不阻断拆除）: {e}"
     # ② 删隔间产物（验证间目录随它一起删）
+    # ⚠️★删目录是**同步 I/O**，在 async 里直接做会占住事件循环（目录大/磁盘忙时更久）。
+    #   这里是"清扫"动作、不影响正确性 ⇒ 挪到工作线程（2026-10-12 全仓扫描扫出来的同族问题）。
     try:
+        import asyncio as _a
         import shutil
         base = str(getattr(ws, "workspace_dir", "") or "")
         if base and os.path.isdir(base):
-            shutil.rmtree(base, ignore_errors=True)
+            await _a.to_thread(shutil.rmtree, base, True)
             removed["compartment_removed"] = True
         else:
             removed["compartment_removed"] = False

@@ -348,8 +348,26 @@ def _chain_roots(matches):
                   if m.get("ppid") not in matched)
 
 
+async def bridge_instances_async(harness_id: str) -> dict:
+    """`bridge_instances` 的**异步版**：把"要跑 PowerShell 的同步扫描"挪到工作线程。
+
+    ★2026-10-12 实测（**我自己引进的缺陷**，与早上 `time.sleep` 那次同一族）：
+      我把 `bridge_instances` 加进 `POST /api/harness/bridge-test` 后，实测该端点耗时
+      **1.28s**（对照：`/api/status` 0.017s、`/api/agents` 0.055s）——
+      这 1.2 秒里**平台无法响应任何请求**；机器忙时 PowerShell 启动可拖到 `timeout=30` 上限。
+      症状表现在**外**（差点查错方向）：watchdog 日志出现 `TimeoutError: timed out`、
+      以及"**进程还在、却不再收连接**"（`TCP not listening`）并自动重启。
+      ⇒ 规则：**async 端点里绝不做同步阻塞的事**（子进程 / sleep / 扫描 … 一律挪线程）。
+    """
+    import asyncio as _a
+    return await _a.to_thread(bridge_instances, harness_id)
+
+
 def bridge_instances(harness_id: str) -> dict:
-    """这个 harness 名下**有几只桥在跑**（供响应体如实报告，别让用户蒙在鼓里）。"""
+    """这个 harness 名下**有几只桥在跑**（供响应体如实报告，别让用户蒙在鼓里）。
+
+    ⚠️**它内部会同步跑 PowerShell（阻塞）** ⇒ 在 async 端点里请用 `bridge_instances_async`。
+    """
     matches = _probe_pids_watching(harness_id)
     roots = _chain_roots(matches)                 # ★逻辑桥数（链根），不是进程数
     pids = [m.get("pid") for m in matches]
@@ -529,7 +547,11 @@ async def harness_auto_connect(request: Request):
         #   ⇒ ①重复投递 ②**用户后配的叫醒命令永不生效**（桥是起的时候才带上它）。
         #   ⚠️ 但**不能在这里直接返回**：策略闸门必须先跑（AI 发起要走审批，不能被它绕过）。
         #      所以只取 pid，真正的"不重复启动"判断放在闸门**之后**。
-        _already_pid = _bridge_pid_watching(hid, inbox)
+        # ⚠️★必须挪到**工作线程**：`_bridge_pid_watching` 内部要跑 PowerShell（同步阻塞），
+        #   直接在 async 端点里调会卡死事件循环（实测同类端点 0.02s → 1.28s，
+        #   机器忙时可达 30s；外部症状 = watchdog 报 TimeoutError + 自动重启）。
+        import asyncio as _a
+        _already_pid = await _a.to_thread(_bridge_pid_watching, hid, inbox)
         bridge_cmd = ["-u", script, "--harness-id", hid, "--inbox", inbox, "--platform", base_url]
         bridge_type = "file_poll"
         _trig = _wake_trigger_for(hid)
@@ -651,8 +673,14 @@ async def harness_auto_connect(request: Request):
         return Utf8JSONResponse({"error": f"桥启动失败: {e}"}, status_code=500)
 
     # 等 2 秒验证存活
-    import time as _time
-    _time.sleep(2.0)
+    #
+    # ⚠️★必须用 **`await asyncio.sleep`**（2026-10-12 全仓扫描扫出）：原来是
+    #   `time.sleep(2.0)` —— 在 async 端点里**同步睡 2 秒 = 事件循环被占住 2 秒**，
+    #   期间平台不响应任何请求；而 auto-connect 正是**用户起桥时必调**的端点，
+    #   再叠上同步扫描（现已挪线程）就更容易触发 watchdog 的"卡住→重启"。
+    #   （async 里只该 await，不该 sleep；这条与"把阻塞活挪线程"是同一条纪律。）
+    import asyncio as _a2
+    await _a2.sleep(2.0)
     alive = proc.poll() is None
 
     # ── V-15 步骤2：把 proc 登记进存活表 ──────────────────────

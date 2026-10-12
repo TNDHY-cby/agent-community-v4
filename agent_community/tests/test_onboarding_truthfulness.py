@@ -352,6 +352,40 @@ def test_platform_started_bridge_counts_via_registry(monkeypatch):
         monkeypatch.setattr(bp, "_procs", {}, raising=False)
 
 
+def test_bridge_instances_async_keeps_the_event_loop_free():
+    """★扫描（要跑 PowerShell）期间，**事件循环必须还能跑**。
+
+    ★2026-10-12 实测（**我自己引进的缺陷**）：把 `bridge_instances` 直接放进 async 端点后，
+    该端点从 0.02s 涨到 **1.28s**，这期间**平台无法响应任何请求**；机器忙时可达 30s。
+    外部症状是 watchdog 报 `TimeoutError` + 「进程还在却不收连接」并自动重启 —— **差点查错方向**。
+    ⇒ 判据：同步阻塞的活（子进程 / 扫描 / sleep）一律走 `asyncio.to_thread`。
+
+    本用例用一个 10ms 心跳计数器来量：若事件循环被占住，心跳**几乎不涨**。
+    """
+    from agent_community.platform.routers.harness_messaging import bridge_instances_async
+
+    async def _main():
+        ticks = 0
+
+        async def _ticker():
+            nonlocal ticks
+            while True:
+                await asyncio.sleep(0.01)
+                ticks += 1
+
+        t = asyncio.create_task(_ticker())
+        try:
+            await bridge_instances_async("no-such-harness-" + os.urandom(4).hex())
+        finally:
+            t.cancel()
+        return ticks
+
+    ticks = asyncio.run(_main())
+    assert ticks >= 5, (
+        "★扫描期间事件循环被占住了（心跳只涨了 %d 次）⇒ 必须把同步扫描挪到工作线程，"
+        "否则平台会「卡住」、watchdog 会以为它死了并重启" % ticks)
+
+
 def test_bridge_instances_shape_is_honest():
     """计数结果是"如实的事实"：0 只 / 1 只 / 多只，各有明确语义。"""
     from agent_community.platform.routers.harness_messaging import bridge_instances

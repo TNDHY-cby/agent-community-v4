@@ -172,17 +172,31 @@ async def api_plugins_invoke(name: str, request: Request):
             _hit = _is_dangerous(_cmd)
             if _hit:
                 return Utf8JSONResponse({"error": f"插件命令被安全策略拦截: {_hit}"}, status_code=400)
+            # ⚠️★**必须挪到工作线程**（2026-10-12 全仓扫描扫出）：
+            #   `Popen` 本身只是"起进程、不等"，**真正会等的是它后面的 `communicate(timeout=5)`**
+            #   （超时后还有 kill + 再 communicate 的路径）—— 在 async 端点里同步等，
+            #   **最长会把整个事件循环占住 5 秒以上**（期间平台不响应任何请求）。
+            #   ⇒ 打包成一个同步函数，用 `to_thread` 调。
+            import asyncio as _a
             import subprocess
-            proc = subprocess.Popen(
-                _cmd, shell=True, stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
-            )
-            try:
-                out, _ = proc.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                out, _ = proc.communicate()
-                return {"success": True, "output": f"[已运行超5s被终止] pid={proc.pid} · {(out or '')[:500]}"}
-            return {"success": True, "output": f"[exit {proc.returncode}] {(out or '')[:500]}"}
+
+            def _run_plugin_cmd(cmd: str) -> dict:
+                proc = subprocess.Popen(
+                    cmd, shell=True, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                    errors="replace",
+                )
+                try:
+                    out, _ = proc.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    out, _ = proc.communicate()
+                    return {"success": True,
+                            "output": "[已运行超5s被终止] pid=%s · %s"
+                                      % (proc.pid, (out or "")[:500])}
+                return {"success": True,
+                        "output": "[exit %s] %s" % (proc.returncode, (out or "")[:500])}
+
+            return await _a.to_thread(_run_plugin_cmd, _cmd)
     except Exception as e:
         return Utf8JSONResponse({"error": f"调用失败: {e!r}"}, status_code=500)

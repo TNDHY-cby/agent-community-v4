@@ -296,9 +296,19 @@ class ProbeHarnessTool(BaseTool):
         lines = []
 
         # 1) 扫进程（匹配进程名/命令行/路径线索）
+        #
+        # ⚠️★**必须挪到工作线程**（2026-10-12 实测扫出）：`async execute()` 里直接
+        #   `subprocess.check_output` 会**卡死整个事件循环**（这里是 PowerShell 进程扫描，
+        #   `timeout=25`；下面是端口扫描 `timeout=20`，后面还会逐个探候选端口）——
+        #   期间平台**不响应任何请求**。**外部症状**：watchdog 报 `TimeoutError`、
+        #   "进程还在却不收连接"、自动重启；外端 agent 在接入第 2 步（`probe-register`）
+        #   直接报「**连接被远程主机关闭**」（真机材料里就有这一条）。
+        #   ⇒ 规则：async 里绝不做同步阻塞的活（子进程/扫描/sleep），一律 `to_thread`。
+        import asyncio as _asyncio
         proc_candidates = []
         try:
-            out = subprocess.check_output(
+            out = await _asyncio.to_thread(
+                subprocess.check_output,
                 ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
                  "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'electron|python|node|claude' } | ForEach-Object { $_.ProcessId.ToString() + '|' + $_.Name + '|' + ($_.CommandLine -replace '\\s+',' ') }"],
                 timeout=25, encoding="utf-8", errors="replace",
@@ -324,10 +334,11 @@ class ProbeHarnessTool(BaseTool):
         except Exception as e:
             lines.append(f"进程扫描失败: {e}")
 
-        # 2) 扫监听端口
+        # 2) 扫监听端口（同上：**必须挪到工作线程**，否则又是同步阻塞）
         ports = []
         try:
-            out = subprocess.check_output(
+            out = await _asyncio.to_thread(
+                subprocess.check_output,
                 ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
                  "Get-NetTCPConnection -State Listen | Where-Object { $_.LocalAddress -in '127.0.0.1','0.0.0.0','::' } | Select-Object -ExpandProperty LocalPort -Unique | Sort-Object"],
                 timeout=20, encoding="utf-8", errors="replace",
@@ -347,22 +358,33 @@ class ProbeHarnessTool(BaseTool):
             if len(candidates) >= 12:
                 break
 
-        api_hits = []
-        import urllib.request as _ur
-        for p in candidates[:12]:
-            for path in ("/", "/message", "/api", "/api/status"):
-                url = f"http://127.0.0.1:{p}{path}"
-                try:
-                    req = _ur.Request(url, method="GET")
-                    with _ur.urlopen(req, timeout=2) as resp:
-                        api_hits.append(f"  {url} -> HTTP {resp.status}")
+        # ⚠️★**同步 HTTP 探测也必须挪出事件循环**（2026-10-12 实测：这是本项目最长的阻塞）：
+        #   最多 12 个候选端口 × 4 条路径 × `timeout=2` ⇒ 最坏可达**近百秒**。
+        #   实测修完"子进程扫描"之后，探测期间平台仍被卡 **8.9 秒**（中位 0.008s 说明其余时间没事）
+        #   ⇒ 症状仍是 watchdog 报 `TimeoutError` / 外端 agent 报「连接被远程主机关闭」。
+        #
+        #   ★我的**判据当时也有盲区**：只把"子进程/sleep/删目录"算阻塞，
+        #     **没把同步网络 I/O 算进去** —— 所以这条漏了（判据后来已补 `urlopen` 等）。
+        def _probe_http_ports(cands):
+            hits = []
+            import urllib.request as _ur
+            for p in cands:
+                for path in ("/", "/message", "/api", "/api/status"):
+                    url = f"http://127.0.0.1:{p}{path}"
+                    try:
+                        req = _ur.Request(url, method="GET")
+                        with _ur.urlopen(req, timeout=2) as resp:
+                            hits.append(f"  {url} -> HTTP {resp.status}")
+                            break
+                    except _ur.HTTPError as e:
+                        # 400/405 也说明端口有 HTTP 服务
+                        hits.append(f"  {url} -> HTTP {e.code}（有服务）")
                         break
-                except _ur.HTTPError as e:
-                    # 400/405 也说明端口有 HTTP 服务
-                    api_hits.append(f"  {url} -> HTTP {e.code}（有服务）")
-                    break
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
+            return hits
+
+        api_hits = await _asyncio.to_thread(_probe_http_ports, candidates[:12])
 
         if api_hits:
             lines.append("本机探测到的 HTTP 服务（**尚不能确定属于该 harness**）：")
