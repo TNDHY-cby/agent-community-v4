@@ -19,10 +19,21 @@ import importlib.util
 import os
 import re
 
+import pytest
+
 # 本文件在 `agent_community/tests/` 下 ⇒ 要退**三层**才到仓库根（`tests` → `agent_community` → 根）
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HEALTHCHECK = os.path.join(REPO, "deploy", "healthcheck.ps1")
 WATCHDOG = os.path.join(REPO, "deploy", "watchdog_all.py")
+
+# ⚠️★`deploy/` **只在开发副本里**（发布脚本只同步 `agent_community/` + `design-docs`；
+#   部署脚本含 .env/真实路径，按设计不进开源副本）。
+#   ⇒ 本文件在**发布副本**里必须**干净跳过**，否则别人 clone 下来跑 pytest 会 FileNotFoundError。
+#   （"我在开发副本里加的东西会不会破坏发布副本"——这正是规则 19 要防的。）
+pytestmark = pytest.mark.skipif(
+    not (os.path.isfile(HEALTHCHECK) and os.path.isfile(WATCHDOG)),
+    reason="deploy/ 只存在于开发副本（发布副本按设计不含部署脚本）",
+)
 
 
 def _monitored_ports() -> set:
