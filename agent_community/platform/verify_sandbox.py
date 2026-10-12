@@ -316,6 +316,100 @@ def stop_bridge_proc(started: dict | None) -> dict:
     return out
 
 
+#: 走**文件邮箱**的桥型（探针要写成 `task_*.json` 丢进 inbox）。
+#: ⚠️其余桥型（`pending_poll` / `cli_acp` …）**根本不读邮箱** —— 用邮箱验它们必然
+#:   `not_picked`，平台还会对用户说假话「桥没有在运行」。
+_FILE_MAILBOX_KINDS = {"file_poll"}
+
+
+async def channel_selfcheck(harness_id: str, *, kind: str, wait: float = 8.0) -> dict:
+    """★**按桥型选探针通道**（2026-10-12 实测修）。
+
+    **为什么要按桥型分**（真机实测教训）：
+      验证间原来**一律**把试探写成 `task_*.json` 丢进文件邮箱、再判断"文件有没有被搬进
+      `delivered/`"。这对 `file_poll` 是对的；但 `pending_poll` 桥是**轮询平台 API**
+      （`GET /api/harness/pending-tasks`）取件的，**根本不读邮箱** ⇒ 文件永远不动
+      ⇒ 结论必然 `not_picked`，reason 还说「**桥没有在运行**」——**而桥其实跑得好好的**。
+      平台就这么对用户说了假话，用户只会去查一个并不存在的"桥没起"问题。
+
+    **正确通道**：平台**自带**的"桥测试通道"
+      （`POST /api/harness/bridge-test` → 进 `pending_bridge_tests` 队列 → 桥轮询领取并
+       **自动回报** `bridge-test-result`）。它验的正是"桥活着 + 连得上平台 + 能回报"，
+      **不需要 agent 参与** —— 对 `pending_poll` 这类桥这才是恰当的探针。
+    """
+    # ⚠️★**必须是 async**（2026-10-12 我第一版写成同步函数、在里面 `time.sleep` ⇒
+    #   **阻塞整个事件循环**最多 `wait` 秒 ⇒ 平台监听套接字出现 `WinError 64`
+    #   「Accept failed on a socket」，进程**活着但不再收连接**（实测把运行中的平台搞挂）。
+    #   教训：凡是在 `async def` 里被调用的等待，一律 `asyncio.sleep`，绝不 `time.sleep`。
+    import asyncio as _a
+    import time as _t
+
+    from .state import _bridge_tests_inflight, pending_bridge_tests
+    from .harness_adapter import harness_manager
+
+    sess = harness_manager.sessions.get(harness_id)
+    if sess is None:
+        return {"success": False, "state": "not_set_up",
+                "reason": f"harness {harness_id} 未注册",
+                "advice": "先注册再验", "detail": {"kind": kind}}
+
+    try:
+        w = max(0.0, min(float(wait or 0), 30.0))
+    except Exception:  # noqa: BLE001
+        w = 8.0
+
+    test_id = os.urandom(6).hex()
+    payload = {
+        "type": "bridge_test", "harness_id": harness_id, "test_id": test_id,
+        "sent_at": _dt_now(),
+        "message": "平台桥测试：请确认桥通道正常，然后回报 bridge-test-result",
+        "report_endpoint": "/api/harness/bridge-test-result",
+    }
+    # 与 `harness_bridge_test` 端点同一套登记口径（test_id 必须匹配 + 有有效期）
+    _bridge_tests_inflight[harness_id] = {
+        "test_id": test_id, "reported": False, "expire_ts": _t.time() + 180,
+    }
+    pending_bridge_tests.setdefault(harness_id, []).append(payload)
+
+    got = None
+    deadline = _t.time() + w
+    while _t.time() < deadline:
+        got = (getattr(sess, "metadata", None) or {}).get("bridge_test") or \
+            (getattr(sess.info, "metadata", None) or {}).get("bridge_test")
+        if got and str(got.get("test_id")) == test_id:
+            break
+        await _a.sleep(0.5)      # ★绝不能是 time.sleep（会阻塞事件循环、把平台搞挂）
+        got = None
+    if got is None:
+        left = pending_bridge_tests.get(harness_id) or []
+        still = any(str(x.get("test_id")) == test_id for x in left)
+        if still:
+            reason = ("桥**没来领**这条测试件 —— 这一型（%s）的桥要自己轮询平台；"
+                      "多半是它没在跑、或起它时 `--url`/`--harness-id` 填错了。" % kind)
+            advice = ("起这只桥（用平台生成的桥脚本，例如 `pending_poll_bridge.py "
+                      "--harness-id %s --url <平台地址> --work-dir <工作目录>`），再重跑。" % harness_id)
+        else:
+            reason = ("桥领走了测试件，但**没有回报** —— 它跑起来了，只是回报那一步没走通。" )
+            advice = "看桥的输出/日志里回报那一段的报错（常见：平台地址或 token 不对）。"
+        return {"success": False, "state": "not_picked" if still else "no_reply",
+                "reason": reason, "advice": advice,
+                "detail": {"kind": kind, "test_id": test_id,
+                           "channel": "bridge_test_queue", "waited_seconds": w}}
+    ok = bool(got.get("ok"))
+    return {"success": ok, "state": "ok" if ok else "no_reply",
+            "reason": ("桥通道正常（桥领了测试件并回报 ok）" if ok
+                       else "桥回报了，但说它不 ok：%s" % str(got.get("echo"))[:80]),
+            "advice": "" if ok else "看桥的输出，按它报的错修。",
+            "detail": {"kind": kind, "test_id": test_id,
+                       "channel": "bridge_test_queue", "echo": got.get("echo", ""),
+                       "waited_seconds": w}}
+
+
+def _dt_now() -> str:
+    from datetime import datetime
+    return datetime.now().isoformat(timespec="seconds")
+
+
 async def verify_bridge(workshops: dict, harness_id: str, *, data_dir: str,
                         harness_name: str = "", wait: float = 8.0) -> dict:
     """**一步到位**：建/取验证间 → （必要时派生草稿）→ 架桥 → 自检 → 返回结论。
@@ -377,10 +471,23 @@ async def verify_bridge(workshops: dict, harness_id: str, *, data_dir: str,
         start_err = f"桥型「{kind}」在验证间里不支持自动起桥（可在真实工作间里验）"
 
     try:
-        # 自检：真发一条探针，看"桥取走了没 / agent 回话没"
-        from .bridge_selfcheck import selfcheck
-        chk = selfcheck(inbox, harness_id=harness_id, workshop_id=ws.workshop_id,
-                        member_id=m.member_id, role=SANDBOX_ROLE, wait=wait)
+        # ★★2026-10-12 **按桥型选探针通道**（真机实测修，见 `channel_selfcheck` 的说明）：
+        #   `file_poll` 才用文件邮箱；`pending_poll` 这类**轮询平台 API**的桥
+        #   必须走平台的"桥测试通道"，否则必然假阴性 `not_picked`，
+        #   而且平台会错怪用户「桥没有在运行」（桥其实好好的）。
+        if kind in _FILE_MAILBOX_KINDS:
+            # 自检：真发一条探针，看"桥取走了没 / agent 回话没"
+            from .bridge_selfcheck import selfcheck
+            chk = selfcheck(inbox, harness_id=harness_id, workshop_id=ws.workshop_id,
+                            member_id=m.member_id, role=SANDBOX_ROLE, wait=wait)
+            chk["channel"] = "file_mailbox"
+        else:
+            chk = await channel_selfcheck(harness_id, kind=kind, wait=wait)
+            # 说明清楚"这一型验的是什么" —— 免得接入方以为验了 agent 的回话能力
+            chk.setdefault("detail", {})["channel_note"] = (
+                "这一型（%s）的桥不走文件邮箱 ⇒ 探针走**平台桥测试通道**，"
+                "验的是「桥在跑 + 连得上平台 + 能回报」；**agent 的回话能力不在本次验证范围内**。"
+                % kind)
     finally:
         # **无论成败都停桥**：验证间的桥是临时的，不能留常驻进程
         stopped = stop_bridge_proc(started)

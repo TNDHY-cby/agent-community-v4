@@ -149,6 +149,59 @@ def test_wake_accepts_empty_command_for_manual_mode(monkeypatch):
             pass
 
 
+# ── E. 桥型与自动连接的词汇不能混用 ─────────────────────────────────────
+def test_auto_connect_bridge_type_is_a_real_bridge_kind_or_none():
+    """★`auto-connect` 的 `bridge_type` 只能是**合法桥型**或 `None`。
+
+    （原来对 clipboard 型回 `"bridge_type": "clipboard"`、对 acp 型回 `"acp"`、
+      http_api 型回 `"http_api"` —— 这些**都不是桥型**，而是 `wakeup_method`；
+      合法桥型只有 `file_poll / cli_acp / pending_poll / script_framework`。
+      接入方拿到"世界上不存在的桥型"就会去找一只不存在的桥。）
+    """
+    import inspect
+    import re
+
+    from agent_community.platform.bridge_catalog import CATALOG
+    from agent_community.platform.routers import harness_messaging as hm
+
+    legal = set(CATALOG)
+    # ⚠️**先剥掉注释再扫**：注释里会引用"原来的错误写法"（我今天就因此被自己的注释误报了一次）。
+    #   判据必须只看真代码 —— 这是本项目反复踩的"测量判据匹配到注释/文本"那一类。
+    src = "\n".join(l for l in inspect.getsource(hm).split("\n")
+                    if not l.lstrip().startswith("#"))
+    for m in re.finditer(r'[\"\']bridge_type[\"\']\s*:\s*[\"\']([a-z_]+)[\"\']', src):
+        assert m.group(1) in legal, \
+            "auto-connect 里 bridge_type=%r 不是合法桥型（合法：%s）" % (m.group(1), sorted(legal))
+    for m in re.finditer(r'bridge_type\s*=\s*[\"\']([a-z_]+)[\"\']', src):
+        assert m.group(1) in legal, \
+            "bridge_type=%r 不是合法桥型（合法：%s）" % (m.group(1), sorted(legal))
+    # 没起桥时必须如实说"没起桥"
+    assert "bridge_started" in src, "没起桥的分支要如实标出 bridge_started=False"
+
+
+# ── F. 探针要按桥型走对的通道（否则必然假阴性、还错怪用户）─────────────
+def test_selfcheck_channel_depends_on_bridge_kind():
+    """★`pending_poll` 这类**轮询平台 API** 的桥不走文件邮箱 ⇒ 探针必须走桥测试通道。
+
+    （原来一律丢文件邮箱 ⇒ 文件永远不动 ⇒ 必然 `not_picked`，reason 还说
+      「**桥没有在运行**」—— **桥其实好好的**。平台就这么对用户说了假话。）
+    """
+    import inspect
+
+    from agent_community.platform import verify_sandbox as vs
+
+    assert hasattr(vs, "channel_selfcheck"), "缺少按桥型分通道的实现"
+    assert "_FILE_MAILBOX_KINDS" in inspect.getsource(vs), "要显式声明哪些桥型走文件邮箱"
+    src = inspect.getsource(vs.channel_selfcheck)
+    assert "pending_bridge_tests" in src, "非邮箱型要走平台的桥测试通道"
+    assert "asyncio" in src or "await" in src, "必须 async（不能阻塞事件循环）"
+    # 绝不阻塞事件循环：`time.sleep` 会把平台的监听套接字搞挂（实测 WinError 64）
+    import re
+    real_sleep = [l for l in src.split("\n")
+                  if re.search(r"(?<!_)\btime\.sleep\s*\(", l) and not l.strip().startswith("#")]
+    assert not real_sleep, "async 路径里不许有 time.sleep（会阻塞事件循环）：%s" % real_sleep
+
+
 # ── D. 话术第 4 步：不需要工作间 ─────────────────────────────────────────
 def test_template_step4_needs_no_workshop():
     """★话术第 4 步必须指向 `{hid}/verify`（刚注册就能自检），而不是必须先有工作间的那个端点。"""

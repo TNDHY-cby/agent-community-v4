@@ -397,8 +397,13 @@ async def harness_auto_connect(request: Request):
     #   教训：跨分支共用的局部变量，声明要放在分支之前。
     _already_pid = 0
     if wm == WakeupMethod.HTTP_API:
+        # ★2026-10-12 同修：`http_api` **不是桥型**（合法桥型只有
+        #   file_poll/cli_acp/pending_poll/script_framework）—— 这一型**平台直接推送、根本没有桥**。
+        #   原来回 `"bridge_type": "http_api"` 会让接入方去找一只不存在的桥。
         return {"success": True, "harness_id": hid, "status": "ready",
-                "bridge_type": "http_api", "note": "http_api 类由平台直接推送，无需桥"}
+                "bridge_started": False, "bridge_type": None,
+                "wakeup_method": "http_api",
+                "note": "http_api 类由**平台直接推送**，**不需要桥**（所以 bridge_type 为空是正常的）"}
     elif wm == WakeupMethod.FILE_POLL:
         script = _os.path.join(_ex, "filepoll_harness_bridge.py")
         inbox = (getattr(info, "wakeup_dir", "") or "").strip()
@@ -426,15 +431,39 @@ async def harness_auto_connect(request: Request):
         if not _os.path.isfile(script):
             return Utf8JSONResponse({"error": f"桥脚本不存在: {script}"}, status_code=500)
         if not (getattr(info, "acp_command", "") or "").strip():
+            # ★2026-10-12：`bridge_type` 必须是**合法桥型名**。
+            #   合法桥型只有 `file_poll / cli_acp / pending_poll / script_framework`
+            #   （见 `bridge_catalog.CATALOG`）—— 原来是 `"acp"`（**非法**，那是 wakeup_method 的名字）。
+            #   词汇混用会让下游（界面/文档/接入方）拿到一个"世界上不存在的桥型"。
             return {"success": True, "harness_id": hid, "status": "manual",
-                    "bridge_type": "acp",
-                    "note": "acp 类需要 acp_command，注册时未填，请手动架桥"}
+                    "bridge_type": "cli_acp",
+                    "note": "cli_acp 类需要 acp_command，注册时未填，请手动架桥"}
         bridge_cmd = ["-u", script, "--harness-id", hid, "--url", base_url]
-        bridge_type = "acp"
+        bridge_type = "cli_acp"
     elif wm == WakeupMethod.CLIPBOARD:
+        # ★★2026-10-12 实测修：这一段原来回 `"bridge_type": "clipboard"` ——
+        #   而 **`clipboard` 不是桥型**（合法桥型只有 file_poll/cli_acp/pending_poll/script_framework），
+        #   它是 **`wakeup_method`** 的取值。把二者混为一谈，接入方拿到就会以为"clipboard 是一种桥"。
+        #   ⇒ 三件事分开说清：
+        #     ① **本次没有起桥**（`bridge_started=False`）——不要假装有；
+        #     ② 若要走桥，**建议的桥型**是 `pending_poll`（单独字段、标明是"桥型"）；
+        #     ③ **激活提示词去哪儿拿**要给出**确切端点**（原 note 只说"见激活提示"，接入方无处可寻）。
         return {"success": True, "harness_id": hid, "status": "manual",
-                "bridge_type": "clipboard",
-                "note": "clipboard 类需在 harness 侧手动粘贴激活提示词，无法全自动。请在 harness 输入框粘贴内容（见激活提示）"}
+                "bridge_started": False,
+                "wakeup_method": "clipboard",
+                "bridge_type": None,                  # 没有起桥 ⇒ 不能报一个桥型
+                "suggested_bridge_kind": "pending_poll",
+                "suggested_bridge_kind_note": (
+                    "`pending_poll` 是**桥型**（可选：让桥轮询取件并落盘到工作目录，"
+                    "再由用户粘贴给你）。它与 `wakeup_method` 是两回事 —— "
+                    "你的 `wakeup_method` 仍是 `clipboard`（人工中转）。"),
+                "activation_prompt_url": "/api/harness/%s/activation_prompt" % hid,
+                "note": ("clipboard（人工中转）类：**平台无法自动叫醒你**，本次**没有起桥**，"
+                         "属正常（不是失败）。要拿到需要你执行的内容，请取"
+                         "「激活提示词」：`GET /api/harness/%s/activation_prompt`，"
+                         "把返回内容交给用户、由用户**手动粘贴**给你。"
+                         "若希望走桥自动取件，可用 `bridge_type=pending_poll` 架一只桥"
+                         "（桥会把待办落到工作目录，你读它、写 replies，桥转发回平台）。" % hid)}
     else:
         # 兜底：pending_poll
         script = _os.path.join(_ex, "pending_poll_bridge.py")
