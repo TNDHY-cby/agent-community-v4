@@ -93,3 +93,38 @@ def test_truth_summary_points_to_itself():
     s = bc.truth_summary()
     assert s["kinds"] == 4
     assert "bridge_catalog" in s["source_of_truth"]
+
+
+# ★2026-10-12 新增：**接入面**的资产不许带私人坐标（规则 6 / 规则 19）
+#   为什么单独钉这一组：这些文件是**外部 agent 真的会读到/会跑**的东西 ——
+#   注册话术、平台渲染给用户的桥模板、示例桥。
+#   实测抓到过真的漏出去的：`frontend/verify/fe27_check.js` 里钉着本机运行时的
+#   **绝对解释器路径**，而且**已经随仓库推到了公开仓库**（换台机器直接跑不了）。
+PRIVATE_TOKENS = ("traecode", "TraeCode", "小白龙", "DSH工作区", "D:\\DSH", "Marvis", "MiMo")
+
+
+def _onboarding_assets():
+    import glob
+    pats = ["agent_community/frontend/register.html",
+            "agent_community/bridge_templates/*/bridge.py.tmpl",
+            "agent_community/bridge_templates/*/template.json",
+            "agent_community/bridge_templates/*/*.tmpl",
+            "agent_community/examples/*.py"]
+    out = []
+    for p in pats:
+        out += [f for f in glob.glob(p) if ".bak" not in f]
+    return out
+
+
+def test_onboarding_assets_carry_no_private_names():
+    """接入面（话术 / 桥模板 / 示例）不得出现真实 harness 名或本机坐标。
+
+    这些是**用户会照着做的东西**：带上"只有我这台机器才有"的名字，
+    换一个人、换一个 agent 就变成误导（规则 19 的验收正是"换目录+换名不改代码能走通"）。
+    """
+    files = _onboarding_assets()
+    assert len(files) >= 10, "没扫到接入面资产，判据自己失效了：%s" % files
+    for f in files:
+        src = open(f, encoding="utf-8").read()
+        for token in PRIVATE_TOKENS:
+            assert token not in src, "%s 出现了私人坐标/真实名字：%s" % (f, token)

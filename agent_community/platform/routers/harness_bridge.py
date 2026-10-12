@@ -40,6 +40,19 @@ _PKG_ROOT = Path(__file__).resolve().parent.parent.parent   # <repo>/agent_commu
 BRIDGES_ROOT = _PKG_ROOT / "bridges"                        # <repo>/agent_community/bridges
 
 
+def _wake_channel(wakeup_method: str) -> str:
+    """`wakeup_method` → **真实投递通道名**（`inbox` / `pending_queue`）。
+
+    ★为什么要有这一个函数（2026-10-12）：**同一套词在两处被混用** ——
+      `wakeup_method`（`clipboard` / `file_poll` / …）回答的是"这个 harness 靠什么被叫醒"，
+      而 `sent_via` 该回答的是"平台这次**走哪条通道**把东西投出去"。
+      实测外部 agent 就把 `sent_via: "clipboard"` 读成了 ✅ 绿（根本不存在"用剪贴板投递"这回事）。
+      `/bridge-test` 当天改对了，但 `/bridge-verify` **同族没改干净** —— 依旧是旧口径。
+      ⇒ **口径只留这一处**（两处调用），以后不会再分叉。
+    """
+    return "inbox" if (wakeup_method or "").strip().lower() == "file_poll" else "pending_queue"
+
+
 @router.post("/api/harness/bridge-test")
 async def harness_bridge_test(request: Request):
     _audit_log.record("harness.bridge.test", actor="user", target="", detail="桥通道测试")
@@ -67,16 +80,15 @@ async def harness_bridge_test(request: Request):
         "report_endpoint": "/api/harness/bridge-test-result",
     }
     method = _harness_wakeup_method(hid)
+    _channel = _wake_channel(method)          # 真实投递通道（与 /bridge-verify 同一处口径）
     if method == "file_poll":
         ok = _file_poll_send(hid, payload)
         if not ok:
             return Utf8JSONResponse({"error": "写入 inbox 失败（wakeup_dir 不可写）"}, status_code=500)
         print(f"[bridgetest] file_poll 已写 inbox: {hid} test_id={test_id}", flush=True)
-        _channel = "inbox"
     else:
         _pending_push(pending_bridge_tests, hid, payload)
         print(f"[bridgetest] 已入 pending 队列: {hid} test_id={test_id}", flush=True)
-        _channel = "pending_queue"
     _register_bridge_test_inflight(hid, test_id)  # V-17：登记待回报测试，供回报归属校验
     # ★2026-10-12：**顺便报告"这个 harness 名下有几只桥在跑"**。
     #   实测：某个 harness 名下同时跑了 **4 只桥**（失败重试时多起的），而平台**一个字都没说** ——
@@ -913,7 +925,15 @@ async def harness_bridge_verify(request: Request):
     else:
         send_ok = _pending_push(pending_bridge_tests, hid, payload)
     _register_bridge_test_inflight(hid, test_id)  # V-17：登记待回报测试，供回报归属校验
-    channel_check = {"sent": send_ok, "sent_via": method, "test_id": test_id, "reported": False, "ok": False}
+    # ★2026-10-12 二次同步：`sent_via` 必须报**真实投递通道**，不能报 `wakeup_method`。
+    #   本端点原先回 `"sent_via": method`（method = wakeup_method），于是界面/接入方会看到
+    #   「发送成功（clipboard）」这种**根本不存在的通道**（clipboard 是"人工中转"，
+    #   平台并不会用它投递）。`/bridge-test` 当天已改成报 `inbox` / `pending_queue`，
+    #   这里**同一族没改干净** —— 两处口径打架与词汇混用正是当天外部 agent 报回来的问题。
+    #   ⇒ 与 `/bridge-test` 用**同一套通道名**；想知道的 `wakeup_method` 单独给。
+    _channel = _wake_channel(method)
+    channel_check = {"sent": send_ok, "sent_via": _channel, "wakeup_method": method,
+                     "test_id": test_id, "reported": False, "ok": False}
     if send_ok:
         loop = asyncio.get_event_loop()
         deadline = loop.time() + timeout

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -167,6 +168,48 @@ def scan_replies(inbox: Path, platform: str, interval: float) -> None:
                 print(f"[回报] 移动失败 {f.name}: {e2}", flush=True)
 
 
+# ── ★单实例锁（平台模板内置）────────────────────────────────────────────────
+# 为什么必须**内置在模板里**：平台只能**报告**"名下有几只桥"，拦不住 ——
+#   同一 harness 起两只桥 ⇒ 各领一部分件 / 重复投递 / 心跳互相覆盖，
+#   用户只看到"有时重复、有时没人取"的玄学现象（真机实测发生过）。
+# 为什么用"持锁"而不是"pid 文件"：pid 文件在进程崩溃时留僵尸锁、pid 还会被系统复用 ⇒ 判错；
+#   持锁由操作系统在进程结束时自动释放（正常退出或崩溃都一样）—— 永不产生僵尸锁。
+_LOCK_HANDLE = None          # 必须持有引用，否则文件对象被回收 ⇒ 锁被释放
+
+
+def acquire_single_instance(lock_path):
+    """成功返回 (handle, "")；已有实例在跑返回 (None, 原因)。"""
+    global _LOCK_HANDLE
+    try:
+        f = open(lock_path, "a+")
+    except Exception as e:  # noqa: BLE001
+        # 拿不到锁文件不算致命（例如目录只读）—— 如实说一句，但不阻止运行
+        return None, "无法创建锁文件（跳过单实例保护）：%s" % e
+    try:
+        # ⚠️★必须先 seek(0)：`open(..., "a+")` 是**追加模式**，初始指针在 **EOF**；
+        #   而 msvcrt.locking 锁的是"**从当前指针起的** N 字节" ⇒
+        #   不 seek 的话两只桥锁在**不同字节**上、毫无冲突（实测踩过：源码看着全对、就是不拦）。
+        f.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None, "另一只桥正在使用同一个工作目录（拒绝重复启动）"
+    try:
+        f.seek(0)
+        f.truncate()
+        f.write(str(os.getpid()))
+        f.flush()
+    except Exception:  # noqa: BLE001
+        pass
+    _LOCK_HANDLE = f
+    return f, ""
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="file_poll 桥：轮询 inbox 唤醒 harness 并转发回报（平台模板生成）")
     ap.add_argument("--url", default=PLATFORM_URL, help="平台地址")
@@ -182,6 +225,17 @@ def main() -> None:
     inbox.mkdir(parents=True, exist_ok=True)
     print(f"[桥] file_poll harness 桥（平台模板生成）连接 {platform}", flush=True)
     print(f"[桥] harness: {harness_id} | inbox: {inbox} | trigger: {args.trigger or '(无)'}", flush=True)
+
+    # ★单实例保护（建目录之后、开始轮询之前）：同一个 inbox 两只桥会**抢搬同一个任务文件**。
+    _lk, _why = acquire_single_instance(inbox / ".bridge.lock")
+    if _lk is None and _why and "拒绝重复启动" in _why:
+        print("[桥] ⛔ %s" % _why, flush=True)
+        print("[桥] 同一个 harness 只应有一只桥在跑；要重启请先停掉原来那只。"
+              "（inbox: %s）" % inbox, flush=True)
+        sys.exit(2)
+    if _why:
+        print("[桥] 提示: %s" % _why, flush=True)
+
     try:
         self_check(platform, harness_id, inbox)
     except Exception as e:

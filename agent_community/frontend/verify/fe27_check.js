@@ -5,12 +5,15 @@ const fs=require('fs');
 const path=require('path');
 const cp=require('child_process');
 const BASE=process.env.AC_FE_BASE||'http://127.0.0.1:18933';
-const OUT=process.env.AC_VERIFY_OUT||'D:\\Temp\\ac_fe27';
-const PY='D:\\Program Files\\Tencent\\Marvis\\MarvisAgent\\1.60.2800.657\\runtime\\python311\\python.exe';
+const OUT=process.env.AC_VERIFY_OUT||path.join(require('os').tmpdir(),'ac_fe27');
+// ★解释器不许写死本机路径（规则 19：换一台机器就得能跑）——
+//   原来这里钉着某个本机运行时的绝对路径，**已经随仓库发布到公开仓库**（私人定制痕迹）。
+//   约定与 run_all_tests.bat 一致：AC_PYTHON 覆盖 → 退回 PATH 上的 python。
+const PY=process.env.AC_PYTHON||'python';
 fs.mkdirSync(OUT,{recursive:true});
 
 const HID='fe27-probe';
-const AGENT=path.join('D:\\Temp','ac_fe27_agent');
+const AGENT=path.join(require('os').tmpdir(),'ac_fe27_agent');
 
 function sh(cmd){return cp.execSync(cmd,{stdio:'pipe'}).toString();}
 

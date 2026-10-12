@@ -90,7 +90,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       const pre=document.getElementById('aiPrompt');
       const sum=document.querySelector('#tplDetails>summary');
       const btn=document.querySelector('#tplBar, #copyAll .btn'); /* 按钮在 details 外 */
-      const copyBtn=[...document.querySelectorAll('#copyAll .btn')].find(b=>/复制接入教程/.test(b.textContent));
+      /* ★2026-10-12 修：原来按**按钮文案**找（`/复制接入教程/`），而主按钮文案后来改成了
+         「📋 复制这一段给 AI（…）」⇒ 找不到 ⇒ `copyBtnOutside/copyBtnVisible` 双双为 false，
+         **本检查一直红着**（更糟的是 sweep 的汇总有 bug，只有一条失败时汇总显示"全过"，
+         所以没人发现 —— 一次假绿掩盖了另一次）。改用**稳定 id**，正是本文件自己的教训。 */
+      const copyBtn=document.getElementById('copyPrimaryBtn');
       return {
         open: d ? d.open : null,
         preVisible: pre ? pre.checkVisibility() : false,

@@ -406,3 +406,28 @@ def test_template_step4_needs_no_workshop():
         "第 4 步应指向低耗验证间端点（不需要工作间）"
     assert "不需要工作间" in tpl or "刚注册也能验" in tpl, "要说明它不需要工作间"
     assert "跑通" in tpl and "已验证" in tpl, "要说明'跑通才写模板并标记已验证'"
+
+
+# ── E. 词汇不许混：`sent_via` 报"真实通道"，不是"唤醒方式" ────────────────
+def test_sent_via_reports_the_real_channel_not_the_wakeup_method():
+    """★2026-10-12 二次同步：两个投递端点必须用**同一处口径**报真实通道。
+
+    `wakeup_method`（`clipboard`/`file_poll`…）回答"这个 harness 靠什么被叫醒"；
+    `sent_via` 回答"平台这次**走哪条通道**投出去"（`inbox` / `pending_queue`）。
+
+    实测踩过的坑：`/bridge-test` 当天改成真实通道了，**`/bridge-verify` 同族没改干净**，
+    依旧回 `sent_via: "clipboard"` ⇒ 界面显示「发送成功（clipboard）」（**根本不存在的通道**），
+    外部 agent 就把它读成了 ✅ 绿。⇒ 口径只留一处，两处调用；本用例把这条钉死。
+    """
+    from agent_community.platform.routers.harness_bridge import _wake_channel
+
+    assert _wake_channel("file_poll") == "inbox"
+    for m in ("clipboard", "http_api", "acp", "http", "mcp", "", None):
+        assert _wake_channel(m) == "pending_queue", m
+
+    src = open(os.path.join(P, "routers", "harness_bridge.py"), encoding="utf-8").read()
+    code = "\n".join(l for l in src.split("\n") if not l.lstrip().startswith("#"))
+    assert '"sent_via": method' not in code, \
+        "★又出现了 `sent_via: method`（把 wakeup_method 当通道名报出去 —— 词汇混用旧病复发）"
+    assert code.count("_wake_channel(") >= 3, \
+        "两个端点都必须取自同一处口径（`_wake_channel`），别各写各的"
