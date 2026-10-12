@@ -322,6 +322,36 @@ def test_bridge_count_is_logical_bridges_not_processes():
     assert _chain_roots([]) == [] and _chain_roots(None) == []
 
 
+def test_platform_started_bridge_counts_via_registry(monkeypatch):
+    """★平台**自己起的**桥必须被计入（它在进程扫描里是"看不见"的）。
+
+    为什么看不见：进程扫描有意排除 `ParentProcessId == 平台`（避免把"探测动作自己起的
+    子进程"当成桥）⇒ **平台起的桥被一并排除**。实测后果：`auto-connect` 明明起了一只桥，
+    `bridges_running` 却报 **0**（用户会以为没起桥）。
+    ⇒ 必须**合并登记表**（`_bp.record` 正是 auto-connect 起桥后登记的，V-15 步骤2）。
+    """
+    from agent_community.platform import bridge_procs as bp
+    from agent_community.platform.routers.harness_messaging import bridge_instances
+
+    class _Alive:
+        def poll(self):
+            return None
+
+    hid = "reg-count-" + os.urandom(6).hex()   # 文件只导入了 os，没导入 uuid
+    # ⚠️必须带 `pid` —— `describe()` 回的是登记时存的 pid（我第一版漏了它，
+    #   断言就拿不到 from_registry，白跑一轮）
+    monkeypatch.setattr(bp, "_procs",
+                        {hid: {"proc": _Alive(), "pid": 424242, "cmd": "x", "started_at": 0}},
+                        raising=False)
+    try:
+        r = bridge_instances(hid)
+        assert r["count"] == 1, \
+            "★平台起的桥没被计入（进程扫描排除了平台子进程，必须靠登记表补上）：%s" % r
+        assert r.get("from_registry"), "应标明这只来自登记表（便于排障时分清来源）"
+    finally:
+        monkeypatch.setattr(bp, "_procs", {}, raising=False)
+
+
 def test_bridge_instances_shape_is_honest():
     """计数结果是"如实的事实"：0 只 / 1 只 / 多只，各有明确语义。"""
     from agent_community.platform.routers.harness_messaging import bridge_instances

@@ -232,33 +232,26 @@ async def get_harness_activation_prompt(harness_id: str):
     return {"success": True, "harness_id": harness_id, "agent_id": sess.agent_id, "prompt": prompt}
 
 def _probe_pid_watching(inbox: str) -> int:
-    """默认实现：扫进程命令行找看着该邮箱的桥（可被测试替换，见 `_set_watch_probe`）。"""
+    """默认实现：扫进程找**看着这个邮箱的桥**（可被测试替换，见 `_set_watch_probe`）。
+
+    ★2026-10-12 改：**与 `bridge_instances` 统一到同一套判据**（原来两处各写一套）。
+    **原判据的三个毛病**（同一家族、我这轮连续栽过）：
+      ① **不检查是不是桥** —— 任何命令行里提到该邮箱路径的进程（我自己的测试脚本、
+         一条 `dir`、一个 `python -c`）都会被当成"已有桥在看着"；
+      ② **不认解释器** —— powershell/cmd 包裹进程的命令行同样含路径；
+      ③ 与 `bridge_instances` 口径分叉，两处迟早打架。
+    **误判"已有桥在跑"的后果最重**：auto-connect 会**跳过起桥** ⇒
+    **桥根本没起、界面却看着正常**（本项目最怕的死状态）。
+    ⇒ 改为复用 `_probe_pids_watching` + `_chain_roots`（在跑桥脚本 / 只认解释器 / 父子链算一只）。
+    **不对称性**：宁可**少认**也不能多认 —— 少认了会再起一只，而**单实例锁会拦下并说明理由**；
+    多认了则是**静默不启动**，用户无从发现。
+    """
     inbox = (inbox or "").strip()
     if not inbox:
         return 0
     try:
-        import json as _json
-        import os as _o2
-        import subprocess as _sp
-        # ⚠️ 只找**不是平台自己子进程**的匹配：桥是平台起的子进程，而"探测"这个动作本身
-        #    也会起一个子进程 —— 实测被测试桩计成"又启动了一次"（subprocess.run 内部就是 Popen）。
-        #    排除 `ParentProcessId == 平台 pid` 后，探测不会把平台自己的子进程当成"别人的桥"。
-        ps = ("$needle = [System.IO.Path]::GetFullPath($env:AC_NEEDLE); "
-              "$me = [int]$env:AC_SELF_PID; "
-              "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and "
-              "$_.ParentProcessId -ne $me -and "
-              "($_.CommandLine -like ('*' + $needle + '*') -or "
-              " $_.CommandLine -like ('*' + ($needle -replace '\\\\','/') + '*')) } | "
-              "Select-Object -First 1 -ExpandProperty ProcessId | ConvertTo-Json -Compress")
-        env = dict(_o2.environ)
-        env["AC_NEEDLE"] = inbox
-        env["AC_SELF_PID"] = str(_o2.getpid())
-        r = _sp.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
-                    text=True, encoding="utf-8", errors="replace", timeout=30, env=env)
-        out = (r.stdout or "").strip()
-        if not out or out == "null":
-            return 0
-        return int(_json.loads(out))
+        roots = _chain_roots(_probe_pids_watching(inbox))
+        return int(roots[0]) if roots else 0
     except Exception as e:  # noqa: BLE001
         print(f"[auto-connect] 扫进程探测失败（按未探测到处理）: {e}", flush=True)
         return 0
@@ -360,7 +353,25 @@ def bridge_instances(harness_id: str) -> dict:
     matches = _probe_pids_watching(harness_id)
     roots = _chain_roots(matches)                 # ★逻辑桥数（链根），不是进程数
     pids = [m.get("pid") for m in matches]
+    # ★★平台**自己起的**桥必须从登记表来（2026-10-12 实测补）：
+    #   进程扫描按 `ParentProcessId ≠ 平台` **有意排除平台的子进程**（避免把"探测自己起的
+    #   子进程"当成桥）⇒ **平台自己起的桥在扫描里根本看不见**（实测：auto-connect 起了一只，
+    #   `bridges_running` 却报 0）。而 `_bp.record(hid, proc)` 正是 auto-connect 起桥后
+    #   登记的（V-15 步骤2）⇒ **两路合并才准**（与 `_bridge_pid_watching` 同一顺序口径：
+    #   先登记表、再进程扫描）。
+    reg_pid = 0
+    try:
+        from .. import bridge_procs as _bp
+        rec = ((_bp.describe() or {}).get("bridges") or {}).get(harness_id) or {}
+        if rec.get("pid") and str(rec.get("status", "")) == "alive":
+            reg_pid = int(rec["pid"])
+    except Exception:  # noqa: BLE001
+        reg_pid = 0
+    if reg_pid and reg_pid not in pids:
+        roots = sorted(set(roots) | {reg_pid})
+        pids = sorted(set(pids) | {reg_pid})
     return {"count": len(roots), "pids": pids, "logical_pids": roots,
+            "from_registry": reg_pid,
             "warning": ("" if len(roots) <= 1 else
                         ("⚠️ 检测到该 harness 名下**同时有 %d 只在跑的桥** —— "
                          "同一 harness 多只桥会导致**重复投递 / 竞争取件 / 心跳互相覆盖**。"
