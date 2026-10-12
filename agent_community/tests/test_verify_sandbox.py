@@ -112,6 +112,20 @@ def test_commit_verified_marks_template_after_ok(monkeypatch):
     hist = sess.info.metadata.get("bridge_template_verified") or []
     assert hist and hist[-1]["evidence"]["state"] == "ok", "验证证据要留在 metadata 里"
 
+    # ★2026-10-13（老板问："我要的跑通后注册具体模板实现了没？"）：
+    #   标记必须落在**模板本体**上，不能只写进"验证历史"列表 ——
+    #   否则模板跑通后**仍然是"草稿"**（实测：`params={}`、`source="draft"`、没有 verified），
+    #   界面也无从按 V42 §130 显示"这条还没验证过"。V42 F3 定稿要求的就是本体带这几个字段。
+    stored = (sess.info.metadata.get(bt.METADATA_KEY) or [])
+    assert stored, "跑通后必须有一条具体模板落库"
+    one = stored[0]
+    assert one["verified"] is True, "模板本体缺 verified（只写了历史 = 半截功能）"
+    assert one["verified_at"] and one["verified_by"] == "sandbox"
+    assert one["evidence"].get("verified_scope"), "模板本体要带'验的是什么范围'"
+    assert one["params"].get("PLATFORM_URL"), "跑通用的平台地址要写进模板参数（不是空壳）"
+    # 历史里也要带范围（原来 append 的是原始 evidence，范围没落盘）
+    assert hist[-1]["evidence"].get("verified_scope"), "验证历史里也要有 verified_scope"
+
 
 def test_commit_verified_refuses_without_any_template(monkeypatch):
     """没有模板时不许凭空"回写成功"（否则又是一种假状态）。"""
@@ -122,6 +136,42 @@ def test_commit_verified_refuses_without_any_template(monkeypatch):
     monkeypatch.setattr(bt, "list_all", lambda info: [], raising=False)
     with pytest.raises(vs.SandboxError):
         vs.commit_verified({}, "h1")
+
+
+# ── 3.5) ★省略 template 时，生成器要用"跑通后登记的那条模板" ────────────────
+#   老板的问题：「我要的跑通后注册具体模板实现了没？」——
+#   光"登记"不算实现，**登记完还得有人用它**。实测的坑：人工中转型 harness 省略
+#   `template` 时，平台硬默认 `cli_acp` ⇒ 报"未配置 acp_command"（跟它无关的错），
+#   而它名下**已经有一条跑通过的 pending_poll 具体模板**。
+def test_pick_template_prefers_the_verified_concrete_template(monkeypatch):
+    from agent_community.platform import bridge_templates as bt
+    from agent_community.platform.routers import harness_bridge as hb
+
+    info = _Info()
+    monkeypatch.setattr(bt, "list_all", lambda i: [
+        {"name": "没验过的", "kind": "cli_acp", "verified": False},
+        {"name": "跑通桥", "kind": "pending_poll", "verified": True},
+    ], raising=False)
+    kind, why = hb._pick_template_kind(info, {"cli_acp", "pending_poll", "file_poll"})
+    assert kind == "pending_poll", "应当优先用**已验证**的那条，而不是列表里第一条"
+    assert "跑通桥" in why and "已验证" in why, "要说明桥型从哪来的（不然接入方无法判断平台用了哪套配置）"
+
+
+def test_pick_template_falls_back_to_derived_then_says_unknown(monkeypatch):
+    from agent_community.platform import bridge_templates as bt
+    from agent_community.platform.routers import harness_bridge as hb
+
+    # 有模板但都没验过 ⇒ 退回"按注册信息派生"（file_poll harness）
+    info = _Info(wakeup_method="file_poll", wakeup_dir=r"D:\x\inbox")
+    monkeypatch.setattr(bt, "list_all", lambda i: [{"name": "草稿", "kind": "file_poll",
+                                                    "verified": False}], raising=False)
+    kind, why = hb._pick_template_kind(info, {"file_poll", "cli_acp"})
+    assert kind == "file_poll" and "派生" in why
+
+    # 人工中转型、什么都没验过 ⇒ **不许猜**（返回空，让端点如实说"二选一"）
+    info2 = _Info(wakeup_method="clipboard")
+    kind2, why2 = hb._pick_template_kind(info2, {"file_poll", "cli_acp", "pending_poll"})
+    assert kind2 == "" and why2 == "", "猜不出来就要承认猜不出来，不能硬塞一个 cli_acp"
 
 
 # ── 4) 桥参数逐脚本核对 ─────────────────────────────────────────────────────
@@ -181,6 +231,49 @@ def test_teardown_without_sandbox_is_honest(monkeypatch):
     assert "没有验证间" in out["note"]
 
 
+def test_teardown_stops_only_the_sandbox_bridge_not_the_users(monkeypatch, tmp_path):
+    """★★2026-10-13 实测事故：**"验一下"把用户跑通的常驻桥杀了**。
+
+    原来 teardown 传给停桥工具的是 `info.bridge_dir` —— 那是该 harness **登记在册的桥目录**，
+    第 5 步跑通之后用户**正在那个目录里常驻跑桥**。于是：点一次自检 ⇒ 用户的桥被杀，
+    `bridges_running` 从 1 变 0，而平台只报"验证间已拆"。
+    修后判据：**只按验证间自己的目录停**（沙箱里那只临时桥的 argv 里就带这个路径）。
+    """
+    from agent_community.platform.workshop import Workshop, WorkshopMember
+
+    hid = "h-user-bridge"
+    comp = tmp_path / "comp"
+    comp.mkdir(parents=True, exist_ok=True)
+    ws = Workshop(workshop_id=vs.sandbox_dir_name(hid), name="验证间 · " + hid,
+                  workspace_dir=str(comp), hall_content="", members=[
+                      WorkshopMember(member_id="v0", role=vs.SANDBOX_ROLE,
+                                     display_name=hid, harness_ids=[hid])])
+    ws.origin_task_id = vs.SANDBOX_MARK
+    shops = {ws.workshop_id: ws}
+
+    monkeypatch.setattr(vs, "_persist", lambda: None, raising=False)
+    monkeypatch.setattr(vs, "_cleanup_leftover_dirs", lambda h, **k: [], raising=False)
+
+    seen = {}
+
+    def fake_stop(harness_id, bridge_dir):
+        seen["hid"], seen["dir"] = harness_id, bridge_dir
+        return {"killed": 0}
+
+    run(vs.teardown(shops, hid, stop_bridge=fake_stop))
+    assert seen.get("hid") == hid
+    got = str(seen.get("dir") or "")
+    assert "verify_sandbox" in vs.sandbox_dir_name(hid) or got, "必须传一个明确的目录"
+    assert got.startswith(str(comp)) or str(comp) in got, \
+        "★停桥要按**验证间自己的**目录（这里是 %s），实得 %r" % (comp, got)
+
+    # 反向：源码里不许再出现"拿 harness 的 bridge_dir 去停"的旧写法
+    import inspect
+    src = inspect.getsource(vs.teardown)
+    assert 'getattr(info, "bridge_dir"' not in src, \
+        "不许再按 harness 的 bridge_dir 停桥（那是用户常驻桥的目录，会误杀）"
+
+
 # ── 6) ★★平台绝不能被自己的停桥逻辑杀掉 ─────────────────────────────────────
 def test_stop_bridge_processes_excludes_the_platform_itself():
     """实测事故：该函数用裸子串匹配命令行，而**平台自己的命令行里也含 harness_id**
@@ -197,3 +290,30 @@ def test_stop_bridge_processes_excludes_the_platform_itself():
     assert "bridge" in src, "还要求命中桥特征（bridge*.py），宁可漏杀一个桥"
     # 不许再出现"只按 harness_id 子串匹配"的旧写法
     assert "Name -match 'python|node' -and $_.CommandLine \"" not in src or "notlike" in src
+
+
+def test_stop_bridge_only_matches_the_given_dir_not_the_whole_harness():
+    """★★2026-10-13 实测事故：**验一下把用户跑通的桥杀了**。
+
+    事故经过：老板那只常驻桥跑得好好的（`bridges/<hid>/bridge.py`），
+    我跑了一次 `{hid}/verify` 想把跑通的配置登记成模板 —— 验证间 teardown 调
+    `_stop_bridge_processes(hid, 沙箱桥目录)`，而老实现**只要 harness_id ≥3 字符就拿它当匹配串**
+    ⇒ 沙箱那只和**用户常驻那只一起被杀**，`bridges_running` 从 1 变 0，
+    而平台只报"验证间已拆"，**没说自己顺手停了用户的桥**。
+    ⇒ 判据：**给了 bridge_dir 就只认它**；只有没给 dir 时才退回 harness_id。
+    """
+    import inspect
+
+    from agent_community.platform import server as srv
+
+    src = inspect.getsource(srv._stop_bridge_processes)
+    assert "elif harness_id" in src, \
+        "harness_id 只能作为**兜底**（给了 bridge_dir 时不许再用它匹配整只 harness 的桥）"
+    i_dir, i_elif = src.find("needles.append(bridge_dir)"), src.find("elif harness_id")
+    assert i_dir != -1 and i_elif != -1 and i_dir < i_elif, \
+        "判断顺序必须先是 bridge_dir、再 elif harness_id（顺序反了就等于没修）"
+    assert 'needles.append(harness_id)' in src
+    # 顺手钉住"别报假数字"：原来杀没杀都回 killed: 0
+    assert "killed = int(" in src or "killed = 0\n        for tok" in src, \
+        "killed 要如实反映杀了几只（原来无论杀没杀都回 0，调用方无从判断）"
+    assert "matched_by" in src, "要把'按什么匹配的'一起报出来，便于事后追"

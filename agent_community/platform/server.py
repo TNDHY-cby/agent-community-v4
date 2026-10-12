@@ -1095,15 +1095,36 @@ def _stop_bridge_processes(harness_id: str, bridge_dir: str = ""):
     宁可漏杀一个桥（用户可手动停），也**绝不能再杀平台**。
     """
     import subprocess
+    # ★★2026-10-13 实测事故（用户视角最气人的一种）：**给了 bridge_dir 就只按它匹配**。
+    #   事故经过：老板那只常驻桥跑得好好的，我为了把"跑通的配置登记成具体模板"，
+    #   跑了一次 `POST /api/harness/{hid}/verify`；验证间 teardown 调
+    #   `_stop_bridge_processes(hid, 沙箱桥目录)` —— 而本函数**只要 harness_id ≥3 字符
+    #   就拿它当匹配串** ⇒ 命中了**所有**含该 id 的桥进程：
+    #   沙箱那只 + **老板在 harness 侧常驻的那只，一起被杀**。
+    #   之后 `bridges_running` 从 1 变 0，而平台只报"验证间已拆"——**没说自己顺手停了用户的桥**。
+    #   ⇒ 判据：**有 dir 时只认 dir**；没有 dir 时才退回 harness_id
+    #     （注销路径会把该 harness 的 bridge_dir 显式传进来，所以它照样能清干净）。
+    #   顺着项目既有取舍：**宁可漏杀一只桥**（用户可手动停、平台也如实报数），
+    #     也绝不误杀正在服务的桥。
     needles = []
-    if harness_id and len(harness_id) >= 3:
-        needles.append(harness_id)
     if bridge_dir:
         needles.append(bridge_dir)
+    elif harness_id and len(harness_id) >= 3:
+        needles.append(harness_id)
     if not needles:
         return {"killed": 0, "note": "没有可匹配的 harness_id/bridge_dir"}
-    conds = " -or ".join("$_.CommandLine.Contains({0})".format(json.dumps(m)) for m in needles)
+    # ⚠️★2026-10-13 第二个坑（顺着上面那起事故查出来的）：**路径针从来没生效过**。
+    #   老写法用 `json.dumps(m)` 生成 PS 字面量 ⇒ Windows 路径会变成
+    #   `"D:\\DSH\\..."`（双反斜杠），而 PowerShell 的双引号字符串**不把 `\` 当转义符**
+    #   ⇒ 实际拿去做 `Contains` 的是**带双反斜杠的串**，永远匹配不到真实命令行（单反斜杠）
+    #   ⇒ 凡"按目录停桥"的调用**一直静默杀 0 只**（`killed: 0` 也是这么来的，看不出异常）。
+    #   修法：用 PS **单引号**字面量（内部单引号翻倍），不做 JSON 转义。
+    def _ps_lit(s: str) -> str:
+        return "'" + str(s).replace("'", "''") + "'"
+
+    conds = " -or ".join("$_.CommandLine.Contains({0})".format(_ps_lit(m)) for m in needles)
     ps = (
+        "$n=0; "
         "Get-CimInstance Win32_Process | Where-Object { "
         "$_.Name -match 'python|node' -and $_.CommandLine "
         f"-and ({conds}) "
@@ -1112,12 +1133,20 @@ def _stop_bridge_processes(harness_id: str, bridge_dir: str = ""):
         "-and ($_.CommandLine -notlike '*agent_community\\\\platform\\\\server.py*') "
         # ② 必须是桥进程（脚本名里带 bridge）
         "-and ($_.CommandLine -like '*bridge*.py*') "
-        "} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+        "} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $n++ }; "
+        "Write-Output $n"
     )
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
                            timeout=120, capture_output=True, text=True)
-        return {"killed": 0, "ps_rc": r.returncode}
+        # ⚠️原来无论杀了几只都回 `killed: 0` —— 那是**假数字**（调用方拿不到真实结果，
+        #   界面/日志就只能说"已清理"）。这里如实报数。
+        killed = 0
+        for tok in reversed((r.stdout or "").split()):
+            if tok.strip().isdigit():
+                killed = int(tok.strip())
+                break
+        return {"killed": killed, "ps_rc": r.returncode, "matched_by": needles}
     except Exception as e:
         return {"killed": 0, "error": str(e)}
 def _trash_bridge_dir(bridge_dir: str):

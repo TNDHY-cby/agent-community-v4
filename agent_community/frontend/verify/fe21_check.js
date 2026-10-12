@@ -125,7 +125,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
          靠"加大超时重试"才过 —— 而实测这一步稳定要 **11.1~11.5s**，话术却只说"平台会探测"、
          完全不提耗时 ⇒ 用 5~10s 默认超时的 agent 必然把它读成"平台不可用"。
          话术已补：耗时 / 超时值给 ≥30 秒 / 超时≠失败且重试幂等。断言跟着钉住，防止又漂回去。 */
-      '10~15 秒', '超时', '幂等'];
+      '10~15 秒', '超时', '幂等',
+      /* ★2026-10-13 六次同步（老板追问"跑通后注册具体模板实现了没"）：
+         话术必须说清"跑通 → 登记成具体模板 → 生成时可以直接用它"这条链，
+         否则接入方仍会自己猜桥型（实测：省略 template 时平台旧代码硬默认 cli_acp，
+         对人工中转型 harness 报一句跟它无关的错）。 */
+      'template_source', '已验证的具体模板'];
     needPrompt.forEach(k => { if (!promptTxt.includes(k)) fail.push('① aiPrompt 缺「' + k + '」'); });
     if (promptTxt.includes('三步接入')) fail.push('① aiPrompt 仍写「三步接入」（旧口径残留）');
     if (promptTxt.includes('四步接入')) fail.push('① aiPrompt 仍写「四步接入」（已补第 5 步，须与五步一致）');

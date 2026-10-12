@@ -384,6 +384,12 @@ body: {"harness_id": "我的唯一标识"}
           1) 生成桥（平台按你已「已验证」的模板渲染，并返回现成的启动命令）：
              POST http://127.0.0.1:{PORT}/api/harness/{我的harness_id}/bridge/generate
              body: {"template": "桥型"}                   ← **省略 out_dir**，平台自己选落点
+             · ★**也可以整个省掉 `template`**：如果你第 4 步已经在验证间跑通了，
+               平台会把那次跑通的配置**登记成"具体模板"**（模板本体上带
+               `verified=true` / `verified_at` / `evidence`，界面显示"✅ 已验证"），
+               此时这里**省略 `template` 就会直接用它** —— 返回里的 `template_source`
+               会告诉你桥型是**"显式指定"**还是**"已验证的具体模板"**（别猜）。
+               没有可用的已验证模板时，平台**不替你猜**，会回 400 并告诉你二选一。
              · **桥型按你第 1 步自测的结果选**（别照抄某一型 —— 三种型对任何 harness 都通用）：
                  A 能被执行命令拉起（`acp`）        ⇒ `cli_acp`（桥负责拉起会话、把件送进去）
                  B 盯文件夹（`file_poll`）          ⇒ `file_poll`（桥盯着你的 inbox 搬件）

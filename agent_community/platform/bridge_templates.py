@@ -103,6 +103,14 @@ def _normalize_one(raw: Any, *, default_source: str = SOURCE_USER) -> dict:
     if not isinstance(missing, list):
         # 没给就按"参数是否为空"算一个（失败要说话），不假装完整
         missing = [k for k, v in params.items() if not str(v).strip()] if params else []
+    # ★2026-10-13：**"已验证"必须存在模板本体上**（V42 F3 定稿要求的
+    #   `verified` / `verified_at` / `verified_by` / `evidence`）。
+    #   此前这些字段只在"验证历史"列表里，模板本体上没有 ⇒ 表现为：
+    #   · 模板跑通后**仍然是"草稿"**、没有验证时间可显示；
+    #   · 界面无法按 V42 §130 的要求说"这条还没验证过"（字段根本不存在）；
+    #   · 谁也不能靠模板本体判断"它到底验过没有"。
+    #   ⇒ 落到契约里，缺省 `verified=False`（**没验过就说没验过**，不靠缺省值暗示）。
+    _va = raw.get("verified_at")
     return {
         "name": name,
         "path": str(raw.get("path") or "").strip(),
@@ -112,6 +120,10 @@ def _normalize_one(raw: Any, *, default_source: str = SOURCE_USER) -> dict:
         "source": str(raw.get("source") or default_source),
         "complete": bool(raw.get("complete", not missing)),
         "missing": [str(x) for x in missing],
+        "verified": bool(raw.get("verified", False)),
+        "verified_at": (float(_va) if _va else None),
+        "verified_by": str(raw.get("verified_by") or ""),
+        "evidence": dict(raw.get("evidence") or {}),
         "created_at": float(raw.get("created_at") or _now()),
         "updated_at": float(raw.get("updated_at") or raw.get("created_at") or _now()),
     }

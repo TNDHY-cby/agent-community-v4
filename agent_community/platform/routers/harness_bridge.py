@@ -40,6 +40,32 @@ _PKG_ROOT = Path(__file__).resolve().parent.parent.parent   # <repo>/agent_commu
 BRIDGES_ROOT = _PKG_ROOT / "bridges"                        # <repo>/agent_community/bridges
 
 
+def _pick_template_kind(info: Any, available: set) -> tuple:
+    """**省略 `template` 时**用哪种桥型：① 跑通后登记的已验证具体模板 → ② 按注册信息派生 → ③ 空。
+
+    返回 `(kind, 来源说明)`；拿不准就返回 `("", "")` —— **宁可让调用方显式指定，也不替它猜**。
+    """
+    try:
+        from .. import bridge_templates as _bt
+        items = _bt.list_all(info)
+    except Exception:  # noqa: BLE001
+        items = []
+    for t in items:
+        k = str(t.get("kind") or "")
+        if t.get("verified") and k in available:
+            return k, "已验证的具体模板「%s」" % (t.get("name") or "")
+    # 派生口径与 `bridge_template.build()` 同一处（别在两处各判一次）
+    try:
+        from .. import bridge_template as _bl
+        derived = _bl.build(info) or {}
+        k = str(derived.get("template") or "")
+        if k in available:
+            return k, "按注册信息派生（还没在验证间跑通过）"
+    except Exception:  # noqa: BLE001
+        pass
+    return "", ""
+
+
 def _wake_channel(wakeup_method: str) -> str:
     """`wakeup_method` → **真实投递通道名**（`inbox` / `pending_queue`）。
 
@@ -247,7 +273,9 @@ async def harness_verify_bridge(harness_id: str, request: Request):
                                       stop_bridge=lambda hid, bd: _stop_bridge_processes(hid, bd))
     out["committed"] = committed
     out["torndown"] = torndown
-    out["gate_note"] = ("✅ 跑通 ⇒ 已把实测配置写进模板并标记已验证"
+    out["gate_note"] = ("✅ 跑通 ⇒ 已把这次跑通的配置**写进具体模板本体**"
+                        "（`verified=true` / `verified_at` / `evidence`，并补上能确定的参数）；"
+                        "之后 `POST …/bridge/generate` **省略 `template` 就会用它**"
                         if (committed or {}).get("success")
                         else "⛔ 没跑通 ⇒ **没有**写进模板（老板口径：先跑通才写入）")
     _audit_log.record("harness.verify", actor="user", target=harness_id,
@@ -699,15 +727,34 @@ async def harness_bridge_generate(harness_id: str, request: Request):
         body = await request.json()
     except Exception:
         body = {}
-    template = (body.get("template") or "cli_acp").strip()
+    template = (body.get("template") or "").strip()
+    template_source = "显式指定"
     out_dir = (body.get("out_dir") or "").strip()
     sess = harness_manager.sessions.get(harness_id)
     if not sess:
         return Utf8JSONResponse({"error": f"harness {harness_id} 未注册"}, status_code=404)
     available = {t["name"] for t in list_templates()}
+    info = sess.info
+    if not template:
+        # ★2026-10-13：省略 `template` 时**先用"跑通后登记的具体模板"**（V42 F3），
+        #   而不是硬默认 `cli_acp`。
+        #   实测踩到的坑：人工中转型（clipboard）harness 省略 template ⇒ 平台拿 `cli_acp`
+        #   去渲染 ⇒ 报"未配置 acp_command，无法生成 cli_acp 桥" —— 一句**跟它无关**的错，
+        #   而它其实**已经在验证间跑通过一只 pending_poll 桥**（那条记录就在它名下）。
+        #   ⇒ 顺序改为：① 已验证的具体模板 → ② 按注册信息派生 → ③ 如实说"猜不出来，二选一"。
+        picked, why = _pick_template_kind(info, available)
+        if not picked:
+            return Utf8JSONResponse({
+                "error": ("没有指定 `template`，而且这个 harness 还没有「跑通后登记」的具体桥模板"
+                          " —— 平台不替你猜用哪种桥"),
+                "hint": ("二选一：① 先跑一次 `POST /api/harness/%s/verify`：跑通后平台会把配置"
+                         "**登记成具体模板（verified=true）**，之后再调用这里就可以省略 `template`；"
+                         "② 直接显式传 `template`。" % harness_id),
+                "available_kinds": sorted(available),
+            }, status_code=400)
+        template, template_source = picked, why
     if template not in available:
         return Utf8JSONResponse({"error": f"模板不存在: {template}，可用: {sorted(available)}"}, status_code=400)
-    info = sess.info
     # 平台自址：桥用同一地址回连
     try:
         platform_url = str(request.base_url).rstrip("/")
@@ -813,6 +860,9 @@ async def harness_bridge_generate(harness_id: str, request: Request):
         "success": True,
         "harness_id": harness_id,
         "template": template,
+        # ★2026-10-13：**桥型是从哪来的，要说清楚** —— 是调用方指定的，还是平台用了
+        #   "跑通后登记的具体模板"。不写这一句，接入方无法判断"平台有没有用我验过的那套配置"。
+        "template_source": template_source,
         "bridge_file": str(bridge_file),
         "bridge_dir": str(target),
         "bridge_status": sess.info.bridge_status,

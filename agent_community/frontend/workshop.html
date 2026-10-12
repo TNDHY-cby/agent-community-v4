@@ -2350,7 +2350,10 @@ async function loadMemberBridgeTemplate(mid){
     const resp=await fetch(`/api/harness/${encodeURIComponent(hid)}/bridge-templates`);
     const d=resp.ok?await resp.json():null;
     const t=(d&&(d.templates||[]).find(x=>!x.superseded))||(d&&(d.templates||[])[0])||null;
-    _mbTplCache[mid]=t?{name:t.name,kind:t.kind,hid}:{none:true,hid};
+    // ★2026-10-13：把 `verified`/`verified_at` 一起放进缓存 —— 否则渲染那行读不到这两个字段
+    //   （会永远显示"还没验证过"，比不显示更糟：**看起来像没验过，实际验过了**）。
+    _mbTplCache[mid]=t?{name:t.name,kind:t.kind,hid,verified:!!t.verified,
+                        verified_at:t.verified_at||null}:{none:true,hid};
   }catch(e){ _mbTplCache[mid]={none:true,why:String(e&&e.message||e)}; }
   return _mbTplCache[mid];
 }
@@ -2423,7 +2426,13 @@ function sfChannelRow(m){
       tplLine.textContent='桥模板：**还没有** —— 先到「🔌 注册 Harness」为这个 agent 登记一条，再回来建通道。';
       tplLine.style.color='var(--yellow)';
     }else{
-      tplLine.textContent='桥模板：'+(t.name||'（未命名）')+(t.kind?('（'+t.kind+'）'):'')+' · 平台不会替你猜';
+      /* ★2026-10-13（V42 §130：模板没验过就要**明说**）：模板本体现在带 `verified`，
+         界面上直接把它显示出来 —— 一眼能看出"这条是跑通过的"还是"还只是草稿"。 */
+      const v = t.verified
+        ? ' · ✅ 已验证' + (t.verified_at ? '（' + _chAbs(new Date(t.verified_at*1000)) + '）' : '')
+        : ' · ⚠️ 还没验证过（去「大厅」跑一次自检就会写上验证结果）';
+      tplLine.textContent='桥模板：'+(t.name||'（未命名）')+(t.kind?('（'+t.kind+'）'):'')+v;
+      if(!t.verified) tplLine.style.color='var(--yellow)';
     }
   }).catch(()=>{ tplLine.textContent='桥模板：读取失败'; });
   const hist=sfEl('div','ch-hist');

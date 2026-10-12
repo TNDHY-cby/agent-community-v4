@@ -172,6 +172,27 @@ def draft_template_from(info: Any) -> dict:
             "why": "验证间先派生一条草稿用于跑通；跑通后会把实测值回写并标记已验证"}
 
 
+def _measured_params(info: Any, kind: str) -> dict:
+    """**这次跑通时能确定下来的参数**（写进模板本体）。
+
+    只写"平台真知道的"：
+      · 平台地址 —— 验证间里那只桥就是回连它跑通的；
+      · 按注册声明派生的关键值（`file_poll` 的 inbox、`cli_acp` 的拉起命令/工作目录）。
+    **不写猜的**：拿不到的就不写，缺什么由 `missing` 如实显示（宁可不写，也不编）。
+    """
+    p: dict = {"PLATFORM_URL": BRIDGE_PLATFORM}
+    inbox = str(getattr(info, "wakeup_dir", "") or "").strip()
+    acp = str(getattr(info, "acp_command", "") or "").strip()
+    if kind == "file_poll" and inbox:
+        p["INBOX_DIR"] = inbox
+    elif kind == "cli_acp" and acp:
+        p["ACP_COMMAND"] = acp
+        cwd = str(getattr(info, "acp_cwd", "") or "").strip()
+        if cwd:
+            p["ACP_CWD"] = cwd
+    return p
+
+
 #: 平台地址（桥脚本要回连它）。从既有配置取，取不到才退回本机默认 —— 别处不再硬编码。
 def _platform_url() -> str:
     for key in ("AC_PLATFORM_URL", "AC_BASE_URL"):
@@ -572,17 +593,58 @@ def commit_verified(workshops: dict, harness_id: str, *, evidence: dict | None =
     #       **"harness 侧是否真的运行这只桥、agent 能否回话"本次并未验证**。
     #   （把范围写进证据里，接入方和界面才不会过度解读。）
     _ch = str((evidence or {}).get("channel") or "")
+    # ★2026-10-13：**通道名只留一套**。此前同一个东西有三个叫法：
+    #   面向接入方的 `sent_via` 用 `inbox` / `pending_queue`，
+    #   而这里落盘用 `file_mailbox` / `bridge_test_queue` —— 同一份数据两种词，
+    #   谁读谁要猜。⇒ 落盘统一成**面向接入方那套**；读的时候两套都认（历史记录不失效）。
+    _ch = {"file_mailbox": "inbox", "bridge_test_queue": "pending_queue"}.get(_ch, _ch)
     _scope = ("完整链路：平台 → 桥 → 你的 agent → 回报"
-              if _ch == "file_mailbox" else
+              if _ch in ("file_mailbox", "inbox") else
               "**仅桥配置**（桥能连平台/领件/回报；且这只桥是**平台在验证间里启动的**）——"
               "**harness 侧是否运行该桥、agent 能否回话，本次未验证**")
     ev = dict(evidence or {})
+    ev["channel"] = _ch
     ev["verified_scope"] = _scope
-    return {"success": True, "harness_id": harness_id, "template_name": tpl.get("name", ""),
+    # ⚠️历史记录里也必须带范围 —— 原来这里 append 的是**原始 evidence**（不含 scope），
+    #   于是"当时到底验了什么范围"这一步**没有落盘**：界面/接入方看响应知道，
+    #   隔天回头看历史就分不清了。⇒ 落盘用带 scope 的那份。
+    hist[-1]["evidence"] = dict(ev)
+    meta["bridge_template_verified"] = hist[-5:]
+
+    # ══════════════════════════════════════════════════════════════════════
+    # ★★2026-10-13：**把"已验证"写进模板本体**（V42 F3 定稿要求，此前只写了历史列表）
+    #
+    # 老板的问题原话：「我要的跑通后注册具体模板实现了没？」
+    # 实测（`agent_community/data/harnesses.json`）：跑通后模板本体仍是
+    #   `{"name":"验证间草稿桥","kind":"pending_poll","params":{},"source":"draft"}`
+    # —— **没有 verified / verified_at / verified_by / evidence**，params 还是空的，
+    # 名字还叫"草稿"。而 V42 §F3 与 §143 明确要求模板带这几个字段。
+    # ⇒ 半截功能：**登记了"验过"这件事，却没登记"这条模板验过了"**。
+    # 现在补齐：合并实测参数 + 打上验证标记 + 把范围一起写进去。
+    # ══════════════════════════════════════════════════════════════════════
+    merged = dict(tpl.get("params") or {})
+    for k, v in _measured_params(sess.info, tpl.get("kind", "")).items():
+        merged.setdefault(k, v)          # 实测/注册声明里能确定的，补进去；已有的不覆盖
+    tpl_written = _bt.put(sess.info, {
+        **tpl,
+        "params": merged,
+        "verified": True,
+        "verified_at": now,
+        "verified_by": "sandbox",
+        "evidence": dict(ev),
+        "complete": True,
+        "missing": [],
+    }, source=str(tpl.get("source") or "draft"))
+    _persist()
+    return {"success": True, "harness_id": harness_id, "template_name": tpl_written.get("name", ""),
             "verified": True, "verified_at": now, "verified_by": "sandbox",
             "verified_scope": _scope,
             "evidence": ev,
-            "note": "已把「跑通」的配置记为已验证（模板上会显示验证时间）；" + _scope}
+            "template": tpl_written,
+            "params_written": merged,
+            "note": ("已把「跑通」的配置写进模板本体（`verified=true` / `verified_at` / `evidence`，"
+                     "并补上能确定的参数），以后 `bridge/generate` 省略 `template` 时会用它；"
+                     "范围：" + _scope)}
 
 
 async def teardown(workshops: dict, harness_id: str, *, stop_bridge=None) -> dict:
@@ -602,18 +664,28 @@ async def teardown(workshops: dict, harness_id: str, *, stop_bridge=None) -> dic
         return {"success": True, "removed": bool(leftover), "leftover_cleaned": leftover,
                 "note": ("已清理盘上残留的验证间目录（内存里已无登记）" if leftover
                          else "没有验证间（无需拆）")}
-    # ① 停桥（桥进程不属于验证间以外任何东西）
+    # ① 停桥 —— ★只停**验证间自己起的那只**。
+    #   ⚠️★2026-10-13 实测事故（用户视角最气人的一种）：这里原来传的是
+    #   `info.bridge_dir`（该 harness **登记在册的桥目录**）—— 而第 5 步跑通之后，
+    #   用户会在**那个目录**里常驻跑着自己的桥。于是"点一下自检"= **把用户跑通的桥杀掉**，
+    #   事后 `bridges_running` 从 1 变 0，而平台只报"验证间已拆"，**没说自己停了用户的桥**。
+    #   ⇒ 判据：**按验证间自己的目录停**（沙箱里那只临时桥的 argv 里就带这个路径）；
+    #     验证间目录都算不出来时，**宁可不杀**，也绝不按 harness 的桥目录去扫。
     if callable(stop_bridge):
         try:
-            info = None
+            sandbox_dir = ""
             try:
-                from .harness_adapter import harness_manager
-                sess = harness_manager.sessions.get(harness_id)
-                info = getattr(sess, "info", None)
+                mem = (getattr(ws, "members", None) or [{}])[0]
+                sandbox_dir = _bt_mailbox(ws, mem) if mem else ""
             except Exception:  # noqa: BLE001
-                pass
-            removed["bridge_stopped"] = stop_bridge(
-                harness_id, str(getattr(info, "bridge_dir", "") or ""))
+                sandbox_dir = ""
+            if sandbox_dir:
+                removed["bridge_stopped"] = stop_bridge(harness_id, sandbox_dir)
+            else:
+                removed["bridge_stopped"] = {
+                    "killed": 0,
+                    "note": "算不出验证间目录 ⇒ **没有停任何桥**（绝不按 harness 的桥目录去扫，那是用户的常驻桥）",
+                }
         except Exception as e:  # noqa: BLE001
             removed["bridge_stopped"] = f"停桥失败（不阻断拆除）: {e}"
     # ② 删隔间产物（验证间目录随它一起删）
