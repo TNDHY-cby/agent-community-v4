@@ -24,14 +24,37 @@ import re
 import time
 from typing import Any
 
-#: 包装脚本落点（平台自己的目录；不接收外部路径）
-RUNTIME_SUBDIR = os.path.join("agent_community", "data", "runtime", "wake")
+#: 包装脚本落点（平台自己的目录；不接收外部路径）。
+#: ★2026-10-12 改为**相对平台真实数据目录**：`<DATA_DIR>/runtime/wake`。
+#:   原来写死成 `agent_community/data/runtime/wake`（一个**仓库布局**的相对路径），
+#:   于是：① 测试里 DATA_DIR 被重定向到 tmp，它却照样写进**真仓库**
+#:        （被 conftest 的"污染真实数据"守卫抓到）；
+#:        ② 部署形态一变（数据目录搬走）就会写到错地方。
+#:   与项目其它落盘点（审计/状态/桥日志）**同一口径**：只认 `server.DATA_DIR`。
+RUNTIME_SUBDIR = os.path.join("runtime", "wake")
 
 _SAFE_ID = re.compile(r"[^A-Za-z0-9_.\-]")
 
 
-def _runtime_root(root: str) -> str:
-    return os.path.join(root, RUNTIME_SUBDIR)
+def _data_root() -> str:
+    """平台真实数据目录（唯一真相是 `server.DATA_DIR`）。"""
+    try:
+        from .server import DATA_DIR as _DD
+        return str(_DD)
+    except Exception:  # noqa: BLE001
+        # 兜底：仅在 server 不可用时退回包内 data（正常运行时不会走到）
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
+
+
+def _runtime_root(root: str = "") -> str:
+    """包装脚本目录 = `<平台真实数据目录>/runtime/wake`。
+
+    ⚠️`root` 参数**只为兼容旧调用方而保留，故意不再使用**：
+    它曾让"仓库布局"成为落点依据 ⇒ 测试把 DATA_DIR 重定向到 tmp 时，
+    脚本照样写进**真仓库**（实测被抓）；部署形态一变也会写错地方。
+    **落点只认 `server.DATA_DIR`（与审计/状态/桥日志同一口径）。**
+    """
+    return os.path.join(_data_root(), RUNTIME_SUBDIR)
 
 
 def safe_name(harness_id: str) -> str:

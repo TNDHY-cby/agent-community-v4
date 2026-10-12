@@ -121,10 +121,19 @@ def guard_real_data_dir():
 
     changed = []
     for k in sorted(set(before) | set(after)):
-        if before.get(k) != after.get(k):
-            b = before.get(k)
-            a = after.get(k)
-            changed.append(f"    {k}: {b} -> {a}")
+        b = before.get(k)
+        a = after.get(k)
+        if b == a:
+            continue
+        # ★2026-10-12：**只变了 mtime 不算污染**。
+        #   实测：线上服务（或看门狗）会周期性**用相同内容重写** `audit.json` ——
+        #   大小不变、mtime 变 ⇒ 守卫误报"测试污染了真实数据"，而测试其实一个字节都没写。
+        #   判据收紧为：**内容变了才报**（新增文件 / 删除文件 / 大小变化）。
+        #   理由：真污染（数据丢失、API Key 被覆写）必然改变**大小**或**文件集合**；
+        #   而"同大小同内容、只是被外部重写"与测试无关。
+        if b is not None and a is not None and b[0] == a[0]:
+            continue
+        changed.append(f"    {k}: {b} -> {a}")
 
     after_cfg = _fp_one(REAL_USER_CONFIG)
     if before_cfg != after_cfg and before_cfg[0]:

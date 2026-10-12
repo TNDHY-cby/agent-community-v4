@@ -298,8 +298,9 @@ async def harness_wake_set(harness_id: str, request: Request):
                 status_code=400,
             )
     cmd = str(body.get("command") or "")
-    root = str(_PKG_ROOT.parent)
-    w = _bw.write_wrapper(root, harness_id, cmd)
+    # 落点由 bridge_wake 依 server.DATA_DIR 决定（这里不再传仓库根：
+    #   传了也没用，且会让仓库布局变成落点依据 —— 2026-10-12 已收敛为单一真相）。
+    w = _bw.write_wrapper("", harness_id, cmd)
     if not w.get("ok"):
         # 失败要说话：原因 + 怎么改
         return Utf8JSONResponse({"error": w.get("error", "写入失败"), "hint": w.get("fix", "")},
@@ -493,8 +494,8 @@ async def harness_bridge_template_put(harness_id: str, request: Request):
     if _trigger_cmd:
         try:
             from .. import bridge_wake as _bw
-            _root = str(_PKG_ROOT.parent)          # <repo>
-            _wr = _bw.write_wrapper(_root, harness_id, _trigger_cmd)
+            # 同上：落点只认 server.DATA_DIR（2026-10-12 收敛）
+            _wr = _bw.write_wrapper("", harness_id, _trigger_cmd)
             if _wr.get("ok"):
                 sess.info.metadata = dict(sess.info.metadata or {})
                 sess.info.metadata["wake_wrapper"] = {
