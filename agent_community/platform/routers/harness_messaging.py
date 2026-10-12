@@ -274,6 +274,69 @@ def _set_watch_probe(fn) -> None:
     _WATCH_PROBE = fn or _probe_pid_watching
 
 
+def _probe_pids_watching(needle: str) -> list:
+    """扫进程命令行，返回**所有**匹配该线索的 pid（不只第一个）。
+
+    ★2026-10-12 新增：真机实测发现 `traecode-harness-01` 名下**同时有 4 只桥在跑**
+      （那个 agent 在"路径引号被拆断、进程秒退"时重试了几次，每次都真的起了一只）。
+      **同一 harness 多只桥 ⇒ 重复投递 / 竞争取件 / 心跳互相覆盖** —— 而平台**一个字都没说**。
+      （`harness_messaging` 里那句注释早就写着"同一邮箱多只桥 ⇒ 重复投递"，
+        问题是这个事实从来没被**报告出去**。）
+      ⇒ 本函数给它一个可报告的计数。只有一只时与 `_probe_pid_watching` 等价。
+    """
+    needle = (needle or "").strip()
+    if not needle:
+        return []
+    try:
+        import json as _json
+        import os as _o2
+        import subprocess as _sp
+        # ⚠️★**不要**对线索做 `[System.IO.Path]::GetFullPath`：
+        #   本函数既可能收到**绝对路径**（邮箱），也可能收到 **harness_id**（一个普通标识符）。
+        #   `GetFullPath('traecode-harness-01')` 会把它解析成"平台当前目录下的同名文件"，
+        #   于是拿一个**根本不存在的路径**去匹配进程命令行 ⇒ **永远匹配不到**。
+        #   （实测：名下明明有 4 只桥在跑，却回 `bridges_running = 0`。我又栽在"想当然"上。）
+        #   ⇒ 原样用线索，并额外试一次"正斜杠"变体（进程命令行里两种都可能出现）。
+        # ⚠️判据必须**同时**满足两条，否则会误计：
+        #   ① 命令行里含该 harness 的线索；
+        #   ② **确实是在跑桥脚本**（`*bridge.py*`）。
+        #   只按①判会把我自己（或用户）任何"命令行里提到这个 harness_id"的进程都算成桥 ——
+        #   实测：一个 `python -c "...traecode-harness-01..."` 的调用脚本被计成了第 5 只桥。
+        ps = ("$needle = $env:AC_NEEDLE; "
+              "$me = [int]$env:AC_SELF_PID; "
+              "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and "
+              "$_.CommandLine -like '*bridge.py*' -and "
+              "$_.ParentProcessId -ne $me -and "
+              "($_.CommandLine -like ('*' + $needle + '*') -or "
+              " $_.CommandLine -like ('*' + ($needle -replace '\\\\','/') + '*')) } | "
+              "Select-Object -ExpandProperty ProcessId | ConvertTo-Json -Compress")
+        env = dict(_o2.environ)
+        env["AC_NEEDLE"] = needle
+        env["AC_SELF_PID"] = str(_o2.getpid())
+        r = _sp.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
+                    text=True, encoding="utf-8", errors="replace", timeout=30, env=env)
+        out = (r.stdout or "").strip()
+        if not out or out == "null":
+            return []
+        v = _json.loads(out)
+        if isinstance(v, int):
+            return [v]
+        return [int(x) for x in (v or [])]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def bridge_instances(harness_id: str) -> dict:
+    """这个 harness 名下**有几只桥在跑**（供响应体如实报告，别让用户蒙在鼓里）。"""
+    pids = _probe_pids_watching(harness_id)
+    return {"count": len(pids), "pids": pids,
+            "warning": ("" if len(pids) <= 1 else
+                        ("⚠️ 检测到该 harness 名下**同时有 %d 只在跑的桥** —— "
+                         "同一 harness 多只桥会导致**重复投递 / 竞争取件 / 心跳互相覆盖**。"
+                         "请只保留一只：把多余的停掉（它们通常是失败重试时多起的）。"
+                         % len(pids)))}
+
+
 def _bridge_pid_watching(harness_id: str, inbox: str) -> int:
     """**已经有一只桥在看着这个邮箱**吗？返回它的 pid，没有返回 0。
 

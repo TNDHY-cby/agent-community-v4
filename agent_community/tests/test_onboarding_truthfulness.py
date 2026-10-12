@@ -252,6 +252,47 @@ def test_verify_tells_where_to_run_a_persistent_bridge():
         "必须写明 out_dir 只能落在平台的 bridges/ 内（实测否则 400）"
 
 
+# ── I. "同一 harness 多只桥"必须被说出来 ────────────────────────────────
+def test_duplicate_bridges_are_detected_and_reported():
+    """★平台要能**报告**"这个 harness 名下有几只桥在跑"（>1 给 warning）。
+
+    实测（2026-10-12）：某个 harness 名下**同时跑了 2 只桥**（失败重试时多起的），
+    而平台**一个字都没说** —— 用户只会看到"有时消息重复、有时没人取"这种玄学现象。
+    `harness_messaging` 的注释早就写着"同一邮箱多只桥 ⇒ 重复投递"，但**从没报告出去**。
+    """
+    import inspect
+
+    from agent_community.platform.routers import harness_messaging as hm
+
+    assert hasattr(hm, "bridge_instances"), "缺少'名下有几只桥'的查询"
+    assert hasattr(hm, "_probe_pids_watching"), "缺少计数型扫描（原来的只回第一只）"
+    # ⚠️**剥掉注释再查**：函数里有一段注释专门解释"为什么不要用 GetFullPath"，
+    #   不剥的话判据会被自己的注释打中（我今天已经在这上面栽了第三次）。
+    src = "\n".join(l for l in inspect.getsource(hm._probe_pids_watching).split("\n")
+                    if not l.lstrip().startswith("#"))
+    # ★判据必须同时要求"在跑桥脚本"，否则任何命令行提到 harness_id 的进程都会被算成桥
+    #   （实测：一个 python -c 调用脚本被计成了第 5 只桥）
+    assert "bridge.py" in src, "扫描必须要求'确实在跑桥脚本'，否则会误计"
+    # ★绝不能对非路径线索做 GetFullPath（会把 harness_id 解析成不存在的路径 ⇒ 永远匹配不到）
+    assert "GetFullPath" not in src, \
+        "不要把线索当路径解析 —— harness_id 会被解析成不存在的路径，导致永远扫不到"
+    assert "warning" in inspect.getsource(hm.bridge_instances), ">1 时要给出 warning"
+    # bridge-test 要把它报出去
+    from agent_community.platform.routers import harness_bridge as hb
+    bsrc = inspect.getsource(hb)
+    assert "bridges_running" in bsrc and "bridge_warning" in bsrc, \
+        "bridge-test 必须把'名下有几只桥'报出来"
+
+
+def test_bridge_instances_shape_is_honest():
+    """计数结果是"如实的事实"：0 只 / 1 只 / 多只，各有明确语义。"""
+    from agent_community.platform.routers.harness_messaging import bridge_instances
+
+    r = bridge_instances("definitely-not-a-real-harness-xyz")
+    assert set(r) >= {"count", "pids", "warning"}, r
+    assert r["count"] == 0 and r["pids"] == [] and r["warning"] == "", r
+
+
 # ── D. 话术第 4 步：不需要工作间 ─────────────────────────────────────────
 def test_template_step4_needs_no_workshop():
     """★话术第 4 步必须指向 `{hid}/verify`（刚注册就能自检），而不是必须先有工作间的那个端点。"""

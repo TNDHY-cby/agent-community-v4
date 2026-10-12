@@ -78,6 +78,15 @@ async def harness_bridge_test(request: Request):
         print(f"[bridgetest] 已入 pending 队列: {hid} test_id={test_id}", flush=True)
         _channel = "pending_queue"
     _register_bridge_test_inflight(hid, test_id)  # V-17：登记待回报测试，供回报归属校验
+    # ★2026-10-12：**顺便报告"这个 harness 名下有几只桥在跑"**。
+    #   实测：某个 harness 名下同时跑了 **4 只桥**（失败重试时多起的），而平台**一个字都没说** ——
+    #   用户只会看到"有时消息重复、有时没人取"这种玄学现象。
+    _inst = {}
+    try:
+        from .harness_messaging import bridge_instances as _bi
+        _inst = _bi(hid)
+    except Exception:  # noqa: BLE001
+        _inst = {}
     # ★★2026-10-12 实测修两处误导（真机材料：那个 agent 把本响应读成了 ✅ 绿）：
     #   ① `sent_via` 原来回的是 **`wakeup_method`**（如 `clipboard`），而**真实投递通道**
     #      是 `inbox`（file_poll 型）或 `pending_queue`（其余型）—— 词汇又被混用了，
@@ -100,6 +109,10 @@ async def harness_bridge_test(request: Request):
                  % (_channel, hid, hid)),
         "confirm_url": "/api/harness/%s/wake" % hid,
         "verify_url": "/api/harness/%s/verify" % hid,
+        # 名下有几只桥在跑（>1 会给 warning）—— 别让"多只桥并存"变成玄学故障
+        "bridges_running": _inst.get("count"),
+        "bridge_pids": _inst.get("pids"),
+        "bridge_warning": _inst.get("warning") or "",
     }
 
 @router.get("/api/harness/pending-bridge-tests")
