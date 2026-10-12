@@ -45,7 +45,11 @@ SELF = Path(__file__).resolve()
 SCAN_DIR = Path(ARGS[0]).resolve() if ARGS else ROOT
 
 SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "data", "runtime_logs", ".venv", "venv", "node_modules"}
-TEXT_EXT = {".py", ".md", ".json", ".html", ".js", ".css", ".txt", ".tmpl", ".yml", ".yaml", ".toml", ".cfg", ".ini", ".example"}
+TEXT_EXT = {".py", ".md", ".json", ".html", ".js", ".css", ".txt", ".tmpl", ".yml", ".yaml", ".toml", ".cfg", ".ini", ".example",
+            # ★2026-10-08 补：**脚本类以前完全不在扫描范围**——于是 `start_18920_v26.ps1`
+            #   （入库的启动脚本）里躺着明文平台 token，扫描器一次都没看过它。
+            #   泄露最可能发生的地方恰恰是"启动脚本 / 批处理"，必须扫。
+            ".ps1", ".psm1", ".bat", ".cmd", ".sh"}
 
 # 每条规则带 severity：
 #   secret —— 真凭据，必须拦截（任何模式下都返回 1）
@@ -57,6 +61,17 @@ RULES = [
     ("真实harness名-TraeWork", re.compile(r"TraeWork|TRAE SOLO|trae-cn", re.I), "policy"),
     ("真实harness名-dsh私有壳", re.compile(r"dsh-web-\d|dsh_harness|dsh_acp_bridge|deepseek-harness-acp"), "policy"),
     ("疑似真实密钥", re.compile(r"sk-[A-Za-z0-9]{16,}"), "secret"),
+    # ★2026-10-08 补：**平台 token 这类"非 sk- 形态"的密钥以前完全扫不到**。
+    #   实测：`start_18920_v26.ps1`（入库文件）里躺着明文
+    #   `--token "W2SYUha8Hk3gN9J4jsEomDI7KtOR6dQP"`，而 `--secrets-only` 发布闸门仍返回 0
+    #   （"无真实凭据"）—— 仓库绑 0.0.0.0 时 token 就是唯一的锁，漏掉它等于没有闸门。
+    #   1) 命令行字面量：`--token "长串"`
+    #   2) 键值形：token/api_key/secret/password = "长度 ≥ 24 的随机串"
+    #   （白名单里放行 `<占位>` / `$env:` / `${...}` / `xxx` / `your-key` 这类写法）
+    #   ★实测的泄露写法是**命令行形式**：`"--port","18920","--token","<长串>"`
+    #   （值被引号包着、前面还有逗号）——所以引号/逗号都要可选地吃掉，只管"后面跟长随机串"。
+    ("疑似真实密钥-命令行字面量", re.compile(r"""--(?:token|api[-_]?key|secret|password)["']{0,2}\s*,?\s*["']{0,2}[A-Za-z0-9_\-]{20,}""", re.I), "secret"),
+    ("疑似真实密钥-键值长串", re.compile(r"""(?:token|api[-_]?key|secret|password)\s*[:=]\s*["']?[A-Za-z0-9_\-]{24,}["']?""", re.I), "secret"),
     ("文档元数据块", re.compile(r"AIGC:\s*$", re.M), "policy"),
 ]
 ALLOW = [
@@ -67,6 +82,14 @@ ALLOW = [
     re.compile(r"AC_AI_API_KEY=sk-"),
     # 脱敏测试夹具（tests/test_security.py、tests/test_smoke.py）
     re.compile(r"sk-abcdefghijklmnop"),
+    # 单元测试夹具（含"unit-test-secret"字样，一眼假）：tests/test_a2a_edge_auth.py 等
+    re.compile(r"unit-test-secret"),
+    # test_security.py 的中文密钥夹具
+    re.compile(r"sk-ant-0123456789abcdef"),
+    # 占位写法一律放行（文档/示例里应当这么写）
+    re.compile(r"--token\s*,?\s*[\"']?[<$\{]"),
+    re.compile(r"(?i)(?:token|api[-_]?key|secret|password)\s*[:=]\s*[\"']?[<$\{][^\"']*"),
+    re.compile(r"(?i)(?:token|api[-_]?key|secret|password)\s*[:=]\s*[\"']?(?:your|xxx|placeholder|changeme|xxx-|sk-xxx)"),
 ]
 
 

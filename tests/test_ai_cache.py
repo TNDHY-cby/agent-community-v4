@@ -37,7 +37,12 @@ class EchoProvider(AIProvider):
 
 
 def run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # 2026-10-02：统一改用 asyncio.run。
+    # 此前用 asyncio.get_event_loop()，一旦同批次中有模块调用过 asyncio.run
+    # （如 test_reasoning_effort.py），主线程 event loop 会被置空，本模块随即抛
+    # RuntimeError: There is no current event loop in thread 'MainThread'，
+    # 导致测试结果依赖文件执行顺序（字母序侥幸全绿，换序即失败）。
+    return asyncio.run(coro)
 
 
 class TestAICache:

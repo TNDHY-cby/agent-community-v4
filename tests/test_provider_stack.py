@@ -42,7 +42,9 @@ def build_stack(tmpdir: str, inner: CountingFake | None = None):
 
 
 def run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # 2026-10-02：统一改用 asyncio.run，消除对测试执行顺序的依赖
+    # （详见 test_ai_cache.py 同名函数注释）。
+    return asyncio.run(coro)
 
 
 class TestProviderStack:
