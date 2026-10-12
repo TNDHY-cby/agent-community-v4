@@ -268,6 +268,15 @@ async def register_harness(request: Request):
     if _bad_actions:
         return Utf8JSONResponse(
             {"error": f"scripts 含未知动作 {_bad_actions}；可用动作 {list(_ACTIONS)}"}, status_code=400)
+    # ★2026-10-12：**这条入口也要把 hint 线索存下来**（我只修了 probe-register 那条，
+    #   实测被 V43 规则 19 验收抓出来：register 进的 harness 里 `probe_hints` 是空的）。
+    #   同一件事有**两个入口**时，改一处等于没改 —— 这正是规则 20 说的"必须同时对齐"。
+    _hints = {k: body.get(k) for k in ("process_hint", "port_hint", "path_hint")
+              if body.get(k) not in (None, "")}
+    if _hints:
+        _meta = dict(body.get("metadata") or {})
+        _meta["probe_hints"] = _hints
+        body["metadata"] = _meta
     try:
         info = HarnessInfo(**body)
     except Exception as e:
@@ -313,11 +322,36 @@ async def register_harness(request: Request):
     if not ok:
         return Utf8JSONResponse({"error": f"wakeup_dir 校验失败: {err}"}, status_code=400)
     # V-4 修复：acp_command 校验（防 cmd /c 等解释器包装导致的 RCE）
-    # MCP 客户端类型不需要本地拉起命令，豁免该校验（api_base_url 已做 SSRF 校验）
-    if getattr(info, "wakeup_method", None) != WakeupMethod.MCP:
+    #
+    # ★★2026-10-12 实测修一处**过度要求**：原代码对**所有非 MCP 类型**都强制校验
+    #   `acp_command`，于是 `wakeup_method=file_poll / http_api / clipboard` 这类
+    #   **根本用不到拉起命令**的接入方式也会被 400 拒（报"acp_command 不能为空"）。
+    #   实测场景（V43 规则 19 验收）：一个全新 agent 只带身份 + 文件邮箱来注册 ⇒
+    #   **第一步就卡住**，而用户的反应只会是"平台有问题"。
+    #   ⇒ 规则：**只在这些方式真正需要它时才要求**，且报错要说清它是干什么的、怎么填。
+    _wm = getattr(info, "wakeup_method", None)
+    _need_acp = {
+        # 平台要**自己把 agent 拉起来**时才需要拉起命令
+        WakeupMethod.ACP: True,
+        WakeupMethod.HTTP: True,        # 非 api 的 http 唤醒：桥走"兜底轮询"，仍需要一条叫醒命令
+        WakeupMethod.FILE_POLL: False,  # 靠轮询邮箱，agent 自己来取
+        WakeupMethod.HTTP_API: False,   # 平台直接推，不需要拉起
+        WakeupMethod.CLIPBOARD: False,  # 人工中转
+        WakeupMethod.MCP: False,        # 远程 MCP，不需要本地拉起
+    }.get(_wm, True)                    # 未知类型从严：要求给命令
+    if _need_acp:
         ok, err = validate_acp_command(info.acp_command or "")
         if not ok:
-            return Utf8JSONResponse({"error": f"acp_command 校验失败: {err}"}, status_code=400)
+            return Utf8JSONResponse({
+                "error": f"acp_command 校验失败: {err}",
+                "hint": ("`acp_command` 是**平台拉起你的 agent 用的那条命令**"
+                         "（所以它不能是 `cmd /c` 这类解释器包装，也不能带 shell 元字符）。"
+                         "如果你的 agent 靠轮询邮箱取任务、不需要被拉起，"
+                         "就把 `wakeup_method` 填 `file_poll`（或 `http_api`/`clipboard`），"
+                         "那样就不必提供这条命令。"),
+                "wakeup_method": getattr(_wm, "value", str(_wm)),
+                "acp_command_required_for": "acp / http（需要平台拉起）",
+            }, status_code=400)
     # 注册到 manager
     sess, bridge = harness_manager.register(info)
     # ── V26 步骤 0：登记**动作脚本**配置（新建对话/重命名对话/投递）——幂等覆盖 ──

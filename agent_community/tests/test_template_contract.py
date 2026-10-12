@@ -138,14 +138,45 @@ def test_template_field_names_are_real_or_annotated():
 def test_probe_hints_are_persisted_on_registration():
     """★`*_hint` 线索必须**真的被存下来**（此前填了被 pydantic 静默丢弃）。
 
-    放在这个文件里，是因为它和上面那条同源：**"文档承诺了、平台没做"**。
+    ⚠️★**两个入口都要**：`probe-register`（探测注册）**和** `register`（直接注册）。
+    实测教训：我先只修了 probe-register，结果用 `register` 进来的 harness 里
+    `probe_hints` 还是空的 —— **被 V43 规则 19 验收当场抓出来**（9/10）。
+    同一件事有多个入口时，改一处等于没改（规则 20）。
     """
     import inspect
 
     from agent_community.platform.routers import harness_register as hr
 
-    src = inspect.getsource(hr.harness_probe_register)
-    assert "probe_hints" in src, (
-        "probe-register 没有把 *_hint 存进 metadata['probe_hints'] ⇒ "
-        "外端 agent 按文档填的线索会被静默丢弃（实测过）")
-    assert "metadata" in src, "线索要落在 metadata 上"
+    for fn_name in ("harness_probe_register", "register_harness"):
+        fn = getattr(hr, fn_name, None)
+        assert fn is not None, "找不到 %s（改名了？请同步本测试）" % fn_name
+        src = inspect.getsource(fn)
+        assert "probe_hints" in src, (
+            "%s 没有把 *_hint 存进 metadata['probe_hints'] ⇒ "
+            "这条入口进来的 harness 会丢掉线索（实测过：只修了另一条入口）" % fn_name)
+
+
+def test_acp_command_only_required_when_actually_needed():
+    """★**不要向用不到的接入方式索要拉起命令**（2026-10-12 实测修）。
+
+    `wakeup_method=file_poll / http_api / clipboard` 的 agent **不需要平台拉起**
+    （靠轮询邮箱 / 平台直接推 / 人工中转）。原代码对所有非 MCP 类型都强制校验
+    `acp_command` ⇒ 一个全新 agent 只带身份 + 邮箱来注册，**第一步就被 400 拒**
+    （报"acp_command 不能为空"），而用户只会觉得"平台有问题"。
+    """
+    import inspect
+
+    from agent_community.platform.protocol import WakeupMethod
+    from agent_community.platform.routers import harness_register as hr
+
+    src = inspect.getsource(hr.register_harness)
+    assert "_need_acp" in src, "缺少'按需索要 acp_command'的判断"
+    # 这些方式**不该**被要求
+    for wm in (WakeupMethod.FILE_POLL, WakeupMethod.HTTP_API, WakeupMethod.CLIPBOARD,
+               WakeupMethod.MCP):
+        assert "WakeupMethod.%s: False" % wm.name in src, \
+            "%s 用不到拉起命令，不应强制要求 acp_command" % wm.name
+    # 这些方式**要**被要求（平台要自己把 agent 拉起来）
+    for wm in (WakeupMethod.ACP, WakeupMethod.HTTP):
+        assert "WakeupMethod.%s: True" % wm.name in src, \
+            "%s 需要平台拉起，必须要求 acp_command" % wm.name
