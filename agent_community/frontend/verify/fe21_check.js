@@ -100,12 +100,20 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
        ⇒ 现在改成让 **agent 先自测**（四项动手自测 + 测不出来选 E，平台如实说明差哪一步）。
        另外把当天修的两个真坑也写进模板：**别把桥型名当 wakeup_method**（照填会被 400 拒）。
        断言跟着新口径走，**不是放宽**：仍然要求四步接入 / `/wake` 顺序 / 编码坑 / wake.cmd。 */
+    /* ★2026-10-12 再更新（**规则 20：界面文案与验收脚本必须同改**）：
+       真机实测发现，话术只到第 4 步（自检）就结束 ⇒ 新 agent 拿到"配置可行"就**停住**，
+       永远不知道还要**把桥常驻跑起来**才能真正接到活（平台派的活只会躺在队列里）。
+       ⇒ 模板补了**第 5 步**，本断言同步改为要求「五步接入」+ 第 5 步那几个关键点。
+       ⚠️注意这条正是我上一次改文案时踩到的：**改文案不同步改断言 ⇒ 前端验收直接红**。 */
     const needPrompt = ['先自己测', '不要先问人', 'cli_acp', 'file_poll', 'http_api', 'clipboard',
-      '四步接入', '/wake', 'wrapper_path', 'self-check', 'not_picked', 'no_reply',
+      '五步接入', '/wake', 'wrapper_path', 'self-check', 'not_picked', 'no_reply',
       'PYTHONIOENCODING=utf-8', 'wake.cmd', 'unrecognized arguments',
-      'wakeup_method'];
+      'wakeup_method',
+      /* 第 5 步（持久跑桥）与"验的是什么范围"—— 这两组是 2026-10-12 新增的必须项 */
+      'bridge/generate', 'launch_hint', '常驻', 'verified_scope', 'delivered_confirmed'];
     needPrompt.forEach(k => { if (!promptTxt.includes(k)) fail.push('① aiPrompt 缺「' + k + '」'); });
-    if (promptTxt.includes('三步接入')) fail.push('① aiPrompt 仍写「三步接入」（旧口径残留，须与四步一致）');
+    if (promptTxt.includes('三步接入')) fail.push('① aiPrompt 仍写「三步接入」（旧口径残留）');
+    if (promptTxt.includes('四步接入')) fail.push('① aiPrompt 仍写「四步接入」（已补第 5 步，须与五步一致）');
     /* 顺序也要对：桥是"起"的时候才带上叫醒命令 ⇒ 必须先配 wake 再 auto-connect */
     const iWake = promptTxt.indexOf('/wake');
     const iConn = promptTxt.indexOf('auto-connect');
