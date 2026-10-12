@@ -12,7 +12,14 @@ from ..experience_v2 import harness_reputation_bonus as _v2_harness_reputation_b
 from ..ai_external import run_ai_call as ai_external_run_ai_call
 from ..memory import capability_ledger
 from ..harness_adapter import harness_manager
-from .workshops_common import _sv
+# ★★2026-10-12 补上三个漏导入的符号（**这个缺陷早已被测试文件记成 xfail 在等修**：
+#   `test_workshops_assign.py` 的模块文档写明"第 15 行只导入了 `_sv`，而 L49/L52/L55…
+#   用了 `_leader_pick_member`/`_leader_member_hid`/`_leader_build_assign_payload`，
+#   调用即 NameError → 500"，并注明"修复方式：给第 15 行补上三个符号"。
+#   今天我用 AST 专项审计**又把它当新发现重挖了一遍** —— 说明"记在测试里"不如
+#   "修掉 + 加静态守卫"；现已修，并删除了那批 xfail 标记与该守卫类。）
+from .workshops_common import (_leader_build_assign_payload, _leader_member_hid,
+                               _leader_pick_member, _sv)
 import json
 from ..state import interject_store, pending_activations, task_state_machine, tasks, workshops
 
@@ -37,6 +44,7 @@ async def workshop_leader_assign(ws_id: str, request: Request):
     """组长向指定成员细化/调整派发指令：校验成员与 harness 绑定后，
     复用 _dispatch_to_harness 派发「组长委派细化」任务，并写入讨论区 + assignments 持久化。"""
     from ..server import Utf8JSONResponse, _append_msg, _dispatch_to_harness, now_iso, save_state
+    # （`_leader_*` 三个符号已在**模块级**导入 —— 见文件顶部 2026-10-12 的说明。）
     ws = workshops.get(ws_id)
     if not ws:
         return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)

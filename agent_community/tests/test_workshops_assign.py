@@ -24,17 +24,22 @@
 的改动一律在 finally 里清理，不留给其它测试。
 
 ────────────────────────────────────────────────────────────────────
-⚠️ 已知生产代码缺陷（本文件不改源码，只如实记录）
+✅ 曾经的缺陷已修复（2026-10-12；本文件当时挂的 xfail 标记已按注释要求全部删除）
 ────────────────────────────────────────────────────────────────────
-`workshops_assign.py` **只导入了 `_sv`**（第 15 行 `from .workshops_common import _sv`），
-却在函数体里使用 `_leader_pick_member` / `_leader_member_hid` / `_leader_build_assign_payload`
-（L49/L52/L55/L91/L92/L95/L99/L102/L105/L139）—— 这三个符号从未导入，调用即
-`NameError: name '_leader_pick_member' is not defined` → HTTP 500。已对运行中的
-18920 服务实测复现（缺成员的 assign 请求 500，而同一端点的参数校验分支正常回 400）。
+原缺陷：`workshops_assign.py` 只导入了 `_sv`，却在函数体里用
+`_leader_pick_member` / `_leader_member_hid` / `_leader_build_assign_payload`
+⇒ 调用即 `NameError` → HTTP 500（**组长派活整条路不可用**；当时已对运行中的
+18920 服务实测复现：缺成员的 assign 请求 500，而参数校验分支正常回 400）。
 
-因此凡是会走到 `_leader_*` 的用例，断言**按修复后的正确契约写满**，但暂时挂
-`xfail`（见 `DEFECT_REASON`）；`TestProductionDefectGuard` 把缺陷本身钉住。
-**修复方式**：给第 15 行补上三个符号，然后删除全部 `xfail` 标记与该守卫类。
+现已修复：那三个符号在**模块级**导入（`from .workshops_common import (...)`）。
+⇒ 本文件所有 `TestLeader*` 用例的断言**正式生效**（不再 xfail），
+  原先用来"钉住缺陷"的 `TestProductionDefectGuard` 已删除
+  （它守的是"缺陷仍在"，缺陷修好后它必然变红）。
+
+★★教训（值得记住）：这个缺陷**早就被记在这里** —— 连"修复方式：给第 15 行补上三个符号"
+都写清楚了，却**挂了一整天 xfail 没人动手**；后来我用 AST 专项审计**又把它当新发现重挖一遍**。
+⇒ **"记在测试里"不等于"被修掉"。要么修，要么加一条能红的守卫；不要长期拿 xfail 当文档。**
+   真正的防复发已交给 `tests/test_no_undefined_calls.py`（静态扫"被调用却未定义"）。
 """
 from __future__ import annotations
 
@@ -56,11 +61,6 @@ def run(coro):
     return asyncio.run(coro)
 
 
-DEFECT_REASON = (
-    "生产代码缺陷：workshops_assign.py 未从 workshops_common 导入 "
-    "_leader_pick_member/_leader_member_hid/_leader_build_assign_payload（第 15 行只导入了 _sv），"
-    "调用即 NameError→500。断言按修复后的正确契约写满，修复后请删除本 xfail 标记。"
-)
 
 
 def unpack(resp):
@@ -139,18 +139,13 @@ def _leader_back_on(monkeypatch, reply="", ok=True):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 0. 生产代码缺陷守卫（修好第 15 行的导入后，本类连同全部 xfail 标记一起删掉）
+# 0. （原生产代码缺陷守卫已删除 —— 缺陷已修，守卫失去了意义；见文件头说明）
 # ══════════════════════════════════════════════════════════════════
-class TestProductionDefectGuard:
-    def test_leader_helpers_are_not_imported_everywhere_they_are_used(self):
-        """钉住缺陷：`_leader_*` 被使用却未导入 —— 修好本用例会变红，提示删除标记。"""
-        missing = [name for name in (
-            "_leader_pick_member", "_leader_member_hid", "_leader_build_assign_payload")
-            if not hasattr(wa, name)]
-        assert missing == [
-            "_leader_pick_member", "_leader_member_hid", "_leader_build_assign_payload",
-        ], ("缺陷似乎已修复：请删除本守卫用例，并去掉 TestLeaderAssign/"
-            "TestLeaderRedirect/TestLeaderAssignments 里的 xfail 标记，让断言正式生效")
+# ★2026-10-12：原 `TestProductionDefectGuard` 已按它自己的提示**删除** ——
+#   它守的是"缺陷仍在（`_leader_*` 未导入）"，而缺陷**已修复** ⇒ 它必然变红。
+#   ⇒ 不保留"守卫已修好的缺陷"的用例；真正的防复发交给
+#     `tests/test_no_undefined_calls.py`（AST 静态扫"被调用却未定义"）。
+
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -212,7 +207,6 @@ class TestLeaderAssign:
         assert env.ws.assignments == {}, "校验失败不得写入 assignments"
         assert env.calls["save"] == 0, "校验失败不得落盘"
 
-    @pytest.mark.xfail(reason=DEFECT_REASON)
     def test_unknown_member_is_404(self, env):
         status, payload = unpack(run(wa.workshop_leader_assign(
             env.wid, FakeRequest({"member_id": "m404", "instruction": "写测试"}))))
@@ -220,7 +214,6 @@ class TestLeaderAssign:
         assert "m404" in payload["error"]
         assert env.calls["dispatch"] == [], "成员不存在时不得派发"
 
-    @pytest.mark.xfail(reason=DEFECT_REASON)
     def test_member_without_harness_is_400(self, env):
         env.ws.members.append(WorkshopMember(
             member_id="m9", role="画师", display_name="画师丙", harness_ids=[]))
@@ -231,7 +224,6 @@ class TestLeaderAssign:
         assert "画师丙" in payload["error"], "报错要点名是哪位成员"
         assert env.calls["dispatch"] == []
 
-    @pytest.mark.xfail(reason=DEFECT_REASON)
     def test_success_persists_record_and_writes_discussion(self, env):
         status, payload = unpack(run(wa.workshop_leader_assign(
             env.wid, FakeRequest({"member_id": "m1", "instruction": "写 20 条测试",
@@ -263,7 +255,6 @@ class TestLeaderAssign:
         assert "派发：成功" in msg["content"]
         assert env.calls["save"] == 1, "派发成功必须落盘"
 
-    @pytest.mark.xfail(reason=DEFECT_REASON)
     def test_dispatch_failure_still_recorded_and_visible(self, env, monkeypatch):
         """派发失败（桥已退出等）也必须留痕：记录 dispatched=False，讨论区写明失败。"""
         monkeypatch.setattr(server_mod, "_dispatch_to_harness",
@@ -299,7 +290,6 @@ class TestLeaderRedirect:
         assert env.calls["dispatch"] == [], "非法请求不得派发"
         assert env.ws.assignments == {}
 
-    @pytest.mark.xfail(reason=DEFECT_REASON)
     def test_unknown_member_is_404_and_names_it(self, env):
         for frm, to in (("m0", "m404"), ("m404", "m1")):
             status, payload = unpack(run(wa.workshop_leader_redirect(
@@ -308,7 +298,6 @@ class TestLeaderRedirect:
             assert "m404" in payload["error"], f"必须点名缺失成员，实得 {payload['error']}"
         assert env.calls["dispatch"] == []
 
-    @pytest.mark.xfail(reason=DEFECT_REASON)
     def test_target_without_harness_is_400(self, env):
         env.ws.members.append(WorkshopMember(
             member_id="m9", role="画师", display_name="画师丙", harness_ids=[]))
@@ -319,7 +308,6 @@ class TestLeaderRedirect:
         assert "无法承接" in payload["error"] and "画师丙" in payload["error"]
         assert env.calls["dispatch"] == [], "目标承接不了就不该动任何派发"
 
-    @pytest.mark.xfail(reason=DEFECT_REASON)
     def test_success_dispatches_target_first_then_source(self, env):
         status, payload = unpack(run(wa.workshop_leader_redirect(
             env.wid, FakeRequest({"from_member_id": "m0", "to_member_id": "m1",
@@ -345,7 +333,6 @@ class TestLeaderRedirect:
         assert "组长甲" in msg["content"] and "码农乙" in msg["content"]
         assert env.calls["save"] == 1
 
-    @pytest.mark.xfail(reason=DEFECT_REASON)
     def test_source_without_harness_does_not_block_redirect(self, env):
         """原成员未绑 harness：跳过移交通知但主流程照常成功（不阻断）。"""
         env.ws.members[0].harness_ids = []
@@ -370,7 +357,6 @@ class TestLeaderAssignments:
         assert status == 200 and payload["success"] is True
         assert payload["assignments"] == []
 
-    @pytest.mark.xfail(reason=DEFECT_REASON)
     def test_resolves_member_fields_and_falls_back(self, env):
         env.ws.assignments = {
             "m1": [{"kind": "assign", "instruction": "甲"}],
@@ -384,7 +370,6 @@ class TestLeaderAssignments:
         assert recs["m404"]["role"] == "" and recs["m404"]["display_name"] == "m404", \
             "成员已不在名单时不得崩，display_name 回退为成员 id"
 
-    @pytest.mark.xfail(reason=DEFECT_REASON)
     def test_items_truncated_to_last_10(self, env):
         env.ws.assignments = {"m1": [{"kind": "assign", "instruction": str(i)}
                                      for i in range(12)]}

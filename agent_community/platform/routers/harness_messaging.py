@@ -20,6 +20,11 @@ router = APIRouter()
 async def harness_message(request: Request):
     _audit_log.record("harness.message", actor="user", target="", detail="harness 消息")
     from ..server import Utf8JSONResponse, _sanitize_harness_content
+    # ★★2026-10-12 补齐缺失的 import（**半截功能**："半截功能"专项审计用 AST 扫出来的）：
+    #   `_harness_identity_check` 定义在 `routers/harness_common.py`，但本文件**没有导入它**
+    #   ⇒ `POST /api/harness/message`（**外端 agent 的消息主入口**）一被调用就 `NameError`。
+    #   （测试没抓到，是因为没有用例走这条端点的成功路径 —— 这正说明"没被调用过"不等于"没问题"。）
+    from .harness_common import _harness_identity_check
     """接收来自 Harness 的消息回复"""
     body = await request.json()
     try:
