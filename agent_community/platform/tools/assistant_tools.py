@@ -365,22 +365,35 @@ class ProbeHarnessTool(BaseTool):
                     pass
 
         if api_hits:
-            lines.append("探测到的 HTTP API 端点：")
+            lines.append("本机探测到的 HTTP 服务（**尚不能确定属于该 harness**）：")
             lines.extend(api_hits[:8])
         else:
             lines.append("未探测到明显 HTTP API（可能为 file_poll 文件型或 acp 型）")
 
         # 4) 推荐配置
+        #
+        # ★★2026-10-12 **实测修一处"无证据就下结论"**（老板真机实测第一手材料）：
+        #   原逻辑：**只要本机扫到任何一个 HTTP 服务**（400/405/404 都算"有服务"）
+        #   ⇒ 就推荐 `wakeup_method: http_api` + `api_base_url: http://127.0.0.1:{那个端口}`。
+        #   而开发机上**永远有若干随机本地 HTTP 服务**（IDE 语言服务、dev server…）
+        #   ⇒ **几乎必然误判**。实测：一个纯人工型 agent 被判成 `http_api`，
+        #      `api_base_url` 指向了**与它毫无关系**的 127.0.0.1:3722 —— 照此起桥必然连错、且难查。
+        #   ⇒ 规则（与 `harness_probe.probe_harness` **同一口径：只给线索、不下定论**）：
+        #        · **只有 `port_hint`（对象自己给的端口）命中**才算"它自己有 API"，才推荐 http_api；
+        #        · 扫出来的其它端口一律只作**线索**，明确写"未确认是否属于它"，**不给推荐**。
         lines.append("\n推荐接入配置（供注册参考）：")
-        if api_hits:
-            first = api_hits[0]
-            try:
-                port = first.split(":")[2].split("/")[0]
-            except Exception:
-                port = str(port_hint or "未知")
-            lines.append(f"  wakeup_method: http_api")
-            lines.append(f"  api_base_url: http://127.0.0.1:{port}")
-            lines.append(f"  api_message_path: /message")
+        _hint_port = port_hint if isinstance(port_hint, int) else None
+        if _hint_port and any((":%d" % _hint_port) in h for h in api_hits):
+            lines.append("  wakeup_method: http_api")
+            lines.append("  api_base_url: http://127.0.0.1:%d" % _hint_port)
+            lines.append("  api_message_path: /message")
+            lines.append("  （依据：**你给的 port_hint 命中了** —— 这才是「它指向自己」的证据。）")
+        elif api_hits:
+            lines.append("  未能确认它的接入方式：上面那些 HTTP 服务**尚不能确定属于它** ——")
+            lines.append("  本机同时跑多个服务是常态，端口能应答**不等于**它就是该 harness。")
+            lines.append("  ⇒ 让对象**自己确认**（它最清楚自己监听什么），或**显式给出 port_hint**；")
+            lines.append("     确认不了就按「人工中转/文件型」接（`wakeup_method` 用 `clipboard` 或 `file_poll`）。")
+            lines.append("  ⛔ **不要**拿一个没验证的端口去当 `api_base_url` —— 桥会连到一个不属于它的服务。")
         elif proc_candidates:
             lines.append("  wakeup_method: file_poll（未发现 HTTP API，文件型）或 acp（若有 CLI 启动命令）")
         else:

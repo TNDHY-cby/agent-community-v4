@@ -100,6 +100,15 @@ async def harness_pre_register(request: Request):
         "ai": body.get("ai", {}),
         "description": body.get("description", ""),
         "tools": body.get("tools", []),
+        # ★★2026-10-12 **实测修一处"对象的自述被静默丢弃"**（老板真机实测第一手材料）：
+        #   `probe-register` 会读 `pre.get("wakeup_method")` / `pre.get("api_base_url")`
+        #   来决定"探测没拿到证据时该沿用哪个" —— 但**本函数从来没把这两个字段存进来**！
+        #   ⇒ 对象在初步注册时明明白白声明了 `wakeup_method=clipboard`，到了探测注册那一步
+        #     平台却说"你**没有声明**"，于是改去按默认/猜测处理
+        #     （实测：一个纯人工型 agent 因此被误判成 `http_api`、地址指向别人的端口）。
+        #   ⇒ 原样存下它自己说的接入方式（本层不解释、不纠正，纠正留给探测/显式注册）。
+        "wakeup_method": str(body.get("wakeup_method") or "").strip().lower(),
+        "api_base_url": str(body.get("api_base_url") or "").strip(),
         "ts": now_iso(),
     }
     pending_pre_register[hid] = entry
@@ -186,26 +195,53 @@ async def harness_probe_register(request: Request):
         "harness_id": hid,
         "harness_name": name,
         "harness_type": pre.get("harness_type", "desktop-agent"),
-        "wakeup_method": pre.get("wakeup_method", "file_poll"),  # 默认，下面按探测覆盖
+        # ⚠️默认值用 **clipboard（人工中转）**，不是 file_poll：
+        #   "还不知道怎么叫醒它"时，人工模式是**唯一不会连错**的选择
+        #   （file_poll 会去写一个可能不存在的邮箱目录；http_api 会去连一个没验证的端口）。
+        #   与 `HarnessInfo.wakeup_method` 的字段默认值保持一致。
+        "wakeup_method": pre.get("wakeup_method") or "clipboard",
         "ai": pre.get("ai") or {"model_name": "unknown", "provider": "unknown", "capabilities": pre.get("capabilities", []), "description": ""},
         "tools": pre.get("tools", []),
         "description": pre.get("description", f"{name} 自动探测接入"),
     }
     # 从探测结果提取 http_api 配置
+    #
+    # ★★2026-10-12 **实测修两处"拿猜测覆盖对象的声明"**（老板真机实测第一手材料）：
+    #   原逻辑有两个口子都会**推翻对象自己声明的 `wakeup_method`**：
+    #     ① `if "http_api" in probe_text:` —— 而探测工具当时**只要本机扫到任意 HTTP 服务**
+    #        就输出这句（已同步修好：现在只有"对象自己给的 port_hint 命中"才输出）；
+    #     ② `if not detected and port_hint:` —— **仅凭一个端口线索就假设 http_api**，
+    #        连探都不探。
+    #   实测后果：一个**纯人工型** agent（自己声明 clipboard）被改判成 `http_api`，
+    #   `api_base_url` 指向跟它无关的 `127.0.0.1:3722` ⇒ 照此起桥必然连错、且很难查。
+    #   ⇒ 规则：**探测是"补线索"，不是"覆盖声明"**。
+    #        · 有**证据**（探测文本里给出了 api_base_url ⇒ 意味着 port_hint 命中）才改判；
+    #        · 没证据 ⇒ **尊重对象自己声明的 `wakeup_method`**（那才是它的自述）。
+    import re as _re
     detected = False
     if "http_api" in probe_text:
-        import re as _re
         m = _re.search(r"api_base_url:\s*(http://[\d.:]+)", probe_text)
         if m:
             info_dict["wakeup_method"] = "http_api"
             info_dict["api_base_url"] = m.group(1)
             info_dict["api_message_path"] = "/message"
             detected = True
-    if not detected and port_hint:
-        # 显式给了端口线索 → 假设 http_api
-        info_dict["wakeup_method"] = "http_api"
-        info_dict["api_base_url"] = f"http://127.0.0.1:{port_hint}"
-        info_dict["api_message_path"] = "/message"
+    wakeup_note = ""
+    if not detected:
+        _declared = str(pre.get("wakeup_method") or "").strip().lower()
+        if _declared in {m.value for m in WakeupMethod}:
+            info_dict["wakeup_method"] = _declared
+            info_dict.pop("api_base_url", None)   # 不拿没验证的端口当地址
+            wakeup_note = ("探测**没有**拿到「它自己有 HTTP API」的证据"
+                           "（本机那些 HTTP 服务**尚不能确定属于它**）⇒ "
+                           "沿用你自己声明的 wakeup_method=%s，"
+                           "**没有**拿没验证的端口去当 api_base_url。" % _declared)
+        else:
+            wakeup_note = ("探测未拿到接入方式的证据，且你**没有声明** wakeup_method ⇒ "
+                           "按最安全的默认 **clipboard（人工中转）** 处理："
+                           "不会去连错端口、也不会去写不存在的邮箱。"
+                           "请让对象自己确认后，用 `POST /api/harness/register` 显式声明。")
+        probe_text += "\n\n（平台说明：" + wakeup_note + "）"
     # 正式注册（复用 register 逻辑的核心：HarnessInfo + harness_manager.register + agent card + save_state）
     if info_dict.get("api_base_url"):
         ok, err = validate_harness_api_url(info_dict["api_base_url"])
@@ -248,6 +284,12 @@ async def harness_probe_register(request: Request):
         "wakeup_method": info.wakeup_method.value,
         "api_base_url": getattr(info, "api_base_url", ""),
         "probe": probe_text[:500],
+        # ★2026-10-12：**把"这次为什么这么判"单独回一个字段** ——
+        #   原先它只在 `probe_text` 末尾，而 `probe` 只回前 500 字 ⇒ 说明**被截断**，
+        #   接入方看不到"探测没拿到证据、沿用了你的声明"这一句，只会疑惑"为什么没变成 http_api"。
+        #   （失败要说话、判据也要说话；埋在被截断的长文本里等于没说。）
+        "wakeup_method_note": wakeup_note,
+        "wakeup_method_source": ("探测证据" if detected else "沿用对象自己声明的"),
     })
 
 @router.post("/api/harness/register")

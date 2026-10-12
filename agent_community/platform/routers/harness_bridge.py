@@ -298,6 +298,33 @@ async def harness_wake_set(harness_id: str, request: Request):
                 status_code=400,
             )
     cmd = str(body.get("command") or "")
+    # ★★2026-10-12 **实测修一处"向用不到的人索要命令"**（老板真机实测第一手材料）：
+    #   手工/人工中转型（`clibpoard`）**本来就没有"叫醒命令"** —— 它的叫醒方式是
+    #   **用户把任务手动粘贴进来**。而本端点原先对空命令直接 400（`validate_command`
+    #   要求非空），于是外端 agent 走到第 2 步就卡死，只能如实回"此步不适用"。
+    #   ⇒ 与"file_poll 不该被索要 acp_command"同一原则：**不需要就不要**，
+    #     并且**说清这一型为什么不需要**（准则⑤：失败/不适用都要说话，不能默默卡住）。
+    _wm = str(getattr(getattr(sess.info, "wakeup_method", None), "value",
+                      getattr(sess.info, "wakeup_method", "")) or "")
+    if not cmd.strip() and _wm == "clipboard":
+        sess.info.metadata = dict(sess.info.metadata or {})
+        sess.info.metadata["wake_wrapper"] = {
+            "path": "", "kind": "manual", "command": "",
+            "mode": "manual",
+            "note": "人工中转型：没有叫醒命令；任务由用户手动粘贴给该 agent",
+        }
+        try:
+            save_state()
+        except Exception:  # noqa: BLE001
+            pass
+        return {
+            "success": True, "harness_id": harness_id, "mode": "manual",
+            "command": "", "wrapper_path": "",
+            "note": ("这是**人工中转型**（clipboard）：它没有「叫醒命令」可配 —— "
+                     "平台的桥会把要送的内容整理好，由**用户手动粘贴**给这个 agent。"
+                     "这一步对它来说已完成，不必填命令。"),
+            "next": "POST /api/harness/auto-connect 起桥（人工模式会返回 manual，属正常）",
+        }
     # 落点由 bridge_wake 依 server.DATA_DIR 决定（这里不再传仓库根：
     #   传了也没用，且会让仓库布局变成落点依据 —— 2026-10-12 已收敛为单一真相）。
     w = _bw.write_wrapper("", harness_id, cmd)

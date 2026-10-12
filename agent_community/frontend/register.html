@@ -336,6 +336,11 @@ body: {"harness_id": "我的唯一标识"}
         · ⚠️ 为什么必须由平台包一层：带空格/带参数的命令直接传给桥会被拆坏
           （实测报 `unrecognized arguments`、桥起不来）。包成脚本就没这个问题。
         · 用户答不上来可以不配，但**要如实告诉用户**：那样消息只会落在邮箱里、不会自动叫醒它。
+        · ★**如果你自己的自测结果是 D（人工中转 / `wakeup_method=clipboard`）**：
+          这一步**不用填命令** —— 你本来就没有"被自动叫醒"这回事，任务由**用户手动粘贴**。
+          直接调上面那个接口、body 里 `command` 留空即可，平台会回
+          `{"success":true, "mode":"manual", "note":...}` —— 那是**正常完成**，不是失败。
+          （平台的桥会替你把内容整理好，等着用户粘贴。）
 
 第 3 步 起桥：POST http://127.0.0.1:{PORT}/api/harness/auto-connect  body: {"harness_id":"我的唯一标识"}
         · status=connected/ready ⇒ 桥已起来
@@ -343,13 +348,22 @@ body: {"harness_id": "我的唯一标识"}
         ⚠️ **顺序要紧：先第 2 步配叫醒、再第 3 步起桥** —— 桥是在"起"的时候把叫醒命令带上；
            桥已经在跑时它不会自动更新（幂等）。
 
-第 4 步 ★自检：POST http://127.0.0.1:{PORT}/api/workshop/{工作间}/member/{成员}/self-check  body: {"wait":8}
-        平台会**发一条测试消息**并给出结论（都是人话）：
-          state=ok          通了（桥取走了 + 你的 agent 回话了）
-          state=no_reply    桥取走了，但**你的 agent 没回话** ⇒ 多半是第 2 步没配或配得不对
+第 4 步 ★自检（**刚注册也能验，不需要工作间**）：
+        POST http://127.0.0.1:{PORT}/api/harness/{我的harness_id}/verify   body: {"wait":16, "teardown":true}
+        平台会**就地建一个"低耗验证间"**（只为验证而存在、不进正式工作间列表）：
+          架桥 → 发一条真测试消息 → 等你的 agent 回话 → **跑通了才**把实测配置写进桥模板
+          → 然后**连桥一起拆掉，只留模板**。
+        返回里的关键字段：
+          state=ok          通了（桥取走了 + 你的 agent 回话了）⇒ 这一步就绿了
+          state=no_reply    桥取走了，但**你的 agent 没回话**
           state=not_picked  消息还躺在邮箱里 ⇒ **桥没在运行**
-          state=not_set_up  还没架桥（没有邮箱）
-        ⇒ 拿到 no_reply/not_picked 时，按返回的 advice 做，再重跑自检。
+          committed.success=true  ⇒ 已把"跑通"的配置写进模板并标记「已验证」
+          gate_note         ⇒ 一句话说明"这次有没有写模板"（**没跑通就不会写**）
+          torndown.removed=true   ⇒ 验证间已拆掉（只留模板）
+        ⇒ 拿到 no_reply/not_picked 时，按返回的 advice 做，再重跑一次。
+        （另一条路：若你已经被指派到某个工作间，也可以用
+          POST /api/workshop/{工作间}/member/{成员}/self-check —— 那是"在工作间里验某个成员"，
+          区别只是**需要已经有工作间和成员**；刚接入时用上面那条 `{hid}/verify` 更合适。）
 
 之后告诉我注册结果：harness_id + wakeup_method + 四步各自的结果（四步都绿才算接入完成）。
 还要告诉我：**用户那条"叫醒命令"是什么**（我据此判断该配哪种桥）。
