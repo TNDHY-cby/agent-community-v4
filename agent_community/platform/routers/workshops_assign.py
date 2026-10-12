@@ -314,8 +314,8 @@ async def workshop_save_members(ws_id: str, request: Request):
             ]
             old.session = None
             old.status = "removed"
-        # 新增接入的 HA：立即激活（HA 专属提示词）；保留成员复制旧状态
-        for m in new_members:
+        # 新增接入的 HA：立即激活（HA 专属提示词）；保留成员**继承旧对象**（见下）
+        for i, m in enumerate(new_members):
             hid = (m.harness_ids or [None])[0]
             if hid in added_hids:
                 m.status = "activating"
@@ -327,8 +327,20 @@ async def workshop_save_members(ws_id: str, request: Request):
                     "harness_ids": m.harness_ids,
                 })
             elif hid in old_hid2m:
-                m.status = old_hid2m[hid].status
-                m.session = old_hid2m[hid].session
+                # ★★2026-10-12 修复：**绑定同一个 harness 的成员，其"会话/桥"身份必须继承**。
+                #   原代码只搬了 `status` 与 `session`，而 `member_id` 是按序号重排的
+                #   （`m0,m1,…`）⇒ 一旦"运行中"编辑名单，就会**丢掉**：
+                #     `bridge_ref`（这条桥 ↔ 这个会话的绑定，平台的核心模型）、
+                #     `session_ref` / `session_aliases`（会话引用）、
+                #     `channel_seq` / `channel_state`（通道序号与状态）。
+                #   后果：改一次名单 = 已有成员与桥/会话断链（而平台判定"一条桥 = 一个具体会话"）。
+                #   ⇒ 直接**继承旧成员对象**，只把名单里可编辑的字段覆盖上去。
+                old = old_hid2m[hid]
+                old.role = m.role
+                old.display_name = m.display_name or old.display_name
+                old.harness_ids = m.harness_ids or old.harness_ids
+                # 用旧对象替换，保住 bridge_ref / session_ref / channel_* 等全部绑定
+                new_members[i] = old
     ws.members = new_members
     # ⑥ 名单变了 -> 重生成 `plan.md`（同上面 select-members 的理由）
     try:

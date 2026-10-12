@@ -565,9 +565,17 @@ class TestSaveMembers:
         assert status == 200
         assert payload["added"] == [] and payload["removed"] == []
         new = env.ws.members[1]
-        assert new is not old, "成员对象按新名单重建"
+        # ★2026-10-12 设计变更（断言随之更新，**不是放宽**）：
+        #   原实现"按新名单**重建**成员对象"，只搬 status/session ⇒ 会丢掉
+        #   `bridge_ref`（**这条桥 ↔ 这个会话**的绑定，平台核心模型）、`session_ref`、
+        #   `channel_seq`/`channel_state` ⇒ 运行中改一次名单就断链（读源码确认）。
+        #   ⇒ 现在**继承旧成员对象**，只覆盖名单里可编辑的字段（role/display_name/harness_ids）。
+        #   本用例的核心契约（继承生命周期状态与会话引用、且不被重复激活）**一字未改**。
+        assert new is old, "★绑定同一 harness 的成员必须继承旧对象（否则桥/会话绑定丢失）"
         assert new.status == "working", "保留成员必须继承原生命周期状态"
         assert new.session == "SESS-9", "保留成员必须继承原会话引用"
+        assert getattr(new, "bridge_ref", None) == getattr(old, "bridge_ref", None), \
+            "★桥绑定必须一起继承（这正是本次修复的目的）"
         assert env.calls["activate"] == [], "保留成员不得被重复激活"
 
 
