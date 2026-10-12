@@ -700,12 +700,16 @@ async def harness_activation_result(request: Request):
 
 @router.delete("/api/harness/{harness_id}")
 async def unregister_harness(harness_id: str):
-    _audit_log.record("harness.unregister", actor="user", target=harness_id, detail="注销 harness")
     from ..server import Utf8JSONResponse, _append_hall, _stop_bridge_processes, _trash_bridge_dir, bcast_to_clients, save_state
     """注销 Harness（删除注册信息 + 桥坐标 + 队列残留 + 终止桥进程 + 桥目录进回收站）"""
     sess = harness_manager.sessions.get(harness_id)
     if not sess:
         return Utf8JSONResponse({"error": "harness not found"}, status_code=404)
+    # ★2026-10-12：审计落点从"函数第一行"挪到"确认存在之后"。
+    #   实测（我自己的探针踩到两次）：对不存在的 harness 发 DELETE 会 404，
+    #   但审计里却留下一条 `harness.unregister / detail=注销 harness` ——
+    #   **记的是"做过的事"，而它根本没做**。审计的价值全在"可信"，这条属于自己给自己造伪证。
+    _audit_log.record("harness.unregister", actor="user", target=harness_id, detail="注销 harness")
     bridge_dir = sess.info.bridge_dir or ""
     # 移除 agent 注册
     agents.pop(sess.agent_id, None)

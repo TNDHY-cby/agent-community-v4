@@ -302,6 +302,47 @@ class TestHarnessUnregisterClosesSessions:
         status, out = unpack(run(hr.unregister_harness("h-ghost")))
         assert status == 404
 
+    # ★2026-10-12：404 的 DELETE **不许**在审计里留下"已注销"的假记录。
+    #   实测来源：我自己的真机探针两次对不存在的 harness 发 DELETE（拿 404），
+    #   审计里却各留下一条 `harness.unregister / detail=注销 harness` ——
+    #   **记的是没发生过的事**。审计的价值全在"可信"，这属于自己给自己造伪证。
+    #   （修法：把 record 挪到"确认 harness 存在"之后。）
+    def test_unregister_unknown_harness_writes_no_audit(
+        self, registry, clean_harness_state, monkeypatch
+    ):
+        from agent_community.platform.routers import harness_register as hr
+
+        calls = []
+
+        class _Rec:
+            def record(self, *a, **k):  # noqa: D401
+                calls.append((a, k))
+
+        monkeypatch.setattr(hr, "_audit_log", _Rec(), raising=False)
+        status, _ = unpack(run(hr.unregister_harness("h-ghost-audit")))
+        assert status == 404
+        assert calls == [], \
+            "★对不存在的 harness 也记了「注销」⇒ 审计里出现没发生过的事：%r" % (calls,)
+
+    def test_unregister_existing_harness_still_writes_audit(
+        self, registry, clean_harness_state, monkeypatch
+    ):
+        """反向：真注销**必须**留痕（别为了修上一条把审计整个删掉）。"""
+        from agent_community.platform.routers import harness_register as hr
+
+        calls = []
+
+        class _Rec:
+            def record(self, *a, **k):  # noqa: D401
+                calls.append((a, k))
+
+        monkeypatch.setattr(hr, "_audit_log", _Rec(), raising=False)
+        _register_harness("h-real-audit")
+        status, _ = unpack(run(hr.unregister_harness("h-real-audit")))
+        assert status == 200
+        assert any(c[0] and c[0][0] == "harness.unregister" for c in calls), \
+            "真注销必须留痕（审计不能只剩 404 分支）"
+
     def test_unregister_writes_session_close_audit(
         self, registry, clean_harness_state
     ):

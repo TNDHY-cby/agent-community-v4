@@ -252,6 +252,11 @@ POST http://127.0.0.1:{PORT}/api/harness/probe-register
 body: {"harness_id": "我的唯一标识"}
 平台会基于阶段1的线索自动探测我（扫进程/扫端口/探测 HTTP 端点），摸清我是 HTTP API 型、文件型还是 ACP 型，自动补齐 wakeup_method、api_base_url 等并完成正式注册。
 
+⚠️ **这一步要等 10~15 秒**（它在本机扫进程和端口；机器忙时更久，实测 11.1~11.5s）：
+    · **超时值请给 ≥30 秒** —— 别用 5~10 秒的默认超时，那样会**误报成"平台不可用"**；
+    · **超时 ≠ 失败，重试是安全的**（这一步是幂等的，实测重试两次不会造出第二份注册）；
+    · 期间平台**照常服务**（不会卡住别的请求），你只管等这一个响应。
+
 【收集信息的方式（重要）】
 用户是平台的拥有者，不是 harness 本身。多数字段请你自己探测/推断，**不要问用户**。
 
@@ -1391,7 +1396,7 @@ async function oneClickRegister(){
     const r1=await fetch('/api/harness/pre-register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d1=await r1.json();
     if(!r1.ok){box.innerHTML='<span style="color:var(--red)">❌ pre-register 失败: '+esc(JSON.stringify(d1))+'</span>';return;}
-    box.innerHTML='<span style="color:var(--green)">✅ pre-register 成功（'+esc(body.harness_id)+'）</span><br><span style="color:var(--yellow)">⏳ probe-register（自动探测补齐）…</span>';
+    box.innerHTML='<span style="color:var(--green)">✅ pre-register 成功（'+esc(body.harness_id)+'）</span><br><span style="color:var(--yellow)">⏳ probe-register（自动探测补齐，约 10~15 秒，这段别刷新页面）…</span>';
     const r2=await fetch('/api/harness/probe-register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({harness_id:body.harness_id})});
     const d2=await r2.json();
     if(!r2.ok){box.innerHTML+='<br><span style="color:var(--red)">❌ probe-register 失败: '+esc(JSON.stringify(d2))+'</span>';return;}

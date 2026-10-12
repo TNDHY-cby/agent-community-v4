@@ -120,7 +120,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       '同一个工作目录',
       /* ★2026-10-12 三次同步：`bridges_running` 改为**按逻辑桥计**（父子链算一只）。
          不写进口径，agent 自己数进程看到 2 个同名进程就会误判"有两只"（实测发生过推理偏差） */
-      'bridges_running', '逻辑桥'];
+      'bridges_running', '逻辑桥',
+      /* ★2026-10-12 五次同步（真机报告来的）：那台外端 agent **第一次 probe-register 超时**，
+         靠"加大超时重试"才过 —— 而实测这一步稳定要 **11.1~11.5s**，话术却只说"平台会探测"、
+         完全不提耗时 ⇒ 用 5~10s 默认超时的 agent 必然把它读成"平台不可用"。
+         话术已补：耗时 / 超时值给 ≥30 秒 / 超时≠失败且重试幂等。断言跟着钉住，防止又漂回去。 */
+      '10~15 秒', '超时', '幂等'];
     needPrompt.forEach(k => { if (!promptTxt.includes(k)) fail.push('① aiPrompt 缺「' + k + '」'); });
     if (promptTxt.includes('三步接入')) fail.push('① aiPrompt 仍写「三步接入」（旧口径残留）');
     if (promptTxt.includes('四步接入')) fail.push('① aiPrompt 仍写「四步接入」（已补第 5 步，须与五步一致）');
