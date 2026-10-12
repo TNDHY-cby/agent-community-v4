@@ -26,6 +26,7 @@ harness 回报两种方式任选：
 """
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -167,6 +168,47 @@ def scan_replies(inbox: Path, platform: str, interval: float):
                 print(f"[回报] 移动失败 {f.name}: {e2}", flush=True)
 
 
+_LOCK_HANDLE = None          # 必须持有引用，否则文件对象被回收 ⇒ 锁被释放
+
+
+def acquire_single_instance(lock_path):
+    """★单实例锁（2026-10-12 新增）：同一个 inbox 只允许一只桥在看着。
+
+    同一 inbox 起两只桥 ⇒ **重复投递 / 两个进程抢搬同一个任务文件 / 回报被转发两次**。
+    （平台侧注释早就写着"同一邮箱多只桥 ⇒ 重复投递"，但**桥脚本自己没有拦**。）
+    用**持锁**而非 pid 文件：崩溃留下的僵尸锁 + pid 复用会误判；
+    持锁由操作系统在进程结束时自动释放，永不产生僵尸锁。
+    """
+    global _LOCK_HANDLE
+    try:
+        f = open(lock_path, "a+")
+    except Exception as e:  # noqa: BLE001
+        return None, "无法创建锁文件（跳过单实例保护）：%s" % e
+    try:
+        # ⚠️★**必须先 seek(0)**：`open(..., "a+")` 是**追加模式**，初始指针在 **EOF**；
+        #   而 `msvcrt.locking` 锁的是"从当前指针开始的 N 字节"⇒ 不 seek 的话
+        #   两只桥会锁在**不同字节**上、**毫无冲突**（实测踩到）。
+        f.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None, "另一只桥正在看着同一个 inbox（拒绝重复启动）"
+    try:
+        f.seek(0)
+        f.truncate()
+        f.write(str(os.getpid()))
+        f.flush()
+    except Exception:  # noqa: BLE001
+        pass
+    _LOCK_HANDLE = f
+    return f, ""
+
+
 def main():
     ap = argparse.ArgumentParser(description="filepoll 桥：轮询 inbox 唤醒 harness 并转发回报")
     ap.add_argument("--harness-id", required=True, help="harness 的 id（与注册一致，仅用于日志）")
@@ -178,6 +220,17 @@ def main():
 
     inbox = Path(args.inbox)
     inbox.mkdir(parents=True, exist_ok=True)
+
+    # ★单实例保护（建目录之后、开始轮询之前）：同一 inbox 两只桥会**抢搬同一个任务文件**。
+    _lk, _why = acquire_single_instance(inbox / ".bridge.lock")
+    if _lk is None and _why and "拒绝重复启动" in _why:
+        print("[filepoll桥] ⛔ %s" % _why, flush=True)
+        print("[filepoll桥] 同一个 inbox 只应有一只桥在看着；要重启请先停掉原来那只。"
+              "（inbox: %s）" % inbox, flush=True)
+        sys.exit(2)
+    if _why:
+        print("[filepoll桥] 提示: %s" % _why, flush=True)
+
     print(f"[filepoll桥] 开始轮询 harness「{args.harness_id}」的 inbox: {inbox}", flush=True)
     print(f"[filepoll桥] 平台: {args.platform} | trigger: {args.trigger or '(无)'}", flush=True)
     # 启动自检：平台在线 / inbox 可写
