@@ -529,10 +529,25 @@ def commit_verified(workshops: dict, harness_id: str, *, evidence: dict | None =
     hist = list(meta.get("bridge_template_verified") or [])
     hist.append({"verified_at": now, "evidence": dict(evidence or {})})
     meta["bridge_template_verified"] = hist[-5:]        # 只留最近 5 次，别无限长
+    # ★2026-10-12：**必须说清"验的是什么范围"** —— 否则"verified"会被读成
+    #   "harness 侧整条链路都通了"，而那可能超出了本次实际证明的东西：
+    #     · 文件邮箱通道（`file_poll`）：验的是**完整链路**（平台→桥→你的 agent→回报）；
+    #     · 桥测试通道（非邮箱型）：验的是**桥配置本身**（桥能连平台、领件、回报），
+    #       而且**那只桥是平台在验证间里启动的** ⇒
+    #       **"harness 侧是否真的运行这只桥、agent 能否回话"本次并未验证**。
+    #   （把范围写进证据里，接入方和界面才不会过度解读。）
+    _ch = str((evidence or {}).get("channel") or "")
+    _scope = ("完整链路：平台 → 桥 → 你的 agent → 回报"
+              if _ch == "file_mailbox" else
+              "**仅桥配置**（桥能连平台/领件/回报；且这只桥是**平台在验证间里启动的**）——"
+              "**harness 侧是否运行该桥、agent 能否回话，本次未验证**")
+    ev = dict(evidence or {})
+    ev["verified_scope"] = _scope
     return {"success": True, "harness_id": harness_id, "template_name": tpl.get("name", ""),
             "verified": True, "verified_at": now, "verified_by": "sandbox",
-            "evidence": dict(evidence or {}),
-            "note": "已把「跑通」的配置记为已验证（模板上会显示验证时间）"}
+            "verified_scope": _scope,
+            "evidence": ev,
+            "note": "已把「跑通」的配置记为已验证（模板上会显示验证时间）；" + _scope}
 
 
 async def teardown(workshops: dict, harness_id: str, *, stop_bridge=None) -> dict:

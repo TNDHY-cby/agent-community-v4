@@ -202,6 +202,31 @@ def test_selfcheck_channel_depends_on_bridge_kind():
     assert not real_sleep, "async 路径里不许有 time.sleep（会阻塞事件循环）：%s" % real_sleep
 
 
+# ── G. "已验证"必须说清**验证范围**（别把"桥配置跑通"读成"整条链路跑通"）──
+def test_commit_verified_records_what_was_actually_verified():
+    """★`commit_verified` 要区分两种范围，并写进结果。
+
+    · 文件邮箱通道 ⇒ 验的是**完整链路**（平台 → 桥 → agent → 回报）；
+    · 桥测试通道（非邮箱型）⇒ 验的是**桥配置**，而且**那只桥是平台在验证间里启动的**
+      ⇒ **harness 侧是否真的运行这只桥、agent 能否回话，本次并未验证**。
+    不写清范围，`verified=true` 就会被读成"整条链路都通了" —— 那是**说过头**。
+    """
+    import inspect
+
+    from agent_community.platform import verify_sandbox as vs
+
+    src = inspect.getsource(vs.commit_verified)
+    assert "verified_scope" in src, "回写结果里必须有 verified_scope"
+    assert "完整链路" in src and "仅桥配置" in src, "两种范围要分别写明"
+    assert "平台在验证间里启动" in src, \
+        "非邮箱型要点明'桥是平台启动的'（否则会被读成 harness 侧也跑通了）"
+    # 路由层要把通道信息传进去，否则 commit 分不出范围
+    rs = inspect.getsource(__import__(
+        "agent_community.platform.routers.harness_bridge", fromlist=["x"]))
+    assert 'commit_verified(' in rs, "应经由路由层回写"
+    assert '"channel"' in rs, "路由层必须把探针通道一并传给 commit_verified"
+
+
 # ── D. 话术第 4 步：不需要工作间 ─────────────────────────────────────────
 def test_template_step4_needs_no_workshop():
     """★话术第 4 步必须指向 `{hid}/verify`（刚注册就能自检），而不是必须先有工作间的那个端点。"""

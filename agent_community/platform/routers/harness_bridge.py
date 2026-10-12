@@ -179,6 +179,11 @@ async def harness_verify_bridge(harness_id: str, request: Request):
                 "probe_id": (out.get("detail") or {}).get("probe_id"),
                 "state": out.get("state"),
                 "sandbox_id": out.get("sandbox_id"),
+                # ★2026-10-12：**把"走的是哪条探针通道"一起记进去** ——
+                #   否则 `commit_verified` 分不清"验的是完整链路"还是"只验了桥配置"，
+                #   会把 verified 说过头（见 `commit_verified` 里的 `verified_scope`）。
+                "channel": (out.get("detail") or {}).get("channel"),
+                "bridge_kind": out.get("bridge_kind"),
             })
         except Exception as e:  # noqa: BLE001
             committed = {"success": False, "error": f"回写失败：{e}"}
