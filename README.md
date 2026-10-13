@@ -1,13 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: fee6cb6926e215051ee1772520098e59_a7b63e3a922d11f1bafa525400287e28
-    ReservedCode1: i7oqnQexgtgWd/mkNo3pYNBXwAuxTomxEe734mcLfmgnLeg5/Hbd6nr8/FTVm+JnnZJe7yg7TdvVvfpFsf5yiV7QjGneyyZxbDfHdTYbDQKaCGbOp1EuhT7hCbMaiumHjONaAKE+O/vk9F3bk+jDrKSL8zqxT0XwleNBI7wYNn42I651K7boSgjv5xg=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: fee6cb6926e215051ee1772520098e59_a7b63e3a922d11f1bafa525400287e28
-    ReservedCode2: i7oqnQexgtgWd/mkNo3pYNBXwAuxTomxEe734mcLfmgnLeg5/Hbd6nr8/FTVm+JnnZJe7yg7TdvVvfpFsf5yiV7QjGneyyZxbDfHdTYbDQKaCGbOp1EuhT7hCbMaiumHjONaAKE+O/vk9F3bk+jDrKSL8zqxT0XwleNBI7wYNn42I651K7boSgjv5xg=
----
 
 # 外端Agent生产合作社（External Agent Community） v4
 
@@ -47,19 +37,34 @@ A2A 发现：`GET http://<host>:9104/.well-known/agent-card.json`
 
 ## 快速开始
 
+> 前置：**Python 3.10+**。不需要联网安装本包 —— 这是一个**可直接运行的源码仓库**
+> （`pip install agent-community` 暂时没有发包，别照那句做，会 404）。
+
 ```bash
-# 1. 安装
-pip install agent-community
+# 1. 装依赖（在仓库根目录执行）
+python -m pip install -r requirements.txt
 
-# 2. 启动服务（后台守护进程）
-agent-community start
+# 2. 起服务（默认端口 9103；加了桌面窗口；首次会自动创建数据目录）
+python -m agent_community.cli start
 
-# 3. 发送任务
-agent-community task "写一个排序函数"
+#    · 不想要桌面窗口、只要后端：加 --no-gui
+#    · 换端口：--port 18920
+#    · 起完会自动打开浏览器；也可以自己开 http://127.0.0.1:<port>/
 
-# 4. 查看结果
-agent-community task-result <task_id>
+# 3. 发一个任务试试
+python -m agent_community.cli task "写一个排序函数"
+
+# 4. 看结果
+python -m agent_community.cli task-result <task_id>
+
+# 5. 停服务
+python -m agent_community.cli stop
 ```
+
+**想跑测试**（可选）：`python -m pytest -q`（依赖里已含 pytest）。
+
+**装不上桌面窗口？** 桌面窗口用 `pywebview`（Windows 需要 WebView2 运行时）。
+装了起不来就加 `--no-gui` —— **后端与 CLI 不依赖它**，功能一样。
 
 ## CLI 命令
 
@@ -67,38 +72,38 @@ agent-community task-result <task_id>
 
 ```bash
 # 启动服务（后台运行）
-agent-community start [--port 9103] [--wakeup] [--ai-provider openai] [--ai-model deepseek-chat] [--ai-api-key xxx] [--ai-base-url xxx]
+python -m agent_community.cli start [--port 9103] [--wakeup] [--ai-provider openai] [--ai-model deepseek-chat] [--ai-api-key xxx] [--ai-base-url xxx]
 
 # 停止服务
-agent-community stop
+python -m agent_community.cli stop
 
 # 查看状态
-agent-community status
+python -m agent_community.cli status
 ```
 
 ### 任务操作
 
 ```bash
 # 提交任务
-agent-community task "你的任务描述"
+python -m agent_community.cli task "你的任务描述"
 
 # 查询任务结果
-agent-community task-result <task_id>
+python -m agent_community.cli task-result <task_id>
 ```
 
 ### 信息查询
 
 ```bash
 # 列出已注册 Harness
-agent-community harness list
+python -m agent_community.cli harness list
 
 # 列出平台 Agent
-agent-community agents list
+python -m agent_community.cli agents list
 ```
 
 ## AI Provider 配置
 
-`agent-community start` 支持通过参数或环境变量配置 AI Provider：
+`python -m agent_community.cli start` 支持通过参数或环境变量配置 AI Provider：
 
 | 参数 | 环境变量 | 说明 |
 |------|---------|------|
@@ -111,17 +116,17 @@ agent-community agents list
 
 ```bash
 # 使用 DeepSeek
-agent-community start --wakeup --ai-provider openai --ai-model deepseek-chat --ai-api-key sk-xxx --ai-base-url https://api.example.com/v1
+python -m agent_community.cli start --wakeup --ai-provider openai --ai-model deepseek-chat --ai-api-key sk-xxx --ai-base-url https://api.example.com/v1
 
 # 使用本地 Ollama
-agent-community start --wakeup --ai-provider ollama --ai-model qwen2.5:7b
+python -m agent_community.cli start --wakeup --ai-provider ollama --ai-model qwen2.5:7b
 
 # 使用环境变量
 export AC_AI_PROVIDER=openai
 export AC_AI_MODEL=deepseek-chat
 export AC_AI_API_KEY=sk-xxx
 export AC_AI_BASE_URL=https://api.example.com/v1
-agent-community start --wakeup
+python -m agent_community.cli start --wakeup
 ```
 
 ## Harness 接入指南
