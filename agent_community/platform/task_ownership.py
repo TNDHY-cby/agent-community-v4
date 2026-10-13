@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""平台侧任务/交付单元**原子所有权**登记表（V-20，47 号任务书 DSH 侧）。
+"""平台侧任务/交付单元**原子所有权**登记表（V-20，47 号任务书 示例Harness-E 侧）。
 
 对应 Paperclip 的 `FOR UPDATE SKIP LOCKED`：**同一交付单元同一时刻只允许一个 owner 持有**，
 拿不到的人立刻放弃（skip），不排队、不等待、不重复干活。不引入数据库级锁。
@@ -19,7 +19,7 @@
 设计原则：
   - 零第三方依赖（仅标准库 threading / dataclasses / time / uuid）；
   - 失败不炸：非法入参返回 None / False，不抛；
-  - TTL 过期即视为无主（可被他人领取）—— 这是给 Marvis 侧 stranded 孤儿回收留的钩子。
+  - TTL 过期即视为无主（可被他人领取）—— 这是给 示例Harness-C 侧 stranded 孤儿回收留的钩子。
 """
 
 from __future__ import annotations
@@ -167,7 +167,7 @@ class OwnershipRegistry:
                 "keys": keys,
             }
 
-    # ── 过期回收（stranded 孤儿修复的钩子；回收动作本身由 Marvis 侧负责）──
+    # ── 过期回收（stranded 孤儿修复的钩子；回收动作本身由 示例Harness-C 侧负责）──
     async def reap_expired(self) -> list[str]:
         """清除全部过期票据，返回被回收的 key 列表。"""
         with self._mutex:

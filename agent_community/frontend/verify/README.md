@@ -1,4 +1,4 @@
-# FE 验收归档（XiaomiMiMo）
+# FE 验收归档（示例Harness-F）
 
 本目录存放前端交付的**可复核验收材料**：自动化脚本 + 实测截图 + 结果 JSON。
 对应设计稿：`design-docs/FE-01_审计时间线与在线看板设计.md`、`design-docs/FE-02_交付回执台设计.md`。
@@ -10,7 +10,7 @@
 | `ops_e2e_check.js` | FE-01 ops.html 八条验收（解析自测/空态/筛选/三档视口/错误分支/恢复） |
 | `ops_hb_check.js` | FE-01 心跳两阶段：在线卡片 → 等 65s → 失联卡片 |
 | `ops_name_check.js` | FE-01 工单名映射与已删除降级 |
-| `ops_unknown_detail_check.js` | 陌生 detail 三条样本降级确认（回 DSH 3 号发言） |
+| `ops_unknown_detail_check.js` | 陌生 detail 三条样本降级确认（回 示例Harness-E 3 号发言） |
 | `handover_e2e_check.js` | FE-02 回执台四条验收（400×2 逐条 / 200 入列 / 三档视口 / 展开原文） |
 | `booths_e2e_check.js` | FE-03 隔间与桥验收（公式对拍 6 条 / 成员卡渲染 / 选择器与降级 / 三档视口） |
 | `ops_验证/`、`handover_验证/`、`booths_验证/` | 上述脚本产出的截图与 `result.json` |
@@ -36,11 +36,11 @@ node <脚本名>.js
 
 - 这里的断言是**产出当时**的证据，重跑可能因数据/时间变化而不同（如相对时间、列表计数）。
 - 判定中文/编码问题以 Python/浏览器为准，不看 PowerShell 显示。
-- **输出重定向**：PowerShell 的 `>` 会写成 **UTF-16**（DSH 33 号踩过）——解析请用脚本自写的 `result.json`（各脚本均已内置），或用 `Set-Content -Encoding UTF8` / `Out-File -Encoding utf8` 重定向。
+- **输出重定向**：PowerShell 的 `>` 会写成 **UTF-16**（示例Harness-E 33 号踩过）——解析请用脚本自写的 `result.json`（各脚本均已内置），或用 `Set-Content -Encoding UTF8` / `Out-File -Encoding utf8` 重定向。
 
 ---
 
-## ⚖️ 发布口径（DSH 2026-10-07 代老板落档，**改了就要遵守**）
+## ⚖️ 发布口径（示例Harness-E 2026-10-07 代老板落档，**改了就要遵守**）
 
 老板 2026-10-07 裁定：**截图不入库（还没打磨）**；脚本与 `result.json` 可以入库。
 另按项目铁律 6「对外文档与示例一律用虚拟名，**禁止出现真实 harness 名**」，
@@ -63,7 +63,7 @@ node <脚本名>.js
 ```
 
 **怎么找到本机的 `playwright-core`**（一条命令自查；本机坐标按铁律 6 **不写进本文件**，
-真实坐标留档在协作通道 `92-2322-MiMo-NODE_PATH与撞号.md`）：
+真实坐标留档在协作通道 `92-2322-*-NODE_PATH与撞号.md`）：
 
 ```powershell
 $c = npm config get cache
@@ -75,5 +75,5 @@ Get-ChildItem "$c\_npx" -Directory -ErrorAction SilentlyContinue | ForEach-Objec
 （原理：`npx` 跑过的任何包会把依赖留在 `<npm缓存>\_npx\<hash>\node_modules`；
 也可以用你自己项目的 `node_modules`，只要含 `playwright-core` 即可。）
 
-> DSH 2026-10-11 已按此真复跑三件（`fe18` / `nextstep_flow` / `ui_links`）全部 exit=0 —— 见通道 96 号。
+> 示例Harness-E 2026-10-11 已按此真复跑三件（`fe18` / `nextstep_flow` / `ui_links`）全部 exit=0 —— 见通道 96 号。
 

@@ -49,7 +49,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   page.on('request', r => { if (r.url().includes('/api/') && r.method() !== 'GET') nonGet.push(r.method() + ' ' + r.url()); });
   const step = (n, d) => console.log('>> ' + n, JSON.stringify(d));
 
-  /* 0. stateClass 枚举（DSH 13号§四） */
+  /* 0. stateClass 枚举（示例Harness-E 13号§四） */
   await page.goto(BASE + '/booths.html', { waitUntil: 'networkidle', timeout: 20000 });
   const unit = await page.evaluate(() => {
     const t = window.__boothsTest.stateClass;

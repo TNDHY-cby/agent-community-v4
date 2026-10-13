@@ -4,7 +4,7 @@
    ② 点「结束讨论，选定员工」后立刻按选人阶段渲染；
    ③ division 文案含可执行的 AI 同意引导。
    注：活体页首载会触发一次自动 discuss（产品自身行为；本机实例已配 AI ⇒ 可能产生一次真实调用，
-   与 DSH 走查同路径）。 */
+   与 示例Harness-E 走查同路径）。 */
 const { chromium } = require('playwright-core');
 const path = require('path');
 const fs = require('fs');

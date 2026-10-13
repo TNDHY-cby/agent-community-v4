@@ -65,7 +65,7 @@ def template_receipt(task_id: str = "", who: str = "", items: Optional[list] = N
                      title: str = "") -> dict:
     """回执模板（与任务书同构，另加送达段）。
 
-    ⚠️ `title` 必须**透传**：2026-10-07 MiMo 实测 `?kind=receipt&title=X` 回显空串
+    ⚠️ `title` 必须**透传**：2026-10-07 示例Harness-F 实测 `?kind=receipt&title=X` 回显空串
     （task_order 正常），就是路由层漏传这个参数导致的。
     """
     out = template_task_order(task_id=task_id, title=title, items=items)
@@ -130,7 +130,7 @@ def validate_receipt(payload: dict) -> tuple[bool, list[str], dict]:
         "reply_ref": reply_ref,
         "note": str(dl_in.get("note") or "").strip(),
     }
-    # ⚠️ 2026-10-07 MiMo 实测报回：存入/查列表的是**拍平结构**（delivered/reply_ref 在顶层），
+    # ⚠️ 2026-10-07 示例Harness-F 实测报回：存入/查列表的是**拍平结构**（delivered/reply_ref 在顶层），
     #    与**提交体的嵌套 `delivery`** 不一致 —— 两边形状不同迟早咬人。
     #    处理：两条形状**都给**（顶层拍平保留，另附同值的嵌套 `delivery`）。
     #    这样已按拍平渲染的客户端不受影响，新客户端可以照提交体的形状读。

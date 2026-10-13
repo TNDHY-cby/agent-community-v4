@@ -3,7 +3,7 @@
 
 老板 2026-10-10「按你建议」拍板四条：
 ① 组长执笔（AI 可出草案） ② 改了留历史 ③ 普通成员能看、只有组长能改 ④ 与 plan.md 冲突听 plan。
-本文件覆盖 ①②③ 的**已实现部分**（草案路径 B 与界面归 MiMo，另测）。
+本文件覆盖 ①②③ 的**已实现部分**（草案路径 B 与界面归 示例Harness-F，另测）。
 """
 from __future__ import annotations
 
@@ -151,7 +151,7 @@ class TestRoutes:
 
 
 class TestFrameworkInfo:
-    """`read_framework_info`：让界面不用拿 preview 文本猜"是不是平台模板"（MiMo 76 号如实反映的缺口）。"""
+    """`read_framework_info`：让界面不用拿 preview 文本猜"是不是平台模板"（示例Harness-F 76 号如实反映的缺口）。"""
 
     def _ws(self, tmp_path):
         return Workshop(workshop_id="w1", name="看板", workspace_dir=str(tmp_path / "ws2"),

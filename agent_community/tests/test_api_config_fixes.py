@@ -30,10 +30,10 @@ def run(coro):
 # ── P0-1：base_url 归一化 ────────────────────────────────────────
 class TestBaseUrlNormalization:
     @pytest.mark.parametrize("raw,expect", [
-        ("https://api.xiaomimimo.com/v1", "https://api.xiaomimimo.com"),
-        ("https://api.xiaomimimo.com/v1/", "https://api.xiaomimimo.com"),
-        ("https://api.xiaomimimo.com/", "https://api.xiaomimimo.com"),
-        ("https://api.xiaomimimo.com", "https://api.xiaomimimo.com"),
+        ("https://api.example.com/v1", "https://api.example.com"),
+        ("https://api.example.com/v1/", "https://api.example.com"),
+        ("https://api.example.com/", "https://api.example.com"),
+        ("https://api.example.com", "https://api.example.com"),
         ("https://api.example.com", "https://api.example.com"),
         ("  https://x.com/v1  ", "https://x.com"),
         ("https://x.com/v1/v1", "https://x.com"),      # 重复也递归剥掉
@@ -45,9 +45,9 @@ class TestBaseUrlNormalization:
 
     def test_no_v1_v1_in_final_path(self,):
         """核心回归：**最终请求路径不得出现 /v1/v1/**。"""
-        for u in ("https://api.xiaomimimo.com/v1",
-                  "https://api.xiaomimimo.com/v1/",
-                  "https://api.xiaomimimo.com"):
+        for u in ("https://api.example.com/v1",
+                  "https://api.example.com/v1/",
+                  "https://api.example.com"):
             p = OpenAICompatibleProvider(base_url=u, api_key="k", model="m")
             path = f"{p.base_url}/v1/chat/completions"
             assert "/v1/v1/" not in path, f"{u} -> {path} 仍是 /v1/v1"
@@ -63,18 +63,18 @@ class TestWrapperAttributeDelegation:
     def test_gate_provider_exposes_base_url(self):
         """hasattr 必须为 True —— GET /api/ai/providers 依赖它。"""
         w = create_ai_provider(provider_type="openai",
-                               base_url="https://api.xiaomimimo.com/v1",
+                               base_url="https://api.example.com/v1",
                                api_key="k", model="m")
         assert hasattr(w, "base_url") is True, \
             "包装链不代理 base_url -> 界面永远看不到生效地址"
-        assert w.base_url == "https://api.xiaomimimo.com"
+        assert w.base_url == "https://api.example.com"
         assert "v1/v1" not in w.base_url
 
     def test_exposes_model_and_provider_type(self):
         w = create_ai_provider(provider_type="openai",
                                base_url="https://x.com/v1", api_key="k",
-                               model="mimo-test")
-        assert w.model == "mimo-test"
+                               model="example-model")
+        assert w.model == "example-model"
         assert w.provider_type is not None
 
     def test_dunder_still_raises(self):
@@ -144,7 +144,7 @@ class TestConfigSaveHonesty:
     def test_model_present_clears_flag(self):
         out = self._post({"ai_provider": "openai", "ai_mode": "remote",
                           "ai_base_url": "https://x.com", "ai_api_key": "k",
-                          "ai_model": "mimo-test"})
+                          "ai_model": "example-model"})
         assert out["model_missing"] is False
 
     def test_blank_selection_does_not_wipe_saved_model(self):

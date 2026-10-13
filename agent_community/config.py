@@ -25,7 +25,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # manual 模式下等待外部回写的超时秒数，超时降级为纯规则
     "ai_manual_timeout": 120,
     "ai_temperature": 1.0,
-    # 思考强度（类 DSH reasoningEfforts）：off / low / medium / high / max
+    # 思考强度（类 示例Harness-E reasoningEfforts）：off / low / medium / high / max
     # off = 不思考（thinking disabled，省钱优先，默认）；medium 按官方映射走 high
     "ai_reasoning_effort": "off",
     # ── V-16 §四 连通性自检（2026-10-05 负责人拍板实施）──

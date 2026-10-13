@@ -76,4 +76,4 @@ curl -s http://127.0.0.1:<端口>/api/workshop/<ws_id>/library
 
 ---
 
-*DSH · 2026-10-08*
+*示例Harness-E · 2026-10-08*

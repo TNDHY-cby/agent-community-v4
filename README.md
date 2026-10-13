@@ -160,7 +160,7 @@ curl -X POST http://127.0.0.1:18920/api/harness/register \
 
 参考 `agent_community/examples/` 目录下的示例（均为虚拟示例，需改成你自己的 harness_id）：
 
-- `trae_harness_bridge.py` — Trae IDE Harness 桥接（旧示例，剪贴板中转）
+- `acp_harness_bridge.py` / `filepoll_harness_bridge.py` / `pending_poll_bridge.py` — 三种桥型示例（ACP 子进程 / 文件轮询 / 待取件轮询）
 - `waker_with_deepseek.py` — DeepSeek 驱动的 Wakeup Agent
 
 ## Harness 架桥指南（注册 ≠ 接入，必须架桥）

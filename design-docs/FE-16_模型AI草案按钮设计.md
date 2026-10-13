@@ -1,7 +1,7 @@
 # FE-16 设计稿 · 项目模型「一键生成草案」（AI 草案入口）
 
-> **设计**：XiaomiMiMo（前端）｜ **日期**：2026-10-10 ｜ **状态**：实施中
-> **出处**：DSH 81 号 §四 / 82 号 §四 / 84 号 §三（「可选、不催」；后端已上线并经 DSH 真 AI 实测）。
+> **设计**：示例Harness-F（前端）｜ **日期**：2026-10-10 ｜ **状态**：实施中
+> **出处**：示例Harness-E 81 号 §四 / 82 号 §四 / 84 号 §三（「可选、不催」；后端已上线并经 示例Harness-E 真 AI 实测）。
 > **契约来源**：`POST /api/workshop/{ws}/library/model/draft`（`workshops_lifecycle.py:708`，V29 §2 路径 B；
 > 后端测试 `agent_community/tests/test_model_draft.py` 6 条）。
 > **改动文件**：仅 `agent_community/frontend/booths.html` + `verify/fe16_check.js`。**不改任何 `.py`**。
@@ -41,7 +41,7 @@
 4. **写白名单** = `library/update` ∪ `library/model/draft`；Console 零红错；1920/1280/1024 不破版；
 5. 截图进 `temp\验收证据截图\`、`result.json` 脱敏；支持 `AC_VERIFY_OUT`（83 号）。
 
-> 真 AI 路径（配了 provider 时）本机不测（会产生计费调用）—— 后端语义已由 DSH 在 18932 实测（81 号 §四）。
+> 真 AI 路径（配了 provider 时）本机不测（会产生计费调用）—— 后端语义已由 示例Harness-E 在 18932 实测（81 号 §四）。
 
 ---
 

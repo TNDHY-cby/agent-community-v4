@@ -1,4 +1,4 @@
-"""Agent 侧周期心跳上报客户端（2026-10-07 Marvis，47 号任务书 Marvis 侧）。
+"""Agent 侧周期心跳上报客户端（2026-10-07 示例Harness-C，47 号任务书 示例Harness-C 侧）。
 
 配合平台端 POST /api/heartbeat（platform/server.py）使用：
   - 周期上报 alive/idle/busy，让平台知道"我还活着、在忙/空闲"；

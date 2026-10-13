@@ -57,8 +57,8 @@ from .task_state_machine import (
     EV_RESUME, EV_DROP, EV_RESOLVE, EV_COMPLETE,
 )
 from .interject_store import InterjectStore
-# 47 号（Marvis 侧心跳）：3 个 /api/heartbeat 端点用到本单例。
-# 原提交 abf28d2 只写了用法、漏了 import ⇒ 实测 GET/POST 均 NameError→500（2026-10-07 DSH 修复）。
+# 47 号（示例Harness-C 侧心跳）：3 个 /api/heartbeat 端点用到本单例。
+# 原提交 abf28d2 只写了用法、漏了 import ⇒ 实测 GET/POST 均 NameError→500（2026-10-07 示例Harness-E 修复）。
 from .heartbeat import heartbeat_registry
 from .state import tasks, discussion_rooms, agents, assistant_history, assistant_history_max, workshops, interject_store, task_state_machine, pending_activations, pending_tasks, pending_bridge_tests, _bridge_tests_inflight, _wakeup_inflight, _WAKEUP_TTL, _BRIDGE_TEST_TTL, _offline_redispatch, _r2_handled_at, _R2_HANDLE_GAP, pending_pre_register
 from .ai_provider import AIProvider, create_ai_provider
@@ -1115,7 +1115,7 @@ def _stop_bridge_processes(harness_id: str, bridge_dir: str = ""):
         return {"killed": 0, "note": "没有可匹配的 harness_id/bridge_dir"}
     # ⚠️★2026-10-13 第二个坑（顺着上面那起事故查出来的）：**路径针从来没生效过**。
     #   老写法用 `json.dumps(m)` 生成 PS 字面量 ⇒ Windows 路径会变成
-    #   `"D:\\DSH\\..."`（双反斜杠），而 PowerShell 的双引号字符串**不把 `\` 当转义符**
+    #   `"D:\\<私有目录>\\..."`（双反斜杠），而 PowerShell 的双引号字符串**不把 `\` 当转义符**
     #   ⇒ 实际拿去做 `Contains` 的是**带双反斜杠的串**，永远匹配不到真实命令行（单反斜杠）
     #   ⇒ 凡"按目录停桥"的调用**一直静默杀 0 只**（`killed: 0` 也是这么来的，看不出异常）。
     #   修法：用 PS **单引号**字面量（内部单引号翻倍），不做 JSON 转义。
@@ -3878,7 +3878,7 @@ async def recover_stale_tasks(request: Request):
 
 
 
-# ── 心跳上报与失联判定（2026-10-07 Marvis，47 号任务书 Marvis 侧）──────────
+# ── 心跳上报与失联判定（2026-10-07 示例Harness-C，47 号任务书 示例Harness-C 侧）──────────
 # agent 周期上报 alive/idle/busy → POST /api/heartbeat；
 # GET /api/heartbeat 看在线/失联概览；GET /api/heartbeat/stale 列失联 agent。
 # 任务卡死判定与孤儿回收复用 V-18：GET /api/tasks/stale + POST /api/tasks/recover-stale。
@@ -5662,7 +5662,7 @@ def _member_replied_since(ws, member_id, seq0) -> bool:
 def _mark_sim_watch(harness_id, payload, kind):
     """派发成功时登记无回报看护（仅 manual/off 模式且是工作间派发）。
 
-    场景：acp/桥接型 harness（如 dsh-web）派发进 pending 队列"成功"了，桥也领走了，
+    场景：acp/桥接型 harness（如 示例Harness-E）派发进 pending 队列"成功"了，桥也领走了，
     但外端无额度 → 既不回报也不报错，讨论区永久静默。此 watch 交给
     _manual_sim_sweep_once 在超时后补齐，保证交互不中断。
     watch 挂在成员对象上（非 dataclass 字段，不落盘，重启即清空，避免污染 state）。

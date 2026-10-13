@@ -244,7 +244,7 @@ class TestDeliverBridge:
 
 
 class TestActionScriptsAvailabilityEndpoint:
-    """给界面：哪些步骤能自动、哪些只能人工（MiMo 按这个显示）。"""
+    """给界面：哪些步骤能自动、哪些只能人工（示例Harness-F 按这个显示）。"""
 
     def _call(self, monkeypatch, hid, sess=None):
         import agent_community.platform.routers.harness_register as hr

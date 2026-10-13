@@ -40,7 +40,7 @@ async def handover_template(kind: str = "task_order", task_id: str = "", title: 
     """
     kind = (kind or "task_order").strip().lower()
     if kind == "receipt":
-        # ⚠️ 2026-10-07 MiMo 实测报回：这里原来没把 title 传下去，于是
+        # ⚠️ 2026-10-07 示例Harness-F 实测报回：这里原来没把 title 传下去，于是
         # `?kind=receipt&title=X` **忽略 title**（回显空串），而 kind=task_order 正常。
         return {"success": True, "template": template_receipt(task_id=task_id, who="", title=title)}
     return {"success": True, "template": template_task_order(task_id=task_id, title=title)}
@@ -52,7 +52,7 @@ async def handover_receipt(request: Request):
 
     body:
       {
-        "task_id": "...", "who": "DSH",
+        "task_id": "...", "who": "示例Harness-E",
         "items": [{"claim": "做了什么", "evidence": {"commit": "76964df", "file": "", "test": "752 passed"}}],
         "delivery": {"delivered": true, "reply_ref": "对方可读回复的凭据", "note": ""}
       }

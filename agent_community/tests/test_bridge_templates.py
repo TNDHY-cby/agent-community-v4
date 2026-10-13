@@ -35,9 +35,9 @@ def test_empty_returns_empty_list():
 
 def test_put_then_list_roundtrip():
     info = _Info()
-    one = bt.put(info, {"name": "Trae-CDP 桥", "kind": "cli_acp",
+    one = bt.put(info, {"name": "示例CDP桥", "kind": "cli_acp",
                         "path": r"D:\x\bridge.py", "params": {"ACP_CWD": r"D:\x"}})
-    assert one["name"] == "Trae-CDP 桥"
+    assert one["name"] == "示例CDP桥"
     assert one["source"] == bt.SOURCE_USER
     items = bt.list_all(info)
     assert len(items) == 1
@@ -219,7 +219,7 @@ def test_member_bridge_ref_roundtrip_and_backward_compat():
     w = Workshop(workshop_id="w1", name="t", workspace_dir="x", hall_content="任务",
                  members=[WorkshopMember(member_id="m0", role="码农", display_name="示例Harness-A")])
     w.members[0].bridge_ref = {
-        "template_name": "Trae-CDP 桥",
+        "template_name": "示例CDP桥",
         "bridge_path": r"D:\隔间\bridge.py",
         "session_ref": {"id": "s1"},
         "session_name": "w1-看板-码农-m0",
@@ -227,7 +227,7 @@ def test_member_bridge_ref_roundtrip_and_backward_compat():
         "verified": False,
     }
     back = Workshop.from_dict(w.to_dict()).members[0].bridge_ref
-    assert back["template_name"] == "Trae-CDP 桥"
+    assert back["template_name"] == "示例CDP桥"
     assert back["session_name"] == "w1-看板-码农-m0"
     assert back["state"] == "attached"
 

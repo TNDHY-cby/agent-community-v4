@@ -45,14 +45,14 @@ TOKEN = os.environ.get("AC4_TOKEN", "")
 # V18/候选C 边缘鉴权：复用平台 `identity`（**不造新轮**，31 号要求）。
 # ⚠️ 2026-10-06 起 `platform/__init__` 已改惰性导出，此处导入 identity 不会拽入 FastAPI。
 from .platform import identity as _identity  # noqa: E402
-# A2A 接力插件（Marvis 注入）：自动回执 + 回复落盘 A2A_inbox 信箱
+# A2A 接力插件（示例Harness-C 注入）：自动回执 + 回复落盘 A2A_inbox 信箱
 from . import a2a_relay as _a2a_relay  # noqa: E402
 
 # 入站请求体上限：镜像平台 `server.py` 的 `MAX_BODY_BYTES`（1MB）——
 # 鉴权之前也要限长，**未认证方不能无限塞**。
 _MAX_BODY_BYTES = 1024 * 1024
 
-# ── 入站请求体编码（2026-10-07 DSH，47 号后续取证）────────────────────
+# ── 入站请求体编码（2026-10-07 示例Harness-E，47 号后续取证）────────────────────
 # 缺陷：原实现 `read(length).decode("utf-8", "replace")` ——
 #   ① **完全忽略** `Content-Type` 里声明的 charset（对端声明 gbk 也照样按 utf-8 解）；
 #   ② 解不出来就 **静默替换** 成 U+FFFD 继续往下走，于是平台会拿着**被污染的任务标题**

@@ -293,8 +293,8 @@ def test_bridge_count_is_logical_bridges_not_processes():
     ★2026-10-12 实测：这台机器上 `python.exe` 是**外壳**
     （`D:\\Scripts\\python.exe` 会重新拉起真正的 `D:\\python.exe`，**命令行一模一样**）
     ⇒ **一只桥 = 两个同名进程**。而我原先按**进程数**计 ⇒ 每只桥被数成 2 倍，
-    **给用户报假的"重复桥"告警**（traecode-desktop-01 明明只有一只，我却报 2；
-     上一轮我还据此报"trae-ide-agent 有 2 只"）。
+    **给用户报假的"重复桥"告警**（example-desktop-01 明明只有一只，我却报 2；
+     上一轮我还据此报"example-agent-01 有 2 只"）。
     ⇒ 「看起来有问题」也是假警报，同样要修 —— 这次是我的判据错了。
     """
     from agent_community.platform.routers.harness_messaging import _chain_roots

@@ -87,7 +87,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     /* ① 话术三段落位 */
     const promptTxt = await page.evaluate(() => document.getElementById('aiPrompt').innerText);
-    /* ★2026-10-11 更新并加强（DSH 改的模板，同步改断言——不是放宽，是跟着真相走）：
+    /* ★2026-10-11 更新并加强（示例Harness-E 改的模板，同步改断言——不是放宽，是跟着真相走）：
        原话术只说"问了怎么叫醒"，**却没让 AI 把那条命令交给平台** ⇒ 收集到了也无处安放
        ⇒ 注册完叫醒命令还是空的（老板"唤不醒"的病根）。
        现在改成**四步**，第 2 步就是 `POST …/wake`。⇒ 断言据此：

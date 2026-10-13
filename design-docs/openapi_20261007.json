@@ -177,7 +177,7 @@
     "/api/ai/models": {
       "get": {
         "summary": "Api Ai Models",
-        "description": "V-16 §3.1：拉远端模型清单 —— 设置页「模型」下拉的数据源。\n\n**为什么必须有它**：下拉原先只读前端硬编码 `presets`，\n接新服务（如 mimo）时必然空清单，用户没有任何可选项。\n实测 mimo 的 `GET /v1/models` 返回标准 OpenAI 格式，完全可用。\n\n设计要点：\n- **用服务端已存的解密 key** —— 前端拿到的只是 `mask_api_key` 掩码，\n  由它来发请求只会 401；这也顺带避免密钥出现在前端。\n- **归一化 base_url**（同 P0-1 修复），否则 `/v1` 重复 -> 404。\n- **失败也返回 200** + `fallback:true`：设置页的唯一目标是让用户能选到模型，\n  拉不到时回落内置清单 + 给可读原因，比抛错让下拉空着更符合用途。\n- 走 V-14 `network.egress` 闸门（出厂 ALLOW，不造成 UI 摩擦）。",
+        "description": "V-16 §3.1：拉远端模型清单 —— 设置页「模型」下拉的数据源。\n\n**为什么必须有它**：下拉原先只读前端硬编码 `presets`，\n接新服务（如 某服务商）时必然空清单，用户没有任何可选项。\n实测该服务商的 `GET /v1/models` 返回标准 OpenAI 格式，完全可用。\n\n设计要点：\n- **用服务端已存的解密 key** —— 前端拿到的只是 `mask_api_key` 掩码，\n  由它来发请求只会 401；这也顺带避免密钥出现在前端。\n- **归一化 base_url**（同 P0-1 修复），否则 `/v1` 重复 -> 404。\n- **失败也返回 200** + `fallback:true`：设置页的唯一目标是让用户能选到模型，\n  拉不到时回落内置清单 + 给可读原因，比抛错让下拉空着更符合用途。\n- 走 V-14 `network.egress` 闸门（出厂 ALLOW，不造成 UI 摩擦）。",
         "operationId": "api_ai_models_api_ai_models_get",
         "parameters": [
           {

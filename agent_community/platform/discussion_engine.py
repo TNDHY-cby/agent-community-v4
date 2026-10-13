@@ -356,7 +356,7 @@ class DiscussionEngine:
     ) -> dict[str, "ExecutionResult"]:
         """按拓扑层执行所有委托，每层完成后审查。
 
-        V-20 原子所有权（47 号任务书 DSH 侧）：每个 delegation 一个交付单元锁。
+        V-20 原子所有权（47 号任务书 示例Harness-E 侧）：每个 delegation 一个交付单元锁。
         同一交付单元同一时刻只允许一个 owner 执行；拿不到锁的单元**不进本层 gather**，
         直接产出 ok=False 结果（对应 Paperclip 的 SKIP LOCKED：skip 而非排队等待）。
         锁粒度是 delegation 而非 task —— 层内不同 delegation 的并行**不受影响**。

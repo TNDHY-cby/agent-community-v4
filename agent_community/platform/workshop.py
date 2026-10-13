@@ -288,7 +288,7 @@ def read_model_info(workshop) -> dict:
 
 
 # 框架文件里"平台还没被人写过"的判据：建库时平台写的模板句（见 write_library 的占位文案）。
-# 由**后端判定**并作为字段给出 —— 界面不用再拿 preview 文本做字符串猜（MiMo 76 号如实反映了这个缺口）。
+# 由**后端判定**并作为字段给出 —— 界面不用再拿 preview 文本做字符串猜（示例Harness-F 76 号如实反映了这个缺口）。
 FRAMEWORK_TEMPLATE_MARK = "待一级/二级讨论收敛后更新"
 
 
@@ -753,7 +753,7 @@ def activate_member(bridge: AcpHarnessBridge, workshop: Workshop, member: Worksh
 
 
 def run_minimal_flow(hall_content: str, workspace_dir: str) -> Workshop:
-    """端到端最小竖切：建工作间 → 写文件 → 激活 1 个 dsh 员工 → 读大厅 → 确认。"""
+    """端到端最小竖切：建工作间 → 写文件 → 激活 1 个 示例Harness-E 员工 → 读大厅 → 确认。"""
     workshop = Workshop(
         workshop_id="ws_minimal",
         name="最小竖切验证",
@@ -761,8 +761,8 @@ def run_minimal_flow(hall_content: str, workspace_dir: str) -> Workshop:
         hall_content=hall_content,
     )
     workshop.members.append(WorkshopMember(
-        member_id="m1", role="码农", display_name="dsh",
-        harness_ids=["dsh"],
+        member_id="m1", role="码农", display_name="示例Harness-E",
+        harness_ids=["示例Harness-E"],
     ))
 
     write_workspace_files(workshop)

@@ -86,14 +86,14 @@ async def create_workshop(request: Request):
             WorkshopMember(
                 member_id=f"m{i}",
                 role=m.get("role", "员工"),
-                display_name=m.get("display_name", "dsh"),
-                harness_ids=m.get("harness_ids", ["dsh"]),
+                display_name=m.get("display_name", "示例Harness-E"),
+                harness_ids=m.get("harness_ids", ["示例Harness-E"]),
             )
             for i, m in enumerate(body.get("members") or [])
         ],
         created_at=now_iso(),
     )
-    # ★2026-10-11 修复（老板口径 + MiMo 94 号实测报告）：
+    # ★2026-10-11 修复（老板口径 + 示例Harness-F 94 号实测报告）：
     #   大厅「发布」走的就是这条（`index.html:670` → body `{hall_content}`）。
     #   修前：构造不设 status ⇒ 落默认 `draft`；而 `POST …/discuss` 里那句
     #         `if ws.status not in ("division","review","running"): ws.status = "discussing"`
@@ -638,7 +638,7 @@ async def workshop_integrate(ws_id: str):
 async def workshop_compartments(ws_id: str):
     """**每个成员隔间的磁盘实况**（只读）。
 
-    应答 FE-03 §7 的接口变更申请（MiMo 2026-10-07）：
+    应答 FE-03 §7 的接口变更申请（示例Harness-F 2026-10-07）：
     前端原本靠"镜像后端路径公式 + 读 bridge.auto 审计"间接展示隔间，
     但**审计只能证明"何时发过桥、落在哪"，证明不了目录/文件此刻在不在**；
     而公式镜像会随后端改动漂移。故由后端直接给出实况与权威路径。

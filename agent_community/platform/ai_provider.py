@@ -18,7 +18,7 @@
     # 举手判断
     result = await provider.classify(
         query="分析用户需求文档",
-        candidates=[{"id": "h1", "name": "Trae CN", "capabilities": ["coding"]}],
+        candidates=[{"id": "h1", "name": "示例Harness-D", "capabilities": ["coding"]}],
         context="需要前端开发能力",
     )
 """
@@ -173,7 +173,7 @@ def _normalize_base_url(u: str) -> str:
     不剥就会得到 `https://xxx/v1/v1/chat/completions` -> **404**，
     而且是静默 404（用户在设置界面看不到任何提示）。
 
-    实测现场：填 `https://api.xiaomimimo.com/v1` 就是这么挂的。
+    实测现场：填 `https://api.example.com/v1` 就是这么挂的。
     （同文件 L832 的本机端点分支早有 `endswith("/v1")` 剥离，只是这里漏了。）
     """
     u = (u or "").strip().rstrip("/")
@@ -217,7 +217,7 @@ class OpenAICompatibleProvider(AIProvider):
             or os.environ.get("AC_AI_MODEL", "")
             or "example-model-flash"
         )
-        # 思考强度（类 DSH reasoningEfforts）：off / low / medium / high / max
+        # 思考强度（类 示例Harness-E reasoningEfforts）：off / low / medium / high / max
         # 优先级：构造参数 > 环境变量 AC_AI_REASONING_EFFORT > config > 默认 off
         self.reasoning_effort = (
             reasoning_effort

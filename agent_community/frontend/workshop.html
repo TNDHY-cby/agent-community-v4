@@ -2070,7 +2070,7 @@ async function loadStageBar(){
 window.__stageBar={ reload:loadStageBar, gates:applyStageGates, state:()=>({stageId:sbStageId, ok:sbOk, phase:_phase}) };
 
 
-/* ── FE-08 会话流程面板（DSH 30 号过审；准则⑤：verified=false 绝不显示完成/成功） ── */
+/* ── FE-08 会话流程面板（示例Harness-E 30 号过审；准则⑤：verified=false 绝不显示完成/成功） ── */
 const SF_STEPS=[['4_new_session','4建会话'],['5_deliver','5送桥'],['8_rename_session','8重命名']];
 let _sfLast={};
 function sfEl(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;}
@@ -2316,7 +2316,7 @@ async function sfDeliver(mid,btn){
     btn.disabled=false;btn.textContent=orig;
   }
 }
-/* ── FE-12 通道状态与停用/新建（DSH 59 过审；v1.1：时间转本地、路径不外显、none 不改状态） ── */
+/* ── FE-12 通道状态与停用/新建（示例Harness-E 59 过审；v1.1：时间转本地、路径不外显、none 不改状态） ── */
 const _chNotes={}; /* mid -> {cls,text} 跨刷新保留 */
 /* ★V41：读某成员 harness 的**通用桥模板**（裁定 1B 后至多一条）。
    带缓存，避免成员卡每帧都打接口。返回 {name,kind}；没有任何模板时返回 {none:true}。 */
@@ -2513,7 +2513,7 @@ async function chEstablish(mid,name){
   }catch(e){_chNotes[mid]={cls:'fail',text:'新建失败：'+e.message};}
   await loadSessionFlow();
 }
-/* ── FE-09 掉线抢救面板（DSH 36 号过审；老板「没活别打扰」+ 硬/软信号契约） ── */
+/* ── FE-09 掉线抢救面板（示例Harness-E 36 号过审；老板「没活别打扰」+ 硬/软信号契约） ── */
 let _ofLast={};
 async function loadOfflineReport(){
   const panel=document.getElementById('offlinePanel');
@@ -2687,7 +2687,7 @@ async function ofScan(){
     box.append(sfEl('div','sf-err','扫描请求失败：'+e.message));
   }finally{btn.disabled=false;btn.textContent='🔄 全间抢救扫描';}
 }
-/* ── FE-07 下一步指引条：status → 文案与出口（DSH 22 号过审的 §1 映射） ── */
+/* ── FE-07 下一步指引条：status → 文案与出口（示例Harness-E 22 号过审的 §1 映射） ── */
 let _wsStatus='';
 let _wsHall='';   /* 大厅任务原文（GET /workshop 回传）：draft 态要不要说"回大厅发任务"全看它 */
 /* ★2026-10-11（V40 P2）：已接入 agent 数。**0 个时必须提前说话** ——
@@ -2817,7 +2817,7 @@ async function sendDiscuss(zone){
       const act=(r&&r.action)?r.action:'';
       const asrc=(r&&r.action_source)?r.action_source:'';
       _wsStatus=r.status||_wsStatus; renderNextStep();
-      /* 恒等式（DSH 15/16号实测）：后端 _l1_action_by_rule() 只返回 "select"
+      /* 恒等式（示例Harness-E 15/16号实测）：后端 _l1_action_by_rule() 只返回 "select"
          ⇒ rule_fallback ⇒ action==='select'。非 select 分支无需 rule_fallback 提示（原死代码已删）。 */
       if(act==='select'){
         setPhase(2);

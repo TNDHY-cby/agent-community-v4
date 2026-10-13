@@ -1,4 +1,4 @@
-"""心跳登记表测试（2026-10-07 Marvis，47 号任务书 Marvis 侧）。
+"""心跳登记表测试（2026-10-07 示例Harness-C，47 号任务书 示例Harness-C 侧）。
 
 覆盖：
 - register / beat：last_seen 刷新、status 更新、未登记自登记；

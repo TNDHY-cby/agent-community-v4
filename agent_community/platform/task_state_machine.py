@@ -18,7 +18,7 @@ from __future__ import annotations
 import time
 from typing import Callable, Optional
 
-# ── V-20 审计埋点（工单化审计，47 号任务书 DSH 侧）──────────────────
+# ── V-20 审计埋点（工单化审计，47 号任务书 示例Harness-E 侧）──────────────────
 # 背景：本模块的迁移此前只 append 到 st["logs"]（每 key 仅留 20 条，且 to_dict() 显式排除）
 # ⇒ 不落盘、重启即失，任务生命周期没有任何可追溯台账。
 #

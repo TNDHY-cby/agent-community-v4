@@ -1,6 +1,6 @@
 # 外端Agent生产合作社（External Agent Community）— 工作指引
 
-> 无论你用哪个 AI / 哪个模式进来，先读这一页。更详细的项目手册在 DSH 技能
+> 无论你用哪个 AI / 哪个模式进来，先读这一页。更详细的项目手册在项目技能
 > `ac-project-dev`（若你的环境支持技能，直接加载它；不支持就读
 > `docs/` 与 `design-docs/平台设计总纲.md`）。
 >
@@ -30,11 +30,11 @@
 | 副本 | 路径 | git | 说明 |
 |---|---|---|---|
 | **开发副本（这里）** | `<开发副本根目录>`（真实路径只写在 dev-only 的 HANDOVER.md 与项目技能手册里，**不进公开仓库**） | 有（本地，**无 remote**） | 实际开发在这里 |
-| **发布副本（开源）** | `<发布副本根目录>`（同上，真实路径 dev-only） | 有（`origin/master`，与 dev 已同步至 `2a25611`） | 只由 `publish_acv4.ps1` 单向推入 |
+| **发布副本（开源）** | `<发布副本根目录>`（同上，真实路径 dev-only） | 有（`origin/master`，**以 `git rev-parse` 实测为准**，别信本文档里的旧 sha） | 只由 `publish_acv4.ps1` 单向推入 |
 | ⚠️ 已退休副本 | `<退休副本根目录>`（同上，真实路径 dev-only） | 无 | 2026-10-02 退休，架构停在 V-9 拆包之前。**P0/P1/P2 成果已由 V-10 回收入主线**，此副本仅存档 |
 | 另一条线 | `<另一条线根目录>`（同上，真实路径 dev-only） | — | 独立项目线（**代码零回收价值**，dev 是超集；仅 2 份全盘唯一文档可捞），勿混 |
 
-- ⚠️ `publish_acv4.ps1` **只同步 `agent_community` 一个子目录**；根文档与 `design-docs/` 不进发布副本，要单独处理。
+- ⚠️ `publish_acv4.ps1` 同步面（2026-10-13 起）：`agent_community/` + 根文档（`README.md`/`AGENTS.md`/`.gitignore`/`pytest.ini`）+ `design-docs/` + 根 `tests/`（copy-only）；`HANDOVER.md`、协作书、`dsh-tooling/` 等 dev-only 件**不同步**。
 - ⚠️ 发布脚本已带**反向分叉闸**（oss 独有代码文件 → 中止），防止 robocopy 静默摧毁 oss 上的独有成果。
 - ⚠️ 开发副本**曾有缺 `requirements.txt`** 的问题，已于 `7c99828` 补上；
   **2026-10-05 又修了一次**：原文件末尾被粘了 AIGC 尾注（无 `#`）且含中文，

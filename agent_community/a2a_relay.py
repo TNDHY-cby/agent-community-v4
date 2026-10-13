@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-A2A 接力插件（原为 Marvis 侧编写，注入本仓 a2a_server 使用）
+A2A 接力插件（原为 示例Harness-C 侧编写，注入本仓 a2a_server 使用）
 ============================================================
 
-⚠️ **状态：2026-10-07 起默认停用（Marvis 已退役，该通道作废）**
-   老板决定：Marvis 退役 → 停掉这条通道。本插件原先的两个作用（任务工作间自动回执 +
-   把讨论回复抄进 Marvis 时代信箱目录）都只为「Marvis 无法后台常驻」服务，现已无对象。
+⚠️ **状态：2026-10-07 起默认停用（示例Harness-C 已退役，该通道作废）**
+   老板决定：示例Harness-C 退役 → 停掉这条通道。本插件原先的两个作用（任务工作间自动回执 +
+   把讨论回复抄进 示例Harness-C 时代信箱目录）都只为「示例Harness-C 无法后台常驻」服务，现已无对象。
    - **默认不启用**：不起后台线程、不写自动回执、不向任何信箱落盘。
    - **要启用**：设环境变量 `AC4_A2A_RELAY=1`（将来做跨公司 A2A 协作时可能复用）。
-   - 顺手去掉的隐患：原 `INBOX_DIR` 是硬编码的 Marvis 时代绝对路径，现改为
+   - 顺手去掉的隐患：原 `INBOX_DIR` 是硬编码的 示例Harness-C 时代绝对路径，现改为
      `AC4_RELAY_INBOX` 可配、默认落在平台数据目录下（仅在启用时才写）。
 
 目标（启用时）：补上 9104 A2A server 的"自动处理闭环"：
 
   1) on_task_created：任务工作间创建后自动写入一条回执讨论（user 角色），
      使工作间从 draft 进入 discussing 态，并触发平台 AI/Orchestrator 参与讨论；
-  2) 后台扫描线程：定期把工作间讨论中 DSH/平台（非 user 角色）的回复落盘到
+  2) 后台扫描线程：定期把工作间讨论中 示例Harness-E/平台（非 user 角色）的回复落盘到
      老板可见的书信信箱  D:\\合作社开发\\协作对话记录\\A2A_inbox\\<task_id>.md，
-     供 Marvis 被唤醒时读取接力（Marvis 无法后台常驻，闭环以"落盘即闭环"实现）。
+     供 示例Harness-C 被唤醒时读取接力（示例Harness-C 无法后台常驻，闭环以"落盘即闭环"实现）。
 
 依赖：仅标准库（与 a2a_server.py 保持一致风格）。
 用法：
@@ -41,10 +41,10 @@ WS_JSON = os.environ.get(
     "AC4_WS_JSON",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "workshops.json"),
 )
-# ── 启用开关（2026-10-07：Marvis 退役，通道作废 → **默认关闭**）──────────
+# ── 启用开关（2026-10-07：示例Harness-C 退役，通道作废 → **默认关闭**）──────────
 # 关闭时：不起后台扫描线程、不写自动回执、不向任何信箱落盘。设 AC4_A2A_RELAY=1 启用。
 ENABLED = os.environ.get("AC4_A2A_RELAY", "0") == "1"
-# 信箱目录不再硬编码 Marvis 时代的绝对路径；默认落在平台数据目录下（仅启用时才写）
+# 信箱目录不再硬编码 示例Harness-C 时代的绝对路径；默认落在平台数据目录下（仅启用时才写）
 _DEFAULT_INBOX = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "data", "a2a_inbox"
 )
@@ -108,9 +108,9 @@ def on_task_created(ws_id: str, task_id: str, text: str) -> dict:
     if not ENABLED:
         return {"ok": False, "disabled": True, "reason": "a2a_relay 已停用（需 AC4_A2A_RELAY=1）"}
     msg = (
-        "【A2A 自动回执】来自 Marvis 的任务已送达本工作间。"
+        "【A2A 自动回执】来自 示例Harness-C 的任务已送达本工作间。"
         f"task_id={task_id}，ws_id={ws_id}，任务内容见大厅 hall_content。"
-        "DSH 侧收到后请按任务要求处理；处理回复将由本插件自动落盘 A2A_inbox 信箱。"
+        "示例Harness-E 侧收到后请按任务要求处理；处理回复将由本插件自动落盘 A2A_inbox 信箱。"
     )
     resp = _post(f"/api/workshop/{ws_id}/discuss", {"message": msg})
     if "error" in resp:
@@ -180,10 +180,10 @@ def scan_once() -> list[str]:
 def start() -> "threading.Thread | None":
     """后台线程：定期扫描落盘（daemon，随进程退出）。
 
-    停用时**不起线程、不写盘**，只打一行说明并返回 None（2026-10-07 Marvis 退役后为默认行为）。
+    停用时**不起线程、不写盘**，只打一行说明并返回 None（2026-10-07 示例Harness-C 退役后为默认行为）。
     """
     if not ENABLED:
-        print("[a2a_relay] 已停用（Marvis 退役、该通道作废）；如需启用请设 AC4_A2A_RELAY=1", flush=True)
+        print("[a2a_relay] 已停用（示例Harness-C 退役、该通道作废）；如需启用请设 AC4_A2A_RELAY=1", flush=True)
         return None
 
     def _loop() -> None:
@@ -204,8 +204,8 @@ def main() -> None:
     ap.add_argument("--scan", action="store_true", help="手动扫描一次并落盘")
     args = ap.parse_args()
     if not ENABLED:
-        # 默认停用（Marvis 退役）：连手动扫描也不写盘，避免误往已作废的通道投递
-        print("[a2a_relay] 已停用（Marvis 退役、该通道作废）。如需使用请设 AC4_A2A_RELAY=1。")
+        # 默认停用（示例Harness-C 退役）：连手动扫描也不写盘，避免误往已作废的通道投递
+        print("[a2a_relay] 已停用（示例Harness-C 退役、该通道作废）。如需使用请设 AC4_A2A_RELAY=1。")
         return
     if args.scan:
         written = scan_once()

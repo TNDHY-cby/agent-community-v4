@@ -101,8 +101,8 @@ async def api_ai_models(request: Request, base_url: str = ""):
     """V-16 §3.1：拉远端模型清单 —— 设置页「模型」下拉的数据源。
 
     **为什么必须有它**：下拉原先只读前端硬编码 `presets`，
-    接新服务（如 mimo）时必然空清单，用户没有任何可选项。
-    实测 mimo 的 `GET /v1/models` 返回标准 OpenAI 格式，完全可用。
+    接新服务（如 某服务商）时必然空清单，用户没有任何可选项。
+    实测该服务商的 `GET /v1/models` 返回标准 OpenAI 格式，完全可用。
 
     设计要点：
     - **用服务端已存的解密 key** —— 前端拿到的只是 `mask_api_key` 掩码，
@@ -256,7 +256,7 @@ async def api_save_config(request: Request):
     # text（**值本来就是掩码**，看不出问题）-> 一旦点「保存」，
     # `body["ai_api_key"]` 就是这段掩码 -> **真 key 被掩码覆盖**，永久丢失。
     #
-    # 判定：提交值含 '*' 即视为掩码（OpenAI/DeepSeek/mimo 系 key 由字母数字
+    # 判定：提交值含 '*' 即视为掩码（OpenAI/DeepSeek/其他兼容系 key 由字母数字
     # 与 `-`/`_` 组成，不会含 `*`）-> 忽略它，保留已存 key。
     _in_key = str(body.get("ai_api_key") or "")
     _key_was_masked = "*" in _in_key

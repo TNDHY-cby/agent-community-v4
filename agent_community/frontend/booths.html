@@ -326,7 +326,7 @@ function roleClass(role){
   return 'other';
 }
 function stateClass(st){
-  /* DSH 13 号 §四：进度读 entry_state（pending/dispatched/acked/entered/blocked/timeout/needs_human） */
+  /* 示例Harness-E 13 号 §四：进度读 entry_state（pending/dispatched/acked/entered/blocked/timeout/needs_human） */
   const s=String(st||'');
   if(s==='pending') return 'pending';
   if(s==='dispatched') return 'dispatched';
@@ -739,7 +739,7 @@ let fwMsg=null;
 function fwInfo(){
   const prev=(libData&&libData.preview&&typeof libData.preview['framework.md']==='string')?libData.preview['framework.md']:'';
   const fw=(libData&&libData.framework)||null;
-  /* 首选后端权威字段（DSH a7d1241）；在用实例重启前响应里还没有该字段 ⇒ 回退预览字符串判据 */
+  /* 首选后端权威字段（示例Harness-E a7d1241）；在用实例重启前响应里还没有该字段 ⇒ 回退预览字符串判据 */
   const hasField=!!(fw&&typeof fw.exists==='boolean'&&typeof fw.is_platform_template==='boolean');
   const exists=hasField?fw.exists:!!prev.trim();
   const established=hasField?(fw.exists&&!fw.is_platform_template)

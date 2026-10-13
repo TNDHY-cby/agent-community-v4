@@ -1,4 +1,4 @@
-/* FE-02 handover.html 端到端验收（DSH 4 号发言四条 + 补充项） */
+/* FE-02 handover.html 端到端验收（示例Harness-E 4 号发言四条 + 补充项） */
 const { chromium } = require('playwright-core');
 const path = require('path');
 const fs = require('fs');
@@ -68,7 +68,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   /* 1a. 证据全空提交 → 后端 errors 逐条显示 */
   await page.fill('#fTask', 'ws-demo');
-  await page.fill('#fWho', 'MiMo');
+  await page.fill('#fWho', '示例Harness-F');
   await page.fill('.item-row textarea', '空证据冒烟测试');
   await page.click('#submitBtn');
   await sleep(900);
@@ -96,7 +96,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   /* 2. 合规提交 → 200 → 列表出现 */
   await page.fill('#fTask', 'handover-ui-e2e');
-  await page.fill('#fWho', 'MiMo');
+  await page.fill('#fWho', '示例Harness-F');
   await page.fill('.item-row textarea', 'handover.html 表单提交链路冒烟测试（400×2 路径 + 本条 200）');
   await page.fill('.item-row .ev-grid input:nth-child(3)', 'playwright e2e：空证据400/送达缺凭据400/本条200，见 handover_验证');
   await page.uncheck('#fDelivered');

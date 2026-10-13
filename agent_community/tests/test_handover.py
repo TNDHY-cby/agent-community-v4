@@ -52,7 +52,7 @@ def _clean_ledger():
 
 def _ok_receipt(**over):
     base = {
-        "task_id": "t-1", "who": "DSH",
+        "task_id": "t-1", "who": "示例Harness-E",
         "items": [{"claim": "做了 A", "evidence": {"commit": "76964df"}}],
         "delivery": {"delivered": False, "reply_ref": ""},
     }
@@ -70,7 +70,7 @@ class TestTemplates:
         assert "evidence_hint" in t and "rule" in t
 
     def test_receipt_template_has_delivery_section(self):
-        t = template_receipt(task_id="t-1", who="DSH")
+        t = template_receipt(task_id="t-1", who="示例Harness-E")
         assert t["kind"] == "receipt"
         assert t["delivery"] == {"delivered": False, "reply_ref": "", "note": ""}
         assert "delivery_rule" in t
@@ -210,7 +210,7 @@ class TestRouter:
 # ══════════════════════════════════════════════════════════════
 
 class TestTemplateRoute:
-    """MiMo 2026-10-07 实测报回的两条，这里钉死防回归。"""
+    """示例Harness-F 2026-10-07 实测报回的两条，这里钉死防回归。"""
 
     def test_receipt_template_honours_title(self):
         from agent_community.platform.routers.handover import handover_template

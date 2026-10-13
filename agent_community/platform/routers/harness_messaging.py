@@ -287,7 +287,7 @@ def _set_watch_probe(fn) -> None:
 def _probe_pids_watching(needle: str) -> list:
     """扫进程命令行，返回**所有**匹配该线索的 pid（不只第一个）。
 
-    ★2026-10-12 新增：真机实测发现 `traecode-harness-01` 名下**同时有 4 只桥在跑**
+    ★2026-10-12 新增：真机实测发现 `example-harness-01` 名下**同时有 4 只桥在跑**
       （那个 agent 在"路径引号被拆断、进程秒退"时重试了几次，每次都真的起了一只）。
       **同一 harness 多只桥 ⇒ 重复投递 / 竞争取件 / 心跳互相覆盖** —— 而平台**一个字都没说**。
       （`harness_messaging` 里那句注释早就写着"同一邮箱多只桥 ⇒ 重复投递"，
@@ -303,7 +303,7 @@ def _probe_pids_watching(needle: str) -> list:
         import subprocess as _sp
         # ⚠️★**不要**对线索做 `[System.IO.Path]::GetFullPath`：
         #   本函数既可能收到**绝对路径**（邮箱），也可能收到 **harness_id**（一个普通标识符）。
-        #   `GetFullPath('traecode-harness-01')` 会把它解析成"平台当前目录下的同名文件"，
+        #   `GetFullPath('example-harness-01')` 会把它解析成"平台当前目录下的同名文件"，
         #   于是拿一个**根本不存在的路径**去匹配进程命令行 ⇒ **永远匹配不到**。
         #   （实测：名下明明有 4 只桥在跑，却回 `bridges_running = 0`。我又栽在"想当然"上。）
         #   ⇒ 原样用线索，并额外试一次"正斜杠"变体（进程命令行里两种都可能出现）。
@@ -311,7 +311,7 @@ def _probe_pids_watching(needle: str) -> list:
         #   ① 命令行里含该 harness 的线索；
         #   ② **确实是在跑桥脚本**（`*bridge.py*`）。
         #   只按①判会把我自己（或用户）任何"命令行里提到这个 harness_id"的进程都算成桥 ——
-        #   实测：一个 `python -c "...traecode-harness-01..."` 的调用脚本被计成了第 5 只桥。
+        #   实测：一个 `python -c "...example-harness-01..."` 的调用脚本被计成了第 5 只桥。
         #   ③ ★只认**解释器**（`Name -like 'python*'`）：powershell/cmd 包裹进程的命令行里
         #     同样含脚本路径，混进来会让"链根"变成那个包裹进程，而且
         #     **同一个 powershell 里连起两只桥时会被归并成一只（漏数）**。
@@ -676,7 +676,7 @@ async def harness_auto_connect(request: Request):
     full_cmd = [py_exe] + bridge_cmd
     try:
         env = dict(_os.environ)
-        env["DSH_SUPERVISOR_PID"] = str(_os.getpid())
+        env["示例Harness-E_SUPERVISOR_PID"] = str(_os.getpid())
         if bridge_type == "pending_poll":
             _os.makedirs(work_dir, exist_ok=True)
         proc = _sp.Popen(

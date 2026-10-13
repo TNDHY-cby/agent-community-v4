@@ -19,7 +19,7 @@ from pathlib import Path
 # bridge_file: 平台生成的桥脚本路径（若显式路径不存在则按实际副本动态推导）；url: 平台地址；extra: 额外参数
 _BRIDGES: dict[str, dict] = {
     "example-web-bridge": {
-        "bridge_file": "{{DSH_BRIDGE_PATH}}",  # 示例：用户侧实际桥文件路径
+        "bridge_file": "{{示例Harness-E_BRIDGE_PATH}}",  # 示例：用户侧实际桥文件路径
         "url": "http://127.0.0.1:18920",
         "extra": [],
     },
@@ -72,7 +72,7 @@ def start_harness_bridges() -> list[dict]:
         cmd = [py, "-u", bf, "--url", cfg["url"], *cfg.get("extra", [])]
         try:
             env = dict(os.environ)
-            env["DSH_SUPERVISOR_PID"] = str(os.getpid())  # 桥据此探测父进程存活，父死自退出（防孤儿）
+            env["示例Harness-E_SUPERVISOR_PID"] = str(os.getpid())  # 桥据此探测父进程存活，父死自退出（防孤儿）
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.DEVNULL,
