@@ -44,7 +44,17 @@ ROOT = Path(__file__).resolve().parents[1]
 SELF = Path(__file__).resolve()
 SCAN_DIR = Path(ARGS[0]).resolve() if ARGS else ROOT
 
-SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "data", "runtime_logs", ".venv", "venv", "node_modules"}
+SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "data", "runtime_logs", ".venv", "venv", "node_modules",
+             # ★2026-10-13 补 `bridges`：桥是**运行期产物**，与 `data/` 同类（.gitignore 已忽略、
+             #   发布脚本 robocopy 也 /XD 排除，永远不会随仓库出去）。
+             #   为什么必须补：平台给每只 harness 签发 Agent-Token，而生成出来的桥**要带着它**
+             #   才能通过 `task-result` 的身份校验（不带就被自己拦下，见 V43 §11.3）——
+             #   于是桥脚本里会有**一个真实的 token**，扫描器每次发布都拦我。
+             #   这不是掩盖泄露：token 的正确落点就是"桥所在那台机器上的运行期文件"，
+             #   与 `data/harnesses.json`（本就被跳过）同一信任边界；真正要防的是**随仓库出去**，
+             #   而 bridges/ 出不去。
+             "bridges",
+             }
 TEXT_EXT = {".py", ".md", ".json", ".html", ".js", ".css", ".txt", ".tmpl", ".yml", ".yaml", ".toml", ".cfg", ".ini", ".example",
             # ★2026-10-08 补：**脚本类以前完全不在扫描范围**——于是 `start_18920_v26.ps1`
             #   （入库的启动脚本）里躺着明文平台 token，扫描器一次都没看过它。

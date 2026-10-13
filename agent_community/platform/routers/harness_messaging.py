@@ -64,8 +64,14 @@ async def harness_pending_tasks(harness_id: str):
 
 @router.post("/api/harness/task-result")
 async def harness_task_result(request: Request):
-    _audit_log.record("harness.task_result", actor="user", target="", detail="任务回报")
     from ..server import _append_msg, _apply_harness_reply, _do_complete_workshop, _do_continue_workshop, _get_decision_mode, _sanitize_harness_content, _settle_vote, save_state
+    # ★★2026-10-13 补齐缺失的 import（**同族没改干净**，与上面 `harness_message` 一字不差的病）：
+    #   2026-10-12 那次"半截功能"专项审计修了 `harness_message` 的 NameError（见上方注释），
+    #   却**漏了这个函数** —— 于是凡是**回报里带 `harness_id`** 的任务回报都直接 500。
+    #   实测：本项目自己的桥只带 workshop_id/member_id（文档格式里也没有 harness_id）⇒ 一直没炸；
+    #   而一只**规规矩矩带上 harness_id 的外部 agent** 一回报就 500（今天真机验证时抓到）。
+    #   ⇒ 教训：**"同族"要一起改**（规则 20）；并且"没被调用过"不等于"没问题"。
+    from .harness_common import _harness_identity_check
     """harness 桥回报任务结果。"""
     body = await request.json()
     # P1 身份凭证：若该 harness 已签发 token，强制校验 X-Agent-Token（向后兼容）
@@ -73,10 +79,14 @@ async def harness_task_result(request: Request):
     if _hid0:
         _id_resp = _harness_identity_check(_hid0, request.headers)
         if _id_resp:
+            # 被拒的回报也要留痕（审计的价值在可追责；target 带上是哪只 harness 试图回报）
+            _audit_log.record("harness.task_result", actor="user", target=_hid0,
+                              detail="任务回报（身份校验未通过，被拒）")
             return _id_resp
     # ── 委托链结果兑现：无论 ok 真假，都要把回报路由给等待中的 Future ──
     # 否则 bridge.execute_subtask / review_subtask 会空等 300s / 30s 超时，
     # orchestrator.execute_layers 整条任务链表现为“永久卡在 broadcasting”。
+    _hid = _hid0   # 先初始化：下面 try 里可能抛异常，避免审计那行 NameError
     try:
         _hid = str(body.get("harness_id") or "").strip()
         _did = str(body.get("delegation_id") or "").strip()
@@ -118,6 +128,13 @@ async def harness_task_result(request: Request):
             )
     except Exception as _e:
         print(f"[harness_reply] 回报路由异常: {_e}", flush=True)
+    # ★2026-10-13：审计放在**解析完 harness 之后**。
+    #   老写法 `target=""` 写在函数首行（还没解析 body），后果：一个平台接 N 只 harness 时，
+    #   这条"任务回报"根本**查不到是谁报的** —— 审计的全部价值在可追责，查不到对象等于没记。
+    #   这里 `_hid` 可能是 body 里带的，也可能是按 workshop/member **反查**出来的（兼容旧桥），
+    #   用反查后的 id 才追得到账；两样都没有时才留空（那是格式问题，不是没记录）。
+    _audit_log.record("harness.task_result", actor="user", target=_hid or _hid0,
+                      detail="任务回报")
     ws = workshops.get(body.get("workshop_id", ""))
     if ws:
         mid = body.get("member_id")

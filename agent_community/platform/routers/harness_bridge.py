@@ -165,13 +165,17 @@ async def harness_pending_bridge_tests(harness_id: str):
 
 @router.post("/api/harness/bridge-test-result")
 async def harness_bridge_test_result(request: Request):
-    _audit_log.record("harness.bridge.test_result", actor="user", target="", detail="桥测试回报")
     from ..server import Utf8JSONResponse, save_state
     """harness 桥回报测试结果（对象侧确认桥通道正常）。"""
     body = await request.json()
     hid = body.get("harness_id", "")
     if not hid:
         return Utf8JSONResponse({"error": "harness_id required"}, status_code=400)
+    # ★2026-10-13：同 task-result —— target 必须带**具体 harness**，否则多 harness 下查不了账。
+    #   位置从函数首行挪到这里：首行时 body 还没解析，拿不到 id（写死 target="" 的老毛病）。
+    #   不带 id 的请求不记（那是格式错误，没发生实质动作，与心跳那条同一取舍）。
+    _audit_log.record("harness.bridge.test_result", actor="user",
+                      target=str(hid), detail="桥测试回报")
     sess = harness_manager.sessions.get(hid)
     if not sess:
         return Utf8JSONResponse({"error": f"harness {hid} 未注册"}, status_code=404)
@@ -802,6 +806,18 @@ async def harness_bridge_generate(harness_id: str, request: Request):
         }
     else:
         return Utf8JSONResponse({"error": f"暂不支持自动生成模板: {template}"}, status_code=400)
+    # ★2026-10-13：把 harness 的 Agent-Token 一并注入桥脚本。
+    #   平台注册时给每只 harness 签发 token，而 `/api/harness/message` 与
+    #   `/api/harness/task-result` **强制校验** `X-Agent-Token`（P1 身份凭证）。
+    #   桥是平台自己生成的、本来就该持有这个凭据 —— 不带就等于"自己拦自己"：
+    #   实测一只**规规矩矩带 `harness_id`** 的任务回报被 401（桥把它丢进 failed/），
+    #   而本项目自己的桥只带 workshop_id/member_id、恰好绕开了身份校验那条路，所以一直没炸。
+    #   （同族教训：这个 NameError 2026-10-12 修了 message 那处、漏了 task-result 那处。）
+    # ⚠️参数名**不带 `_LIT` 后缀**（`_LIT` 只是模板侧的标记，render 取的是去掉后缀的名字 ——
+    #   写成 `AGENT_TOKEN_LIT` 会报"占位符未提供参数"，实测踩过一次）。
+    # ⚠️`info.metadata` 用 getattr 取：部分测试用的是没有 metadata 属性的假对象，
+    #   直接点属性会 AttributeError（实测 3 个 policy 测试这么红的）。
+    params["AGENT_TOKEN"] = str(((getattr(info, "metadata", None) or {}) or {}).get("agent_token") or "")
     bridges_root = BRIDGES_ROOT          # 模块级常量，测试可 monkeypatch（见文件头说明）
     if out_dir:
         # V-6 修复：out_dir 必须位于平台 bridges 根目录内，防任意文件写入

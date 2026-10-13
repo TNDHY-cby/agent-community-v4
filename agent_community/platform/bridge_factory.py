@@ -26,6 +26,17 @@ TEMPLATES_ROOT = Path(__file__).resolve().parent.parent / "bridge_templates"
 _PLACEHOLDER_RE = re.compile(r"\{\{\s*([A-Z0-9_]+)\s*\}\}")
 _LITERAL_RE = re.compile(r"\{\{\s*([A-Z0-9_]+)_LIT\s*\}\}")
 
+# ★2026-10-13：**可选占位符**的默认值（模板里用、调用方可以不传）。
+#   为什么需要：`AGENT_TOKEN` 是后来加进三份 L1 模板的（桥要带 `X-Agent-Token` 才能回报成功），
+#   但渲染模板的调用方不止一个（`bridge/generate` 端点、`tools/bridge_tool`、
+#   `connect_artifact` 的 L3 脚本、各处测试）—— 一刀切要求必传，会让**所有旧调用方直接炸**
+#   （实测：加完当轮 pytest 立刻 5 个失败）。⇒ 这些占位符缺省走空串：
+#   空 token = 桥不带头 = 与"没加这条功能"时的行为一致（向后兼容，不会更差）。
+#   能拿到 token 的调用方（如 generate 端点）照样传真值。
+OPTIONAL_LIT_DEFAULTS = {
+    "AGENT_TOKEN": "",
+}
+
 
 class BridgeTemplateError(Exception):
     pass
@@ -86,6 +97,9 @@ def render(template_name: str, params: dict) -> str:
     def _sub_lit(m: re.Match) -> str:
         key = m.group(1)
         if key not in params:
+            # 可选占位符走默认值（见 OPTIONAL_LIT_DEFAULTS）—— 否则所有旧调用方一起炸
+            if key in OPTIONAL_LIT_DEFAULTS:
+                return repr(str(OPTIONAL_LIT_DEFAULTS[key]))
             raise BridgeTemplateError(f"模板占位符 {key}_LIT 未提供参数（模板: {template_name}）")
         return repr(str(params[key]))
 

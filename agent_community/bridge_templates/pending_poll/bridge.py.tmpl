@@ -38,11 +38,19 @@ HARNESS_ID = {{HARNESS_ID_LIT}}
 WORK_DIR = {{WORK_DIR_LIT}}
 TRIGGER_CMD = {{TRIGGER_CMD_LIT}}
 PLATFORM_URL = {{PLATFORM_URL_LIT}}
+# ★2026-10-13：Agent-Token。平台注册时给每只 harness 签发一个 token，而
+#   `/api/harness/message` 与 `/api/harness/task-result` 会**强制校验** `X-Agent-Token`。
+#   桥是平台自己生成的、本来就该持有这个凭据 —— 不带就会被自己拦在外面
+#   （实测：一只规规矩矩带 `harness_id` 的任务回报被 401，桥把它丢进 failed/）。
+AGENT_TOKEN = {{AGENT_TOKEN_LIT}}
 
 
 def post_json(url: str, payload: dict, timeout: float = 30.0) -> tuple[bool, str]:
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    headers = {"Content-Type": "application/json"}
+    if AGENT_TOKEN:
+        headers["X-Agent-Token"] = AGENT_TOKEN
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8", "replace")

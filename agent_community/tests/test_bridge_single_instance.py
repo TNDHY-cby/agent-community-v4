@@ -148,6 +148,9 @@ def _render_params(work: str) -> dict:
         "ACP_COMMAND": "example --acp", "ACP_CWD": work,
         "MODEL_NAME": "example-model", "PROVIDER": "example-provider",
         "DESCRIPTION": "template lock check",
+        # ★2026-10-13：Agent-Token 也要给（模板里有 `{{AGENT_TOKEN_LIT}}` 占位符；
+        #   ⚠️参数名**不带 `_LIT` 后缀** —— 那只是模板侧的标记，render 取去掉后缀的名字）
+        "AGENT_TOKEN": "",
     }
 
 

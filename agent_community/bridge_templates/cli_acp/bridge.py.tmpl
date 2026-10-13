@@ -33,6 +33,9 @@ ACP_CWD = {{ACP_CWD_LIT}}
 MODEL_NAME = {{MODEL_NAME_LIT}}
 PROVIDER = {{PROVIDER_LIT}}
 DESCRIPTION = {{DESCRIPTION_LIT}}
+# ★2026-10-13：Agent-Token（平台注册时签发）。`/api/harness/message` 与
+#   `/api/harness/task-result` 会强制校验 `X-Agent-Token`，桥不带就会被自己拦下。
+AGENT_TOKEN = {{AGENT_TOKEN_LIT}}
 
 
 def _find_project_root(start: Path) -> Path:
@@ -98,9 +101,12 @@ def build_harness_info() -> dict:
 
 
 def post_json(url: str, body: dict) -> dict:
+    _headers = {"Content-Type": "application/json"}
+    if AGENT_TOKEN:
+        _headers["X-Agent-Token"] = AGENT_TOKEN
     req = urllib.request.Request(
         url, data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"}, method="POST",
+        headers=_headers, method="POST",
     )
     return json.loads(urllib.request.urlopen(req, timeout=30).read())
 

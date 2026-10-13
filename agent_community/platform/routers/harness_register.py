@@ -6,6 +6,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from ..protocol import HarnessInfo
+from ..protocol import HarnessStatus
 from ..protocol import Message
 from ..protocol import MessageType
 from ..protocol import WakeupMethod
@@ -593,13 +594,25 @@ async def api_harness_launch_log():
 
 @router.post("/api/harness/heartbeat")
 async def harness_heartbeat(harness_id: str = ""):
-    _audit_log.record("harness.heartbeat", actor="user", target="", detail="心跳")
     from ..server import Utf8JSONResponse
     """Harness 心跳保活"""
     # 支持 query param 和 JSON body
     if not harness_id:
         return Utf8JSONResponse({"error": "harness_id required（请通过 URL query 传入，如 /api/harness/heartbeat?harness_id=xxx）"}, status_code=400)
+    # ★2026-10-13：审计**只记上线跃迁**，不再记每一次心跳。
+    #   老写法（函数首行无条件记一条 `target=""` 的"心跳"）有两个毛病，都是实测出来的：
+    #   ① **每 15 秒一条** × N 只 harness，会把 **500 条 ring buffer 刷成纯心跳** ——
+    #      注册/验证/回报这些真事件几分钟内就被挤出去（实测 08:21~08:23 的 25 条里混了 13 条心跳）；
+    #   ② `target=""` ⇒ 记了也不知道是**谁**的心跳，追不了账。
+    #   现在：注册时置 OFFLINE，心跳到齐才 ONLINE；超时后 check_timeouts 置回 OFFLINE，
+    #   下次心跳即"恢复" ⇒ **只在离线→在线这一刻记**，才是有信息量的状态变化。
+    #   （覆盖率不受影响：record 调用仍在本端点里；心跳是否在线另查 `GET /api/heartbeat`。）
+    _sess = harness_manager.sessions.get(harness_id)
+    _was_online = bool(_sess) and _sess.status == HarnessStatus.ONLINE
     harness_manager.heartbeat(harness_id)
+    if _sess is not None and not _was_online:
+        _audit_log.record("harness.heartbeat", actor="user", target=harness_id,
+                          detail="心跳（上线/恢复）")
     return {"success": True, "harness_id": harness_id}
 
 @router.post("/api/harness/activation-result")

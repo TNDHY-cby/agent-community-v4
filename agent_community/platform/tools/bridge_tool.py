@@ -69,6 +69,9 @@ class GenerateBridgeTool(BaseTool):
             "MODEL_NAME": (info.ai.model_name if info.ai else "") or "",
             "PROVIDER": (info.ai.provider if info.ai else "") or "",
             "DESCRIPTION": (info.ai.description if info.ai else "") or "",
+            # ★2026-10-13：带上 Agent-Token —— 桥不带 `X-Agent-Token` 就会被自己的
+            #   `task-result` 身份校验拦下（见 design-docs/V43 §11.3）
+            "AGENT_TOKEN": str(((getattr(info, "metadata", None) or {}) or {}).get("agent_token") or ""),
         }
 
         # 校验必填：ACP 类必须给出拉起命令

@@ -33,11 +33,17 @@ HARNESS_ID = {{HARNESS_ID_LIT}}
 INBOX_DIR = {{INBOX_DIR_LIT}}
 TRIGGER_CMD = {{TRIGGER_CMD_LIT}}
 PLATFORM_URL = {{PLATFORM_URL_LIT}}
+# ★2026-10-13：Agent-Token（平台注册时签发）。`/api/harness/message` 与
+#   `/api/harness/task-result` 会强制校验 `X-Agent-Token`，桥不带就会被自己拦下。
+AGENT_TOKEN = {{AGENT_TOKEN_LIT}}
 
 
 def post_json(url: str, payload: dict, timeout: float = 30.0) -> tuple[bool, str]:
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    headers = {"Content-Type": "application/json"}
+    if AGENT_TOKEN:
+        headers["X-Agent-Token"] = AGENT_TOKEN
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8", "replace")
