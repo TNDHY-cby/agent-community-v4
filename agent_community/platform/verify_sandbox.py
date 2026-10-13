@@ -205,10 +205,15 @@ def _platform_url() -> str:
 BRIDGE_PLATFORM = _platform_url()
 
 #: 桥脚本所在（与 `harness_messaging` / `bridge_supervisor` 用**同一个** examples 目录）
+#: ⚠️★2026-10-13（V44 #10）：键**必须与桥模板的 `kind` 完全一致**。
+#:   原来是 `"acp"`，而模板 kind 是 `cli_acp` ⇒ 下面 `bridge_script_path(kind)` 拿 `kind` 去查
+#:   **永远查不到** ⇒ A 档 harness 在验证间里必然 `bridge_started=false`、第 4 步必然 `not_picked`
+#:   （实测：dsl 型 harness 只能"先手动把常驻桥跑起来"才能把第 4 步弄绿）。
+#:   已按 KINDS 口径改正；判据只留这一处，别在别处再写一遍桥型名。
 BRIDGE_SCRIPTS = {
     "file_poll": "filepoll_harness_bridge.py",
     "pending_poll": "pending_poll_bridge.py",
-    "acp": "acp_harness_bridge.py",
+    "cli_acp": "acp_harness_bridge.py",
 }
 
 
@@ -231,7 +236,7 @@ def bridge_argv(kind: str, *, harness_id: str, inbox: str, platform: str,
                            hint="确认 agent_community/examples/ 下的桥脚本是否完整")
     argv = [sys.executable, "-u", script, "--harness-id", harness_id]
     # ⚠️ 参数名**逐脚本核对过**（别照猜）：file_poll 用 `--platform`，
-    #    pending_poll / acp 用 `--url`（实测踩到过这个不一致）。
+    #    pending_poll / cli_acp 用 `--url`（实测踩到过这个不一致）。
     if kind == "file_poll":
         argv += ["--inbox", inbox]
         if trigger:
@@ -243,7 +248,7 @@ def bridge_argv(kind: str, *, harness_id: str, inbox: str, platform: str,
         if trigger:
             argv += ["--trigger", trigger]
         argv += ["--interval", str(interval), "--url", platform]
-    elif kind == "acp":
+    elif kind == "cli_acp":
         argv += ["--url", platform]
     return argv
 
@@ -407,8 +412,21 @@ async def channel_selfcheck(harness_id: str, *, kind: str, wait: float = 8.0) ->
         if still:
             reason = ("桥**没来领**这条测试件 —— 这一型（%s）的桥要自己轮询平台；"
                       "多半是它没在跑、或起它时 `--url`/`--harness-id` 填错了。" % kind)
-            advice = ("起这只桥（用平台生成的桥脚本，例如 `pending_poll_bridge.py "
-                      "--harness-id %s --url <平台地址> --work-dir <工作目录>`），再重跑。" % harness_id)
+            # ★2026-10-13（V44）：advice 原来**写死** `pending_poll_bridge.py`，
+            #   于是一个 cli_acp 的 harness 拿到的是"起 pending_poll 桥"这种**跟它无关**的指引
+            #   （真机实测：E1 那份回执里就抱怨了这一点）。
+            #   ⇒ 按当前 kind 给出**对应那一只**脚本名与参数（口径只此一处）。
+            _script = BRIDGE_SCRIPTS.get(kind) or "bridge.py"
+            if kind == "file_poll":
+                _how = f"`{_script} --harness-id {harness_id} --inbox <你的目录> --platform <平台地址>`"
+            elif kind == "pending_poll":
+                _how = f"`{_script} --harness-id {harness_id} --url <平台地址> --work-dir <工作目录>`"
+            elif kind == "cli_acp":
+                _how = (f"`{_script} --harness-id {harness_id} --url <平台地址> "
+                        f"--acp-command \"<拉起命令>\"`")
+            else:
+                _how = f"`{_script} --harness-id {harness_id} --url <平台地址>`"
+            advice = f"起这只桥（用平台生成的桥脚本，例如 {_how}），再重跑。"
         else:
             reason = ("桥领走了测试件，但**没有回报** —— 它跑起来了，只是回报那一步没走通。" )
             advice = "看桥的输出/日志里回报那一段的报错（常见：平台地址或 token 不对）。"

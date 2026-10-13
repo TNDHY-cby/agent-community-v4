@@ -176,7 +176,12 @@ def test_pick_template_falls_back_to_derived_then_says_unknown(monkeypatch):
 
 # ── 4) 桥参数逐脚本核对 ─────────────────────────────────────────────────────
 def test_bridge_argv_uses_verified_flag_names():
-    """参数名是**逐脚本核对**过的：file_poll 用 `--platform`，pending_poll/acp 用 `--url`。"""
+    """参数名是**逐脚本核对**过的：file_poll 用 `--platform`，pending_poll/cli_acp 用 `--url`。
+
+    ⚠️ 2026-10-13（V44 #10）：桥型键从 `acp` 改成**模板口径的 `cli_acp`** ——
+       原来的键与模板 kind 不一致，导致 `bridge_script_path("cli_acp")` 永远找不到脚本
+       （A 档 harness 在验证间里必然起不了桥）。断言跟着真相走。
+    """
     a = vs.bridge_argv("file_poll", harness_id="h1", inbox=r"D:\i", platform="http://x",
                        trigger="t.cmd", interval=1)
     assert "--inbox" in a and "--platform" in a and "--trigger" in a
@@ -184,8 +189,9 @@ def test_bridge_argv_uses_verified_flag_names():
     b = vs.bridge_argv("pending_poll", harness_id="h1", inbox=r"D:\i\sub", platform="http://x")
     assert "--url" in b and "--work-dir" in b
     assert "--platform" not in b, "pending_poll 桥不认 --platform（照猜会起不来）"
-    c = vs.bridge_argv("acp", harness_id="h1", inbox="", platform="http://x")
+    c = vs.bridge_argv("cli_acp", harness_id="h1", inbox="", platform="http://x")
     assert "--url" in c
+    assert c[2].endswith("acp_harness_bridge.py")
 
 
 def test_bridge_script_path_is_under_examples():

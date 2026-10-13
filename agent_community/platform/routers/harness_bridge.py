@@ -872,6 +872,16 @@ async def harness_bridge_generate(harness_id: str, request: Request):
     if sess.info.bridge_status != "tested":
         sess.info.bridge_status = "reported"
     save_state()
+    # ★2026-10-13（V44 #15）：**桥型与声明的叫醒方式不匹配就说出来**（不禁止，但要说话）。
+    #   起因：实测有 harness 声明 `wakeup_method=http_api`（平台直推、本不需要桥）却走了桥的
+    #   3/4/5 步，而且"第 4 步验的桥型"与"第 5 步在跑的桥型"还不是同一型 ⇒
+    #   `verified` 被读成"这条链路通了"。判据只在 interface_guidance 一处。
+    _kind_warning = ""
+    try:
+        from ..interface_guidance import bridge_kind_warning as _bkw
+        _kind_warning = _bkw(getattr(sess.info, "wakeup_method", ""), template)
+    except Exception:  # noqa: BLE001
+        pass
     return {
         "success": True,
         "harness_id": harness_id,
@@ -883,6 +893,10 @@ async def harness_bridge_generate(harness_id: str, request: Request):
         "bridge_dir": str(target),
         "bridge_status": sess.info.bridge_status,
         "launch_hint": f'python -u "{bridge_file}" --url {_platform_base_url()}',
+        # ★按接口的匹配告警（空串 = 匹配）：说明"这条桥跟你声明的接口对不对得上"
+        "wakeup_method": str(getattr(getattr(sess.info, "wakeup_method", ""), "value",
+                                     getattr(sess.info, "wakeup_method", ""))),
+        "kind_warning": _kind_warning,
     }
 
 @router.post("/api/harness/bridge-path")

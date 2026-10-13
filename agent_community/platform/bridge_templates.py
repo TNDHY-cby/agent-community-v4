@@ -200,14 +200,26 @@ def get(info: Any, name: str) -> Optional[dict]:
 
 
 def default_one(info: Any) -> Optional[dict]:
-    """没有显式指定模板时的挑选（V36 §4 顺序）：
+    """没有显式指定模板、也没有工作间/职位匹配（`pick_for` 未命中）时的挑选。
 
-    ① 唯一的模板 → 用它；
-    ② `match` 命中的（按调用方给的 ws/role，见 `pick_for`）由 `pick_for` 负责；
-    ③ 都没命中但列表非空 → 取第一条（并让调用方提示"这条没绑会话/不确定"）。
+    ⚠️★2026-10-13（V44 #11）：原实现是 `return items[0]` ——**只取列表第一条**，
+    既没有"唯一"这个前提，也不分**草稿 / 已验证**。后果：一个 harness 名下同时有
+    `source=draft, verified=False` 的草稿与 `verified=True` 的具体模板时，**只要草稿排在前面**，
+    省略 `template` 的调用就会拿到**没验证过的那条**，而调用方只会看到 `template_source`，
+    用户基本不会去核。
+    ⇒ 选序改为：**① 已验证的（多条取 `verified_at` 最新）→ ② 唯一模板 → ③ 第一条**。
+    另：草稿在返回值里保留 `verified=False`，调用方应据此提示"这条还没验证过"。
     """
     items = list_all(info)
-    return items[0] if items else None
+    if not items:
+        return None
+    verified = [t for t in items if t.get("verified")]
+    if verified:
+        verified.sort(key=lambda t: float(t.get("verified_at") or 0), reverse=True)
+        return verified[0]
+    if len(items) == 1:
+        return items[0]
+    return items[0]
 
 
 def pick_for(info: Any, *, ws: str = "", role: str = "") -> Optional[dict]:

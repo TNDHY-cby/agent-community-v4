@@ -501,6 +501,18 @@ async def register_harness(request: Request):
         _l2 = _l2_status(info)
     except Exception:
         _l2 = {"has_template": False, "note": "模板摘要读取失败（不影响注册）"}
+    # ★2026-10-13（V44 #15 / 老板「不同接口不同引导」）：
+    #   **按叫醒方式给各自的五步引导**（acp / file_poll 要走桥，http_api / mcp 不用桥，
+    #   clipboard 只能人工中转，http 兜底等于"先落盘、暂不叫醒"）。
+    #   口径只留 `platform/interface_guidance.py` 一处；界面话术与文档都从它取。
+    try:
+        from ..server import _platform_base_url as _pbase
+        from ..interface_guidance import summary_block as _iface_block, flow_text as _iface_text
+        _ui_guidance = _iface_block(info.wakeup_method, harness_id=info.harness_id)
+        _ui_flow_text = _iface_text(info.wakeup_method, harness_id=info.harness_id,
+                                    platform_url=_pbase())
+    except Exception as _e:  # noqa: BLE001
+        _ui_guidance, _ui_flow_text = {}, f"（按接口引导生成失败：{_e}）"
     return {
         "success": True,
         "harness_id": info.harness_id,
@@ -510,6 +522,9 @@ async def register_harness(request: Request):
         "bridge_template": _l2,
         # V-15 步骤6：接入档位 + 引导（§10.1 时机1）。D 档含 §6.3 插件引导文案。
         "access_tier": _tier,
+        # ★按接口引导（同一件事的界面版 + 文本版，取自同一处真相）
+        "interface_guidance": _ui_guidance,
+        "next_steps_text": _ui_flow_text,
         # V26 步骤0：动作脚本状态（configured=有命令可自动做；manual=只能人工，界面要如实说明）
         "action_scripts": _action_status,
     }
