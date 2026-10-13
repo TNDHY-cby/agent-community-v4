@@ -65,6 +65,14 @@ spike_ws/
 workshop_minimal_ws/
 OutAgentsCommunity/db-backups/
 
+# ── 桥的单实例锁（**运行期文件，绝不入库**）────────────────────────────
+# ⚠️ 2026-10-13 实测教训：我冒烟跑了一下示例桥，它在**自己所在目录**建了 `.bridge.lock`
+#   （内容是一个 pid），随后 `git add -A` 就把它提交进了公开仓库。
+#   这类文件与 `data/`、`bridges/` 同类：跑起来就有、内容无意义、且**每台机器都不一样**。
+#   ⇒ 全局忽略；桥的实现里锁文件名统一叫 `.bridge.lock`（模板与示例都一致）。
+.bridge.lock
+*.bridge.lock
+
 # ── 环境变量文件（**含真实 token/key，绝不能入库**）────────────────────
 # ⚠️ 2026-10-09 实测：`deploy/.env` 里躺着**真平台 token**（AC4_SERVER_TOKEN / AC4_TOKEN），
 #   而此前 `.gitignore` **一条 `.env` 规则都没有** —— 只要有人 `git add deploy/`，
