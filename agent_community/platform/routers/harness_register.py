@@ -450,14 +450,16 @@ async def register_harness(request: Request):
     # ── V-15 步骤6：接入档位 + 提醒（§10.1 时机1「注册后」）──
     #  平台不再替外端架桥，就必须把话说清；
     #  D 档按 §6.3 **表达需求、不指定实现**（不为每个 harness 写安装步骤）。
-    _tier = None
+    #  ★2026-10-13「最优解」：这里返回的是**事实判断**（interface_class / can_be_woken_by_platform /
+    #    needs_protocol）——**不再对外输出"A/B/C/D 档"那种档位名**（字母只留给适配等级 S/A/B/C/D）。
+    _access = None
     try:
         from ..tier_guidance import apply_needs_protocol, guidance_at_register
-        _tier = guidance_at_register(info)
+        _access = guidance_at_register(info)
         if apply_needs_protocol(info):
-            save_state()          # needs_protocol / access_tier / 引导文案 落盘
+            save_state()          # needs_protocol / interface_class / 引导文案 落盘
     except Exception as _e:
-        _tier = {"error": f"档位判定失败（不影响注册）: {_e}"}
+        _access = {"error": f"接入事实判定失败（不影响注册）: {_e}"}
         print(f"[tier] {info.harness_id} 判定失败: {_e}", flush=True)
 
     # 映射为 AgentCard 并注册到平台
@@ -520,8 +522,8 @@ async def register_harness(request: Request):
         "card": card.model_dump(),
         "agent_token": existing_token,
         "bridge_template": _l2,
-        # V-15 步骤6：接入档位 + 引导（§10.1 时机1）。D 档含 §6.3 插件引导文案。
-        "access_tier": _tier,
+        # ★接入事实（取代旧的"A/B/C/D 档"说法；字母只留给接口适配等级 S/A/B/C/D）
+        "access_facts": _access,
         # ★按接口引导（同一件事的界面版 + 文本版，取自同一处真相）
         "interface_guidance": _ui_guidance,
         "next_steps_text": _ui_flow_text,

@@ -359,3 +359,60 @@ def test_register_template_lists_per_interface_bridge_matching():
     # 六种接口都要在模板里出现
     for wm in ("http_api", "mcp", "acp", "file_poll", "clipboard", "http"):
         assert wm in _REG, f"模板没提接口 {wm}"
+
+
+# ── 老板 2026-10-13「最优解」：口径唯一化（防止再冒出第三套字母）────────────
+
+def test_only_one_letter_alphabet_in_use():
+    """**字母只允许一套**：接口适配等级 S/A/B/C/D。
+
+    历史债（本测试就是防它复发）：同一个"挡位"曾有**三份定义** ——
+      ① `tier_guidance` 的接入档位 A/B/C/D；② 自测题的 A~E；③ V46 的适配等级 S/A/B/C/D
+      ⇒ 同一句话里"B 档"能指三个东西。现在：①降级为**事实判断**、②改叫 **Q1~Q5**、
+      字母只留给 ③。
+    """
+    from agent_community.platform import tier_guidance as tg
+    # ① 事实判断取代档位名：对外字典里不许再出现"档位标签"
+    g = tg.guidance_at_register(type("I", (), {"wakeup_method": "clipboard", "metadata": {}})())
+    assert "access_tier_label" not in g, "又输出'X 档'标签了（字母只能有一套）"
+    for key in ("interface_class", "can_be_woken_by_platform", "needs_protocol"):
+        assert key in g, f"接入事实缺 {key}"
+    assert g["interface_class"] in tg.CLASS_LABEL
+    # ③ 等级字母表本身只有一套
+    assert bc.GRADES == ("S", "A", "B", "C", "D")
+
+
+def test_register_template_has_no_bare_tier_letters():
+    """用户可见文案里不许再出现裸的"A 档/B 档"（会与等级 S/A/B/C/D 打架）。"""
+    import re
+    bad = [(i, l.strip()[:100]) for i, l in enumerate(_REG.split("\n"), 1)
+           if re.search(r"[A-E] 档", l)]
+    assert not bad, f"模板里还有'X 档'字样：{bad[:3]}"
+
+
+def test_self_test_answers_are_q_numbered():
+    """自测选项必须是 **Q1~Q5**（它只是"你属于哪种接口"，不是等级）。
+
+    ⚠️ 断言必须**同时覆盖"选哪个"与"映射表"两处**：上一版只查 `Q1 / Q2 …` 字样，
+       变异把「选 **Q1**」改回「选 **A**」时**没被杀掉**（别处还有 Q1 字样）。
+    """
+    import re
+    lines = _REG.split("\n")
+    # ① "选 **Qn**" 必须逐个存在
+    for q in ("Q1", "Q2", "Q3", "Q4", "Q5"):
+        assert re.search(rf"选 \*\*{q}\*\*", _REG), f"自测题缺「选 **{q}**」"
+        assert f"{q} " in _REG, f"映射表缺 {q}"
+    # ② 映射表五行的左列必须是 Q1~Q5（不是 A~E）
+    mapped = [l for l in lines if re.match(r"\s+Q[1-5] ", l)]
+    assert len(mapped) >= 5, f"映射表没按 Q1~Q5 编号：{mapped[:6]}"
+    assert not [l for l in lines if re.match(r"\s+[A-E] (命令拉起|盯文件夹|网页接口|手动贴|测不出来)", l)], \
+        "映射表又用回 A~E 了"
+    # ③ 必须有一句话说清"Q 编号不是等级"
+    assert "**不是等级**" in _REG, "缺「Q 编号不是等级」的说明"
+
+
+def test_register_response_has_no_legacy_tier_field():
+    """注册响应里不许再出现旧的 `access_tier` 顶层字段（改名为 access_facts）。"""
+    src = (Path(vs.__file__).resolve().parent / "routers" / "harness_register.py").read_text(encoding="utf-8")
+    assert '"access_facts": _access' in src
+    assert '"access_tier": _tier' not in src, "旧的档位字段又回来了"

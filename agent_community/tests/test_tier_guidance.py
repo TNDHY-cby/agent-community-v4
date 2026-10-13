@@ -178,23 +178,45 @@ class TestApplyNeedsProtocol:
         assert "needs_protocol" not in info.metadata
 
 
-# ── 接线：注册响应带档位 ────────────────────────────────────────
+# ── 接线：注册响应带「接入事实」（取代旧的"档位"字段）────────────────────
 class TestWiring:
-    def test_register_response_carries_tier(self):
-        """注册响应必须带 access_tier，否则前端拿不到提醒（§10.1 时机1）。"""
+    def test_register_response_carries_access_facts(self):
+        """注册响应必须带**接入事实**（interface_class / can_be_woken_by_platform / needs_protocol）。
+
+        ★2026-10-13「最优解」：原来这里是 `access_tier`（A/B/C/D 档位名）——
+          字母已经**只留给适配等级 S/A/B/C/D**（`bridge_catalog.GRADES`），
+          所以这里断言"事实判断"，不再断言档位名（`access_tier` 仍作为兼容字段保留）。
+        """
         from agent_community.platform.routers import harness_register as hr
         info = _info(WakeupMethod.CLIPBOARD, harness_id="示例Harness-T",
                      harness_name="示例Harness-T")
-        # 直接验证函数内用的那份 guidance（响应结构由返回 dict 保证）
         g = tg.guidance_at_register(info)
-        assert g["access_tier"] == "D"
+        assert g["interface_class"] == tg.CLASS_MANUAL
+        assert g["can_be_woken_by_platform"] is False, "人工中转不该被说成'平台能自动叫醒'"
+        assert g["needs_protocol"] is True
+        assert g["access_tier"] == "D"          # 兼容字段仍在（只写不用于文案）
         assert "guidance" in g
-        # 确认模块已接进 harness_register（源码含调用）
+        # 确认模块已接进 harness_register
         import inspect
         src = inspect.getsource(hr.register_harness)
-        assert "guidance_at_register" in src, "注册端点未接入档位提醒"
+        assert "guidance_at_register" in src, "注册端点未接入接入事实"
         assert "apply_needs_protocol" in src, "注册端点未写 needs_protocol"
-        assert '"access_tier": _tier' in src, "注册响应未带档位"
+        assert '"access_facts": _access' in src, "注册响应未带接入事实"
+
+    def test_accessible_facts_honest_for_each_interface(self):
+        """逐接口核对"平台能不能自动叫醒它"——这是取代"X 档"说法的那条事实。"""
+        cases = {
+            WakeupMethod.ACP: True,
+            WakeupMethod.FILE_POLL: True,
+            WakeupMethod.HTTP_API: True,
+            WakeupMethod.MCP: True,
+            WakeupMethod.CLIPBOARD: False,
+            WakeupMethod.HTTP: False,
+        }
+        for wm, expect in cases.items():
+            info = _info(wm)
+            assert tg.can_be_woken_by_platform(info) is expect, f"{wm} 的'能否自动叫醒'判错了"
+            assert tg.needs_protocol_for(info) is (not expect), f"{wm} 的 needs_protocol 反了"
 
     def test_artifact_response_carries_guidance(self):
         import inspect
