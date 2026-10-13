@@ -215,6 +215,155 @@ def truth_summary() -> dict:
     """给「整体同步更新」用的：一处真相的规模（文档/话术生成据此，避免各写一套）。"""
     return {
         "kinds": len(CATALOG),
+        "wakeup_methods": len(WAKEUP_TO_BRIDGES),
         "user_field_counts": {k: len(describe(k)["user_fields"]) for k in CATALOG},
         "source_of_truth": "platform/bridge_catalog.py（界面话术、文档、模板校验都引这里）",
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# ★「接口 × 桥型」适配矩阵（老板 2026-10-13：「给各种接口的适配性高效性排等级，
+#   不同接口匹配不同桥」）
+#
+# 为什么和 `CATALOG` 放在同一个模块：两者是**同一件事的两个侧面** ——
+#   `CATALOG` 回答"这一型桥要填什么"，本矩阵回答"你这种接口该用哪一型桥、它好不好"。
+#   分开放就会重演"四处各写一套"的老毛病（本模块顶部那份血泪史）。
+#
+# 等级判据（**写在代码里，判据可查**；`score` 越高越好，1~5）：
+#   · 全自动：任务从平台到 agent 面前**无需人参与**（否 = 直接降档）
+#   · 端到端延迟：直推 ≈ 秒级；常驻轮询 2~5s；ACP 要拉会话 5~15s；人工 = 不可估
+#   · 常驻开销：多一个进程/多一个监听 = 高；无桥 = 无
+#   · 链路环节：环节越多、越容易"看起来成功其实没到"
+# ══════════════════════════════════════════════════════════════════════════
+
+#: 等级（S 最好，D 最差）；界面与文档统一用这一套词，别再自造
+GRADES = ("S", "A", "B", "C", "D")
+
+GRADE_LABEL = {
+    "S": "S · 全自动 · 直推（无桥，延迟最低）",
+    "A": "A · 全自动 · 桥驱动（多一个常驻桥）",
+    "B": "B · 全自动但链路偏长（可优化）",
+    "C": "C · 半自动（最后一下要人来）",
+    "D": "D · 不自动（平台只落盘，无人取）",
+}
+
+
+def _wm(wakeup: str, *, grade: str, score: int, auto: bool, latency: str, overhead: str,
+        bridges: list, primary: str, note: str, effort: str) -> dict:
+    return {
+        "wakeup_method": wakeup, "grade": grade, "score": score, "fully_auto": auto,
+        "latency": latency, "overhead": overhead, "bridges": bridges,
+        "primary_bridge": primary, "note": note, "effort": effort,
+    }
+
+
+#: ★一处真相：接口（wakeup_method）→ 适配与高效性等级 + 该配哪种桥
+WAKEUP_TO_BRIDGES: dict = {
+    "http_api": _wm(
+        "http_api", grade="S", score=5, auto=True,
+        latency="最低（秒级，平台直接 POST）", overhead="无（不跑桥、不落盘）",
+        bridges=[], primary="",
+        note="C 档·常驻 HTTP。**平台直推，不需要桥** —— 这是所有接口里最快、最少环节的一条。",
+        effort="你只需给出一个 HTTP 地址（平台探测会自己认出来）"),
+    "mcp": _wm(
+        "mcp", grade="S", score=5, auto=True,
+        latency="最低（平台作为 MCP 客户端直调工具）", overhead="无（不跑桥）",
+        bridges=[], primary="",
+        note="B 档·MCP。**不需要桥**：平台列出你的工具并直接调用。",
+        effort="给出 MCP 服务地址即可"),
+    "acp": _wm(
+        "acp", grade="A", score=4, auto=True,
+        latency="中（每次要拉起会话，实测 5~15s）", overhead="中（一个常驻桥 + 被拉起的会话进程）",
+        bridges=["cli_acp"], primary="cli_acp",
+        note="A 档·命令行。**桥用你的命令拉起会话**，全自动、可自检、可持久化。",
+        effort="给一条能拉起 agent 的命令（Windows 路径用正斜杠）"),
+    "file_poll": _wm(
+        "file_poll", grade="B", score=3, auto=True,
+        latency="中（桥轮询 2~5s + 你的 agent 发现文件的时间）", overhead="中（常驻桥 + 你的目录监听）",
+        bridges=["file_poll", "pending_poll"], primary="file_poll",
+        note="B 档·盯文件夹。桥把任务写成文件投进你的目录；**链路比直推长一环**"
+             "（你自己那份「发现新文件」的监听也得活着，否则文件躺着没人看）。",
+        effort="给一个邮箱目录；建议再给一条叫醒命令（不给则只落盘）"),
+    "clipboard": _wm(
+        "clipboard", grade="C", score=2, auto=False,
+        latency="不可估（等人）", overhead="低（桥可选）",
+        bridges=["pending_poll"], primary="pending_poll",
+        note="D 档·人工中转。桥能把活送到门口、也能把结果带回来，但**「敲门」这一下得人来**。",
+        effort="无（没有叫醒命令这回事；第 2 步回 mode:manual 即正常）"),
+    "http": _wm(
+        "http", grade="D", score=1, auto=False,
+        latency="不可估（没人轮询就不会动）", overhead="中（若要起桥）",
+        bridges=["pending_poll"], primary="pending_poll",
+        note="E 档·兜底。**平台只落盘、不叫醒**；没人轮询它就一直躺着 —— 这是如实的能力边界。",
+        effort="要么起一只 pending_poll 桥去取件，要么改判成上面某一档"),
+}
+
+#: 反向索引：桥型 → 适配的接口（按等级从好到差）
+def bridges_to_wakeups() -> dict:
+    out: dict = {}
+    for wm, spec in WAKEUP_TO_BRIDGES.items():
+        for k in spec["bridges"]:
+            out.setdefault(k, []).append(wm)
+    for k, wms in out.items():
+        wms.sort(key=lambda w: -WAKEUP_TO_BRIDGES[w]["score"])
+    return out
+
+
+def rank_table() -> list:
+    """**按高效性从好到差**排好的清单（界面索引与话术都取这里）。"""
+    rows = []
+    for wm, spec in WAKEUP_TO_BRIDGES.items():
+        row = dict(spec)
+        row["grade_label"] = GRADE_LABEL.get(spec["grade"], spec["grade"])
+        # 与 interface_guidance 的展示名对齐（那边是唯一真相，这里只做引用）
+        try:
+            from . import interface_guidance as _ig
+            row["interface_label"] = _ig.for_wakeup(wm)["label"]
+            row["tier_hint"] = _ig.for_wakeup(wm)["tier_hint"]
+        except Exception:  # noqa: BLE001
+            row["interface_label"] = wm
+            row["tier_hint"] = ""
+        rows.append(row)
+    rows.sort(key=lambda r: -r["score"])
+    return rows
+
+
+def match(wakeup_method: str) -> Optional[dict]:
+    """某接口"该配哪种桥"（一处判据；`interface_guidance.bridge_kind_warning` 也取这里）。"""
+    wm = str(getattr(wakeup_method, "value", wakeup_method) or "").strip().lower()
+    spec = WAKEUP_TO_BRIDGES.get(wm)
+    if spec is None:
+        return None
+    out = dict(spec)
+    out["grade_label"] = GRADE_LABEL.get(spec["grade"], spec["grade"])
+    return out
+
+
+def bridge_fit(wakeup_method: str, kind: str) -> dict:
+    """给"这个接口 + 这一型桥"打分：`fit` = best / ok / redundant / mismatch / unknown。
+
+    **不禁止任何组合**（用户可能有自己的理由），只给出**可查的结论**，让界面/话术有话可说。
+    """
+    wm = str(getattr(wakeup_method, "value", wakeup_method) or "").strip().lower()
+    kind = (kind or "").strip()
+    spec = WAKEUP_TO_BRIDGES.get(wm)
+    if spec is None:
+        return {"fit": "unknown", "reason": f"平台不认识接口 `{wm}`，无法判断 `{kind}` 是否合适",
+                "suggested": ""}
+    if not kind:
+        return {"fit": "unknown", "reason": "没给桥型", "suggested": spec["primary_bridge"]}
+    if not spec["bridges"]:
+        return {"fit": "redundant",
+                "reason": f"你声明 `{wm}`（{spec['grade']} 档）**本来不需要桥**；"
+                          f"再配 `{kind}` 等于多一条多余链路（能跑，但白多一个进程与故障面）",
+                "suggested": ""}
+    if kind == spec["primary_bridge"]:
+        return {"fit": "best", "reason": f"`{wm}` 的推荐桥型就是 `{kind}`", "suggested": kind}
+    if kind in spec["bridges"]:
+        return {"fit": "ok",
+                "reason": f"`{kind}` 对 `{wm}` 可用，但**不是首选**（首选 `{spec['primary_bridge']}`）：{spec['note']}",
+                "suggested": spec["primary_bridge"]}
+    return {"fit": "mismatch",
+            "reason": f"`{wm}` 适配的桥型是 {spec['bridges'] or '（不需要桥）'}，不是 `{kind}`；"
+                      f"**第 4 步自检验的是当时那只桥**，验的和跑的不是同一型时 `verified` 不能当「链路通了」",
+            "suggested": spec["primary_bridge"]}

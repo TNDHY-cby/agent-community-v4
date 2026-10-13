@@ -244,3 +244,118 @@ def test_bridge_generate_response_carries_kind_warning():
     src = (Path(vs.__file__).resolve().parent / "routers" / "harness_bridge.py").read_text(encoding="utf-8")
     assert '"kind_warning"' in src
     assert "bridge_kind_warning" in src
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 老板 2026-10-13：「注册模板增加索引，给各种接口的适配性高效性排等级，
+#                    不同接口匹配不同桥」
+# ══════════════════════════════════════════════════════════════════════════
+from agent_community.platform import bridge_catalog as bc   # noqa: E402
+
+_REG = (Path(vs.__file__).resolve().parent.parent / "frontend" / "register.html").read_text(encoding="utf-8")
+
+
+def test_every_wakeup_method_has_a_grade():
+    """每个接口都要有等级（不许有"没评级"的接口）。"""
+    for wm in ("http_api", "mcp", "acp", "file_poll", "clipboard", "http"):
+        spec = bc.match(wm)
+        assert spec is not None, f"{wm} 没有等级定义"
+        assert spec["grade"] in bc.GRADES, f"{wm} 的等级 {spec['grade']} 不在 {bc.GRADES} 里"
+        assert isinstance(spec["score"], int) and 1 <= spec["score"] <= 5
+        assert spec["grade_label"]
+
+
+def test_ranking_is_ordered_and_stable():
+    rows = bc.rank_table()
+    scores = [r["score"] for r in rows]
+    assert scores == sorted(scores, reverse=True), "等级表必须按高效性从好到差排"
+    # 已知判据：直推（无桥）比桥驱动好；桥驱动比人工好；人工比"不叫醒"好
+    order = {r["wakeup_method"]: r["score"] for r in rows}
+    assert order["http_api"] > order["acp"] > order["clipboard"] > order["http"]
+    assert order["mcp"] == order["http_api"], "MCP 与直推同档（都不需要桥）"
+
+
+def test_full_auto_flag_matches_reality():
+    """`fully_auto` 必须与 interface_guidance 的"要不要桥/要不要人"一致（两处口径不许打架）。"""
+    for wm in ("http_api", "mcp", "acp", "file_poll"):
+        assert bc.match(wm)["fully_auto"] is True, f"{wm} 应标全自动"
+    for wm in ("clipboard", "http"):
+        assert bc.match(wm)["fully_auto"] is False, f"{wm} 不该标全自动"
+
+
+def test_bridge_matching_per_interface():
+    """★不同接口匹配不同桥：首选桥型逐接口核对。"""
+    assert bc.match("acp")["primary_bridge"] == "cli_acp"
+    assert bc.match("file_poll")["primary_bridge"] == "file_poll"
+    assert bc.match("clipboard")["primary_bridge"] == "pending_poll"
+    assert bc.match("http")["primary_bridge"] == "pending_poll"
+    assert bc.match("http_api")["primary_bridge"] == "", "直推型不该有桥"
+    assert bc.match("mcp")["bridges"] == []
+
+
+def test_bridge_fit_verdicts():
+    assert bc.bridge_fit("acp", "cli_acp")["fit"] == "best"
+    assert bc.bridge_fit("acp", "pending_poll")["fit"] == "mismatch"
+    assert bc.bridge_fit("http_api", "pending_poll")["fit"] == "redundant"   # 多余链路
+    assert bc.bridge_fit("file_poll", "pending_poll")["fit"] == "ok"         # 可用非首选
+    assert bc.bridge_fit("???", "pending_poll")["fit"] == "unknown"
+
+
+def test_reverse_index_covers_all_bridges():
+    rev = bc.bridges_to_wakeups()
+    assert set(rev) == {"cli_acp", "file_poll", "pending_poll"}
+    assert "acp" in rev["cli_acp"]
+    # 反向索引里每个接口都排过序（等级高的在前）
+    for k, wms in rev.items():
+        scores = [bc.match(w)["score"] for w in wms]
+        assert scores == sorted(scores, reverse=True), f"{k} 的接口没按等级排"
+
+
+def test_catalog_endpoint_exposes_index_and_ranking():
+    """索引性内容必须由**接口**给出（界面不许手抄一份）。
+
+    ⚠️ 这里**真调端点函数**、断言响应体 —— 上一版只扫源码文本，
+       变异"把 wakeup_ranking 改成 []"时**没被杀掉**（没牙）。已改。
+    """
+    import asyncio
+    from agent_community.platform.routers import harness_bridge as hb
+
+    r = asyncio.run(hb.bridge_catalog_list())
+    assert r.get("success") is True
+    assert r.get("wakeup_ranking"), "端点没给等级表（界面就只能手抄一份）"
+    assert len(r["wakeup_ranking"]) >= 6
+    assert r["wakeup_ranking"][0]["score"] >= r["wakeup_ranking"][-1]["score"], "等级表没排序"
+    assert r.get("bridge_to_wakeups") and "cli_acp" in r["bridge_to_wakeups"]
+    assert r.get("grade_labels") and "S" in r["grade_labels"]
+    assert r.get("kinds"), "桥型清单不能丢"
+
+
+def test_register_guidance_carries_grade_and_bridge():
+    b = ig.summary_block("acp", harness_id="H1")
+    assert b["grade"] == "A" and b["primary_bridge"] == "cli_acp"
+    assert b["compatible_bridges"] == ["cli_acp"]
+    assert b["efficiency"]["fully_auto"] is True
+    t = ig.flow_text("http_api", harness_id="H1")
+    assert "适配/高效性等级：S" in t and "不需要桥" in t
+
+
+def test_register_template_has_index_and_rank_section():
+    """注册模板要有**索引**（老板要求），且等级表要出现在页面上。"""
+    assert "⚑ 索引" in _REG, "注册模板缺索引块"
+    assert "rankPanel" in _REG and "接口适配 / 高效性等级" in _REG
+    # 索引里的锚点必须真的存在（否则是"指不存在的路"）
+    import re
+    anchors = re.findall(r'href="#([A-Za-z0-9_]+)"', _REG)
+    ids = set(re.findall(r'id="([A-Za-z0-9_]+)"', _REG))
+    assert anchors, "索引里一个跳转都没有？"
+    missing = [a for a in anchors if a not in ids]
+    assert not missing, f"索引指向了不存在的锚点：{missing}"
+
+
+def test_register_template_lists_per_interface_bridge_matching():
+    """模板里必须写清"不同接口 → 不同桥"（老板原话）。"""
+    for needle in ("cli_acp（首选）", "pending_poll（可用，非首选）", "不需要桥"):
+        assert needle in _REG, f"模板缺「{needle}」"
+    # 六种接口都要在模板里出现
+    for wm in ("http_api", "mcp", "acp", "file_poll", "clipboard", "http"):
+        assert wm in _REG, f"模板没提接口 {wm}"

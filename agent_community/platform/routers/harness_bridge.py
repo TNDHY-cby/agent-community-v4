@@ -480,7 +480,14 @@ async def bridge_catalog_list():
     """
     from .. import bridge_catalog as _bc
     return {"success": True, "count": len(_bc.list_kinds()),
-            "kinds": _bc.list_kinds(), "truth": _bc.truth_summary()}
+            "kinds": _bc.list_kinds(),
+            # ★2026-10-13（老板：「给各种接口的适配性高效性排等级，不同接口匹配不同桥」）：
+            #   索引性内容一次给全 —— 排好序的等级表 + 反向索引（桥型 → 适配接口）+ 等级词表。
+            #   界面「接口索引」与「桥型匹配」两处都取这里，不许各写一套（规则 20）。
+            "wakeup_ranking": _bc.rank_table(),
+            "bridge_to_wakeups": _bc.bridges_to_wakeups(),
+            "grade_labels": dict(_bc.GRADE_LABEL),
+            "truth": _bc.truth_summary()}
 
 
 @router.get("/api/bridge-catalog/{kind}")

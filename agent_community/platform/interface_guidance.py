@@ -194,32 +194,65 @@ def for_wakeup(wakeup_method: Any) -> dict:
     return out
 
 
+def match_for(wakeup_method: Any) -> dict:
+    """该接口的**适配与高效性等级 + 该配哪只桥**（取 `bridge_catalog.WAKEUP_TO_BRIDGES` 一处真相）。
+
+    单独包一层是为了：`bridge_catalog` 万一不可用，引导致少还能给出五步表，
+    不至于整块 500 —— 但**降级时如实说明**，不假装有等级。
+    """
+    try:
+        from . import bridge_catalog as _bc
+        m = _bc.match(wakeup_method)
+        if m:
+            return m
+        return {"grade": "?", "grade_label": "未知（平台不认识这种接口）",
+                "primary_bridge": None, "bridges": [], "score": 0,
+                "latency": "未知", "overhead": "未知", "fully_auto": False,
+                "note": f"平台不认识接口 `{normalize(wakeup_method)}` —— 请先确认它的叫醒方式",
+                "effort": ""}
+    except Exception as e:  # noqa: BLE001
+        return {"grade": "?", "grade_label": f"（等级表不可用：{e}）", "primary_bridge": None,
+                "bridges": [], "score": 0, "latency": "", "overhead": "", "fully_auto": False,
+                "note": "", "effort": ""}
+
+
 def bridge_kind_warning(wakeup_method: Any, kind: str) -> str:
     """桥型与声明的叫醒方式不匹配时，给一句**人话告警**（空串 = 没问题）。
 
     ★V44 #15 的产品化形态：**不禁止**（用户可能有自己的理由），但**必须说话**。
+    ★2026-10-13：「谁配谁」的判据搬到 `bridge_catalog.bridge_fit`（"接口 × 桥型"矩阵）——
+      这里只把结论翻成人话，**不再自己维护一份对应表**（否则又是两处口径）。
     """
     key = normalize(wakeup_method)
-    expect = KIND_FOR_WAKEUP.get(key, "?")
     kind = (kind or "").strip()
     if not kind:
         return ""
-    if expect is None:
-        return (f"你选的桥型是 `{kind}`，但你声明的叫醒方式是 `{key}` —— "
-                f"**这一类本来不需要桥**（{for_wakeup(key)['inbox']}）。"
+    try:
+        from . import bridge_catalog as _bc
+        fit = _bc.bridge_fit(key, kind)
+    except Exception:  # noqa: BLE001
+        expect = KIND_FOR_WAKEUP.get(key, "?")
+        if expect == kind:
+            return ""
+        return (f"⚠️ 桥型与叫醒方式可能不匹配：你声明 `{key}`，这次要生成 `{kind}` —— "
+                f"请自行确认（平台的适配矩阵本次不可用）。")
+    f = fit.get("fit")
+    if f == "best":
+        return ""
+    if f == "ok":
+        return f"提示：{fit['reason']}"
+    if f == "redundant":
+        return (f"你选的桥型是 `{kind}`，但你声明的叫醒方式是 `{key}` —— {fit['reason']}。"
                 f"继续用桥也能跑，但请知悉：这是一条多余的链路。")
-    if expect == "?":
-        return f"平台不认识叫醒方式 `{key}`，无法判断 `{kind}` 这条桥是否合适 —— 请你自行确认。"
-    if kind != expect:
-        return (f"⚠️ 桥型与叫醒方式不匹配：你声明 `{key}`（对应桥型应为 `{expect}`），"
-                f"但这次要生成 `{kind}`。**第 4 步自检验的是当时那只桥**，"
-                f"如果验的和跑的不是同一型，`verified` 不能当成「这条链路通了」。")
-    return ""
+    if f == "unknown":
+        return f"⚠️ {fit['reason']}"
+    return f"⚠️ 桥型与叫醒方式不匹配：你声明 `{key}`，但这次要生成 `{kind}`。{fit['reason']}"
 
 
 def summary_block(wakeup_method: Any, *, harness_id: str = "") -> dict:
     """**注册响应里那一块**（给界面/文档直接显示的按接口引导）。"""
     g = for_wakeup(wakeup_method)
+    m = match_for(wakeup_method)
     return {
         "wakeup_method": g["wakeup_method"],
         "interface_label": g["label"],
@@ -233,6 +266,13 @@ def summary_block(wakeup_method: Any, *, harness_id: str = "") -> dict:
         "what_to_fill_in_step2": g["wake_answer"],
         "platform_can": list(g["platform_can"]),
         "platform_cannot": list(g["platform_cannot"]),
+        # ★2026-10-13：适配与高效性等级 + 该配哪只桥（一处真相：bridge_catalog）
+        "grade": m.get("grade"),
+        "grade_label": m.get("grade_label"),
+        "primary_bridge": m.get("primary_bridge"),
+        "compatible_bridges": list(m.get("bridges") or []),
+        "efficiency": {"latency": m.get("latency"), "overhead": m.get("overhead"),
+                       "fully_auto": m.get("fully_auto")},
         "harness_id": harness_id,
     }
 
@@ -240,9 +280,14 @@ def summary_block(wakeup_method: Any, *, harness_id: str = "") -> dict:
 def flow_text(wakeup_method: Any, *, harness_id: str = "", platform_url: str = "") -> str:
     """同一份引导的**纯文本版**（给"复制给 AI"的话术用；与 `summary_block` 同源）。"""
     g = for_wakeup(wakeup_method)
+    m = match_for(wakeup_method)
     hid = harness_id or "<你的 harness_id>"
     base = (platform_url or "").rstrip("/") or "<平台地址>"
+    _bridge = m.get("primary_bridge") or "（不需要桥）"
     lines = [f"【你的接口：{g['label']}】{g['tier_hint']}",
+             f"【适配/高效性等级：{m.get('grade')}】{m.get('grade_label')}",
+             f"【该配的桥：{_bridge}】可兼容：{m.get('bridges') or '（无）'}",
+             f"【延迟/开销】{m.get('latency')}；{m.get('overhead')}",
              "五步里**哪几步对你要做**："]
     for k in (STEP_REGISTER, STEP_WAKE, STEP_BRIDGE, STEP_SELFCHECK, STEP_PERSIST):
         lines.append(f"  · {STEP_LABEL[k]}：{g['steps'][k]}")
