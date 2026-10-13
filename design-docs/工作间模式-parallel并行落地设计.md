@@ -1,14 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: fee6cb6926e215051ee1772520098e59_1fe34450b59711f193fb525400393706
-    ReservedCode1: tdg2imkedXh0Is72I/JdkdyaYapkCQbF0E8ZDoDyKcv6nAIZ/eefQnOYqQXAiuVxEhVKpT6dhsHYZ8lZiUMmeV3mz6r0GHonFJT0fTTZVZPFEeAT8zedQaZal9r4uZT52zlNAlMhQz96kozmci/WG+ZzfOSklaINtM6UH/wuU7LEpz+gBoOCJhWVE7Q=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: fee6cb6926e215051ee1772520098e59_1fe34450b59711f193fb525400393706
-    ReservedCode2: tdg2imkedXh0Is72I/JdkdyaYapkCQbF0E8ZDoDyKcv6nAIZ/eefQnOYqQXAiuVxEhVKpT6dhsHYZ8lZiUMmeV3mz6r0GHonFJT0fTTZVZPFEeAT8zedQaZal9r4uZT52zlNAlMhQz96kozmci/WG+ZzfOSklaINtM6UH/wuU7LEpz+gBoOCJhWVE7Q=
----
-
 # 工作间模式 parallel（并行快进）落地设计
 
 > 决策来源：用户明确「并行放第一位，并行分工合作是我设计这个平台的初衷」（手机确认）

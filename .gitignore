@@ -1,6 +1,12 @@
 # ── 运行数据（首次运行自动生成，不入库） ──
 data/
 runtime_logs/
+# 工作间产物：正常情况下落在**各工作间自己的目录**（<workspace_dir>/library/），
+# 但只要有代码路径用了空/相对的 workspace_dir（测试、或某次调用），
+# 它就会掉到**仓库根**变成 `library/`——实测昨天就出现了一次（2026-10-12）。
+# 与 data/ 同类：运行期产物、不入库。
+library/
+bridges/
 
 # ── Python ──
 __pycache__/
@@ -19,6 +25,8 @@ env/
 # ── 本地临时与日志 ──
 temp/
 *.log
+*.log.err
+*.log.out
 
 # ── 编辑器 / 系统 ──
 .vscode/
@@ -31,22 +39,49 @@ config.local.json
 *.secret.json
 
 # ── 开发备份文件（禁止入库） ──
-# ⚠️ 2026-10-05：原有 *.backup / *.bak_* 都漏掉了 'AGENTS.md.backup.<时间戳>.<sha>' 这种
-#    "带后缀"的形态（*.backup 要求文件名以 .backup 结尾），publish_acv4.ps1 的
-#    `git add -A` 会把它提交进公开仓库。补 *.backup.* 兜住。
+# ⚠️ 2026-10-05 修复：本文件此前整段中文注释是「双重编码」的乱码
+#   （只影响可读性），但更要命的是最后一条规则 `*.bak-*` ——
+#   它原本和注释挤在同一行（损坏时那个换行丢掉了），**等于完全没生效**，
+#   后果是 `publish_acv4.ps1.bak-bom-20261002-122307` 真被提交进了仓库。
+#   现已重写为正常 UTF-8，并把该规则独立成行。
+#   同时补 `*.backup.*`：原有的 `*.backup` 要求文件名**以 .backup 结尾**，
+#   兜不住 `X.backup.<时间戳>.<sha>` 这种「带后缀」的形态
+#   （oss 副本的 `AGENTS.md.backup.*` 就是这么漏掉的）。
 *.bak
 *.backup
 *.backup.*
 *.bak_*
+*.bak-*
 *.old_*
 *.pre_ui*
 *.before_*
 *.wetware_backup
 
+# ── dev 副本特有（2026-10-02 加） ──
+# 真实 harness 桥配置与运行数据，绝不可入库
+agent_community/bridges/
+bridges/
+spike_ws/
+workshop_minimal_ws/
+OutAgentsCommunity/db-backups/
+
+# ── 环境变量文件（**含真实 token/key，绝不能入库**）────────────────────
+# ⚠️ 2026-10-09 实测：`deploy/.env` 里躺着**真平台 token**（AC4_SERVER_TOKEN / AC4_TOKEN），
+#   而此前 `.gitignore` **一条 `.env` 规则都没有** —— 只要有人 `git add deploy/`，
+#   token 就会随"部署交付包"一起进仓库。`.env.example`（模板）必须保留。
+.env
+.env.*
+*.env
+!.env.example
+!*.env.example
+
+# ==== 以下规则原为 oss 副本独有，2026-10-13 合并进 dev（发布同步改为双向一致）====
+# ⚠️ 2026-10-05：原有 *.backup / *.bak_* 都漏掉了 'AGENTS.md.backup.<时间戳>.<sha>' 这种
+#    "带后缀"的形态（*.backup 要求文件名以 .backup 结尾），publish_acv4.ps1 的
+#    `git add -A` 会把它提交进公开仓库。补 *.backup.* 兜住。
 # AOCI agent host integration (machine-bound; do not commit)
 opencode.json
 opencode.json.backup.*
-
 # 2026-10-05: test artifacts are NOT repo content.
 # agent_community/tests/test_policy_wiring_bridge.py writes a stub into the REAL
 # agent_community/platform/bridges/h1/ dir (root cause: HANDOVER 13.8), which used
@@ -54,7 +89,6 @@ opencode.json.backup.*
 # test-only h1/ and *.tmp are ignored; real bridges stay versioned.
 agent_community/platform/bridges/h1/
 agent_community/platform/bridges/**/*.tmp
-
 # 2026-10-06: AOCI cognition index is a LOCAL BUILD ARTIFACT, not source.
 # Per project decision: the repo stores sources only; the index can be rebuilt
 # locally (see tools / 03-索引构建脚本). Do NOT commit it back.
@@ -63,10 +97,8 @@ aoci.meta.txt
 aoci.code.txt
 aoci.database.txt
 .aoci/
-
 # 2026-10-12: 工作间产物 `library/`（成员任务书/分工）是**运行期数据**，不是源码。
 #   正常情况下它落在 `<workspace_dir>/library/`；只要有代码路径用了空/相对的
 #   workspace_dir（测试或某次调用），它就会掉到**仓库根**变成 `library/` ——
 #   实测 2026-10-12 在 oss 里跑 pytest 时又出现了一次，直接顶掉发布前的
 #   "工作树必须干净"闸门。与 data/ 同类：不入库。（dev 侧早已有此规则，oss 侧漏了。）
-library/

@@ -133,7 +133,17 @@ def heartbeat_loop(base: str, interval: float = 30.0) -> None:
 def ensure_bridge() -> AcpHarnessBridge:
     global _bridge
     if _bridge is None:
-        _bridge = AcpHarnessBridge()
+        # ★2026-10-13：**必须把注册时注入的 ACP_COMMAND / ACP_CWD 交给桥**。
+        #   `AcpHarnessBridge()` 无参构造会退回读环境变量 `AC_ACP_COMMAND`，
+        #   而平台侧与用户侧都没人设它 ⇒ `start()` 直接抛「未配置 ACP 启动命令」，
+        #   现象是"桥领得到件、却永远拉不起 agent"（模板注入 ACP_COMMAND 本就是为了这一步）。
+        #   ⚠️ 用 shlex.split（与平台 `AcpHarnessBridge.from_harness_info` 同一口径）；
+        #      Windows 路径请给**正斜杠**——POSIX 模式的 shlex 会把反斜杠当转义吃掉。
+        import shlex as _shlex
+        _bridge = AcpHarnessBridge(
+            cmd=_shlex.split(ACP_COMMAND) or None,
+            repo=(ACP_CWD or None),
+        )
         _bridge.start()
         _bridge.initialize()
     return _bridge
