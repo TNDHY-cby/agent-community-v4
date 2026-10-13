@@ -416,3 +416,128 @@ def test_register_response_has_no_legacy_tier_field():
     src = (Path(vs.__file__).resolve().parent / "routers" / "harness_register.py").read_text(encoding="utf-8")
     assert '"access_facts": _access' in src
     assert '"access_tier": _tier' not in src, "旧的档位字段又回来了"
+
+
+# ── 端口/地址：一处真相 + 因人而异（2026-10-13 老板口径）──
+from pathlib import Path
+
+from agent_community.platform_address import DEFAULT_PORT, ENV_PORT, base_url, resolve_port
+from agent_community.platform import verify_sandbox as vs
+
+_ROOT = Path(vs.__file__).resolve().parent.parent.parent          # 仓库根（agent_community 的父）
+_PKG = Path(vs.__file__).resolve().parent.parent                  # agent_community/
+
+
+def test_port_resolution_priority(monkeypatch):
+    """显式 > AC_PORT > 默认（端口是**用户自己的事**）。"""
+    monkeypatch.delenv(ENV_PORT, raising=False)
+    assert resolve_port() == DEFAULT_PORT
+    assert resolve_port(45000) == 45000, "命令行必须最优先"
+    monkeypatch.setenv(ENV_PORT, "34567")
+    assert resolve_port() == 34567, "AC_PORT 必须生效"
+    assert resolve_port(45000) == 45000, "命令行仍压过 AC_PORT"
+    assert base_url() == "http://127.0.0.1:34567"
+    monkeypatch.setenv(ENV_PORT, "not-a-port")          # 坏值不该崩
+    assert resolve_port() == DEFAULT_PORT
+    monkeypatch.setenv(ENV_PORT, "70000")               # 越界也要退回默认
+    assert resolve_port() == DEFAULT_PORT
+
+
+def test_default_port_has_single_definition():
+    """**默认端口只有一处**：别的地方必须引用 `platform_address`，不许再写数字。
+
+    这条直接防住原来的病：`cli.py=9103`、`server.py=9103`、`bridge_template/verify_sandbox/
+    protocol_catalog/gui/watchdog=18920` —— 同一件事六处各写一套。
+    """
+    offenders = []
+    for py in list((_PKG / "platform").rglob("*.py")) + list(_PKG.glob("*.py")) + list((_PKG / "tools").glob("*.py")):
+        if py.name == "platform_address.py":
+            continue
+        for i, l in enumerate(py.read_text(encoding="utf-8", errors="replace").split("\n"), 1):
+            s = l.strip()
+            if s.startswith("#"):
+                continue
+            # 只抓"把它当默认端口用"的写法；测试/注释/示例文本不算
+            if re.search(r'AC_PORT",\s*"\d+"', s) or re.search(r"^DEFAULT_PORT\s*=\s*\d+", s):
+                offenders.append(f"{py.relative_to(_ROOT)}:{i}: {s[:80]}")
+    assert not offenders, f"默认端口又被写死了（应引用 platform_address）：{offenders}"
+
+
+def test_platform_url_helpers_have_no_hardcoded_fallback():
+    """平台地址解析点不许再硬编码 `127.0.0.1:18920` 当兜底。"""
+    for rel in ("platform/bridge_template.py", "platform/verify_sandbox.py", "platform/server.py"):
+        t = (_PKG / rel).read_text(encoding="utf-8")
+        code = "\n".join(l for l in t.split("\n") if not l.strip().startswith("#"))
+        assert "return \"http://127.0.0.1:18920\"" not in code, f"{rel} 又硬编码了本机地址兜底"
+
+
+def test_user_facing_surfaces_have_no_baked_port():
+    """用户可见面不写死端口：README 用 $PORT/占位；hub 页用相对路径 / 当前 origin。"""
+    checks = {
+        "README.md": r"127\.0\.0\.1:18920",
+        "agent_community/frontend/hub.html": r"127\.0\.0\.1:\d+",
+        "agent_community/frontend/hub.js": r"127\.0\.0\.1:\d+",
+    }
+    for rel, rx in checks.items():
+        p = _ROOT / rel
+        if not p.is_file():
+            continue
+        hits = [(i, l.strip()[:90]) for i, l in enumerate(p.read_text(encoding="utf-8").split("\n"), 1)
+                if re.search(rx, l)]
+        assert not hits, f"{rel} 里还有写死的本机网址：{hits[:3]}"
+
+
+def test_bridge_templates_dont_teach_a_baked_address():
+    """桥模板的**示例命令**不许写死本机地址（用户会照抄）。
+
+    允许的地方：`--url` 的**运行时默认值**（它们走 `_platform_url_default()` / 模板注入的 PLATFORM_URL）。
+    """
+    for tmpl in (_PKG / "bridge_templates").rglob("*.tmpl"):
+        t = tmpl.read_text(encoding="utf-8")
+        for i, l in enumerate(t.split("\n"), 1):
+            if "127.0.0.1:18920" not in l:
+                continue
+            # 只允许出现在 _platform_url_default 的兜底里
+            assert "_platform_url_default" in l or 'os.environ.get("AC_PORT")' in l, \
+                f"{tmpl.name}:{i} 写死了本机地址：{l.strip()[:80]}"
+
+
+# ── 数据落点：必须认 AC_DATA_DIR（"路径也得因人而异"）────────────────────
+
+def test_data_roots_respect_ac_data_dir(monkeypatch, tmp_path):
+    """所有数据落点都要跟着 `AC_DATA_DIR` 走（换目录/多实例不许往仓库里写）。"""
+    import importlib
+    monkeypatch.setenv("AC_DATA_DIR", str(tmp_path))
+    mods = {
+        "memory": ("agent_community.platform.memory", "DEFAULT_MEMORY_DIR"),
+        "ai_external": ("agent_community.platform.ai_external", "PENDING_DIR"),
+        "local_ai": ("agent_community.platform.local_ai", "CONFIG_PATH"),
+    }
+    for name, (mod, attr) in mods.items():
+        m = importlib.import_module(mod)
+        importlib.reload(m)          # 落点是在**导入时**算的
+        got = str(getattr(m, attr))
+        assert got.startswith(str(tmp_path)), f"{name}.{attr} 没认 AC_DATA_DIR：{got}"
+    from agent_community.platform import identity
+    importlib.reload(identity)
+    assert str(identity._default_data_root()).startswith(str(tmp_path))
+
+
+def test_no_module_hardcodes_package_data_root():
+    """**不许**再有模块把数据落点写死在包内 `data/`（要经过 AC_DATA_DIR）。
+
+    这条防的是"同一件事散在多处、只改一处"（规则 20）——
+    2026-10-13 实测就是 5 个模块各自写死，换目录后仓库里仍长出 data/。
+    """
+    import re
+    offenders = []
+    for py in (_PKG / "platform").rglob("*.py"):
+        for i, l in enumerate(py.read_text(encoding="utf-8", errors="replace").split("\n"), 1):
+            s = l.strip()
+            if s.startswith("#") or "AC_DATA_DIR" in s:
+                continue
+            # 形如 X = Path(...) / "data" （没有 AC_DATA_DIR 兜底）
+            if re.search(r'=\s*Path\(__file__\).*?/\s*"data"\s*$', s) or \
+               re.search(r'=\s*Path\(__file__\).*?/\s*"data"\s*/\s*"', s):
+                offenders.append(f"{py.name}:{i}: {s[:80]}")
+    assert not offenders, f"这些落点没认 AC_DATA_DIR：{offenders}"

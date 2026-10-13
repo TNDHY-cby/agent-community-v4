@@ -19,7 +19,13 @@ import sys
 import time
 import urllib.request
 
-BASE_URL = "http://127.0.0.1:18920"
+# ★2026-10-13：平台地址**跟着 AC_PORT 走**（端口因人而异，别写死本机地址）。
+def _platform_url_default():
+    import os as _os
+    return "http://127.0.0.1:" + str(_os.environ.get("AC_PORT") or "18920")
+
+
+BASE_URL = _platform_url_default()
 A2A_URL = "http://127.0.0.1:9104"
 
 
@@ -56,7 +62,7 @@ def demo_http():
     for p in protocols.get("protocols", []):
         icon = {"available": "✅", "partial": "⚠️", "not_implemented": "🔒", "disabled": "⏸"}.get(p["status"], "?")
         print(f"    {icon} {p['name']:<28} {p['direction']:<16} {p['status']}")
-    print("  → 一行命令即可查看：curl http://127.0.0.1:18920/api/protocols")
+    print("  → 一行命令即可查看：curl <平台地址>/api/protocols")
 
 
 # ── 路径 A：MCP（平台作为工具服务端）─────────────────────────
@@ -195,7 +201,7 @@ if __name__ == "__main__":
         demo_http()
     except Exception as e:
         print(f"  ❌ 平台不可达: {e}")
-        print("  请先启动平台: python -m agent_community.platform.server --port 18920")
+        print("  请先启动平台: python -m agent_community.platform.server --port <你的端口>")
         sys.exit(1)
 
     try:

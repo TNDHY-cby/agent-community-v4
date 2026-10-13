@@ -12,7 +12,7 @@ filepoll 桥（示例）：让「文件轮询（file_poll）」类 harness（走
 用法（在 harness 所在机器上跑，Windows 直接 python 运行；下面的 harness_id 是虚拟示例，请换成你自己的）：
   python filepoll_harness_bridge.py --harness-id 示例Harness-A ^
       --inbox "D:\\你的目录\\inbox" ^
-      --platform http://127.0.0.1:18920
+      --platform <平台地址>
 
 可选：
   --trigger "start \"\" \"C:\\path\\app.exe\""   发现新任务时额外执行的唤醒命令
@@ -33,6 +33,12 @@ import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+# ★2026-10-13：平台地址**跟着 AC_PORT 走**（端口因人而异，别写死本机地址）。
+def _platform_url_default():
+    import os as _os
+    return "http://127.0.0.1:" + str(_os.environ.get("AC_PORT") or "18920")
+
 
 # ── 输出编码自保（2026-10-11 实测缺陷修复）──────────────────────────────
 # 本脚本会打印 ✓ / ✗。在**中文 Windows** 上 stdout 编码随控制台码页（多为 GBK）
@@ -213,7 +219,7 @@ def main():
     ap = argparse.ArgumentParser(description="filepoll 桥：轮询 inbox 唤醒 harness 并转发回报")
     ap.add_argument("--harness-id", required=True, help="harness 的 id（与注册一致，仅用于日志）")
     ap.add_argument("--inbox", required=True, help="wakeup_dir，平台写任务文件的目录")
-    ap.add_argument("--platform", default="http://127.0.0.1:18920", help="平台地址")
+    ap.add_argument("--platform", default=_platform_url_default(), help="平台地址")
     ap.add_argument("--trigger", default="", help="发现新任务时额外执行的唤醒命令（shell）")
     ap.add_argument("--interval", type=float, default=3.0, help="轮询间隔秒")
     args = ap.parse_args()

@@ -24,7 +24,7 @@
 
 用法（在 harness 所在机器上跑，Windows 直接 python 运行；下面的 harness_id 是虚拟示例，请换成你自己的）：
   python pending_poll_bridge.py --harness-id 示例Harness-B ^
-      --url http://127.0.0.1:18920 ^
+      --url <平台地址> ^
       --work-dir "D:\\你的目录\\bridge" ^
       --trigger "start \"\" \"C:\\path\\to\\your\\app.exe\""
 
@@ -43,6 +43,12 @@ import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+# ★2026-10-13：平台地址**跟着 AC_PORT 走**（端口因人而异，别写死本机地址）。
+def _platform_url_default():
+    import os as _os
+    return "http://127.0.0.1:" + str(_os.environ.get("AC_PORT") or "18920")
+
 
 # ── 输出编码自保（2026-10-11 实测缺陷修复）──────────────────────────────
 # 同 filepoll_harness_bridge.py：本脚本也打印 ✓ / ✗，在中文 Windows（GBK 码页）上
@@ -289,7 +295,7 @@ def acquire_single_instance(lock_path):
 def main():
     ap = argparse.ArgumentParser(description="通用 pending 队列桥：轮询领取激活/任务，落盘 + 转发回报")
     ap.add_argument("--harness-id", required=True, help="harness 的 id（必须与注册时完全一致）")
-    ap.add_argument("--url", default="http://127.0.0.1:18920", help="平台地址")
+    ap.add_argument("--url", default=_platform_url_default(), help="平台地址")
     ap.add_argument("--work-dir", default="", help="工作目录（默认 %%TEMP%%/pending_poll_bridge/<harness-id>）")
     ap.add_argument("--trigger", default="", help="领到激活/任务时额外执行的唤醒命令（shell）")
     ap.add_argument("--no-auto-enter", action="store_true", help="激活不自动回报 entered，等 replies/ 回报")

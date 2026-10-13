@@ -24,6 +24,8 @@
 """
 from __future__ import annotations
 
+import os
+
 import asyncio
 import json
 import os
@@ -39,7 +41,9 @@ DEFAULT_ENDPOINTS: list[dict] = [
     {"base": "http://127.0.0.1:1234/v1", "backend": "lmstudio"},
 ]
 
-CONFIG_PATH = Path(__file__).resolve().parents[1] / "data" / "local_ai.json"
+# ★2026-10-13：同上 —— 认 AC_DATA_DIR。
+CONFIG_PATH = Path(os.environ.get("AC_DATA_DIR")
+                   or (Path(__file__).resolve().parents[1] / "data")) / "local_ai.json"
 _DETECT_TTL_S = 60.0
 _LAUNCH_THROTTLE_S = 120.0
 QUICK_WAIT_S = float(os.environ.get("AC_LOCAL_AI_QUICK_WAIT", "12"))

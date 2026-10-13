@@ -13,6 +13,21 @@ from __future__ import annotations
 from typing import Any
 
 
+def _catalog_base() -> str:
+    """平台基址，用于示例字符串 —— **运行时解析，不写死本机端口**。
+
+    ★2026-10-13（老板：「本地网址不应该引入」「本地端口因人而异」）：
+      原来这里的示例写死 `http://127.0.0.1:18920`；用户换端口后示例就是错的。
+      取不到解析器（这个模块要保持可单独 import）时才退回默认端口。
+    """
+    try:
+        from ..platform_address import base_url
+        return base_url()
+    except Exception:  # noqa: BLE001
+        import os
+        return "http://127.0.0.1:" + (os.environ.get("AC_PORT") or "18920")
+
+
 def _grpc_available() -> bool:
     """动态检测 grpcio 是否安装（gRPC 协议状态随环境变化）。"""
     try:
@@ -30,7 +45,7 @@ _PROTOCOLS: list[dict[str, Any]] = [
         "kind": "http",
         "status": "available",             # available / not_implemented / disabled
         "best_for": "通用默认；harness 注册/心跳/消息回报",
-        "example": "curl http://127.0.0.1:18920/api/status",
+        "example": f"curl {_catalog_base()}/api/status",
         "requires": "",
     },
     {
@@ -40,7 +55,7 @@ _PROTOCOLS: list[dict[str, Any]] = [
         "kind": "ws",
         "status": "partial",               # 半实现：有占位端口，见 waker_protocol
         "best_for": "长连接实时通信（规划中）",
-        "example": "ws://127.0.0.1:18920/ws",
+        "example": _catalog_base().replace("http://", "ws://") + "/ws",
         "requires": "",
     },
     {
@@ -127,11 +142,22 @@ def _runtime_status(entry: dict) -> str:
     return str(entry.get("status", ""))
 
 
-def get_protocol_catalog(host: str = "127.0.0.1", http_port: int = 18920) -> list[dict[str, Any]]:
+def get_protocol_catalog(host: str = "", http_port: int = 0) -> list[dict[str, Any]]:
     """返回完整协议目录（含运行时端点坐标）。
 
     host/http_port 由调用方传入（通常从 request 的 Host 头解析）。
+    **没传时按"本实例自己的地址"填**（`platform_address`）—— 而不是写死一个本机端口：
+      老板 2026-10-13：「本地端口因人而异」，所以默认值必须**运行时算**。
     """
+    if not host or not http_port:
+        try:
+            from ..platform_address import HOST as _h, resolve_port as _rp
+            host = host or _h
+            http_port = http_port or _rp()
+        except Exception:  # noqa: BLE001
+            import os
+            host = host or "127.0.0.1"
+            http_port = http_port or int(os.environ.get("AC_PORT") or 18920)
     out = []
     for p in _PROTOCOLS:
         entry = dict(p)

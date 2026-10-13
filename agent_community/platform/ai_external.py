@@ -19,6 +19,8 @@ context_digest / created_at / created_ts / timeout_s / reply / replied_at
 
 from __future__ import annotations
 
+import os
+
 import asyncio
 import json
 import time
@@ -29,7 +31,10 @@ from uuid import uuid4
 from .ai_provider import AIProvider, ChatResponse
 
 # 与 server.py 的 DATA_DIR 保持一致：agent_community/data
-PENDING_DIR = Path(__file__).resolve().parents[1] / "data" / "ai_pending"
+# ★2026-10-13：落点必须认 AC_DATA_DIR（与 server.py 的 DATA_DIR 同一口径），
+#   否则换目录/多实例时会把运行数据写回仓库。
+PENDING_DIR = Path(os.environ.get("AC_DATA_DIR")
+                   or (Path(__file__).resolve().parents[1] / "data")) / "ai_pending"
 
 VALID_MODES = ("remote", "manual", "off", "local")
 DEFAULT_TIMEOUT_S = 120.0

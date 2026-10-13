@@ -56,7 +56,7 @@ function chStart(){
       <p class="lead">双击桌面 <b>「启动合作社」</b> → 起 <b>平台 + A2A + grpc</b>（只起没在跑的）→ 保证<b>一套</b>看门狗 →
         逐项健康汇总 → 用<b>内置浏览器窗</b>打开平台界面。</p>
       <p class="sub" style="margin-top:8px"><b>开机自启：没有</b>（老板 2026-10-09：「不要开机自启，留下口子，用户需要的话自己写代码」）⇒ <b>重启后要双击一次</b>。</p>
-      <p class="sub" style="margin-top:6px">健康判据只有一个：${link('http://127.0.0.1:18920/api/status','GET /api/status')} 返回 <code>running</code>
+      <p class="sub" style="margin-top:6px">健康判据只有一个：${link(location.origin + '/api/status','GET /api/status')} 返回 <code>running</code>
         （看门狗日志里的"TCP 可达"<b>不能</b>单独当健康结论）。</p>
     </div>
     <div class="card">
@@ -64,7 +64,7 @@ function chStart(){
       <p class="lead"><b>退出</b>：平台内「系统」菜单 →「退出并关闭」；顺序 看门狗 → A2A → grpc → 平台；<b>关窗口不影响服务</b>。</p>
       <p class="lead" style="margin-top:8px"><b>重启在用实例</b>：杀掉 server 进程 → 等看门狗一轮（≤60s）重生 → 直接打 <code>/api/status</code> 确认；
         <b>禁止</b>手工再拉第二个抢端口。</p>
-      <p class="sub" style="margin-top:8px"><b>隔离实例</b>：验收/演练必须用隔离开例（独立数据目录 + 非 18920 端口），前端脚本指向 <code>AC_FE_BASE</code>。</p>
+      <p class="sub" style="margin-top:8px"><b>隔离实例</b>：验收/演练必须用隔离开例（独立数据目录 + **非本实例端口**），前端脚本指向 <code>AC_FE_BASE</code>。</p>
     </div>
   </div>
   <div class="card">
@@ -334,7 +334,7 @@ function chCheat(){
     <div class="card">
       <h3><span class="dot"></span>默认开关</h3>
       <p class="sub" style="line-height:2">
-        在用实例端口 <code>18920</code> · 隔离实例须改数据目录 · 前端验收指向 <code>AC_FE_BASE</code><br>
+        本实例端口 <code>${location.port || '(默认)'}</code> · 隔离实例须改数据目录 · 前端验收指向 <code>AC_FE_BASE</code><br>
         掉线自动扫描 <b>默认关</b> · 动作脚本 foreground 默认 optional（required 要提前告知占桌面）<br>
         开机自启 <b>没有</b>（保留口子，需要自己写代码）
       </p>

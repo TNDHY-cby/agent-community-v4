@@ -11,7 +11,7 @@
 5. 响应平台桥测试、登记桥坐标
 
 用法:
-    python bridge.py --url http://127.0.0.1:18920
+    python bridge.py --url <平台地址，如 http://127.0.0.1:你的端口>
 """
 
 from __future__ import annotations
@@ -56,6 +56,12 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from agent_community.platform.acp_harness_bridge import AcpHarnessBridge  # noqa: E402
+
+# ★2026-10-13：平台地址**跟着 AC_PORT 走**（端口因人而异，别写死本机地址）。
+def _platform_url_default():
+    import os as _os
+    return "http://127.0.0.1:" + str(_os.environ.get("AC_PORT") or "18920")
+
 
 # 一个持久连接，多个会话（1 harness → N 员工）
 _bridge: AcpHarnessBridge | None = None
@@ -295,7 +301,7 @@ def acquire_single_instance(lock_path):
 def main() -> None:
     global base, HARNESS_ID, ACP_COMMAND, ACP_CWD
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="http://127.0.0.1:18920")
+    ap.add_argument("--url", default=_platform_url_default())
     ap.add_argument("--harness-id", default=HARNESS_ID, help="覆盖模板注入的 harness_id（一般不需要）")
     ap.add_argument("--acp-command", default=ACP_COMMAND, help="覆盖模板注入的拉起命令")
     ap.add_argument("--acp-cwd", default=ACP_CWD, help="覆盖模板注入的工作目录")

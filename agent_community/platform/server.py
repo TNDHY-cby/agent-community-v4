@@ -5810,14 +5810,13 @@ def _harness_wakeup_method(harness_id: str) -> str:
     return "clipboard"
 
 def _platform_base_url():
-    """平台自身基准地址：优先取 AC_PORT（真实监听端口），默认 18920。
+    """平台自身基准地址（**唯一解析点**在 `platform_address`）。
 
-    供模板/回报指令动态填充，避免硬编码地址与真实端口不一致。"""
-    try:
-        port = int(os.environ.get("AC_PORT", "18920"))
-    except Exception:
-        port = 18920
-    return f"http://127.0.0.1:{port}"
+    供模板/回报指令动态填充，避免硬编码地址与真实端口不一致。
+    ⚠️ 这个值**不许写进对外文档/界面**（那是"本机网址"，端口因人而异）。
+    """
+    from ..platform_address import base_url as _addr_base_url
+    return _addr_base_url()
 
 def _activation_prompt(hid, role, workspace_dir, workshop_id="", member_id="", artifact_path="",
                        compartment_dir="", library_dir="", assignment_dir="", session_name="",
@@ -6224,7 +6223,9 @@ if __name__ == "__main__":
     _alt_server_mod = _sys.modules.get("agent_community.platform.server")
     if _alt_server_mod is not None and _alt_server_mod is not _sys.modules.get("__main__"):
         _alt_server_mod.ALLOWED_TOKENS.update(args.token)
-    port = args.port or int(os.environ.get("AC_PORT", "9103"))
+    # ★2026-10-13：端口解析只此一处（命令行 > AC_PORT > 默认），别再各写一套
+    from ..platform_address import resolve_port as _resolve_port
+    port = args.port or _resolve_port()
     register_builtin_agents()
     # v6 新增：从 config.json 读取 AI Provider 配置（环境变量做降级）
     # V-9 修复：优先级统一为 环境变量 > 配置文件 > 默认值，env 值永不落盘覆盖

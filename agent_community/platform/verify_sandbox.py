@@ -195,11 +195,15 @@ def _measured_params(info: Any, kind: str) -> dict:
 
 #: 平台地址（桥脚本要回连它）。从既有配置取，取不到才退回本机默认 —— 别处不再硬编码。
 def _platform_url() -> str:
+    # ★2026-10-13：委托唯一解析点（优先 AC_PLATFORM_URL/AC4_BASE_URL/AC_BASE_URL，
+    #   再按 AC_PORT 推）——原来这里硬编码 18920，用户换端口后它就错了。
+    import os as _os
     for key in ("AC_PLATFORM_URL", "AC_BASE_URL"):
-        v = os.environ.get(key)
+        v = _os.environ.get(key)
         if v:
             return str(v).rstrip("/")
-    return "http://127.0.0.1:18920"
+    from ..platform_address import base_url as _addr_base_url
+    return _addr_base_url()
 
 
 BRIDGE_PLATFORM = _platform_url()

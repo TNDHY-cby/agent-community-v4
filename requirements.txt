@@ -1,21 +1,28 @@
-# External Agent Community (agent_community) v4 - runtime dependencies
-# Install:  pip install -r requirements.txt
-# Requires: Python >= 3.10
-#
+# External Agent Community (agent_community) - platform runtime deps
+# ---------------------------------------------------------------------------
 # ASCII-ONLY ON PURPOSE (2026-10-05):
-#   pip decodes this file with the OS preferred encoding. On a Chinese Windows
-#   install (cp936/GBK) non-ASCII bytes here abort `pip install -r` with
-#   UnicodeDecodeError before a single requirement is parsed -- the project was
-#   effectively not installable for those users. Keep this file pure ASCII and
-#   BOM-free. Do not add localized comments here; put notes in README instead.
+#   pip decodes this file with the OS preferred encoding (cp936/GBK on this
+#   machine). Non-ASCII bytes here make `pip install -r requirements.txt` die
+#   with UnicodeDecodeError before it even parses a single line -- i.e. the
+#   environment was NOT reproducible. Do not put Chinese text in this file,
+#   and do not save it with a BOM (a regenerating script would drop the BOM
+#   again). Guarded by agent_community/tests/test_foundation_base.py.
+# Keep in sync with the oss copy; click is required by agent_community/cli.py.
+# ---------------------------------------------------------------------------
 
-fastapi>=0.110,<1.0
-uvicorn[standard]>=0.27
+# --- runtime (core) ---
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
 httpx>=0.27
-pydantic>=2.5
 click>=8.1
 
-# Optional: desktop GUI launcher (agent_community/gui.py).
-# The CLI and the Web server work fine without it.
-# On Windows it needs the WebView2 runtime.
-# pip install pywebview
+# --- runtime (transports / optional features) ---
+websockets>=12.0
+grpcio>=1.62
+# pywebview: desktop GUI launcher (agent_community/gui.py).
+# Needs the WebView2 runtime on Windows; the CLI and Web server work without it.
+pywebview>=5.0
+
+# --- dev / test only ---
+pytest>=8.0

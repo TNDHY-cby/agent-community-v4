@@ -18,7 +18,19 @@ from .protocol import HistoricalTask, MemoryStats, CapabilityLedger
 
 # ── 默认持久化目录 ──────────────────────────────
 
-DEFAULT_MEMORY_DIR = Path(__file__).parent.parent / "data" / "memory"
+# ★2026-10-13 修：这里原来**不认 `AC_DATA_DIR`**（硬编码成包内 `agent_community/data/memory`），
+#   而 `server.py` / `audit.py` / `policy.py` / `session_registry.py` / `harness_launcher.py`
+#   等 7 处都认。后果（实测）：
+#     · 换目录 + 设了 `AC_DATA_DIR` 起一个实例，**仓库内仍会被建出 `data/memory/`**；
+#     · 多实例（隔离实例/朋友的机器）会**互相污染**同一份任务记忆；
+#     · 与 `setup.py`/发布口径冲突：运行数据本该落在数据目录，不该往仓库里写。
+#   ⇒ 与其它模块同一口径：`AC_DATA_DIR` 优先，回落包内 data。
+def _default_memory_dir() -> Path:
+    import os as _os
+    return Path(_os.environ.get("AC_DATA_DIR") or (Path(__file__).parent.parent / "data")) / "memory"
+
+
+DEFAULT_MEMORY_DIR = _default_memory_dir()
 
 
 # ═══════════════════════════════════════════════════════════════

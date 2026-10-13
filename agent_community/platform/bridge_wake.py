@@ -43,7 +43,9 @@ def _data_root() -> str:
         return str(_DD)
     except Exception:  # noqa: BLE001
         # 兜底：仅在 server 不可用时退回包内 data（正常运行时不会走到）
-        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
+        # ★2026-10-13：兜底也认 AC_DATA_DIR（原来写死包内 data）
+        return os.environ.get("AC_DATA_DIR") or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", "data")
 
 
 def _runtime_root(root: str = "") -> str:

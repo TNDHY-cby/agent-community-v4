@@ -13,7 +13,7 @@
 关键：一个桥连接（一个 harness）维护多个会话（多个员工），会话常驻待命。
 
 用法：
-    python -m agent_community.examples.acp_harness_bridge --url http://127.0.0.1:18920 --harness-id 你的harness_id
+    python -m agent_community.examples.acp_harness_bridge --url <平台地址> --harness-id 你的harness_id
 """
 
 from __future__ import annotations
@@ -33,6 +33,12 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from agent_community.platform.acp_harness_bridge import AcpHarnessBridge  # noqa: E402
+
+# ★2026-10-13：平台地址**跟着 AC_PORT 走**（端口因人而异，别写死本机地址）。
+def _platform_url_default():
+    import os as _os
+    return "http://127.0.0.1:" + str(_os.environ.get("AC_PORT") or "18920")
+
 
 # 虚拟示例名：请用 --harness-id 覆盖
 HARNESS_ID = "示例Harness-ACP"
@@ -56,7 +62,7 @@ _sessions: dict[str, str] = {}  # key = f"{workshop_id}:{member_id}" → session
 # ★2026-10-13：与平台模板一致 —— `base` 是**模块级全局**（由 main 赋值）。
 #   为什么：`handle_bridge_test` 这类"顺手回报"的函数拿不到参数，模板里就是走全局
 #   （实测踩过：示例里漏了这句 ⇒ 桥测试回报 `name 'base' is not defined` ⇒ 第 4 步永远 no_reply）。
-base = "http://127.0.0.1:18920"
+base = ""   # 由 main 按 --url/AC_PORT 填
 
 
 def build_harness_info() -> dict:
@@ -378,7 +384,7 @@ def _fill_acp_command_from_platform() -> None:
 def main() -> None:
     global base, HARNESS_ID, ACP_COMMAND, ACP_CWD, AGENT_TOKEN
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="http://127.0.0.1:18920")
+    ap.add_argument("--url", default=_platform_url_default())
     ap.add_argument("--harness-id", default=HARNESS_ID, help="你的 harness_id（默认是虚拟示例名，必须改）")
     # ★V44 #13：ACP 拉起命令/工作目录 —— 桥必须拿到它们才拉得起 agent
     ap.add_argument("--acp-command", default=os.environ.get("AC_ACP_COMMAND", ""),

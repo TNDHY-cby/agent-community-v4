@@ -1,7 +1,7 @@
 """外端Agent生产合作社（External Agent Community） CLI — 命令行管理工具
 
 用法：
-    agent-community start [--port 9103] [--wakeup]
+    python -m agent_community.cli start [--port 9103] [--wakeup]
     agent-community stop
     agent-community status
     agent-community task "描述你的任务"
@@ -27,8 +27,11 @@ import httpx
 # PID 文件路径
 PID_DIR = Path.home() / ".agent_community"
 PID_FILE = PID_DIR / "server.pid"
-DEFAULT_PORT = 9103
-BASE_URL = f"http://127.0.0.1:{DEFAULT_PORT}"
+# ★2026-10-13：端口**只有一处真相**（`platform_address`）——
+#   原来这里写 9103、server 写 9103、其它模块写 18920，同一件事四处各写一套。
+#   端口是**用户自己的事**（AC_PORT / --port），产品只给一个可用默认。
+from .platform_address import DEFAULT_PORT, base_url as _addr_base_url
+BASE_URL = _addr_base_url()
 
 # 日志目录：与 server.py 的 DATA_DIR（agent_community/data）保持一致。
 # 历史写法把服务日志写到 D:/server_out.log、D:/server_err.log —— 日志散落在
@@ -220,7 +223,7 @@ def stop():
 def status():
     """查看服务状态、在线 Agent、Harness 列表"""
     if not _is_running():
-        click.secho("[WARN] 服务未运行，请先执行 agent-community start", fg="yellow")
+        click.secho("[WARN] 服务未运行，请先执行 python -m agent_community.cli start", fg="yellow")
         return
 
     base = _get_base_url()
@@ -270,7 +273,7 @@ def status():
 def task(description):
     """向平台发送任务"""
     if not _is_running():
-        click.secho("[ERROR] 服务未运行，请先执行 agent-community start", fg="red")
+        click.secho("[ERROR] 服务未运行，请先执行 python -m agent_community.cli start", fg="red")
         sys.exit(1)
 
     base = _get_base_url()

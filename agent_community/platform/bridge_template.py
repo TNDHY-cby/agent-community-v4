@@ -51,11 +51,17 @@ METADATA_KEY = "bridge_template"
 
 
 def _platform_url() -> str:
+    """平台基址：**委托唯一解析点**（原来这里硬编码 `127.0.0.1:18920` 兜底）。
+
+    ★2026-10-13（老板：「本地网址不应该引入」「本地端口因人而异」）：
+      端口是用户自己的事（`AC_PORT` / `--port`），模块里不许写死本机地址兜底。
+    """
     try:
         from .server import _platform_base_url
         return _platform_base_url()
     except Exception:
-        return "http://127.0.0.1:18920"
+        from ..platform_address import base_url as _addr_base_url
+        return _addr_base_url()
 
 
 def _ai_field(info: Any, *names: str) -> str:

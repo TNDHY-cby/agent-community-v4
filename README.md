@@ -48,7 +48,7 @@ python -m pip install -r requirements.txt
 python -m agent_community.cli start
 
 #    · 不想要桌面窗口、只要后端：加 --no-gui
-#    · 换端口：--port 18920
+#    · 换端口：--port <你的端口>（**端口因人而异**，下文示例统一用 $PORT 指代）
 #    · 起完会自动打开浏览器；也可以自己开 http://127.0.0.1:<port>/
 
 # 3. 发一个任务试试
@@ -141,7 +141,7 @@ Harness 是外部 IDE / 工具接入平台的标准化接口。通过 Harness，
 ### 注册 Harness
 
 ```bash
-curl -X POST http://127.0.0.1:18920/api/harness/register \
+curl -X POST http://127.0.0.1:$PORT/api/harness/register \
   -H "Content-Type: application/json" \
   -d '{
     "harness_id": "示例Harness-A",
@@ -179,20 +179,20 @@ curl -X POST http://127.0.0.1:18920/api/harness/register \
 
 | 桥 | 适用 harness | 命令（示例 harness 用占位符，请换成自己的） |
 |---|---|---|
-| `filepoll_harness_bridge.py` | file_poll（走文件邮箱的桌面 Agent） | `python agent_community/examples/filepoll_harness_bridge.py --harness-id [你的harness_id] --inbox [wakeup_dir] --platform http://127.0.0.1:18920` |
-| `pending_poll_bridge.py` | acp/http/clipboard（无真实 ACP server，如 GUI 程序） | `python agent_community/examples/pending_poll_bridge.py --harness-id [你的harness_id] --url http://127.0.0.1:18920 --work-dir [任务目录]` |
-| `acp_harness_bridge.py` | acp 且有真实 ACP server | `python agent_community/examples/acp_harness_bridge.py --url http://127.0.0.1:18920` |
+| `filepoll_harness_bridge.py` | file_poll（走文件邮箱的桌面 Agent） | `python agent_community/examples/filepoll_harness_bridge.py --harness-id [你的harness_id] --inbox [wakeup_dir] --platform http://127.0.0.1:$PORT` |
+| `pending_poll_bridge.py` | acp/http/clipboard（无真实 ACP server，如 GUI 程序） | `python agent_community/examples/pending_poll_bridge.py --harness-id [你的harness_id] --url http://127.0.0.1:$PORT --work-dir [任务目录]` |
+| `acp_harness_bridge.py` | acp 且有真实 ACP server | `python agent_community/examples/acp_harness_bridge.py --url http://127.0.0.1:$PORT` |
 
 回报协议（harness 有联网能力时可直接 POST，无需桥）：
 
 ```bash
 # 激活回报 —— 平台要等全员 status=entered 才开始派任务，不回报 = 工作间不开工
-curl -X POST http://127.0.0.1:18920/api/harness/activation-result \
+curl -X POST http://127.0.0.1:$PORT/api/harness/activation-result \
   -H "Content-Type: application/json" \
   -d '{"workshop_id":"ws_xxx","member_id":"m_xxx","status":"entered"}'
 
 # 任务回报
-curl -X POST http://127.0.0.1:18920/api/harness/task-result \
+curl -X POST http://127.0.0.1:$PORT/api/harness/task-result \
   -H "Content-Type: application/json" \
   -d '{"workshop_id":"ws_xxx","member_id":"m_xxx","ok":true,"result":"完成了..."}'
 ```

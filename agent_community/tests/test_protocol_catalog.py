@@ -84,8 +84,23 @@ class TestEndpointFilling:
             assert cat[pid]["endpoint"] == "", f"{pid} 不应凭空造端点"
 
     def test_default_host_port(self):
+        """不传 host/port 时，端点必须是**本实例自己的地址**（运行时解析，不写死）。
+
+        ★2026-10-13（老板：「本地网址不应该引入」「本地端口因人而异」）：
+          原来这里断言 `"127.0.0.1:18920" in …`（写死一个本机端口）。
+          现在是：默认值由 `platform_address.resolve_port()` 在**调用时**算出来，
+          所以断言口径改为"等于解析出来的地址"，而不是"等于某个固定数字"。
+        """
+        from agent_community.platform_address import HOST, resolve_port
         cat = {p["id"]: p for p in pc.get_protocol_catalog()}
-        assert "127.0.0.1:18920" in cat["http"]["endpoint"]
+        assert cat["http"]["endpoint"] == f"http://{HOST}:{resolve_port()}/api"
+
+    def test_default_host_port_follows_ac_port(self, monkeypatch):
+        """端口因人而异：`AC_PORT` 一变，目录里的端点也得跟着变（不是写死的）。"""
+        monkeypatch.setenv("AC_PORT", "34567")
+        cat = {p["id"]: p for p in pc.get_protocol_catalog()}
+        assert "34567" in cat["http"]["endpoint"]
+        assert "18920" not in cat["http"]["endpoint"]
 
 
 # ══════════════════════════════════════════════════════════════════

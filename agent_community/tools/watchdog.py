@@ -28,7 +28,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = Path(os.environ.get("AC_DATA_DIR") or (PROJECT_ROOT / "agent_community" / "data"))
 LOG_DIR = DATA_DIR / "logs"
-DEFAULT_PORT = 18920
+# ★2026-10-13：与平台同源（原来这里与 server 各自写死一套默认端口）。
+#   ⚠️ 这个文件会被**单独加载**（`tests/test_watchdog_spawn_cmd.py` 用 spec_from_file_location，
+#      没有父包）⇒ 必须用**带兜底的绝对导入**，相对导入会 ImportError。
+try:  # pragma: no cover - 兜底分支只在不作为包加载时走
+    from agent_community.platform_address import DEFAULT_PORT  # type: ignore
+except Exception:  # noqa: BLE001
+    DEFAULT_PORT = int(os.environ.get("AC_PORT") or 18920)
 DEFAULT_INTERVAL = 30.0
 HEALTH_URL = "http://127.0.0.1:{port}/api/status"
 

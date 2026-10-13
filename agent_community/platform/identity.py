@@ -16,7 +16,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import secrets
+from pathlib import Path
 from typing import Optional
 
 from ..config import load_config, save_config
@@ -26,6 +28,16 @@ AGENT_TOKEN_HEADER = "x-agent-token"
 # 公司级 token 的 HMAC 消息前缀：HMAC(secret, "company:" + company_id)，
 # 与成员级 HMAC(secret, harness_id) 同族同库、互不冲突（候选 A 升公司级，M-1）。
 COMPANY_TOKEN_PREFIX = "company:"
+
+
+def _default_data_root() -> Path:
+    """默认数据根：**认 `AC_DATA_DIR`**。
+
+    ★2026-10-13：原来这里（以及 memory/ai_external/local_ai/bridge_wake）写死包内 `data/`，
+      与 `server.py` 等 7 处的口径不一致 ⇒ 换目录或多实例时会把运行数据写回仓库。
+    """
+    return Path(os.environ.get("AC_DATA_DIR")
+                or (Path(__file__).resolve().parents[1] / "data"))
 
 
 def _ensure_secret() -> str:
@@ -117,7 +129,7 @@ def known_company_ids() -> list[str]:
     try:
         cfg = load_config()
         data_dir = (cfg.get("data_dir") or "").strip()
-        base = Path(data_dir) if data_dir else Path(__file__).resolve().parents[1] / "data"
+        base = Path(data_dir) if data_dir else _default_data_root()
         raw = json.loads((base / "companies.json").read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001  读不到就当"没有任何已登记公司" → 一律拒绝
         return []
@@ -161,7 +173,7 @@ def known_harness_ids() -> list[str]:
     try:
         cfg = load_config()
         data_dir = (cfg.get("data_dir") or "").strip()
-        base = Path(data_dir) if data_dir else Path(__file__).resolve().parents[1] / "data"
+        base = Path(data_dir) if data_dir else _default_data_root()
         raw = json.loads((base / "harnesses.json").read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001  读不到就当"没有任何已知 harness" → 一律拒绝
         return []
@@ -218,7 +230,7 @@ def load_company_registry() -> dict:
     try:
         cfg = load_config()
         data_dir = (cfg.get("data_dir") or "").strip()
-        base = Path(data_dir) if data_dir else Path(__file__).resolve().parents[1] / "data"
+        base = Path(data_dir) if data_dir else _default_data_root()
         raw = json.loads((base / "companies.json").read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001
         return {}
@@ -246,7 +258,7 @@ def save_company_registry(records: dict) -> None:
 
     cfg = load_config()
     data_dir = (cfg.get("data_dir") or "").strip()
-    base = Path(data_dir) if data_dir else Path(__file__).resolve().parents[1] / "data"
+    base = Path(data_dir) if data_dir else _default_data_root()
     try:
         base.mkdir(parents=True, exist_ok=True)
         (base / "companies.json").write_text(
