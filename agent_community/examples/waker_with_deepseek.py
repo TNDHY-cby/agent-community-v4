@@ -36,13 +36,22 @@ import os
 import sys
 from pathlib import Path
 
-# 添加 agent-community-v4 到 path
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
+# 把**仓库根**（`agent_community` 的父目录）加进 sys.path，然后用**包的全名**导入。
+#
+# ⚠️ 2026-10-14 修（实测的坑，别再改回去）：
+#   原版插的是 `agent_community/` 自己，再写 `from platform.ai_provider import …` /
+#   `from agents.wakeup_agent import …`。后果有两个，都很隐蔽：
+#     ① **遮蔽标准库 `platform` 模块** —— 本项目的 `tests/conftest.py` 里记着同一个坑；
+#     ② 于是随后任何第三方 import（这里是 httpx）都会炸在
+#        `AttributeError: module 'platform' has no attribute 'python_implementation'`
+#        —— 报错信息**完全看不出真因**。
+#   实测：照原样跑本示例，**import 阶段就失败**（示例是给陌生人照着跑的，坏示例比没示例更坏）。
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-from platform.ai_provider import create_ai_provider, AIProvider
-from agents.wakeup_agent import WakeupAgent
+from agent_community.platform.ai_provider import create_ai_provider, AIProvider
+from agent_community.agents.wakeup_agent import WakeupAgent
 
 
 async def test_ai_provider(provider: AIProvider):

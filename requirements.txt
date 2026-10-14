@@ -20,6 +20,14 @@ click>=8.1
 # --- runtime (transports / optional features) ---
 websockets>=12.0
 grpcio>=1.62
+# protobuf: agent_community/proto/*_pb2.py imports google.protobuf directly, and
+# grpcio does NOT pull it in (grpcio Requires only typing-extensions).
+# Consequence, measured on a clean CI runner 2026-10-14: pytest died at
+# **collection** with `ModuleNotFoundError: No module named 'google'`, while the
+# dev box passed 1391 tests only because protobuf 7.36.2 happened to be installed.
+# Gencode is 7.35.1 (agent_community_pb2.py calls ValidateProtobufRuntimeVersion,
+# which requires runtime minor >= gencode minor) -> do NOT lower this floor.
+protobuf>=7.35.1
 # pywebview: desktop GUI launcher (agent_community/gui.py).
 # Needs the WebView2 runtime on Windows; the CLI and Web server work without it.
 pywebview>=5.0

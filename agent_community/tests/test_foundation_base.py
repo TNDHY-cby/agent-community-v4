@@ -152,6 +152,124 @@ class TestRequirementsContent:
 
 
 # ══════════════════════════════════════════════════════════════════
+# C2. **第三方 import 必须都被 requirements.txt 声明**（2026-10-14 真事故）
+# ══════════════════════════════════════════════════════════════════
+#
+# 事故原文（干净 CI runner，两个 job 同一步挂在 **收集阶段**）：
+#     agent_community/proto/agent_community_pb2.py:7: in <module>
+#         from google.protobuf import descriptor as _descriptor
+#     E   ModuleNotFoundError: No module named 'google'
+#     !!!!!! Interrupted: 1 error during collection !!!!!!
+# 真因：`requirements.txt` 只声明了 `grpcio`，而 **grpcio 不拉 protobuf**
+#   （`pip show grpcio` 的 Requires 只有 typing-extensions），根目录也没有 pyproject 兜底。
+# 为什么本地一直绿：**开发机恰好装着 protobuf 7.36.2**。
+#   ⇒ 这就是老板那句「我这台能跑不算数」的一次真实应验，而且**只有干净环境才暴露**。
+#
+# 所以守卫要拦的是**这一类**，不是补上 protobuf 就完事：凡是代码里 import 了
+# 但在 requirements.txt 里找不到的第三方包，一律判红。
+THIRD_PARTY_ALIASES = {
+    # import 名 -> PyPI 发行名（不一致的必须映射，否则守卫会漏判）
+    "google": "protobuf",
+    "grpc": "grpcio",
+    "webview": "pywebview",
+    "yaml": "pyyaml",
+    "PIL": "pillow",
+    "docx": "python-docx",
+    "pptx": "python-pptx",
+}
+
+#: 允许"代码里 import 但不必进 requirements"的少数例外（**每条都要写清理由**）。
+DECLARATION_EXEMPT = {
+    # pip 是测试自己用的工具（去调 pip 现存的 requirements 加载入口）；
+    # 能跑 pytest 就必然有 pip（pytest 就是 pip 装的），且那条用例缺 pip 时
+    # 是 `pytest.fail` 而不是 skip ⇒ 不会变成静默失效。
+    "pip": "测试专用：校验 requirements.txt 可被 pip 解析；有 pytest 就必有 pip",
+}
+
+#: 扫描时跳过的目录：运行期产物（.gitignore 忽略），**不进发布面**，
+#: 且里面的 bridge.py 是平台按模板生成的，不该由本守卫管。
+_SCAN_SKIP_PARTS = ("__pycache__", "/bridges/", "/data/", "verify_sandbox")
+
+
+def _third_party_top_imports() -> dict[str, str]:
+    """扫 `agent_community/**/*.py`，返回 {顶层 import 名: 首次出现位置}（跳过包内相对导入）。"""
+    import ast
+
+    std = set(sys.stdlib_module_names) | {"agent_community", "__future__"}
+    found: dict[str, str] = {}
+    for py in sorted((REPO_ROOT / "agent_community").rglob("*.py")):
+        rel = "/" + str(py.relative_to(REPO_ROOT)).replace("\\", "/")
+        if any(part in rel for part in _SCAN_SKIP_PARTS):
+            continue
+        try:
+            tree = ast.parse(py.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:      # 语法坏的由别的守卫报，这里不掩盖
+            continue
+        for node in ast.walk(tree):
+            tops: list[str] = []
+            if isinstance(node, ast.Import):
+                tops = [a.name.split(".")[0] for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                tops = [node.module.split(".")[0]]
+            for top in tops:
+                if top in std or top in found:
+                    continue
+                found[top] = f"{rel.lstrip('/')}:{node.lineno}"
+    return found
+
+
+class TestThirdPartyImportsAreDeclared:
+    """代码里 import 的第三方包，`requirements.txt` 必须声明 —— 否则干净环境收集阶段就炸。"""
+
+    def _declared(self) -> set[str]:
+        text = (REPO_ROOT / "requirements.txt").read_text(encoding="ascii")
+        return {re.split(r"[<>=!~\[]", ln)[0].strip().lower()
+                for ln in _dep_lines(text)}
+
+    def test_every_third_party_import_is_declared(self):
+        declared = self._declared()
+        missing = []
+        for top, where in sorted(_third_party_top_imports().items()):
+            if top in DECLARATION_EXEMPT:
+                continue
+            dist = THIRD_PARTY_ALIASES.get(top, top).lower()
+            if dist in declared or top.lower() in declared:
+                continue
+            missing.append(f"{top}（PyPI: {dist}） 首次出现 {where}")
+        assert not missing, (
+            "这些第三方包被 import 了，但 requirements.txt 里没有声明 —— "
+            "**干净环境会在 pytest 收集阶段直接 ModuleNotFoundError**"
+            "（2026-10-14 protobuf 就是这么炸的：grpcio 不拉 protobuf，"
+            "本地恰好装着才没暴露）：\n  " + "\n  ".join(missing) +
+            "\n\n修法：在 requirements.txt 里补上该包，并写明'为什么需要它'。"
+        )
+
+    def test_protobuf_floor_matches_pb2_gencode(self):
+        """`protobuf` 的下限不得低于 pb2 的 gencode —— 生成码会主动校验运行时。
+
+        `agent_community_pb2.py` 里写着 `Protobuf Python Version: 7.35.1`，
+        并调用 `_runtime_version.ValidateProtobufRuntimeVersion(...)`：
+        运行时 minor 低于 gencode minor 会在 **import 时**直接抛错。
+        所以"随手把下限调低"这类好心意会把平台弄挂，这里钉死。
+        """
+        pb2 = REPO_ROOT / "agent_community" / "proto" / "agent_community_pb2.py"
+        text = pb2.read_text(encoding="utf-8", errors="replace")
+        m = re.search(r"Protobuf Python Version:\s*([0-9.]+)", text)
+        assert m, "pb2 里没写 gencode 版本了？请同步更新本守卫"
+        gencode = m.group(1)
+
+        req = (REPO_ROOT / "requirements.txt").read_text(encoding="ascii")
+        line = next((ln for ln in _dep_lines(req) if ln.lower().startswith("protobuf")), None)
+        assert line, "requirements.txt 里没有 protobuf —— 干净环境会在收集阶段炸（见本类文档串）"
+        floor = re.search(r">=\s*([0-9][0-9.]*)", line)
+        assert floor, f"protobuf 这行没有 >= 下限，钉不住 gencode：{line}"
+        assert floor.group(1) == gencode, (
+            f"protobuf 下限({floor.group(1)}) 与 pb2 gencode({gencode}) 不一致 —— "
+            "下限低于 gencode 会在 import 时抛 ValidateProtobufRuntimeVersion 错误"
+        )
+
+
+# ══════════════════════════════════════════════════════════════════
 # D. 共享底座模块必须可 import（拆分后不得互相拖死）
 # ══════════════════════════════════════════════════════════════════
 BASE_MODULES = [

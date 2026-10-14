@@ -77,10 +77,13 @@ python tools/gen_env_docs.py --check   # 环境变量文档是否漂移
 python -m pytest -q                    # 回归
 ```
 
-### 4.1 CI 定义在 `ci/ci.yml`（**启用方式**）
+### 4.1 CI 定义：`.github/workflows/ci.yml`（**已启用**，改它之前先读这段）
 
-CI 工作流**没有**放在 `.github/workflows/`，原因很实际：
-本仓库的推送令牌是 Personal Access Token，**没有 `workflow` 权限**，GitHub 会直接拒收：
+CI 工作流只有一份，位置就是 GitHub 唯一会执行的地方：**`.github/workflows/ci.yml`**。
+（曾短暂放在 `ci/ci.yml` 绕过令牌限制，老板 2026-10-14 在网页端建好标准位置那份之后，
+`ci/` 那份已删除 —— 两份定义并存必然漂移，规则 20 不允许。）
+
+**当前令牌的硬约束**：推送用的 Personal Access Token **没有 `workflow` 权限**，GitHub 会直接拒收：
 
 ```
 ! [remote rejected] master -> master
@@ -88,15 +91,63 @@ CI 工作流**没有**放在 `.github/workflows/`，原因很实际：
    `.github/workflows/ci.yml` without `workflow` scope)
 ```
 
-一旦把工作流放进那个目录，**整次发布都推不上去**（= 别人拿不到任何更新）。
-所以仓库里常备一份可审阅的定义 `ci/ci.yml`，启用方式二选一（都是一次性动作）：
+⇒ 只要某次提交**碰了** `.github/workflows/`，**整次 push 都会被拒**（= 别人拿不到任何更新）。
+**改 CI 的正确姿势**（二选一）：
 
-1. **网页端**（最简单）：GitHub → `Add file` → `Create new file` →
-   路径填 `.github/workflows/ci.yml` → 把 `ci/ci.yml` 内容粘进去 → 提交；
-2. **给令牌加权限**：GitHub → Settings → Developer settings → Tokens →
-   勾上 `workflow` → 更新凭据后，把 `ci/ci.yml` 复制到 `.github/workflows/ci.yml` 提交。
+1. **网页端直接编辑**（推荐，当前唯一可行）：GitHub → 打开 `.github/workflows/ci.yml` → 编辑/提交；
+2. **给令牌补权限**：GitHub → Settings → Developer settings → Tokens → 勾上 `workflow`；
+   之后再改本地这份就能推上去。本地这份必须与远端**逐字节一致**。
 
 工作流跑的就是上面那三条自查，外加一条「只改 `AC_PORT` / `AC_DATA_DIR` 也能起」的真启动验证。
+
+#### 4.1.1 依赖必须全部声明（2026-10-14 CI 第一次真跑的收获）
+
+CI 首跑**两个 job 同一步挂掉**，`portability` job 是过的：
+
+```
+agent_community/proto/agent_community_pb2.py:7: in <module>
+    from google.protobuf import descriptor as _descriptor
+E   ModuleNotFoundError: No module named 'google'
+!!!!!! Interrupted: 1 error during collection !!!!!!
+```
+
+真因不是网络、也不是工作流写错，而是**依赖漏声明**：`requirements.txt` 只写了 `grpcio`，
+而 **grpcio 不拉 protobuf**（`pip show grpcio` 的 Requires 只有 typing-extensions），
+仓库根也没有 `pyproject.toml` 兜底 ⇒ 干净 runner 装不出 `google.protobuf`。
+**本机一路 1391 passed，只是因为恰好装着 protobuf 7.36.2** —— 又一次"我这台能跑不算数"。
+
+处置（不止补这一个包，而是把**这一类**堵死）：
+
+- `requirements.txt` 补 `protobuf>=7.35.1`（下限＝pb2 的 gencode：`ValidateProtobufRuntimeVersion`
+  会校验运行时 minor ≥ gencode，**不许调低**）；
+- 新增守卫 `TestThirdPartyImportsAreDeclared`（`agent_community/tests/test_foundation_base.py`）：
+  用 AST 扫 `agent_community/**` 的第三方 import，凡未在 `requirements.txt` 声明的一律判红；
+- 守卫用 `temp/deps_mutation_check.py` 做过突变检验（删 protobuf / 调低下限 / 删 fastapi ⇒ 三次全 KILLED）。
+
+> ⚠️ **CI 里那句兜底 `|| pip install fastapi uvicorn click httpx pydantic pytest` 是个陷阱**：
+> 它装出来的环境和 `requirements.txt` **不是同一个**，绿了也不能说明任何事
+> （本次事故它甚至没触发，因为主装路径是成功的）。**建议删掉 `||` 那半句**，
+> 改成 `pip install --retries 5 --timeout 60 -r requirements.txt` —— 要的是抗网络抖动，
+> 不是"装个残缺环境然后假装通过"。
+
+#### 4.1.2 路径里的非 ASCII（中文用户名/中文目录）是同一类假绿
+
+干净环境验收顺带抓到的第二个缺陷：`agent_community/tests/test_rule19_fresh_identity.py`
+造"假 agent"的 `.cmd` 启动器时写死 `encoding="ascii"`，注释理由是"纯 ASCII、无 BOM —— cmd 的坑"。
+
+- **"无 BOM"才是真正的不变量；"纯 ASCII"只是个偷懒的代理条件**。
+- 只要**解释器路径含非 ASCII**（把 venv 建在 `D:\DSH工作区1\temp\cleanvenv\` 下就行），
+  插 `sys.executable` 时直接 `UnicodeEncodeError: 'ascii' codec can't encode characters in position 7-9`；
+  后续症状伪装成 `state='no_reply'`（"桥取走了测试消息，但没等到 agent 回话"）——
+  **报错信息完全指不到真因**。
+- 为什么开发机与 CI 都绿：开发机解释器在 `D:\Program Files\...`、GitHub runner 也在纯 ASCII
+  路径下。而真实用户 `C:\Users\张三\AppData\Local\Programs\Python\...` **极其常见**。
+
+**修法**：`.cmd` 一律 **UTF-8 无 BOM**（见 `temp/diag_cmd_encoding.py` 的实测数据：
+本机 `chcp`=936，ascii 编码就失败、`mbcs` 被 cmd 判成"找不到路径"、**UTF-8 正常**；
+且 UTF-8 对纯 ASCII 内容产生的字节与原实现完全一致 ⇒ **常见情形行为不变，非 ASCII 情形从报错变能跑**）。
+守卫：`test_fake_agent_launcher_survives_non_ascii_interpreter_path`，
+突变检验 `temp/cmd_launcher_mutation_check.py`（把 UTF-8 退回 ascii ⇒ KILLED）。
 
 `check_portability.py` 的语义：
 - 扫描范围＝**发布面**（`agent_community/`、`design-docs/`、`tests/`、根文档），

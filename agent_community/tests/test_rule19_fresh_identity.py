@@ -134,11 +134,61 @@ def _make_fake_agent(work, inbox_abs: str, py_exe: str) -> str:
         encoding="utf-8")
     (work / "inbox.txt").write_text(inbox_abs, encoding="utf-8")
     wrap = work / "wake.cmd"
-    # ★纯 ASCII、无 BOM：带 BOM 时 cmd 会把 `@echo off` 当命令、把中文注释当命令执行（实测）
-    with open(wrap, "w", encoding="ascii", newline="") as f:
-        f.write("@echo off\r\nrem bare trigger (platform calls it with no args)\r\n")
-        f.write('"%s" "%%~dp0my_agent.py"\r\n' % py_exe)
+    _write_cmd(wrap, py_exe)
     return str(wrap)
+
+
+#: 写 `.cmd` 用的编码。实测结论（2026-10-14）：**UTF-8 无 BOM**。
+#:
+#: ⚠️ 原来的实现写死 `encoding="ascii"`，理由是"纯 ASCII、无 BOM —— cmd 的坑"。
+#:   **"无 BOM"才是真正的不变量；"纯 ASCII"只是个偷懒的代理条件** ——
+#:   只要**解释器路径含非 ASCII**，插 `sys.executable` 时就炸：
+#:       UnicodeEncodeError: 'ascii' codec can't encode characters in position 7-9
+#:   实测触发方式：把 venv 建在 `D:\DSH工作区1\temp\cleanvenv\` 下跑测试
+#:   ⇒ `test_rule19_fresh_name_and_dir_end_to_end` 直接红。
+#:   为什么平时看不见：开发机解释器在 `D:\Program Files\...`、GitHub runner 也在纯 ASCII 路径
+#:   ⇒ **开发机与 CI 都是绿的**。而真实用户 `C:\Users\张三\AppData\Local\Programs\Python\...`
+#:   极其常见 ⇒ 又一个"开发机全绿、别人那儿红"。
+#:
+#: 为什么选 UTF-8 而不是系统代码页（`mbcs`/cp936）—— **实测数据，不是推理**：
+#:   `temp/diag_cmd_encoding.py` 在本机（`chcp`=936）逐个跑：
+#:     · ascii  → 编码就失败（原缺陷）
+#:     · mbcs   → cmd 报 "The system cannot find the path specified."（字节没被按 cp936 解释）
+#:     · utf-8  → rc=0，路径正确，agent 正常起来
+#:   且 UTF-8 对**纯 ASCII 内容**产生的字节与原实现**完全一致** ⇒ 常见情形行为不变、
+#:   非 ASCII 情形从"直接报错"变成"能跑"，**严格更好，不会更坏**。
+def _cmd_encoding() -> str:
+    return "utf-8"
+
+
+def _write_cmd(path, py_exe: str) -> None:
+    """写一个**不带 BOM** 的 `.cmd`；含非 ASCII 的解释器路径也要能写进去。"""
+    body = ('@echo off\r\n'
+            'rem bare trigger (platform calls it with no args)\r\n'
+            '"%s" "%%~dp0my_agent.py"\r\n' % py_exe)
+    raw = body.encode(_cmd_encoding(), errors="replace")
+    path.write_bytes(raw)                  # 用 bytes 写：绝不可能混进 BOM
+    assert not raw.startswith(b"\xef\xbb\xbf"), "cmd 启动器不得带 UTF-8 BOM（cmd 会把它当命令）"
+
+
+def test_fake_agent_launcher_survives_non_ascii_interpreter_path(tmp_path):
+    """★回归守卫：解释器路径含非 ASCII 时，`.cmd` 启动器仍要能写出来。
+
+    实证（2026-10-14）：干净 venv 建在 `D:\\DSH工作区1\\temp\\...` 下，
+    `sys.executable` 带中文 ⇒ 原实现（`encoding="ascii"`）直接 `UnicodeEncodeError`。
+    真实场景一样会撞：`C:\\Users\\张三\\...\\python.exe`。CI 与开发机都在纯 ASCII 路径下，
+    **都不会发现**，所以必须由这条守卫钉住。
+    """
+    fake_non_ascii = r"C:\用户目录\Python 程序\python.exe"
+    out = tmp_path / "wake.cmd"
+    _write_cmd(out, fake_non_ascii)
+
+    raw = out.read_bytes()
+    assert not raw.startswith(b"\xef\xbb\xbf"), "不能带 BOM"
+    assert b"\r\n" in raw, "cmd 需要 CRLF"
+    text = raw.decode(_cmd_encoding(), errors="replace")
+    assert fake_non_ascii in text, "解释器路径被编码破坏（含非 ASCII 时必须按代码页写）"
+    assert "%~dp0my_agent.py" in text, "脚本路径必须用 %~dp0 相对写法（目录也要因人而异）"
 
 
 def test_rule19_fresh_name_and_dir_end_to_end(fresh):

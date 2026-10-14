@@ -770,26 +770,34 @@ def test_powershell_scripts_keep_their_utf8_bom():
         "  if not b.startswith(b'\\xef\\xbb\\xbf'): open(p,'wb').write(b'\\xef\\xbb\\xbf'+b)")
 
 
-def test_ci_definition_lives_in_ci_dir_not_github_workflows():
-    """CI 定义必须放在 `ci/ci.yml`，**不能**放 `.github/workflows/`。
+def test_ci_definition_is_single_and_at_the_standard_path():
+    """CI 定义**只能有一份**，位置是 `.github/workflows/ci.yml`（GitHub 唯一会跑的地方）。
 
-    为什么这算可移植性/交付问题（2026-10-14 实事故）：
-      推送令牌是 Personal Access Token 且**没有 `workflow` 权限** ⇒ 一旦提交进
-      `.github/workflows/`，GitHub **拒收整次 push**：
-        "refusing to allow a Personal Access Token to create or update workflow ... without `workflow` scope"
-      ⇒ 一次推不上去 = **别人拿不到任何更新**（比"CI 不跑"严重得多）。
-    启用方式写在 `PORTABILITY.md` §4.1（网页端新建粘贴，或给令牌加 `workflow` 权限）。
+    本用例的来龙去脉（都是 2026-10-14 实测，别再走回头路）：
+      · 最初我把定义放这里，push 被 GitHub 拒收 ——
+        推送令牌是 Personal Access Token 且**没有 `workflow` 权限**：
+        "refusing to allow a Personal Access Token to create or update workflow ... without 'workflow' scope"。
+      · 于是我退而求其次放 `ci/ci.yml`（仓库里可审阅）+ 文档写启用步骤。
+      · 老板**已在 GitHub 网页端建好** `.github/workflows/ci.yml` ⇒ 现在它才是**生效的那份**，
+        而 `ci/ci.yml` 变成**死文件**：两份定义并存迟早漂移（规则 20 禁止两份口径）。
+      ⇒ 所以本用例现在的立场反过来：**标准位置必须有，`ci/` 那份不许再存在。**
+
+    ⚠️ 连带约束（写在这里免得下次又踩）：当前令牌**仍不能推送 `.github/workflows/` 的改动**。
+      本地这份必须与远端**逐字节一致**，改了就得走网页端（或先给令牌补 `workflow` 权限），
+      否则 `publish_acv4.ps1` 推上去会被整次拒收。
     """
-    ci = _ROOT / "ci" / "ci.yml"
-    assert ci.is_file(), "ci/ci.yml 不见了（CI 定义是交付物之一，见 PORTABILITY.md §4.1）"
-    text = ci.read_text(encoding="utf-8")
-    for need in ("check_portability.py", "gen_env_docs.py", "ubuntu-latest"):
-        assert need in text, f"ci/ci.yml 少了关键内容：{need}"
-
     wf = _ROOT / ".github" / "workflows" / "ci.yml"
-    assert not wf.exists(), (
-        "`.github/workflows/ci.yml` 又出现了 —— 推送令牌没有 workflow 权限，"
-        "它会让**整次 push 被 GitHub 拒收**。请保留 `ci/ci.yml` 并在网页端启用（PORTABILITY.md §4.1）。")
+    assert wf.is_file(), (
+        "`.github/workflows/ci.yml` 不见了 —— 这是 GitHub 唯一会执行 CI 的位置"
+        "（构建于 2026-10-14，老板在网页端建的）。若确实要挪走，请同时更新本用例与 PORTABILITY.md。")
+    text = wf.read_text(encoding="utf-8")
+    for need in ("check_portability.py", "gen_env_docs.py", "ubuntu-latest"):
+        assert need in text, f".github/workflows/ci.yml 少了关键内容：{need}"
+
+    legacy = _ROOT / "ci" / "ci.yml"
+    assert not legacy.exists(), (
+        "`ci/ci.yml` 又出现了 —— 它已经退休（CI 定义回到标准位置）。"
+        "两份定义并存必然漂移（规则 20），请删掉 `ci/`。")
 
 
 def test_github_issue_templates_are_not_swept_away():
