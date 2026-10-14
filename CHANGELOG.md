@@ -2,6 +2,35 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.8.1] - 2026-10-15
+
+**来自 v4.8.0 真机测试回执的修复**（一位朋友在隔离沙箱里照 README 走完了全流程，
+`start --no-gui` / `task` / `task-result` / `stop` 全通；下面是他撞到的三处）。
+
+### 修复
+- **结果正文只有一个 `[Error: ]`**（九个字符、**不含任何原因**）。
+  真因两层：全新安装**没配任何 AI**，而 provider 的兜底是**占位配置**
+  （`https://api.example.com` + `example-model-flash`），任务因此走 AI 路径并必然失败；
+  失败时 `str(e)` 恰为空（连接类异常常见），而原实现直接拼成 `[Error: {e}]`。
+  ⇒ ① 错误文本**一律说清原因**（空信息退到异常类型名；HTTP 无正文则明说"服务端没有给说明"）；
+  ② 还停在占位配置时，附上「**你其实还没配 AI** + 怎么改（`AC_AI_BASE_URL`/`AC_AI_API_KEY`/`AC_AI_MODEL`，
+  或把 `ai_mode` 设为 `off`）」；③ **启动日志明说「AI 未配置」**（原来只有一行 `AI Provider: openai`，
+  读起来像配好了）；④ CLI 把 `[Error: …]` 当**失败**呈现，而不是当"结果"打印。
+- **`start`（默认带桌面窗口）在无图形环境直接崩**（Linux 缺 GTK/Qt、Windows 缺 WebView2）——
+  而 README《快速开始》第 2 步就是这条命令 ⇒ 现在**说清原因并自动退回后端守护模式**
+  （功能一样），并提示下次可直接 `--no-gui`。
+- **CLI 不认 `AC_PORT`**：`_get_base_url` / `_is_running` / `start --port` 都回落到写死的常量 18920
+  ⇒ 用 `AC_PORT` 换过端口的用户，CLI 会连错端口（实测：提示 URL 打的是 18920，而服务在 18963）。
+  ⇒ 统一走端口的唯一解析点（命令行 > `AC_PORT` > 默认）。
+- 启动日志里的**假配置噪音**：桥监管表的默认值原是一条假 harness + **未渲染的模板占位**，
+  每次启动都报「桥脚本不存在: `{{…}}`，跳过」⇒ 默认改为空表（真实 harness 走注册 API，不靠静态表）。
+- 删掉一处**没有任何读者**、且名为擦洗后私有名的环境变量（`示例Harness-E_SUPERVISOR_PID`）。
+
+### 变更
+- AI 失败前缀元组收成一处真相（`ai_provider.AI_FAILURE_PREFIXES`），两处内联元组改引用它。
+- 新增守卫：`tests/test_ai_error_speaks.py`（错误文本**永远不许空原因**）、
+  `tests/test_cli_contract.py`（CLI↔端点契约 + GUI 起不来不许崩）。
+
 ## [4.8.0] - 2026-10-14
 
 **「陌生人照着 README 就能跑起来」这一版**：接入流程产品化、可移植性收口、CI 首次全绿，
