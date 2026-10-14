@@ -39,27 +39,38 @@ A2A 发现：`GET http://<host>:9104/.well-known/agent-card.json`
 
 > 前置：**Python 3.10+**。不需要联网安装本包 —— 这是一个**可直接运行的源码仓库**
 > （`pip install agent-community` 暂时没有发包，别照那句做，会 404）。
+>
+> ⚠️ **Python 版本说明（如实）**：CI 在 **3.11**（Linux + Windows 两个作业）上真跑过安装 +
+> 全量测试；**其它版本没有逐一验证**。如果你用的是更新的 Python（3.13/3.14）而某条依赖
+> 恰好没有对应版本的预编译轮子，`pip install` 会退化成**源码编译**（很慢、可能失败）——
+> 那不是项目坏了，换个 3.11 的解释器即可。遇到"装了十分钟没动静"先看这一条。
 
 ```bash
 # 1. 装依赖（在仓库根目录执行）
 python -m pip install -r requirements.txt
 
-# 2. 起服务（默认端口 9103；加了桌面窗口；首次会自动创建数据目录）
+# 2. 起服务（默认端口 18920；加了桌面窗口；首次会自动创建数据目录）
 python -m agent_community.cli start
 
 #    · 不想要桌面窗口、只要后端：加 --no-gui
 #    · 换端口：--port <你的端口>（**端口因人而异**，下文示例统一用 $PORT 指代）
 #    · 起完会自动打开浏览器；也可以自己开 http://127.0.0.1:<port>/
 
-# 3. 发一个任务试试
+# 3. 发一个任务试试（提交后平台会自动为它建一个工作间）
 python -m agent_community.cli task "写一个排序函数"
 
-# 4. 看结果
+# 4. 看结果（输出里会打印结果正文；没有结果时会说明为什么）
 python -m agent_community.cli task-result <task_id>
 
 # 5. 停服务
 python -m agent_community.cli stop
 ```
+
+> ⚠️ **刚装好、还没接入任何 Harness 时**：任务能提交、工作间能建，
+> 但**没有成员参与** ⇒ 结果可能是空的。这时 `task-result` 会直说
+> 「没有成员参与 —— 平台还没有接入任何 Harness」并给下一步指向，
+> **不是坏了**。要真正跑通协作，先做下面的《Harness 接入指南》。
+> 有配 AI Provider 时，平台自己的助手会先给出一版回答（`结果:` 那一段）。
 
 **想跑测试**（可选）：`python -m pytest -q`（依赖里已含 pytest）。
 
@@ -72,7 +83,7 @@ python -m agent_community.cli stop
 
 ```bash
 # 启动服务（后台运行）
-python -m agent_community.cli start [--port 9103] [--wakeup] [--ai-provider openai] [--ai-model deepseek-chat] [--ai-api-key xxx] [--ai-base-url xxx]
+python -m agent_community.cli start [--port 18920] [--wakeup] [--ai-provider openai] [--ai-model deepseek-chat] [--ai-api-key xxx] [--ai-base-url xxx]
 
 # 停止服务
 python -m agent_community.cli stop

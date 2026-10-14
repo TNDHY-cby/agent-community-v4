@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Optional
 
 #: 一处真相：端口默认值来自 platform_address（别在这里再写一个字面量数字）
@@ -33,6 +34,22 @@ from ..platform_address import DEFAULT_PORT, ENV_PORT
 #: 运行模式（production 会对"条件必需"更严：缺了直接不让起来）
 ENV_MODE = "AC_ENV"
 MODE_PRODUCTION = "production"
+
+
+def data_dir() -> Path:
+    """运行数据根目录 —— **唯一解析点**（`AC_DATA_DIR` > 包内 `data/`）。
+
+    ★2026-10-14（实测缺陷）：`AC_DATA_DIR` 这件事此前在 **8 个文件**里各写了一遍
+    `Path(os.environ.get("AC_DATA_DIR") or <包>/data)`，而 `cli.py` 的日志目录
+    **漏了**这一句、永远写死成"仓库布局"⇒ 陌生人换掉数据目录后，
+    **日志照样落进仓库**（实测：`agent_community/data/logs/server_stdout.log`）。
+    对用户的实际后果：仓库被写脏；装在只读位置时连启动都会失败。
+    ⇒ 收成本函数一处；**新代码一律用它**，别再加第 10 份同义表达式。
+    """
+    env = os.environ.get("AC_DATA_DIR")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parent.parent / "data"
 
 
 @dataclass(frozen=True)

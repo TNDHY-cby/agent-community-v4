@@ -2,7 +2,19 @@
 #
 #   cp .env.example .env      # 想改端口/数据目录/服务商就改这里，别改代码
 #   docker compose up -d
-#   open http://127.0.0.1:${AC_PORT:-18920}/
+#
+# ⚠️⚠️ **浏览器界面在"端口映射"下用不了 —— 这是有意的安全边界，不是 bug**：
+#   平台的认证口径是「**本机免 token、非本机必带 token**」（见 README 安全说明）。
+#   而用了 `ports:` 映射时，宿主浏览器发来的请求在容器里看到的来源是 **docker 网关**
+#   （不是 127.0.0.1）⇒ 未设 `AC4_TOKEN` 时**一律 HTTP 403**。
+#   当前**前端界面还没有令牌通道**（只有公司间 A2A 令牌），所以：
+#     ① 只想用命令行 / API：在 `.env` 里设 `AC4_TOKEN=<你的令牌>`，
+#        请求带 `Authorization: Bearer <令牌>`（或 `X-API-Key` / `?token=`）；
+#     ② 想在浏览器里用界面（**Linux 宿主**）：把下面的 `ports:` 删掉，
+#        改用 `network_mode: host` —— 容器直接占 `AC_PORT`，
+#        浏览器访问 `http://127.0.0.1:<AC_PORT>/` 就是"本机请求"，免令牌即可；
+#     ③ Windows/macOS 的 Docker Desktop：host 网络支持依版本而异，**本项目未验证**，
+#        请优先用 ① 或用源码方式跑（README《快速开始》那条路是本项目的主路径）。
 #
 # 为什么这样写：端口、数据目录、AI 服务商**全部来自环境变量**（见 PORTABILITY.md）。
 services:
@@ -19,6 +31,8 @@ services:
       AC_HOST: "${AC_HOST:-0.0.0.0}"
       AC_DATA_DIR: "/data"
       AC_ENV: "${AC_ENV:-}"
+      # 见上面 ①：端口映射下要用 API 就必须给令牌（留空 = 只有容器内 / host 网络能用）
+      AC4_TOKEN: "${AC4_TOKEN:-}"
     ports:
       - "${AC_PORT:-18920}:${AC_PORT:-18920}"
     volumes:

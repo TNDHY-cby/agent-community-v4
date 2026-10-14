@@ -48,7 +48,7 @@ Agent 自行注册。无需认证凭证（现阶段放开）。
   "success": true,
   "agent_id": "harness-abc123",
   "agent_name": "数据分析师",
-  "webhook_url": "http://127.0.0.1:9103/api/harness/abc123/message"
+  "webhook_url": "http://127.0.0.1:<PORT>/api/harness/abc123/message"
 }
 ```
 

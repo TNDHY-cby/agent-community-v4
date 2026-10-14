@@ -534,11 +534,17 @@ def test_data_roots_respect_ac_data_dir(tmp_path):
         "import json,sys\n"
         "sys.path.insert(0, r'%s')\n"
         "from agent_community.platform import memory, ai_external, local_ai, identity\n"
+        "from agent_community.platform import env_spec\n"
+        "from agent_community import cli\n"
         "out = {\n"
         "  'memory': str(memory.DEFAULT_MEMORY_DIR),\n"
         "  'ai_external': str(ai_external.PENDING_DIR),\n"
         "  'local_ai': str(local_ai.CONFIG_PATH),\n"
         "  'identity': str(identity._default_data_root()),\n"
+        # ★2026-10-14 补：CLI 的**日志落点**（实测漏网的那个 —— 换 AC_DATA_DIR 后
+        #   日志照样写进仓库 `agent_community/data/logs/`，仓库被写脏）
+        "  'cli_logs': str(cli.LOG_DIR),\n"
+        "  'env_spec_data_dir': str(env_spec.data_dir()),\n"
         "}\n"
         "print(json.dumps(out, ensure_ascii=False))\n" % str(_ROOT)
     )
@@ -558,10 +564,19 @@ def test_no_module_hardcodes_package_data_root():
 
     这条防的是"同一件事散在多处、只改一处"（规则 20）——
     2026-10-13 实测就是 5 个模块各自写死，换目录后仓库里仍长出 data/。
+
+    ★2026-10-14 扩面：扫描范围原来只有 `platform/`，于是**漏掉了 `agent_community/cli.py`**
+      —— 它的日志目录写死成 `PROJECT_ROOT/agent_community/data/logs`，
+      实测表现：设了 `AC_DATA_DIR` 之后，`agent_community/data/logs/server_stdout.log`
+      照样在**仓库里**长出来（装到只读位置时更会直接起不来）。
+      ⇒ 扫**整个包**（含 `cli.py` / `tools/` / 桥脚本），别只扫一层。
+      ⚠️`tools/watchdog.py` 是**有意的例外**：它承诺"全程标准库、无第三方依赖"
+        （要能救一个坏掉的环境），所以不复用 `env_spec`，而是自己读 `AC_DATA_DIR`（**认了**）；
+        它的那行带 `AC_DATA_DIR` 字样 ⇒ 下面的判据不会误伤。
     """
     import re
     offenders = []
-    for py in (_PKG / "platform").rglob("*.py"):
+    for py in _PKG.rglob("*.py"):
         for i, l in enumerate(py.read_text(encoding="utf-8", errors="replace").split("\n"), 1):
             s = l.strip()
             if s.startswith("#") or "AC_DATA_DIR" in s:
@@ -569,7 +584,7 @@ def test_no_module_hardcodes_package_data_root():
             # 形如 X = Path(...) / "data" （没有 AC_DATA_DIR 兜底）
             if re.search(r'=\s*Path\(__file__\).*?/\s*"data"\s*$', s) or \
                re.search(r'=\s*Path\(__file__\).*?/\s*"data"\s*/\s*"', s):
-                offenders.append(f"{py.name}:{i}: {s[:80]}")
+                offenders.append(f"{py.relative_to(_PKG)}:{i}: {s[:80]}")
     assert not offenders, f"这些落点没认 AC_DATA_DIR：{offenders}"
 
 

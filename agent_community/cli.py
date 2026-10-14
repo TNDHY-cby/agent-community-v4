@@ -1,7 +1,7 @@
 """外端Agent生产合作社（External Agent Community） CLI — 命令行管理工具
 
 用法：
-    python -m agent_community.cli start [--port 9103] [--wakeup]
+    python -m agent_community.cli start [--port 18920] [--wakeup]
     agent-community stop
     agent-community status
     agent-community task "描述你的任务"
@@ -33,12 +33,20 @@ PID_FILE = PID_DIR / "server.pid"
 from .platform_address import DEFAULT_PORT, base_url as _addr_base_url
 BASE_URL = _addr_base_url()
 
-# 日志目录：与 server.py 的 DATA_DIR（agent_community/data）保持一致。
+# 日志目录：**跟着 AC_DATA_DIR 走**（与 server.py 的 DATA_DIR 同一落点）。
 # 历史写法把服务日志写到 D:/server_out.log、D:/server_err.log —— 日志散落在
 # 盘符根目录，既不符合「权威日志在 data/logs/」的项目约定，也让桌面的
 # .vbs 启动器在失败提示里把用户引到一个不该存在的位置。
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-LOG_DIR = PROJECT_ROOT / "agent_community" / "data" / "logs"
+# ★★2026-10-14 实测缺陷修复（陌生人换数据目录后**仓库仍被写脏**）：
+#   这里原来写死 `PROJECT_ROOT / "agent_community" / "data" / "logs"` ——
+#   **唯一没跟 `AC_DATA_DIR` 走的落点**（其余 8 处都认，见 env_spec.data_dir 的说明）。
+#   实测：设了 AC_DATA_DIR 之后，`agent_community/data/logs/server_stdout.log`
+#   照样在**仓库里**长出来；装到只读位置时更会直接起不来。
+#   ⇒ 走唯一解析点 `env_spec.data_dir()`。
+from .platform.env_spec import data_dir as _data_dir  # noqa: E402
+
+LOG_DIR = _data_dir() / "logs"
 
 
 def _get_base_url() -> str:
@@ -269,6 +277,23 @@ def status():
 
 # ── task ───────────────────────────────────────────────────────
 
+def _task_payload(description: str) -> dict:
+    """`agent-community task "…"` 发给 `/api/command` 的请求体（**只有这一处**）。
+
+    ★为什么单独抽出来：这个字段名与端点**曾经对不上**（CLI 发 `content`、
+    端点只认 `input`/`command`），而 CLI 又只打一个 `HTTP 400`、什么原因都不说 ——
+    结果"照着 README 第 3 步做"的**第一次尝试就是失败**，且看不出为什么。
+    抽出来之后，契约守卫 `tests/test_cli_contract.py` 可以把**这份请求体**直接喂给
+    真端点函数（不是复制一份 payload 到测试里 —— 那样一改又漂移）。
+    """
+    return {
+        "type": "new_task",
+        "command": description,
+        "from_agent": "cli",
+        "agent_name": "CLI 用户",
+    }
+
+
 @main.command()
 @click.argument("description")
 def task(description):
@@ -281,12 +306,7 @@ def task(description):
     try:
         r = httpx.post(
             f"{base}/api/command",
-            json={
-                "type": "new_task",
-                "content": description,
-                "from_agent": "cli",
-                "agent_name": "CLI 用户",
-            },
+            json=_task_payload(description),
             timeout=10.0,
         )
         if r.status_code == 200:
@@ -295,9 +315,21 @@ def task(description):
             click.secho(f"[OK] 任务已提交", fg="green")
             click.echo(f"  Task ID: {task_id}")
             click.echo(f"  内容:    {description}")
+            ws = data.get("workshop_id") or ""
+            if ws:
+                click.echo(f"  工作间:  {ws}（已自动建间，去界面里选成员）")
             click.echo(f"  查询结果: agent-community task-result {task_id}")
         else:
-            click.secho(f"[ERROR] 提交失败: HTTP {r.status_code}", fg="red")
+            # ★失败要说话（准则⑤）：把**服务端原话**打出来，别只留一个状态码。
+            detail = ""
+            try:
+                j = r.json()
+                detail = j.get("error") or j.get("detail") or ""
+            except Exception:  # noqa: BLE001
+                detail = (r.text or "")[:200]
+            click.secho(f"[ERROR] 提交失败: HTTP {r.status_code}"
+                        + (f" —— {detail}" if detail else ""), fg="red")
+            sys.exit(1)
     except Exception as e:
         click.secho(f"[ERROR] 无法连接服务: {e}", fg="red")
         sys.exit(1)
@@ -319,10 +351,40 @@ def task_result(task_id):
         if r.status_code == 200:
             t = r.json()
             click.secho(f"=== 任务: {task_id} ===", fg="cyan")
+            click.echo(f"  标题: {t.get('title', '?')}")
             click.echo(f"  状态: {t.get('status', '?')}")
             click.echo(f"  创建: {t.get('created_at', '?')}")
-            click.echo(f"  完成: {t.get('completed_at', '?')}")
-            click.echo(f"  Agent: {len(t.get('agent_ids', []))} 个参与")
+            click.echo(f"  完成: {t.get('completed_at') or '（未记录完成时间）'}")
+            # ★2026-10-14 实测修复：这里原来打的是 `len(t.get('agent_ids', []))`，
+            #   而 **Task 模型里根本没有 `agent_ids` 字段**（见 protocol.Task）⇒
+            #   那句"Agent: N 个参与"**永远是 0** —— 一句对用户说的假话（准则⑤）。
+            #   参与度的事实字段是这三个：举手 / 派活 / 回报。
+            _raises = len(t.get("hand_raises") or [])
+            _deleg = len(t.get("delegations") or [])
+            _res = len(t.get("delegation_results") or {})
+            click.echo(f"  参与: 举手 {_raises} 个 | 派活 {_deleg} 条 | 回报 {_res} 条")
+            # ★★2026-10-14 实测修复：**README 第 4 步叫"看结果"，可它从来不打结果** ——
+            #   任务里明明有 `result`（真跑出来的一段完整回答），用户却只看得到状态与时间，
+            #   会以为"没产出"。⇒ 把 result 打出来；**没有结果时说清为什么**（准则⑤）。
+            res = str(t.get("result") or "").strip()
+            if res:
+                click.secho("\n结果:", fg="cyan")
+                click.echo(res)
+            else:
+                st = str(t.get("status") or "")
+                if st not in ("completed", "failed", "cancelled"):
+                    why = "任务还在进行中（过一会儿再查）"
+                elif not (_raises or _deleg or _res):
+                    why = "没有成员参与 —— 平台还没有接入任何 Harness"
+                else:
+                    why = "本次没有产出结果"
+                click.secho(f"\n（暂无结果：{why}）", fg="yellow")
+                if not (_raises or _deleg or _res):
+                    click.echo("  下一步：先接入一个 Harness —— 见 README「Harness 接入指南」，"
+                               "或在界面里按引导走一遍： %s/register.html" % base)
+            ws_id = t.get("workshop_id") or ""
+            if ws_id:
+                click.echo(f"  工作间: {ws_id}（界面里可看讨论与成员）")
             msgs = t.get("messages", [])
             if msgs:
                 click.secho(f"\n消息记录 ({len(msgs)} 条):", fg="cyan")
@@ -337,7 +399,13 @@ def task_result(task_id):
         elif r.status_code == 404:
             click.secho(f"[WARN] 任务不存在: {task_id}", fg="yellow")
         else:
-            click.secho(f"[ERROR] HTTP {r.status_code}", fg="red")
+            # 失败要说话：把服务端原话带上（原来只有一个状态码）
+            detail = ""
+            try:
+                detail = r.json().get("error") or ""
+            except Exception:  # noqa: BLE001
+                detail = (r.text or "")[:200]
+            click.secho(f"[ERROR] HTTP {r.status_code}" + (f" —— {detail}" if detail else ""), fg="red")
     except Exception as e:
         click.secho(f"[ERROR] 无法连接服务: {e}", fg="red")
         sys.exit(1)

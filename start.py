@@ -2,7 +2,7 @@
 """外端Agent生产合作社（External Agent Community）— 一键启动（**薄包装**）。
 
 用法：
-    python start.py                     # 起服务（带桌面窗口，端口 9103）
+    python start.py                     # 起服务（带桌面窗口，端口取 AC_PORT，默认 18920）
     python start.py --no-gui            # 只要后端
     python start.py --port 18920        # 换端口
     python start.py --no-gui --port 18920
