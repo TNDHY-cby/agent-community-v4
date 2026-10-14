@@ -84,17 +84,33 @@ def test_non_bridge_process_mentioning_inbox_is_not_a_bridge(inbox, tmp_path, mo
 
 
 def test_wrapper_process_mentioning_inbox_is_not_a_bridge(inbox, tmp_path, monkeypatch):
-    """★② powershell **包裹进程**的命令行里也有该邮箱路径 —— 不算桥（要认解释器）。"""
+    """★② **包裹进程**的命令行里也有该邮箱路径 —— 不算桥（要认解释器）。
+
+    ⚠️ 2026-10-14 修（Linux CI 的第二个拦路虎）：
+      原实现写死 `["powershell", ...]`。**Linux 上没有 powershell** ⇒
+      `subprocess.Popen` 直接 `FileNotFoundError` ⇒ 本用例在 `test-linux` 作业里必红。
+      现在**按平台**挑一个"非解释器的外壳进程"：
+        Windows → `powershell -Command "Start-Sleep 60 # <inbox>"`
+        POSIX   → `sh -c "sleep 60 # <inbox>"`
+      两者语义完全相同（一个命令行里含邮箱路径、但不是 Python 解释器），
+      被测的判据（"只认解释器"）两边都验得到。
+    """
     from agent_community.platform.routers.harness_messaging import _probe_pid_watching
 
-    p = subprocess.Popen(["powershell", "-NoProfile", "-Command",
-                          "Start-Sleep -Seconds 60  # %s" % inbox],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    if sys.platform == "win32":
+        argv = ["powershell", "-NoProfile", "-Command",
+                "Start-Sleep -Seconds 60  # %s" % inbox]
+        who = "powershell"
+    else:
+        argv = ["sh", "-c", "sleep 60  # %s" % inbox]
+        who = "sh"
+
+    p = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     try:
         time.sleep(2.0)
-        assert p.poll() is None, "被测 powershell 没起来，本用例空转了（退出码 %s）" % p.poll()
+        assert p.poll() is None, "被测 %s 没起来，本用例空转了（退出码 %s）" % (who, p.poll())
         got = _probe_as_if_external(monkeypatch, _probe_pid_watching, inbox)
-        assert got == 0, "★把 powershell 包裹进程当成了桥（判据没限定只认解释器）"
+        assert got == 0, "★把 %s 包裹进程当成了桥（判据没限定只认解释器）" % who
     finally:
         if p.poll() is None:
             p.terminate()

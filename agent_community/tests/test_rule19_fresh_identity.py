@@ -92,10 +92,13 @@ def fresh(tmp_path, monkeypatch):
 
 
 def _make_fake_agent(work, inbox_abs: str, py_exe: str) -> str:
-    """造一个"外端 agent"+它的包装脚本（纯 ASCII、无 BOM —— 实测 cmd 的坑）。
+    """造一个"外端 agent"+平台对应的启动器；**返回可直接用的 TRIGGER_CMD**。
 
     按平台约定：**trigger 不带参数**；假 agent 从自己旁边的 `inbox.txt` 读邮箱路径，
     任务在 `inbox/delivered/`（桥是**先搬走再叫醒**，实测确认）。
+
+    启动器按平台生成（Windows `.cmd` / POSIX `.sh`）—— 见 `_make_launcher` 的注释，
+    原实现写死 `cmd.exe` 让 Linux CI 必红。
     """
     agent = work / "my_agent.py"
     # ★读**inbox 根里的 `task_*.json`** —— 平台自己的话术就是这么教的
@@ -133,9 +136,7 @@ def _make_fake_agent(work, inbox_abs: str, py_exe: str) -> str:
         "print('handled',n)\n",
         encoding="utf-8")
     (work / "inbox.txt").write_text(inbox_abs, encoding="utf-8")
-    wrap = work / "wake.cmd"
-    _write_cmd(wrap, py_exe)
-    return str(wrap)
+    return _make_launcher(work, py_exe)
 
 
 #: 写 `.cmd` 用的编码。实测结论（2026-10-14）：**UTF-8 无 BOM**。
@@ -171,8 +172,38 @@ def _write_cmd(path, py_exe: str) -> None:
     assert not raw.startswith(b"\xef\xbb\xbf"), "cmd 启动器不得带 UTF-8 BOM（cmd 会把它当命令）"
 
 
+# ── 启动器：**按平台生成**（2026-10-14 修，Linux CI 的真拦路虎）────────────────
+#
+# ⚠️ 原实现只造 `wake.cmd`，并把 TRIGGER_CMD 写成 `cmd.exe /c "<wake.cmd>"`。
+#   **Linux 上没有 cmd.exe** ⇒ 桥拉不起假 agent ⇒ 自检拿 `state='no_reply'`
+#   ⇒ `test_rule19_fresh_name_and_dir_end_to_end`（一条**核心**用例）在 CI 的
+#   `test-linux` 作业里必红。
+#   为什么以前没暴露：这套 CI 是我 2026-10-14 才加的，此前**从来没在 Linux 上跑过**；
+#   开发机与 windows runner 上 `cmd.exe` 都在，所以一直绿。
+#   真实用户侧同样成立：Linux 用户不会用 .cmd 当唤醒命令 —— 他会用 .sh。
+#   ⇒ 所以这里不是"为了过 CI 而跳过"，而是**按平台给用户真正会用的那种启动器**。
+def _make_launcher(work, py_exe: str) -> str:
+    """造平台对应的唤醒脚本，返回**可以直接当 TRIGGER_CMD 用**的命令串。
+
+    两个平台都保持同一语义：**裸 trigger，不带参数**（平台就是这么调它的）。
+    """
+    if sys.platform == "win32":
+        wrap = work / "wake.cmd"
+        _write_cmd(wrap, py_exe)
+        return 'cmd.exe /c "%s"' % wrap
+
+    wrap = work / "wake.sh"
+    # `$(dirname "$0")` —— 脚本自己所在目录（别写死绝对路径，目录要因人而异）
+    body = ('#!/bin/sh\n'
+            '# bare trigger (platform calls it with no args)\n'
+            'exec "%s" "$(dirname "$0")/my_agent.py"\n' % py_exe)
+    wrap.write_bytes(body.encode("utf-8"))     # 不带 BOM
+    os.chmod(wrap, 0o755)
+    return str(wrap)
+
+
 def test_fake_agent_launcher_survives_non_ascii_interpreter_path(tmp_path):
-    """★回归守卫：解释器路径含非 ASCII 时，`.cmd` 启动器仍要能写出来。
+    """★回归守卫：解释器路径含非 ASCII 时，启动器仍要能写出来。
 
     实证（2026-10-14）：干净 venv 建在 `D:\\DSH工作区1\\temp\\...` 下，
     `sys.executable` 带中文 ⇒ 原实现（`encoding="ascii"`）直接 `UnicodeEncodeError`。
@@ -189,6 +220,31 @@ def test_fake_agent_launcher_survives_non_ascii_interpreter_path(tmp_path):
     text = raw.decode(_cmd_encoding(), errors="replace")
     assert fake_non_ascii in text, "解释器路径被编码破坏（含非 ASCII 时必须按代码页写）"
     assert "%~dp0my_agent.py" in text, "脚本路径必须用 %~dp0 相对写法（目录也要因人而异）"
+
+
+def test_launcher_is_platform_appropriate(tmp_path):
+    """★回归守卫：启动器必须**按平台**生成（Linux 上没有 cmd.exe）。
+
+    实证（2026-10-14）：原实现只造 `wake.cmd` 并把 TRIGGER_CMD 写成 `cmd.exe /c ...`
+    ⇒ Linux 上桥拉不起假 agent、自检拿 `no_reply`，`test-linux` 必红。
+    本用例只断言"平台对应的那种"确实生成了、且能被当命令串用；
+    Windows 上的 `.cmd` 规则由上面那条守卫继续钉住。
+    """
+    work = tmp_path / "w"
+    work.mkdir()
+    trigger = _make_launcher(work, sys.executable)
+
+    if sys.platform == "win32":
+        assert (work / "wake.cmd").is_file(), "Windows 上应当生成 wake.cmd"
+        assert trigger.startswith("cmd.exe /c"), f"Windows 的 TRIGGER_CMD 应为 cmd.exe /c：{trigger}"
+    else:
+        sh = work / "wake.sh"
+        assert sh.is_file(), "POSIX 上应当生成 wake.sh（Linux 没有 cmd.exe）"
+        assert os.access(sh, os.X_OK), "wake.sh 必须可执行，否则桥调它会被拒"
+        assert "cmd.exe" not in trigger, f"POSIX 上不许出现 cmd.exe：{trigger}"
+        body = sh.read_bytes()
+        assert not body.startswith(b"\xef\xbb\xbf"), "脚本不得带 BOM（sh 会把 BOM 当命令）"
+        assert b"$(dirname \"$0\")" in body, "脚本路径要用 $(dirname \"$0\") 相对写法"
 
 
 def test_rule19_fresh_name_and_dir_end_to_end(fresh):
@@ -228,7 +284,10 @@ def test_rule19_fresh_name_and_dir_end_to_end(fresh):
 
     out = asyncio.run(hb.harness_bridge_template_put(hid, _Req({
         "name": "r19桥", "kind": "file_poll",
-        "params": {"INBOX_DIR": inbox, "TRIGGER_CMD": 'cmd.exe /c "%s"' % wrap},
+        # ★2026-10-14：TRIGGER_CMD 由 `_make_launcher` **按平台**产出
+        #   （Windows: `cmd.exe /c "wake.cmd"`；POSIX: `wake.sh`）。
+        #   原先这里写死 `cmd.exe /c …` ⇒ Linux CI 必红（那边没有 cmd.exe）。
+        "params": {"INBOX_DIR": inbox, "TRIGGER_CMD": wrap},
     })))
     d = _as_dict(out)
     assert d.get("success") is True, d
