@@ -18,7 +18,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt || pip install fastapi uvicorn click httpx pydantic pytest
+          # ⚠️ 不要写「|| pip install <一部分包>」这种兜底：它装出来的环境和 requirements.txt
+          #    **不是同一个**，跑绿了不能说明任何事（2026-10-14 protobuf 就是这么漏的）。
+          #    宁可让安装步骤响亮地失败；要抗网络抖动用 --retries。
+          pip install --retries 5 --timeout 60 -r requirements.txt
       - name: Hardcoded-value scan (must pass)
         run: python tools/check_portability.py
       - name: Env docs must match env_spec (no drift)
@@ -38,7 +41,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt || pip install fastapi uvicorn click httpx pydantic pytest
+          # ⚠️ 不要写「|| pip install <一部分包>」这种兜底：它装出来的环境和 requirements.txt
+          #    **不是同一个**，跑绿了不能说明任何事（2026-10-14 protobuf 就是这么漏的）。
+          #    宁可让安装步骤响亮地失败；要抗网络抖动用 --retries。
+          pip install --retries 5 --timeout 60 -r requirements.txt
       - name: Compile check
         run: python -m compileall agent_community -q
       - name: Run agent_community tests
@@ -74,7 +80,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt || pip install fastapi uvicorn click httpx pydantic pytest
+          # ⚠️ 不要写「|| pip install <一部分包>」这种兜底：它装出来的环境和 requirements.txt
+          #    **不是同一个**，跑绿了不能说明任何事（2026-10-14 protobuf 就是这么漏的）。
+          #    宁可让安装步骤响亮地失败；要抗网络抖动用 --retries。
+          pip install --retries 5 --timeout 60 -r requirements.txt
       - name: Compile check
         run: |
           python -m compileall agent_community -q
