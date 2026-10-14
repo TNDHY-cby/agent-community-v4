@@ -312,18 +312,54 @@ def test_rule19_fresh_name_and_dir_end_to_end(fresh):
     out = asyncio.run(hb.harness_verify_bridge(hid, _Req({"wait": 16, "teardown": True})))
     v = _as_dict(out)
     assert v.get("stage") == "selfcheck", "应跑到自检阶段：%s" % json.dumps(v, ensure_ascii=False)[:300]
-    # ★2026-10-14：Windows runner 上这一条报 no_reply，而本机复现不出来 ——
-    #   把"现场"放进失败信息（trigger 是什么、邮箱里有什么），下一次 CI 直接给答案。
-    _inbox_now = {}
-    try:
-        for _p in sorted(Path(inbox).rglob("*")):
-            _inbox_now[str(_p.relative_to(inbox))] = ("dir" if _p.is_dir() else _p.stat().st_size)
-    except Exception as _e:            # noqa: BLE001
-        _inbox_now = {"<列不出>": str(_e)[:80]}
+    # ★2026-10-14：Windows runner 上这一条报 no_reply、本机复现不出来。
+    #   把**证据**放进失败信息，而不是靠猜（猜已经让我白走过两轮）。
+    #   ⚠️ 上一版这里有两个毛病，都已修：
+    #     ① 用了没导入的 `Path` ⇒ 现场变成 "name 'Path' is not defined"（诊断自己要能跑！）；
+    #     ② 没有贴**桥的日志** ⇒ 而"trigger 到底有没有被叫起来、agent 看到了什么"
+    #        恰恰只写在桥日志里（桥会打 `[唤醒] 已执行 trigger: …`，
+    #        假 agent 会打 `AGENT-SEES …` / `handled N`）。
+    def _snapshot(root, limit=24):
+        """列目录 + 抓日志尾巴（纯 os，不依赖 Path 导入）。"""
+        import os as _os
+        try:
+            items = []
+            for dirpath, _dirs, files in _os.walk(str(root)):
+                for fn in sorted(files):
+                    fp = _os.path.join(dirpath, fn)
+                    try:
+                        items.append((_os.path.relpath(fp, str(root)), _os.path.getsize(fp)))
+                    except OSError:
+                        items.append((_os.path.relpath(fp, str(root)), -1))
+            listing = sorted(items)[:limit]
+        except Exception as e:                      # noqa: BLE001
+            listing = [("<列不出>", str(e)[:90])]
+        tails = {}
+        try:
+            for dirpath, _dirs, files in _os.walk(str(root)):
+                for fn in files:
+                    if not fn.endswith((".log", ".txt", ".out")):
+                        continue
+                    fp = _os.path.join(dirpath, fn)
+                    try:
+                        with open(fp, "r", encoding="utf-8", errors="replace") as fh:
+                            tails[_os.path.relpath(fp, str(root))] = fh.read()[-700:]
+                    except OSError:
+                        pass
+        except Exception:                            # noqa: BLE001
+            pass
+        return listing, tails
+
+    _inbox_list, _inbox_logs = _snapshot(inbox)
+    _ws_list, _ws_logs = _snapshot(getattr(ws, "workspace_dir", inbox))
     assert v.get("state") == "ok", (
         "★全新名字+全新目录下应能真跑通（平台→桥→agent→回报）；实得 state=%r reason=%r"
-        " | trigger=%r | 本机平台=%s | 邮箱现场=%r"
-        % (v.get("state"), v.get("reason"), wrap, sys.platform, _inbox_now))
+        " | 平台=%s | trigger=%r"
+        " | 邮箱里的东西=%r"
+        " | 验证间里的东西=%r"
+        " | 日志尾巴=%r"
+        % (v.get("state"), v.get("reason"), sys.platform, wrap,
+           _inbox_list, _ws_list, {**_inbox_logs, **_ws_logs}))
     assert (v.get("committed") or {}).get("success") is True, \
         "★跑通了就必须把实测配置写进模板并标记已验证：%s" % (v.get("committed"),)
     td = v.get("torndown") or {}
