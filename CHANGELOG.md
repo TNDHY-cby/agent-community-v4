@@ -2,6 +2,49 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.8.0] - 2026-10-14
+
+**「陌生人照着 README 就能跑起来」这一版**：接入流程产品化、可移植性收口、CI 首次全绿，
+并修掉一批"第一次用就会撞到、却看不出原因"的坑。
+
+### 新增
+- **接入产品化（V40–V48）**：桥的两段式模型（平台通用模板 + 工作间具体桥）、低耗验证间、
+  `design-docs/V43_接入自检清单.md`、**按接口引导**、接口索引与适配等级契约、口径唯一化。
+- **可移植性三层制度**：`PORTABILITY.md`（唯一规则源）；`platform/env_spec.py`（环境变量登记表 +
+  条件必需校验 + `assert_ready()`）、`platform_address.py`（端口/监听地址/基址的**唯一解析点**）；
+  三条自查 `tools/check_portability.py`、`tools/gen_env_docs.py --check`、`pytest`。
+- **CI（GitHub Actions）**：`portability` / `test-linux` / `test-windows` 三作业，**首次连续全绿**；
+  依赖漏声明由 AST 守卫 `TestThirdPartyImportsAreDeclared` 拦死。
+- **`platform/sysprobe.py`（本机事实的跨平台入口）**：进程表 / 命令行 / pid 存活 / 端口归属 / 结束进程。
+  **psutil 主路径**（Windows/Linux/macOS），PowerShell·netstat·tasklist 只作无 psutil 时的回落
+  ⇒ 「桥在不在跑」「端口被谁占着」「退出并关闭」这些能力**在 Linux 上真的能用**了
+  （此前是静默降级：恒返回空、还不报错）。
+- `Dockerfile` + `docker-compose.yml`（容器路线；注意事项见下）。
+
+### 修复
+- **`python -m agent_community.cli task "…"` 一直失败**（README 第 3 步）：CLI 发的字段名与
+  `/api/command` 不匹配 ⇒ 现在对齐，且**失败时打印服务端原话**并返回非 0。
+- **`task-result` 从不打印结果**（README 第 4 步叫"看结果"却看不到）⇒ 现在打印结果正文；
+  没有结果时说清原因（进行中 / 没有成员参与 = 还没接入 Harness）并给下一步。
+- **`task-result` 的"参与数"永远是 0**：它读的字段在 Task 模型里不存在 ⇒ 改为读真字段（举手/派活/回报）。
+- **换了 `AC_DATA_DIR` 之后仓库仍被写脏**：CLI 的日志目录写死成仓库布局
+  ⇒ 收口到 `env_spec.data_dir()`（唯一解析点）。
+- **中文路径/内容在非 UTF-8 控制台（英文 Windows 的 cp1252）下把子进程弄死**：
+  桥模板、工具脚本、动作脚本、示例统一加输出编码自保（这是"只有 CI 才红、本机复现不出来"的那一类）。
+- 端口默认值口径统一：README / `cli.py` / `start.py` / 设计稿里残留的旧默认值 **9103**
+  一律对齐唯一真源（**18920**）。
+
+### 变更
+- `env_spec.data_dir()` 成为数据目录的唯一解析点；数据落点守卫的扫描范围从 `platform/` 扩到**整个包**。
+- **容器路线提醒**：用 `ports:` 端口映射时，宿主浏览器来的请求在容器里**不是回环地址**
+  ⇒ 未设 `AC4_TOKEN` 时一律 403（有意的安全边界）。`docker-compose.yml` 头部写明两条可行路。
+
+### 已知限制（如实标注）
+- 窗口激活、桥目录回收站：**Windows 专属**，其它平台如实返回不支持（不假装成功）。
+- `tools/watchdog.py` 的进程发现仍是 Windows 专属（它承诺"全程标准库、无第三方依赖"，故不引 psutil）。
+- CI 的 Python 为 **3.11**；其它版本未逐一验证。
+- Docker 路线**未在真机验证**；主路径是源码运行（README《快速开始》）。
+
 ## [4.7.0] - 2026-10-06
 
 gRPC 层鉴权与错误码语义化（V18）+ 公开仓库本地路径泄漏清理。
