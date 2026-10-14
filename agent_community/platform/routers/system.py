@@ -78,30 +78,23 @@ def origin_allowed(request: Request) -> tuple[bool, str]:
 
 
 def port_pids(port: int) -> list[int]:
-    """谁在监听该端口（用 netstat 解析，不引第三方依赖）。"""
-    try:
-        out = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True,
-                             timeout=10).stdout
-    except Exception:  # noqa: BLE001
-        return []
-    pids: list[int] = []
-    pat = re.compile(r":%d\s+\S+\s+LISTENING\s+(\d+)" % port)
-    for line in out.splitlines():
-        m = pat.search(line)
-        if m:
-            pid = int(m.group(1))
-            if pid and pid not in pids:
-                pids.append(pid)
-    return pids
+    """谁在监听该端口（★2026-10-14：改用 `platform/sysprobe`，**跨平台**）。
+
+    原实现解析 `netstat -ano -p TCP`（Windows 专属语法）⇒ **Linux 上恒返回空**：
+    「端口被谁占着」查不到，连带 `_stop_port`（靠它找 pid）**永远停不掉**
+    —— 用户点"退出并关闭"却关不掉，还看不到原因。
+
+    ⚠️Linux 非 root 时只能看到**自己**进程的套接字（内核限制）⇒ 空结果只代表
+    "**可查范围内没有**"，调用方要如实这么说（见 `sysprobe.probe_note()`）。
+    """
+    from .. import sysprobe
+    return sysprobe.listening_pids(port)
 
 
 def port_listening(port: int) -> bool:
-    try:
-        out = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True,
-                             timeout=10).stdout
-        return any(re.search(r":%d\s+\S+\s+LISTENING" % port, ln) for ln in out.splitlines())
-    except Exception:  # noqa: BLE001
-        return False
+    """该端口是否有人在监听（跨平台；注意事项同上）。"""
+    from .. import sysprobe
+    return sysprobe.port_listening(port)
 
 
 def watchdog_pid_file() -> Path:
@@ -135,42 +128,31 @@ def watchdog_pids(server_port: int | None = None) -> list[int]:
     # 2) 退化：命令行含 watchdog 且含本实例端口
     if not server_port:
         return []
+    from .. import sysprobe
     needle = str(server_port)
-    out = _powershell_pids(
-        "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'watchdog' "
-        f"-and $_.CommandLine -match '{needle}' }} | Select-Object -ExpandProperty ProcessId")
+    out = []
+    for h in sysprobe.find_processes(["watchdog"], exclude_ppid=os.getpid(), limit=50):
+        cmd = str(h.get("cmdline") or "")
+        pid = int(h.get("pid") or 0)
+        if pid > 0 and needle in cmd and pid not in out:
+            out.append(pid)          # 端口号也在命令行里 ⇒ 是本实例那只
     return out
 
 
-def _powershell_pids(script: str) -> list[int]:
-    try:
-        out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-                             capture_output=True, text=True, timeout=20).stdout
-        return [int(x) for x in re.findall(r"\d+", out)]
-    except Exception:  # noqa: BLE001
-        return []
-
-
 def _cmdline_has(pid: int, needle: str) -> bool:
-    try:
-        out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
-                              f"(Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\").CommandLine"],
-                             capture_output=True, text=True, timeout=20).stdout
-        return needle.lower() in (out or "").lower()
-    except Exception:  # noqa: BLE001
-        return False
+    """该 pid 的命令行里是否含某关键词（★跨平台取命令行，见 `sysprobe.process_cmdline`）。"""
+    from .. import sysprobe
+    return str(needle or "").lower() in sysprobe.process_cmdline(pid).lower()
 
 
 def kill_pid(pid: int, *, tree: bool = False) -> bool:
-    """结束进程（`taskkill`）。tree=True 时连同子进程一起（看门狗会拉起子进程）。"""
-    args = ["taskkill", "/F", "/PID", str(pid)]
-    if tree:
-        args.insert(1, "/T")
-    try:
-        r = subprocess.run(args, capture_output=True, text=True, timeout=15)
-        return r.returncode == 0
-    except Exception:  # noqa: BLE001
-        return False
+    """结束进程；`tree=True` 时连同子进程一起（看门狗会拉起子进程）。
+
+    ★2026-10-14：跨平台（Windows `taskkill /T /F`；POSIX 信号 + 子进程）。
+    返回**是否确实已不存活**（不是"命令返回 0 就算成功"——失败要说话）。
+    """
+    from .. import sysprobe
+    return sysprobe.kill_pid(pid, tree=tree)
 
 
 def _stop_port(target: str, port: int, report: dict) -> bool:
@@ -261,12 +243,9 @@ def shutdown_targets(server_port: int, a2a_port: int, grpc_port: int) -> dict:
 
 
 def _pid_alive(pid: int) -> bool:
-    try:
-        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True,
-                             text=True, timeout=10).stdout
-        return str(pid) in out
-    except Exception:  # noqa: BLE001
-        return False
+    """pid 是否存活（★跨平台，见 `sysprobe.is_pid_alive`；原实现只有 Windows 的 tasklist）。"""
+    from .. import sysprobe
+    return sysprobe.is_pid_alive(pid)
 
 
 @router.get("/api/system/lifecycle")

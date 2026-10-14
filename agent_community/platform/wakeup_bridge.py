@@ -181,24 +181,46 @@ class WakeupBridge:
         )
 
         try:
-            self._set_clipboard_windows(clipboard_text)
+            self._set_clipboard(clipboard_text)
             return True, "clipboard", None
         except Exception as e:
             return False, "clipboard", f"剪贴板写入失败: {e}"
 
-    def _set_clipboard_windows(self, text: str):
-        """Windows 剪贴板写入（使用 PowerShell）"""
+    def _set_clipboard(self, text: str):
+        """把文本写进系统剪贴板（**跨平台**；写入失败要说话）。
+
+        ★2026-10-14：原来只有 Windows 一条路（`powershell Set-Clipboard`）——
+          非 Windows 上 `clipboard` 型唤醒**必然失败**，而报错还是含混的
+          （用户看到"剪贴板写入失败"却不知道是平台不支持还是别的原因）。
+          现在按平台挑可用工具；一个都没有就**如实说清楚要装什么**（规则 19：不硬撑）。
+        """
         import subprocess
-        # 将文本通过管道传给 clip.exe
-        proc = subprocess.run(
-            ["powershell", "-Command", f"Set-Clipboard -Value $input"],
-            input=text,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-        if proc.returncode != 0:
-            raise RuntimeError(proc.stderr.strip())
+        import shutil as _shutil
+        if os.name == "nt":
+            # Windows：Set-Clipboard 直吃 stdin（原实现；实测可用，保留）
+            proc = subprocess.run(
+                ["powershell", "-Command", "Set-Clipboard -Value $input"],
+                input=text, capture_output=True, text=True, encoding="utf-8",
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(proc.stderr.strip() or "Set-Clipboard 返回非 0")
+            return
+        # POSIX：按常见工具依次试（都是"把 stdin 写进剪贴板"的语义）
+        for argv in (["xclip", "-selection", "clipboard"],
+                     ["xsel", "-i", "-b"],
+                     ["pbcopy"]):                       # pbcopy = macOS
+            exe = _shutil.which(argv[0])
+            if not exe:
+                continue
+            proc = subprocess.run([exe] + argv[1:], input=text, capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace")
+            if proc.returncode == 0:
+                return
+            raise RuntimeError("%s 返回 %s：%s" % (argv[0], proc.returncode,
+                                                 (proc.stderr or "").strip()[:200]))
+        raise RuntimeError(
+            "本机没有可用的剪贴板工具：请装 xclip 或 xsel（Linux）／macOS 自带 pbcopy；"
+            "或者改用别的唤醒方式（file_poll / pending_poll 的邮箱那条路不需要剪贴板）")
 
     # ── 批量唤醒 ────────────────────────────────────────────────
 

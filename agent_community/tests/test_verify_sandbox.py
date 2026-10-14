@@ -281,21 +281,48 @@ def test_teardown_stops_only_the_sandbox_bridge_not_the_users(monkeypatch, tmp_p
 
 
 # ── 6) ★★平台绝不能被自己的停桥逻辑杀掉 ─────────────────────────────────────
-def test_stop_bridge_processes_excludes_the_platform_itself():
+def test_stop_bridge_processes_excludes_the_platform_itself(monkeypatch):
     """实测事故：该函数用裸子串匹配命令行，而**平台自己的命令行里也含 harness_id**
     ⇒ 平台自杀，日志只留 `WinError 64 指定的网络名不再可用`，极难定位。
-    这条测试从**源码**上锁死两道防线（不需要真跑 PowerShell）。"""
-    import inspect
 
+    ★2026-10-14 **重写成行为判据**（原来靠读源码找 PowerShell 的 `-notlike` 字样）：
+      那一版在探测换成 psutil 后就失效了 —— 判据变成"源码里有没有某个字符串"，
+      而它真正要守的是"**平台自己绝不能被杀**"。现在直接喂一张**合成进程表**：
+        · 一条像平台自己的（命令行含 `-m agent_community.platform.server` 与本 harness 的 id）
+        · 一条真桥的（`.../bridges/<hid>/bridge.py`）
+        · 一条只是提到线索、但不是桥脚本的
+      然后断言：**只有真桥被杀** —— 这比看源码强，且与实现无关。
+    """
     from agent_community.platform import server as srv
+    from agent_community.platform import sysprobe
 
-    src = inspect.getsource(srv._stop_bridge_processes)
-    assert "agent_community.platform.server" in src, \
-        "必须显式排除平台自身（否则它会把自己杀了）"
-    assert "notlike" in src, "排除要靠 -notlike 条件"
-    assert "bridge" in src, "还要求命中桥特征（bridge*.py），宁可漏杀一个桥"
-    # 不许再出现"只按 harness_id 子串匹配"的旧写法
-    assert "Name -match 'python|node' -and $_.CommandLine \"" not in src or "notlike" in src
+    hid = "excl-probe-harness"
+    rows = [
+        # ① 平台自己（命令行里同样含 harness_id —— 这就是当年自杀的成因）
+        (4242, 1, "python.exe",
+         "python -m agent_community.platform.server --port 18920 # %s" % hid),
+        # ② 平台自己（另一种形态：直接跑 server.py）
+        (4243, 1, "python.exe",
+         r"python D:\x\agent_community\platform\server.py --port 18920 %s" % hid),
+        # ③ 真桥
+        (5001, 1, "python.exe",
+         r"python -u D:\x\bridges\%s\bridge.py --harness-id %s" % (hid, hid)),
+        # ④ 提到线索但不是桥脚本（不许被杀）
+        (5002, 1, "python.exe", "python -c \"print('%s')\"" % hid),
+    ]
+    monkeypatch.setattr(sysprobe, "find_processes",
+                        lambda *a, **k: [{"pid": r[0], "name": r[2], "cmdline": r[3]} for r in rows],
+                        raising=True)
+    killed = []
+    monkeypatch.setattr(sysprobe, "kill_pid",
+                        lambda pid, **k: (killed.append(int(pid)) or True), raising=True)
+
+    out = srv._stop_bridge_processes(hid, "")
+    assert 4242 not in killed and 4243 not in killed, \
+        "★平台把自己杀了（它就是当年那起事故：日志只剩 WinError 64，极难定位）"
+    assert 5002 not in killed, "只提到线索、不是桥脚本的进程不许被杀"
+    assert killed == [5001], "应当且只应当杀掉真桥：%r（返回 %r）" % (killed, out)
+    assert out.get("killed") == 1, "如实报数：确实杀掉几只就报几只：%r" % out
 
 
 def test_stop_bridge_only_matches_the_given_dir_not_the_whole_harness():
@@ -319,7 +346,9 @@ def test_stop_bridge_only_matches_the_given_dir_not_the_whole_harness():
     assert i_dir != -1 and i_elif != -1 and i_dir < i_elif, \
         "判断顺序必须先是 bridge_dir、再 elif harness_id（顺序反了就等于没修）"
     assert 'needles.append(harness_id)' in src
-    # 顺手钉住"别报假数字"：原来杀没杀都回 killed: 0
-    assert "killed = int(" in src or "killed = 0\n        for tok" in src, \
-        "killed 要如实反映杀了几只（原来无论杀没杀都回 0，调用方无从判断）"
+    # 顺手钉住"别报假数字"：原来杀没杀都回 killed: 0。
+    # ★2026-10-14：这条**改成行为判据了**（原来查源码里 `killed = int(` 这种字样，
+    #   探测换成 psutil/`sysprobe.kill_pid` 后写法一变它就假红）——
+    #   现在由 `test_stop_bridge_processes_excludes_the_platform_itself` 用合成进程表断言
+    #   "确实杀掉几只就报几只"。**同一件事只有一处判据**，这里不再重复钉源码。
     assert "matched_by" in src, "要把'按什么匹配的'一起报出来，便于事后追"

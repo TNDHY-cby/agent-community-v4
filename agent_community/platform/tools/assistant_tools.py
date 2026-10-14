@@ -26,6 +26,41 @@ from ..policy import (
 )
 
 
+# ── 「平台帮你看本机有什么」的两个同步扫描（**跨平台**；调用方必须 `to_thread`）──────
+#
+# ★2026-10-14：这两段原来直接调 PowerShell（`Get-CimInstance` / `Get-NetTCPConnection`）
+#   ⇒ **Linux 上恒返回空**：平台"帮你看有什么 agent 在跑 / 哪个端口在听"这条能力
+#   在非 Windows 上等于没有（而它在接入引导里是给用户看的证据）。
+#   ⇒ 改用 `platform/sysprobe`（psutil 主路径，PowerShell 只作无 psutil 时的回落）。
+#   ⚠️它们是**同步阻塞**的扫描（要取全机进程表/套接字表）：async 端点里**必须** `to_thread`
+#     ——见本文件里那段"平台假死"的实测注释（外部症状：watchdog 报 TimeoutError、
+#     外端 agent 在接入第 2 步报「连接被远程主机关闭」）。
+
+def _scan_candidate_processes(process_hint: str = "", path_hint: str = "",
+                              limit: int = 40) -> list:
+    """扫本机进程 → `["pid|name|cmdline", ...]`（命令行里的连续空白压成单空格）。
+
+    判据与原 PowerShell 版一致：进程名含 `electron|python|node|claude`
+    （这几类是外端 agent 的常见形态），命令行里的连续空白压成单空格便于展示与匹配。
+    """
+    import re as _re
+    from .. import sysprobe
+    rows = sysprobe.find_processes(None, name_matches=r"electron|python|node|claude", limit=limit)
+    return ["%s|%s|%s" % (r.get("pid"), r.get("name"),
+                          _re.sub(r"\s+", " ", str(r.get("cmdline") or "")).strip())
+            for r in rows]
+
+
+def _scan_listening_ports() -> list:
+    """本机在 LISTEN 的 TCP 端口（只取本机可及的：回环/通配地址）。
+
+    ⚠️返回空只代表"**可查范围内没有**"（Linux 非 root 只看得到自己进程的套接字）——
+      调用方别把空说成"没人监听"（见 `sysprobe.probe_note()`）。
+    """
+    from .. import sysprobe
+    return sysprobe.listening_ports(local_only=True)
+
+
 class ListHarnessTool(BaseTool):
     @property
     def schema(self) -> ToolSchema:
@@ -307,13 +342,8 @@ class ProbeHarnessTool(BaseTool):
         import asyncio as _asyncio
         proc_candidates = []
         try:
-            out = await _asyncio.to_thread(
-                subprocess.check_output,
-                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-                 "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'electron|python|node|claude' } | ForEach-Object { $_.ProcessId.ToString() + '|' + $_.Name + '|' + ($_.CommandLine -replace '\\s+',' ') }"],
-                timeout=25, encoding="utf-8", errors="replace",
-            )
-            for line in out.splitlines():
+            out = await _asyncio.to_thread(_scan_candidate_processes, process_hint, path_hint)
+            for line in out:
                 line = line.strip()
                 if not line:
                     continue
@@ -328,7 +358,7 @@ class ProbeHarnessTool(BaseTool):
             else:
                 # 兜底：列出所有非系统进程的 python/electron/node
                 lines.append(f"进程扫描未按线索命中，列出候选进程（electron/python/node）：")
-                for line in out.splitlines()[:10]:
+                for line in out[:10]:
                     if any(k in line for k in ("electron", "python", "node")):
                         lines.append("  " + line.strip()[:150])
         except Exception as e:
@@ -337,13 +367,7 @@ class ProbeHarnessTool(BaseTool):
         # 2) 扫监听端口（同上：**必须挪到工作线程**，否则又是同步阻塞）
         ports = []
         try:
-            out = await _asyncio.to_thread(
-                subprocess.check_output,
-                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-                 "Get-NetTCPConnection -State Listen | Where-Object { $_.LocalAddress -in '127.0.0.1','0.0.0.0','::' } | Select-Object -ExpandProperty LocalPort -Unique | Sort-Object"],
-                timeout=20, encoding="utf-8", errors="replace",
-            )
-            ports = [int(x) for x in out.split() if x.strip().isdigit()]
+            ports = await _asyncio.to_thread(_scan_listening_ports)
         except Exception as e:
             lines.append(f"端口扫描失败: {e}")
 

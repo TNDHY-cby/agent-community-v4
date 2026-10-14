@@ -60,30 +60,21 @@ def _probe_process(name_or_cmd: str, timeout: float = 30.0) -> list:
     ⚠️ 与 `_find_bridge_processes` 同源但**不同用途**：这里是"找你的 agent"，
     所以关键词由调用方给（进程名/命令行线索），并**排除平台自己的子进程**
     （否则会把探测动作本身算进去 —— 这个坑我今天在别处踩过）。
+
+    ★2026-10-14：实现改用 `platform/sysprobe`（psutil 主路径，PowerShell 只作无 psutil 时的回落）。
+      原先只有 PowerShell 一条路 ⇒ **Linux 上恒返回空**：本模块存在的意义就是
+      "**平台这边看得见**外端 agent"（见模块 docstring：外端常被沙箱限制、看不到自己），
+      而它在非 Windows 上等于没有 ⇒ 又一个"能力在 Linux 上不存在"。
+      判据不变：命令行含该关键词 + 排除平台自己起的子进程。
     """
     needle = (name_or_cmd or "").strip()
     if not needle:
         return []
+    from . import sysprobe
     try:
-        import json as _json
-        import subprocess as _sp
-        ps = ("$needle = $env:AC_NEEDLE; $me = [int]$env:AC_SELF_PID; "
-              "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and "
-              "$_.ParentProcessId -ne $me -and $_.CommandLine -like ('*' + $needle + '*') } | "
-              "Select-Object -First 8 ProcessId,Name,CommandLine | ConvertTo-Json -Compress")
-        env = dict(os.environ)
-        env["AC_NEEDLE"] = needle
-        env["AC_SELF_PID"] = str(os.getpid())
-        r = _sp.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
-                    text=True, encoding="utf-8", errors="replace", timeout=timeout, env=env)
-        out = (r.stdout or "").strip()
-        if not out or out == "null":
-            return []
-        data = _json.loads(out)
-        if isinstance(data, dict):
-            data = [data]
-        return [{"pid": d.get("ProcessId"), "name": d.get("Name"),
-                 "cmd": str(d.get("CommandLine") or "")[:200]} for d in data]
+        rows = sysprobe.find_processes([needle], exclude_ppid=os.getpid(), limit=8)
+        return [{"pid": r.get("pid"), "name": r.get("name"),
+                 "cmd": str(r.get("cmdline") or "")[:200]} for r in rows]
     except Exception as e:  # noqa: BLE001
         return [{"error": f"{type(e).__name__}: {e}"}]
 

@@ -967,8 +967,12 @@ def _find_bridge_processes(harness_id: str, bridge_dir: str = ""):
     """查找匹配 harness 的桥进程（只查不杀）。
     按命令行显式包含 harness_id（长度>=3）或 bridge_dir 匹配 python/node 进程，
     与 _stop_bridge_processes 的匹配口径一致，避免误报。
+
+    ★2026-10-14：实现改用 `platform/sysprobe`（psutil 主路径）—— 原先只有 PowerShell，
+      **Linux 上恒返回空**：「这只 harness 的桥在不在跑」永远认不出来。
+      判据逐条不变（进程名 `python|node` + 命令行含线索）。
     """
-    import subprocess
+    from . import sysprobe
     matches = []
     if harness_id and len(harness_id) >= 3:
         matches.append(harness_id)
@@ -976,25 +980,13 @@ def _find_bridge_processes(harness_id: str, bridge_dir: str = ""):
         matches.append(bridge_dir)
     if not matches:
         return []
-    conds = " -or ".join("$_.CommandLine.Contains({0})".format(json.dumps(m)) for m in matches)
-    ps = (
-        "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python|node' -and $_.CommandLine "
-        f"-and ({conds}) }} | Select-Object ProcessId, Name, CommandLine | ConvertTo-Json -Compress"
-    )
     try:
-        r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                           timeout=60, capture_output=True, text=True)
-        out = (r.stdout or "").strip()
-        if not out or out == "null":
-            return []
-        data = json.loads(out)
-        if isinstance(data, dict):
-            data = [data]
+        rows = sysprobe.find_processes(matches, name_matches=r"python|node", limit=200)
         return [{
-            "pid": p.get("ProcessId"),
-            "name": p.get("Name"),
-            "cmdline": (p.get("CommandLine") or "")[:220],
-        } for p in data]
+            "pid": r.get("pid"),
+            "name": r.get("name"),
+            "cmdline": str(r.get("cmdline") or "")[:220],
+        } for r in rows]
     except Exception as e:
         return [{"error": str(e)}]
 def _activate_windows_by_pids(pids, hints):
@@ -1004,7 +996,17 @@ def _activate_windows_by_pids(pids, hints):
     1) 优先激活 harness 桥进程的主窗口（若存在）；
     2) 否则按 harness_id / harness_name 匹配所有进程的窗口标题；
     3) 全部未命中时返回失败，由前端提示用户。
+
+    ★2026-10-14：**窗口激活是 Windows 独有的能力**（靠 Win32 的
+    `MainWindowHandle` + `SetForegroundWindow`）—— 非 Windows 上没有等价物
+    （X11/Wayland/macOS 各是一套，且和"前台窗口"的安全模型不同）。
+    ⇒ 非 Windows 上**如实说不支持**，不假装成功（准则⑤）：前端会看到
+    `activated=False` + 一句人话，用户手动切窗口即可。
     """
+    if os.name != "nt":
+        return {"success": False, "activated": False,
+                "detail": ("窗口激活是 Windows 的能力：本平台在非 Windows 上不做假装激活"
+                           "（请手动切到那个窗口）")}
     import subprocess
     import json as _json
     def _ps_arr(items):
@@ -1113,47 +1115,52 @@ def _stop_bridge_processes(harness_id: str, bridge_dir: str = ""):
         needles.append(harness_id)
     if not needles:
         return {"killed": 0, "note": "没有可匹配的 harness_id/bridge_dir"}
-    # ⚠️★2026-10-13 第二个坑（顺着上面那起事故查出来的）：**路径针从来没生效过**。
-    #   老写法用 `json.dumps(m)` 生成 PS 字面量 ⇒ Windows 路径会变成
-    #   `"D:\\<私有目录>\\..."`（双反斜杠），而 PowerShell 的双引号字符串**不把 `\` 当转义符**
-    #   ⇒ 实际拿去做 `Contains` 的是**带双反斜杠的串**，永远匹配不到真实命令行（单反斜杠）
-    #   ⇒ 凡"按目录停桥"的调用**一直静默杀 0 只**（`killed: 0` 也是这么来的，看不出异常）。
-    #   修法：用 PS **单引号**字面量（内部单引号翻倍），不做 JSON 转义。
-    def _ps_lit(s: str) -> str:
-        return "'" + str(s).replace("'", "''") + "'"
-
-    conds = " -or ".join("$_.CommandLine.Contains({0})".format(_ps_lit(m)) for m in needles)
-    ps = (
-        "$n=0; "
-        "Get-CimInstance Win32_Process | Where-Object { "
-        "$_.Name -match 'python|node' -and $_.CommandLine "
-        f"-and ({conds}) "
-        # ① 绝不碰平台自身
-        "-and ($_.CommandLine -notlike '*-m agent_community.platform.server*') "
-        "-and ($_.CommandLine -notlike '*agent_community\\\\platform\\\\server.py*') "
-        # ② 必须是桥进程（脚本名里带 bridge）
-        "-and ($_.CommandLine -like '*bridge*.py*') "
-        "} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $n++ }; "
-        "Write-Output $n"
-    )
+    # ★2026-10-14：改用 `platform/sysprobe`（psutil 主路径）—— 原先只有 PowerShell，
+    #   **Linux 上恒"杀 0 只"**（而且看起来像"本来就没有"，属于最坏的那种静默失败）。
+    #   两道防线**逐条照搬**（见上面两段事故注释，一条都不能少）：
+    #     ① 绝不碰平台自身；② 必须像桥脚本（命令行里有 `bridge…*.py`）。
+    from . import sysprobe
+    killed = 0
+    tried = []
     try:
-        r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                           timeout=120, capture_output=True, text=True)
-        # ⚠️原来无论杀了几只都回 `killed: 0` —— 那是**假数字**（调用方拿不到真实结果，
-        #   界面/日志就只能说"已清理"）。这里如实报数。
-        killed = 0
-        for tok in reversed((r.stdout or "").split()):
-            if tok.strip().isdigit():
-                killed = int(tok.strip())
-                break
-        return {"killed": killed, "ps_rc": r.returncode, "matched_by": needles}
+        rows = sysprobe.find_processes(needles, name_matches=r"python|node", limit=200)
     except Exception as e:
-        return {"killed": 0, "error": str(e)}
+        return {"killed": 0, "error": str(e), "matched_by": needles}
+    for row in rows:
+        cmd = str(row.get("cmdline") or "")
+        low = cmd.lower()
+        # ① 绝不碰平台自身
+        if "-m agent_community.platform.server" in low:
+            continue
+        if "agent_community\\platform\\server.py" in low or "agent_community/platform/server.py" in low:
+            continue
+        # ② 必须是桥进程（脚本名里带 bridge）
+        if not re.search(r"bridge[^\s'\"]*\.py", low):
+            continue
+        pid = int(row.get("pid") or 0)
+        if pid <= 0 or pid == os.getpid():
+            continue
+        tried.append(pid)
+        if sysprobe.kill_pid(pid):
+            killed += 1
+    # ⚠️原来无论杀了几只都回 `killed: 0` —— 那是**假数字**（调用方拿不到真实结果，
+    #   界面/日志就只能说"已清理"）。这里如实报数：只数**确实已经不存活**的。
+    return {"killed": killed, "pids": tried, "matched_by": needles}
 def _trash_bridge_dir(bridge_dir: str):
-    """将桥目录移入回收站（不物理删除，可恢复）。"""
-    import subprocess
+    """将桥目录移入回收站（不物理删除，可恢复）。
+
+    ★2026-10-14：回收站是 **Windows 的系统机制**（原实现走 `Microsoft.VisualBasic` 的
+    `SendToRecycleBin`）⇒ 非 Windows 上**如实说不支持**，**而不是换成 `rmtree`**：
+    本函数对外承诺的是「不物理删除、可恢复」，换成直接删就把承诺变成了数据丢失
+    （准则⑤失败要说话 + 规则 19 不硬撑 + 铁律「不删用户数据」）。
+    """
     if not bridge_dir or not os.path.isdir(bridge_dir):
         return {"trashed": False, "reason": "目录不存在或未记录"}
+    if os.name != "nt":
+        return {"trashed": False, "path": bridge_dir,
+                "reason": ("本平台（非 Windows）没有系统回收站机制：为避免**不可恢复地**删掉你的目录，"
+                           "平台不代替你删 —— 目录仍在原处，请自行处理")}
+    import subprocess
     p = bridge_dir.replace("'", "''")
     ps = (
         "Add-Type -AssemblyName Microsoft.VisualBasic; "

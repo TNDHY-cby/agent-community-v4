@@ -165,4 +165,73 @@
 
 ---
 
-*示例Harness-E · 2026-10-14（含晚场续篇）· 本篇是 CI 实证记录 + 交接；制度本身见 `PORTABILITY.md`*
+## 8. 续篇二（同日深夜场）：把"跨平台"从**探测**扩到**平台核心**
+
+> 上一节（§7）修的是"CI 为什么红"；本节记的是**同一族的下一层**：
+> §7 只让 `harness_messaging` 的桥探测跨了平台，而**平台自己的核心能力**当时还挂在 PowerShell 上。
+> 结论：**"Linux 上真的能用"的范围从 3 项扩到 7 项**（清单见 `PORTABILITY.md` §5.2）。
+
+### 8.1 问题不是"报错"，是**静默降级**
+
+这些能力此前一律靠 Windows 专属命令，Linux 上**恒返回空/False**：
+
+| 原实现 | 谁在用 | Linux 上的后果 |
+|---|---|---|
+| `Get-CimInstance Win32_Process` | `harness_probe._probe_process`、`server._find_bridge_processes`、`routers/system.watchdog_pids`、`assistant_tools` | 「平台帮你看有什么 agent 在跑」**等于没有**；「这只 harness 的桥在不在跑」永远认不出来 |
+| `Get-NetTCPConnection` / `netstat -ano` | `routers/system.port_pids/port_listening`、`assistant_tools`、`watchdog` | 「端口被谁占着」查不到 ⇒ `_stop_port` 永远停不掉 ⇒ **"退出并关闭"关不掉却看不出原因** |
+| `tasklist` | `routers/system._pid_alive` | pid 存活恒 False |
+| `taskkill` | `routers/system.kill_pid` | 结束进程恒失败 |
+| `Microsoft.VisualBasic…SendToRecycleBin` | `server._trash_bridge_dir` | 无回收站机制 |
+
+三处最坏的地方：① **看起来像"本来就没有"**（`killed: 0` / 空列表，没有报错）；
+② 连带把**用户可见的动作**打哑（点"退出并关闭"关不掉）；
+③ **测试里"认不出来"类断言恒真 = 假绿**（那几个文件此前只能整文件 `skipif(win32)`）。
+
+### 8.2 落法：**一处真相 + 主路径 + 回落**
+
+新增 `agent_community/platform/sysprobe.py`：进程表 / 命令行 / pid 存活 / 端口归属 / 结束进程。
+- **主路径 psutil**（Win/Linux/macOS 都有 wheel）；**PowerShell / netstat / tasklist 只作无 psutil 时的回落**；
+- 其它平台没有等价命令时**如实返回空 + `probe_note()` 说明"探不到 ≠ 真没有"**；
+- **只取事实、不做判断**（判据留在调用方，如 `harness_messaging._match_bridges`）；
+- 逐个进程 try（取不到个别进程是常态，不许整表失败）。
+
+接入点（都保留原函数名与签名，调用方零改动）：`harness_probe._probe_process`、
+`server._find_bridge_processes`/`_stop_bridge_processes`、`routers/system.{port_pids,port_listening,kill_pid,_pid_alive,_cmdline_has,watchdog_pids}`、
+`assistant_tools` 的两段扫描、`harness_messaging._process_rows`（变为一层壳）。
+**明确不做假装的两处**：窗口激活、回收站 —— 非 Windows 上**如实返回不支持**（不换成"能删掉"的实现：
+那与本函数对外的"可恢复"承诺冲突，等价于数据丢失）。
+
+### 8.3 守卫（按真结果写）
+
+`agent_community/tests/test_sysprobe.py` —— 六条，**两平台都跑**：
+1. `backend()`/`probe_note()` 如实（探不到时必须说清怎么恢复）；
+2. 进程表里**有我们自己**（"真取到进程表"的最小证据）；
+3. ★**把回落通道 `sysprobe._run` 整个封死，主路径仍须工作** —— 这条才是"跨平台"的真正判据：
+   不是"能跑"，而是"**不依赖那个平台专属的东西**"（有 psutil 时绝不许偷偷 shell 出去）；
+4. **真开一个监听端口**问它"谁在听/有哪些端口在听"（两平台都必须答对；Linux 上旧实现必红）；
+5. 真起子进程 → 杀掉 → **确实没了**（不是"命令返回 0 就算成功"）；
+6. 空线索 ≠ 匹配一切（曾因此把平台自己杀掉）。
+
+另把两条**源码文本守卫**改成行为判据（它们守的意图没变，但原来靠找 PowerShell 的 `-notlike` 字样，
+换实现就假红 —— 正是"判据错、结果不可信"那一类）：
+`test_verify_sandbox.test_stop_bridge_processes_excludes_the_platform_itself` 现在喂**合成进程表**
+（平台自己两条 + 真桥一条 + 只是提到线索一条）断言"**只有真桥被杀**"。
+
+### 8.4 验证（两平台都真跑，不是只看 CI）
+
+- **Windows**：`temp/run_suite_like_ci.py`（忠实预测器，子进程 cp1252）⇒ 全绿；
+- **Linux（WSL 真环境）**：全量 `agent_community/tests` 全绿，且 `test_sysprobe.py` **6 passed**
+  在 Linux 上真跑真过（不是 skip）；
+- 真机：18920 重启到新代码后 `POST /api/harness/bridge-test`（真注册 harness）→ 200、
+  `bridges_running=1`、`bridge_pids=[9288]` ⇒ psutil 那条路在生产里认出了正在跑的桥。
+
+### 8.5 仍未完成
+
+`tools/watchdog.py` 的进程发现（`netstat` / `tasklist` / `Get-CimInstance`）。
+**它不能靠 psutil**：该文件自己承诺"全程标准库、无第三方依赖"（它要能救一个**坏掉的**环境，
+那时连依赖都装不上）⇒ 要跨平台得写 stdlib 分支（Linux `/proc/<pid>/cmdline`、`ss -ltnp` / `lsof -ti`）。
+已记进 `PORTABILITY.md` §5.2 的欠账表。
+
+---
+
+*示例Harness-E · 2026-10-14（含晚场/深夜场续篇）· 本篇是 CI 实证记录 + 交接；制度本身见 `PORTABILITY.md`*

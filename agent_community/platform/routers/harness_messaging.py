@@ -289,62 +289,13 @@ def _set_watch_probe(fn) -> None:
 def _process_rows():
     """产出 `(pid, ppid, name, cmdline)` —— **跨平台拿进程表的一条真相**。
 
-    ★2026-10-14（V49 §5 的落地）：
-      此前只有 PowerShell（`Get-CimInstance Win32_Process`）一条路 ⇒ **Linux 上恒返回空**。
-      后果有两层，后一层更阴：
-        ① 真实的一层：桥在跑却认不出来 ⇒ `auto-connect` **会再起一只**（靠单实例锁兜住）；
-        ② 测试的一层：「认不出来」类断言在 Linux 上**恒真 = 假绿**（`test_bridge_watch_probe.py`
-           只能整文件 `skipif(platform != "win32")` —— 等于 Linux 上这套判据没人守）。
-      **拿别的进程的命令行没有纯 stdlib 的跨平台办法**（要么第三方库、要么各平台各写一套）
-      ⇒ 选 psutil（Win/Linux/macOS 都有 wheel）。**PowerShell 只作没有 psutil 时的回落**：
-      老环境没装它也不该让功能整块消失（那时退回"只有 Windows 能用"的旧行为）。
-
-    ⚠️两条纪律（都与本项目的历史事故对应）：
-      · 本函数只**取事实**，不做判断 —— 判据全在 `_match_bridges()` 一处（免得两平台两套口径）；
-      · 每个进程单独 try：psutil 取不到某些进程的信息（权限/Race）是常态，**不许因此整表失败**。
+    ★2026-10-14：实现已**上移**到 `platform/sysprobe.py::iter_processes()`
+      （同一件事在别处也要用：`harness_probe` 找 agent、`routers/system` 找看门狗、
+       `server` 找/停桥进程）—— 这里只留一层壳，**保留名字**是因为既有守卫与注释按它写。
+      历史背景（为什么当初只有 PowerShell 是错的）见 `sysprobe` 的模块 docstring。
     """
-    try:
-        import psutil
-    except Exception:  # noqa: BLE001 — 没装 psutil：走下面的回落
-        psutil = None
-
-    if psutil is not None:
-        for p in psutil.process_iter(["pid", "ppid", "name", "cmdline"]):
-            try:
-                info = p.info or {}
-                cmd = info.get("cmdline") or []
-                yield (int(info.get("pid") or 0), int(info.get("ppid") or 0),
-                       str(info.get("name") or ""),
-                       " ".join(str(c) for c in cmd))
-            except Exception:  # noqa: BLE001
-                continue
-        return
-
-    # ── 回落：PowerShell（**仅 Windows**；Linux 上没装 psutil 就是真扫不到，如实返回空）──
-    if _os2.name != "nt":
-        return
-    try:
-        import json as _json
-        import subprocess as _sp
-        ps = ("Get-CimInstance Win32_Process | "
-              "Select-Object ProcessId,ParentProcessId,Name,CommandLine | "
-              "ConvertTo-Json -Compress")
-        r = _sp.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
-                    text=True, encoding="utf-8", errors="replace", timeout=30)
-        out = (r.stdout or "").strip()
-        if not out or out == "null":
-            return
-        v = _json.loads(out)
-        if isinstance(v, dict):
-            v = [v]
-        for x in (v or []):
-            try:
-                yield (int(x.get("ProcessId") or 0), int(x.get("ParentProcessId") or 0),
-                       str(x.get("Name") or ""), str(x.get("CommandLine") or ""))
-            except Exception:  # noqa: BLE001
-                continue
-    except Exception:  # noqa: BLE001
-        return
+    from ..sysprobe import iter_processes
+    return iter_processes()
 
 
 def _match_bridges(rows, needle: str, me: int) -> list:
