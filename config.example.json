@@ -1,10 +1,11 @@
 {
+  "_note": "配置示例（可选）。⚠️ 端口 / 监听地址 / 数据目录**不要写在这里** —— 它们在环境变量里：AC_PORT / AC_HOST / AC_DATA_DIR（见 .env.example 与 PORTABILITY.md）。写进配置文件就会变成'只有这台机器能用'。",
+  "_note_ai": "AI 相关项也可以用环境变量覆盖（AC_AI_PROVIDER / AC_AI_BASE_URL / AC_AI_API_KEY / AC_AI_MODEL），环境变量优先于本文件。",
   "ai_provider": "openai",
   "ai_base_url": "https://api.example.com/v1",
   "ai_api_key": "",
   "ai_model": "your-model-name",
   "ai_temperature": 1.0,
   "ai_thinking": false,
-  "wakeup_enabled": false,
-  "port": 18920
+  "wakeup_enabled": false
 }

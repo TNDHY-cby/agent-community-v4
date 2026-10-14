@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -100,7 +101,11 @@ class GenerateBridgeTool(BaseTool):
             f"桥已生成: {bridge_file}\n"
             f"harness_id={harness_id} template={template}\n"
             f"bridge_dir={target}\n"
-            f"启动命令: python -u \"{bridge_file}\" --url http://127.0.0.1:18920",
+            # ★2026-10-14（可移植性）：启动命令里的平台地址从环境读，不写死本机端口
+            "启动命令: python -u \"%s\" --url %s" % (
+                bridge_file,
+                os.environ.get("AC4_BASE_URL") or os.environ.get("AC_BASE_URL") or "<平台地址>",
+            ),
         )
 
 

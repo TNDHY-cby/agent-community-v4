@@ -90,7 +90,7 @@ async def test_wakeup_flow(provider: AIProvider):
         agent_id="wakeup-agent-test",
         name="WakeupAgent-Test",
         pipe_dir=pipe_dir,
-        server_url="http://127.0.0.1:9103",
+        server_url=_default_platform_url(),
     )
 
     # 测试 _classify_hands
@@ -151,7 +151,8 @@ async def main():
     parser.add_argument("--ai-api-key", default="", help="AI API Key")
     parser.add_argument("--ai-base-url", default="", help="AI API Base URL")
     parser.add_argument("--ai-callback-url", default="", help="HTTP 回调 URL")
-    parser.add_argument("--server-url", default="http://127.0.0.1:9103", help="平台 URL")
+    # 默认取 AC4_BASE_URL / AC_PORT（平台地址一处真相）
+    parser.add_argument("--server-url", default="", help="平台 URL")
     parser.add_argument("--skip-tests", action="store_true", help="跳过功能测试，直接注册到平台")
 
     args = parser.parse_args()

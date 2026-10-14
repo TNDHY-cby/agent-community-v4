@@ -13,8 +13,8 @@
 | 位置 | 原来怎么取 |
 |---|---|
 | `cli.py` | `DEFAULT_PORT = 9103` |
-| `platform/server.py` | `os.environ.get("AC_PORT", "9103")` |
-| `platform/server.py::_platform_base_url()` | `os.environ.get("AC_PORT", "18920")` ← **同一个文件里两套** |
+| `platform/server.py`（原） | 读 `AC_PORT`，缺省写死 9103 |
+| `platform/server.py::_platform_base_url()`（原） | 读 `AC_PORT`，缺省写死 18920 ← **同一个文件里两套** |
 | `platform/bridge_template.py::_platform_url()` | `127.0.0.1:18920` 硬编码兜底 |
 | `platform/verify_sandbox.py::_platform_url()` | `127.0.0.1:18920` 硬编码兜底 |
 | `tools/watchdog.py` | `DEFAULT_PORT = 18920` |
@@ -46,9 +46,20 @@ ENV_BASE_URL_ALT = "AC_BASE_URL"
 #: 绑定的主机（环回；`0.0.0.0` 是平台自身的监听口径，见 server.py）
 HOST = "127.0.0.1"
 
+#: 监听地址环境变量名（**唯一入口**）。默认 `0.0.0.0`（容器/局域网可达）；
+#: `0.0.0.0` 且未配 `AC4_TOKEN` 时平台**只允许本机来源**（靠 Origin/Referer 检查）。
+ENV_HOST = "AC_HOST"
+DEFAULT_HOST = "0.0.0.0"
+
 
 def resolve_port(explicit: "int|str|None" = None) -> int:
-    """**端口的唯一解析点**：命令行 > `AC_PORT` > `DEFAULT_PORT`。取不到就退回默认（不抛）。"""
+    """**端口的唯一解析点**：命令行 > `AC_PORT` > `DEFAULT_PORT`。取不到就退回默认（不抛）。
+
+    ⚠️ **不接受 `0`**：本函数解析的是"**别人要连的那个地址**"（桥模板/告警/自检都拿它拼 URL），
+    而 `0` 只在"要内核临时挑端口"时对**绑定**有意义。允许 0 会让生成出来的桥脚本
+    写着 `http://<host>:0` —— 看起来像配置成功，实际一个也连不上。
+    需要临时端口的地方（测试 / 容器探测）请直接 `bind((host, 0))` 并回读端口。
+    """
     for v in (explicit, os.environ.get(ENV_PORT)):
         if v in (None, ""):
             continue
@@ -59,6 +70,21 @@ def resolve_port(explicit: "int|str|None" = None) -> int:
         except (TypeError, ValueError):
             continue
     return DEFAULT_PORT
+
+
+def resolve_host(explicit: "str|None" = None) -> str:
+    """**监听地址的唯一解析点**：命令行 `--host` > `AC_HOST` > `DEFAULT_HOST`。
+
+    ⚠️ 2026-10-14 修：此前 `server.py` 直接 `uvicorn.run(host="0.0.0.0")`，
+    而 `env_spec` 里 `AC_HOST` 登记为"部署核心变量"并写进了 `.env.example` 与 README ——
+    **文档承诺了一个改不动的开关**（实测：`AC_HOST=127.0.0.1` 仍绑 0.0.0.0）。
+    这正是本模块存在的理由（同类口径只能有一处）。
+    """
+    for v in (explicit, os.environ.get(ENV_HOST)):
+        h = (v or "").strip()
+        if h:
+            return h
+    return DEFAULT_HOST
 
 
 def base_url(explicit_port: "int|str|None" = None) -> str:

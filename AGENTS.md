@@ -15,6 +15,37 @@
 > 但服务其实是好的。写"端点已挂载"断言请用
 > `agent_community/tests/test_sessions_v15.py::_mounted_paths()` 的展开写法。
 
+## 可移植性硬规则（2026-10-14 新增，违反即不合格）
+
+> **判据**：**当前电脑能跑不算合格；陌生环境只改配置就能跑才算合格。**
+> 完整规则、DoD 清单与自查命令见 **[`PORTABILITY.md`](./PORTABILITY.md)**（唯一规则源；
+> `CLAUDE.md` / `.cursorrules` 都是指向它的入口，不重复内容）。
+
+**禁止硬编码**：端口、IP、域名、`localhost:数字`、绝对路径、用户名、本地目录、
+密钥、数据库 URL、API 地址、回调地址。
+
+**必须**：
+1. 环境差异**从环境变量读**，登记在 `agent_community/platform/env_spec.py` 并校验；
+   端口与平台地址**只经** `agent_community/platform_address.py` 解析（别处不许自己拼）；
+2. 数据落点认 `AC_DATA_DIR`（不许把运行数据写进仓库）；
+3. 默认值只用于开发且**可被环境变量覆盖**；`AC_ENV=production` 下缺必需项**启动失败并提示**；
+4. 本地适配只改 `.env`（已在 `.gitignore`），**不得改源码**；
+5. 改完跑三条自查：`python tools/check_portability.py`（必须 fail=0）→
+   `python tools/gen_env_docs.py --check` → `python -m pytest -q`，
+   并输出**环境变量清单 + 默认值 + 是否必需 + 自查结果**。
+
+**派任务时的标准话术**（复制给任何 agent）：
+
+> 实现 X。按 `PORTABILITY.md` 的可移植性规则。先列出涉及的环境变量和默认值，再写代码。
+> **禁止针对我的电脑。** 验收：在陌生 Linux 容器里只改环境变量即可运行。
+
+**被纠正时的正确反应**（不要只改那一处）：
+
+> 你写死了端口，这不可接受。请重构为配置驱动，并同步更新 `AGENTS.md`、`.env.example`、
+> README 和测试。以后任何环境相关值都不得硬编码。完成后给我 grep 自查结果和环境变量表。
+
+**例外**：确有理由的硬编码，必须在该行写 `# portability: allow(<一句话理由>)`（显式申请，扫描器才放行）。
+
 ## 铁律（违反即为错）
 
 1. **设计先行**。功能先出设计稿进 `design-docs/`，等老板拍板再写码；已定稿的设计「必须遵守、不得自行增删」。
@@ -46,10 +77,16 @@
 
 ```powershell
 cd "<开发副本根目录>"   # 真实路径见 HANDOVER.md / 项目技能手册（不进公开仓库）
-python -m agent_community.gui --port 18920            # 桌面窗口（日常开发）
-python -m agent_community.platform.server --port 18920 # 纯后端（代码默认 9103）
+python -m agent_community.cli start                   # 起服务（带桌面窗口；--no-gui 只要后端）
+python -m agent_community.platform.server             # 纯后端（端口取 AC_PORT，默认 18920）
 python -m pytest tests/security_regression.py -v       # 安全回归（需服务在跑）
 .\run_all_tests.bat                                    # 一键回归
+
+# 端口/数据目录**因人而异**：改环境变量，不改代码
+#   $env:AC_PORT=8080 ; $env:AC_DATA_DIR=D:\acdata
+# 可移植性自查（CI 与发布前同款）
+python tools/check_portability.py    # 必须 fail=0
+python tools/gen_env_docs.py --check # 环境变量文档不许漂移
 ```
 
 必须**在项目根目录**（即 `agent_community` 包的父目录）跑 `python -m agent_community.*`，否则包解析失败。

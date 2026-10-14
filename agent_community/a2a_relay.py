@@ -27,6 +27,7 @@ A2A 接力插件（原为 示例Harness-C 侧编写，注入本仓 a2a_server �
 """
 from __future__ import annotations
 
+from .platform_address import base_url_from_env
 import argparse
 import json
 import os
@@ -35,7 +36,7 @@ import time
 import urllib.request
 from datetime import datetime
 
-BASE_URL = os.environ.get("AC4_BASE_URL", "http://127.0.0.1:18920").rstrip("/")
+BASE_URL = base_url_from_env().rstrip("/")
 # 相对定位 data/workshops.json：本文件在 agent_community/ 顶层 → 父目录是 agent_community
 WS_JSON = os.environ.get(
     "AC4_WS_JSON",

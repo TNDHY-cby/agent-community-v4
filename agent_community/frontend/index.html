@@ -738,7 +738,7 @@ function formatTime(ts){if(!ts)return'';try{return new Date(ts).toLocaleTimeStri
 /* ── 设置面板 ── */
 function onProviderChange(){
   const p=document.getElementById('setupProvider').value;
-  const presets={openai:{url:'',models:['gpt-4o','gpt-4o-mini','gpt-4-turbo','gpt-3.5-turbo']},deepseek:{url:'https://api.example.com',models:['deepseek-chat','deepseek-reasoner']},ollama:{url:'http://localhost:11434/v1',models:['llama3','llama3.1','qwen2','mistral','mixtral']}};
+  const presets={/* portability: allow(服务商预设清单，供用户挑选用，非本机地址) */openai:{url:'',models:['gpt-4o','gpt-4o-mini','gpt-4-turbo','gpt-3.5-turbo']},deepseek:{url:'https://api.example.com',models:['deepseek-chat','deepseek-reasoner']},ollama:{url:'http://localhost:11434/v1',models:['llama3','llama3.1','qwen2','mistral','mixtral']}};
   const pre=presets[p]||{url:'',models:[]};
   if(!document.getElementById('setupBaseUrl').value) document.getElementById('setupBaseUrl').value=pre.url;
   const sel=document.getElementById('setupModel');

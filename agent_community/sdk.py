@@ -63,7 +63,7 @@ class AgentClient:
         agent_id: str,
         name: str,
         capabilities: list[str],
-        platform_url: str = "http://localhost:8000",
+        platform_url: str = "",     # 空=运行时取平台地址（AC4_BASE_URL/AC_PORT）
         token: Optional[str] = None,
         description: str = "",
     ):
@@ -279,7 +279,7 @@ class StatefulAgentClient(AgentClient):
         agent_id: str,
         name: str,
         capabilities: list[str],
-        platform_url: str = "http://localhost:8000",
+        platform_url: str = "",     # 空=运行时取平台地址（AC4_BASE_URL/AC_PORT）
         token: Optional[str] = None,
         description: str = "",
         memory_path: Optional[str] = None,

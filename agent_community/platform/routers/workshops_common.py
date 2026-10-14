@@ -73,6 +73,7 @@ def _platform_base_url_safe() -> str:
     try:
         return _platform_base_url()
     except Exception:
-        return "http://127.0.0.1:18920"
+        from ...platform_address import base_url as _addr_base_url
+    return _addr_base_url()
 
 

@@ -1,0 +1,27 @@
+# .cursorrules — Cursor / 其它 IDE agent 的可移植性约束
+# 完整规则看 PORTABILITY.md（唯一规则源）与 AGENTS.md；本文件只是入口与硬约束摘要。
+
+## 硬约束（违反即不合格）
+- 禁止硬编码：端口、IP、域名、localhost:数字、绝对路径、用户名、本地目录、
+  密钥、数据库 URL、API 地址、回调地址。
+- 端口与平台地址**只经** agent_community/platform_address.py 解析；别处不许自己拼。
+- 其它环境差异**只从环境变量读**，并登记在 agent_community/platform/env_spec.py。
+- 数据落点必须认 AC_DATA_DIR（不许把运行数据写进仓库）。
+- 本地适配只改 .env（已在 .gitignore），**不得改源码**。
+
+## 改完必须做
+1. python tools/check_portability.py      → 必须 fail=0
+2. python tools/gen_env_docs.py --check   → 环境变量文档不许漂移
+3. python -m pytest -q                    → 回归
+4. 输出：环境变量清单 + 默认值 + 是否必需 + 自查结果
+
+## 派任务话术（复制给 agent）
+实现 X。按 PORTABILITY.md 的可移植性规则。先列出涉及的环境变量和默认值，再写代码。
+禁止针对我的电脑。验收：在陌生 Linux 容器里只改环境变量即可运行。
+
+## 例外
+确有理由的硬编码，必须在该行写：  # portability: allow(<一句话理由>)
+（例外要显式申请，否则扫描器拦下。）
+
+## 整体同步更新（规则 20）
+一件事的对外表达（后端字段 / 界面话术 / 文档 / 模板 / 验收脚本 / 示例）必须**一次全改**。

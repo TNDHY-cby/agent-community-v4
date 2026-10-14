@@ -26,6 +26,7 @@ A2A 暴露层 — 将 agent_community-v4 平台暴露为 A2A（Agent-to-Agent）
 
 from __future__ import annotations
 
+from .platform_address import base_url_from_env
 import argparse
 import codecs
 import json
@@ -39,7 +40,7 @@ import urllib.parse
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-BASE_URL = os.environ.get("AC4_BASE_URL", "http://127.0.0.1:18920").rstrip("/")
+BASE_URL = base_url_from_env().rstrip("/")
 TOKEN = os.environ.get("AC4_TOKEN", "")
 
 # V18/候选C 边缘鉴权：复用平台 `identity`（**不造新轮**，31 号要求）。

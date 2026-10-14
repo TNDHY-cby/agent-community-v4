@@ -147,7 +147,7 @@ async def harness_probe_register(request: Request):
     is_mcp = (str(body.get("wakeup_method") or "").strip().lower() == "mcp"
               or str(pre.get("wakeup_method") or "").strip().lower() == "mcp")
     if is_mcp and not mcp_url:
-        return Utf8JSONResponse({"error": "mcp 类型需要 api_base_url（远程 MCP 服务器地址，如 http://localhost:9527）"}, status_code=400)
+        return Utf8JSONResponse({"error": "mcp 类型需要 api_base_url（远程 MCP 服务器地址，例如 http://<你的主机>:<端口>）"}, status_code=400)
     if is_mcp:
         name = pre.get("harness_name", hid)
         ok, err = validate_harness_api_url(mcp_url)

@@ -525,7 +525,8 @@ async def harness_auto_connect(request: Request):
                 "note": "桥已在运行"}
 
     wm = getattr(info, "wakeup_method", None)
-    base_url = "http://127.0.0.1:18920"
+    from ...platform_address import base_url as _addr_base_url   # 平台地址一处真相
+    base_url = _addr_base_url()
     # __file__ = .../agent_community/platform/routers/harness.py
     # _routers = .../agent_community/platform/routers
     # _pkg     = .../agent_community          (= _routers/../..)

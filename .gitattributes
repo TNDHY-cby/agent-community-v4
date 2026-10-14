@@ -3,3 +3,42 @@
 # 到 Linux 上一执行就报 "bad interpreter" / 语法错。这里钉死。
 *.sh text eol=lf
 *.bash text eol=lf
+
+# ── 2026-10-14 扩充（可移植性三层制度·验收层）─────────────────────────
+# 起因：`git add` 时收到一串 "LF will be replaced by CRLF" 警告，其中包含
+#   Dockerfile / docker-compose.yml / .github/workflows/ci.yml。
+# 这不是"看着别扭"，是**真的会炸**：开发机是 Windows，clone 到 Linux 后
+#   · Dockerfile 的续行 `\` 变成 `\` + CR ⇒ **RUN 指令解析失败**；
+#   · CI 里的内联 shell 脚本会莫名报错；
+# 而这一切**在开发机上永远复现不出来** —— 正是老板说的"我这台能跑不算数"。
+#
+# 口径：只钉死"要在 Linux 上被解析/执行"的那几类，不做全库 renormalize（避免无谓大 diff）。
+
+# 必须 LF（Linux 侧解析或执行）
+Dockerfile           text eol=lf
+*.dockerfile         text eol=lf
+docker-compose*.yml  text eol=lf
+*.py                 text eol=lf
+.github/**           text eol=lf
+*.yml                text eol=lf
+*.yaml               text eol=lf
+*.toml               text eol=lf
+*.cfg                text eol=lf
+.env.example         text eol=lf
+
+# 必须 CRLF（Windows 专属；PS 5.1 与 cmd 对纯 LF 的容忍度差）
+*.ps1                text eol=crlf
+*.psm1               text eol=crlf
+*.bat                text eol=crlf
+*.cmd                text eol=crlf
+
+# 二进制：别碰
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.exe  binary
+*.dll  binary

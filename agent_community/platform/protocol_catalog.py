@@ -95,7 +95,7 @@ _PROTOCOLS: list[dict[str, Any]] = [
         "kind": "http",
         "status": "available",
         "best_for": "外部 A2A 生态 Agent（Google ADK / LangGraph / AutoGen）发现与派发",
-        "example": "GET http://127.0.0.1:9104/.well-known/agent-card.json",
+        "example": "GET http://<平台主机>:<A2A端口>/.well-known/agent-card.json",
         # 38 号实施任务书（候选C / 稿A C1+C4）：默认绑回环 + 入站 Bearer 鉴权（读卡公开、调用须凭据）
         "requires": (
             "独立进程：python -m agent_community.a2a_server（默认绑 127.0.0.1；"

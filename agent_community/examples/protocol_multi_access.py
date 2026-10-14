@@ -26,7 +26,7 @@ def _platform_url_default():
 
 
 BASE_URL = _platform_url_default()
-A2A_URL = "http://127.0.0.1:9104"
+A2A_URL = "http://127.0.0.1:" + (__import__("os").environ.get("AC4_A2A_PORT") or "9104")   # 端口从环境读
 
 
 def _get(path: str, base: str = BASE_URL, timeout: int = 10) -> dict:

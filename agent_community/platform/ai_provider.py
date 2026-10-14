@@ -427,7 +427,7 @@ class OllamaProvider(AIProvider):
         self.host = (
             host
             or os.environ.get("AC_OLLAMA_HOST", "")
-            or "http://localhost:11434"
+            or "http://localhost:11434"  # portability: allow(Ollama 出厂默认地址，可被 AC_OLLAMA_HOST 覆盖)
         )
         self.model = (
             model

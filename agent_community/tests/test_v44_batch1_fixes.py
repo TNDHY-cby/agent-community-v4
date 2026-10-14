@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -541,3 +542,275 @@ def test_no_module_hardcodes_package_data_root():
                re.search(r'=\s*Path\(__file__\).*?/\s*"data"\s*/\s*"', s):
                 offenders.append(f"{py.name}:{i}: {s[:80]}")
     assert not offenders, f"这些落点没认 AC_DATA_DIR：{offenders}"
+
+
+# ── 验收层：可移植性闸门必须进 pytest（陌生人只跑 pytest 也能撞上）──────────
+#
+# 为什么把闸门也做成测试：老板的三层制度里，验收层是「CI / pre-commit 上会红的 grep 检查」。
+# 但**陌生人拿到代码第一件事是 `pytest`**，不是读 CI 配置。
+# 三条自查如果只在 CI 里，本地就可能"绿着把硬编码提交上去"。
+# 这里包一层，等于给 `pytest` 也装上同一把闸门（同一处真相，不复制规则）。
+
+def test_portability_gate_passes():
+    """`tools/check_portability.py` 必须 fail=0（产品面不许有硬编码）。"""
+    import subprocess, sys as _sys
+    root = _PKG.parent
+    r = subprocess.run([_sys.executable, str(root / "tools" / "check_portability.py")],
+                       cwd=str(root), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    assert r.returncode == 0, (
+        "可移植性扫描没通过（产品面有硬编码端口/地址/路径）——\n"
+        + (r.stdout or "")[-3000:] + (r.stderr or "")[-1000:])
+    assert "fail=0" in (r.stdout or ""), f"扫描没报出 fail=0，结果不可信：{(r.stdout or '')[:400]}"
+
+
+def test_env_docs_are_not_drifted():
+    """`.env.example` / README 环境变量表必须与 `env_spec` 一致（改一处漏一处的解药）。"""
+    import subprocess, sys as _sys
+    root = _PKG.parent
+    r = subprocess.run([_sys.executable, str(root / "tools" / "gen_env_docs.py"), "--check"],
+                       cwd=str(root), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    assert r.returncode == 0, (
+        "环境变量文档漂移了（改了 env_spec 却没重新生成）——跑 "
+        "`python tools/gen_env_docs.py` 重新生成：\n"
+        + (r.stdout or "")[-2000:] + (r.stderr or "")[-1000:])
+
+
+def test_tests_only_bind_ephemeral_ports():
+    """测试**不许绑固定端口**（否则别人的机器上端口被占就红，且多实例互撞）。
+
+    只认 `("127.0.0.1", 0)` / `("localhost", 0)` 这种"让内核挑端口"的写法。
+    传给了进程/桥但不真连的地址字符串不在管辖内 —— 那些走 `platform_address`。
+    """
+    import re
+    # 只在**真会绑端口**的调用上判（构造函数 / bind / listen）；
+    # 否则 `a2a._agent_card("127.0.0.1", 9104)` 这种"拼一个名片"也会被误判。
+    bind_call = re.compile(r'(?:HTTPServer|TCPServer|socketserver|\.bind|\.listen)\s*\(')
+    bad = []
+    pat = re.compile(r'\(\s*["\'](?:127\.0\.0\.1|localhost|0\.0\.0\.0)["\']\s*,\s*(\d+)\s*\)')
+    for py in sorted(_PKG.joinpath("tests").glob("*.py")):
+        for i, l in enumerate(py.read_text(encoding="utf-8", errors="replace").split("\n"), 1):
+            if l.strip().startswith("#") or not bind_call.search(l):
+                continue
+            m = pat.search(l)
+            if m and m.group(1) != "0":
+                bad.append(f"{py.name}:{i}: {l.strip()[:80]}")
+    assert not bad, (
+        "这些测试绑了固定端口，请改成 `(..., 0)` 让内核随机分配（跨机可跑）：\n  "
+        + "\n  ".join(bad))
+
+
+# ── ★2026-10-14 验收层实测抓出来的两个真缺陷（下面每条都是"先红后绿"的）─────────
+#
+# 背景：老板要的是「在陌生环境里只改环境变量就能跑」。
+# 于是我**真按陌生人的方式跑了一遍**（只改环境变量、起真服务、看实际结果），抓出：
+#   缺陷 A：`AC_HOST` 登记进了 env_spec / .env.example / README，**但改它没用** ——
+#           `server.py` 末尾直接 `uvicorn.run(app, host="0.0.0.0")`。
+#           实测 `AC_HOST=127.0.0.1` 之后仍然监听 `0.0.0.0`。
+#           ⇒ 「文档承诺了一个改不动的开关」，比没写更坏。
+#   缺陷 B：`AC_ENV=production` 缺必需项时**只打印警告照样起服务**。
+#           上一版把 production 的两条都写成 `warn`（理由是"别让开箱即用被自己否掉"），
+#           可那只对开发成立 ⇒ "生产缺必需项就启动失败"这条承诺等于没做。
+#
+# 教训：**这两条都不是靠读代码发现的，是"起真服务看真结果"发现的。**
+# 所以守卫也必须按"真结果"写，不许退化成源码文本断言。
+
+def test_host_resolution_priority(monkeypatch):
+    """监听地址：命令行 `--host` > `AC_HOST` > 默认（不许再写死在 server.py 里）。"""
+    from agent_community import platform_address as pa
+    monkeypatch.delenv(pa.ENV_HOST, raising=False)
+    assert pa.resolve_host() == pa.DEFAULT_HOST
+    monkeypatch.setenv(pa.ENV_HOST, "127.0.0.1")
+    assert pa.resolve_host() == "127.0.0.1", "AC_HOST 必须生效（缺陷 A 的回归位）"
+    assert pa.resolve_host("192.168.1.9") == "192.168.1.9", "命令行必须最优先"
+    monkeypatch.setenv(pa.ENV_HOST, "   ")
+    assert pa.resolve_host() == pa.DEFAULT_HOST, "空白值要当没设，别绑到空字符串上"
+
+
+def test_production_missing_required_fails_startup(monkeypatch):
+    """`AC_ENV=production` 缺必需项 ⇒ **必须抛错**（不是打印警告就接着起）。
+
+    用**真调 `assert_ready()`** 判，不看源码文本 —— 缺陷 B 就是"代码里写了检查、
+    但检查全是 warn"，读源码看不出来。
+    """
+    from agent_community.platform import env_spec as es
+
+    # ① 开发模式：什么都不设也要能起（开箱即用优先）
+    monkeypatch.setenv(es.ENV_MODE, "development")
+    for k in ("AC_DATA_DIR", "AC4_SHUTDOWN_PIN", "AC4_TOKEN", "AC_HOST"):
+        monkeypatch.delenv(k, raising=False)
+    r = es.check_requirements()
+    assert r["ok"], f"开发模式不该有硬错：{r['errors']}"
+    es.assert_ready()                                  # 不该抛
+
+    # ② 生产 + 对外暴露：缺 AC_DATA_DIR / AC4_SHUTDOWN_PIN / AC4_TOKEN ⇒ 必须抛
+    monkeypatch.setenv(es.ENV_MODE, "production")
+    monkeypatch.setenv("AC_HOST", "0.0.0.0")
+    monkeypatch.delenv("AC_DATA_DIR", raising=False)
+    monkeypatch.delenv("AC4_SHUTDOWN_PIN", raising=False)
+    monkeypatch.delenv("AC4_TOKEN", raising=False)
+    rep = es.check_requirements()
+    assert not rep["ok"], "生产模式缺必需项却报 ok —— 缺陷 B 回归了"
+    names = {e["name"] for e in rep["errors"]}
+    assert {"AC_DATA_DIR", "AC4_SHUTDOWN_PIN", "AC4_TOKEN"} <= names, \
+        f"该报的必需项没报全，实得 {sorted(names)}"
+    try:
+        es.assert_ready()
+    except es.EnvError as e:
+        msg = str(e)
+        for n in ("AC_DATA_DIR", "AC4_SHUTDOWN_PIN", "AC4_TOKEN"):
+            assert n in msg, f"报错必须点名缺哪个变量，`{n}` 没出现"
+    else:
+        raise AssertionError("生产模式缺必需项竟然没抛 EnvError")
+
+    # ③ 生产 + 只在本机跑：给了数据目录即可，令牌/口令属于**非必需**（只该提示）
+    monkeypatch.setenv("AC_HOST", "127.0.0.1")
+    monkeypatch.setenv("AC_DATA_DIR", str(_ROOT / "temp"))
+    rep2 = es.check_requirements()
+    assert rep2["ok"], f"生产+回环不该因为没令牌就拒绝启动：{rep2['errors']}"
+
+
+def test_server_really_binds_the_configured_host(monkeypatch):
+    """**真起服务**验证监听地址（缺陷 A 的真结果版）。
+
+    只断言 `resolve_host()` 是不够的 —— 缺陷 A 的问题恰恰在"解析函数是对的，
+    但 server.py 根本没拿它去绑"。所以这里起一个真进程、看真实监听地址。
+    """
+    import socket
+    import subprocess
+    import sys
+    import time
+
+    # 挑一个当前空闲的端口（不写死端口，避免与别人的环境撞）
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        free_port = s.getsockname()[1]
+
+    env = {**os.environ,
+           "AC_PORT": str(free_port),
+           "AC_HOST": "127.0.0.1",
+           "AC_ENV": "development",
+           "AC_DATA_DIR": str(_ROOT / "temp" / "acdata_host_guard"),
+           "PYTHONIOENCODING": "utf-8"}
+    env.pop("AC4_TOKEN", None)
+    proc = subprocess.Popen([sys.executable, "-m", "agent_community.platform.server"],
+                            cwd=str(_ROOT), env=env,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        up = False
+        for _ in range(30):
+            time.sleep(1)
+            try:
+                with socket.create_connection(("127.0.0.1", free_port), timeout=1):
+                    up = True
+                    break
+            except OSError:
+                continue
+        assert up, "服务没起来，本用例无法判定监听地址"
+
+        # Windows/Linux 通用的判据：**从本机非回环地址去连，应当连不上**。
+        # （若 host 真是 0.0.0.0，则从局域网地址也能连上 ⇒ 这条会红。）
+        import socket as _s
+        try:
+            local_ip = _s.gethostbyname(_s.gethostname())
+        except OSError:
+            local_ip = ""
+        if local_ip and not local_ip.startswith("127."):
+            try:
+                with _s.create_connection((local_ip, free_port), timeout=2):
+                    external_ok = True
+            except OSError:
+                external_ok = False
+            assert not external_ok, (
+                f"AC_HOST=127.0.0.1 却能从 {local_ip}:{free_port} 连上 ⇒ "
+                "AC_HOST 没被真正用来绑定（缺陷 A 回归）")
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+def test_powershell_scripts_keep_their_utf8_bom():
+    """`.ps1` 带中文就必须带 **UTF-8 BOM** —— 否则别人的 PS 5.1 直接 ParserError。
+
+    ★这条是 2026-10-14 又踩了一次才补的：我用编辑工具改 `publish_acv4.ps1`，
+    BOM 被顺手抹掉，文件头从 `EF BB BF` 变成 `# p`；本机 pwsh 7 照跑不误，
+    而 **Windows PowerShell 5.1 会按 ANSI(GBK) 去读那份 UTF-8 中文** ⇒
+    满屏"缺少右 )"之类**看不出真因**的语法错（判据混淆，极难查）。
+
+    为什么算可移植性：这是"我这台能跑、别人那台不能"的典型 ——
+    自动化工具（编辑器 / 生成脚本 / Python 写文件）**反复**会抹掉 BOM，
+    靠人记得保留是不可靠的，所以必须由测试守住。
+
+    范围＝全仓库（`**/*.ps1`），不只是根目录那几个：实测 `deploy/setup_all.ps1`
+    就是"中文 + 无 BOM"的漏网之鱼（同一天发现的）。
+    """
+    _SKIP = (".pytest_cache", ".git", "node_modules", "temp")
+    bad = []
+    for ps1 in sorted(_ROOT.rglob("*.ps1")):
+        rel = str(ps1.relative_to(_ROOT))
+        if any(part in rel for part in _SKIP):
+            continue
+        raw = ps1.read_bytes()
+        try:
+            raw.decode("ascii")
+            continue                      # 纯 ASCII 不需要 BOM
+        except UnicodeDecodeError:
+            pass
+        if not raw.startswith(b"\xef\xbb\xbf"):
+            bad.append(rel)
+    assert not bad, (
+        "这些 .ps1 带非 ASCII 内容却没有 UTF-8 BOM（Windows PowerShell 5.1 会按 ANSI 读、"
+        "报一堆看不出真因的语法错）：\n  " + "\n  ".join(bad) +
+        "\n\n修法（Python，别用会抹 BOM 的写入方式）：\n"
+        "  b = open(p,'rb').read()\n"
+        "  if not b.startswith(b'\\xef\\xbb\\xbf'): open(p,'wb').write(b'\\xef\\xbb\\xbf'+b)")
+
+
+def test_ci_definition_lives_in_ci_dir_not_github_workflows():
+    """CI 定义必须放在 `ci/ci.yml`，**不能**放 `.github/workflows/`。
+
+    为什么这算可移植性/交付问题（2026-10-14 实事故）：
+      推送令牌是 Personal Access Token 且**没有 `workflow` 权限** ⇒ 一旦提交进
+      `.github/workflows/`，GitHub **拒收整次 push**：
+        "refusing to allow a Personal Access Token to create or update workflow ... without `workflow` scope"
+      ⇒ 一次推不上去 = **别人拿不到任何更新**（比"CI 不跑"严重得多）。
+    启用方式写在 `PORTABILITY.md` §4.1（网页端新建粘贴，或给令牌加 `workflow` 权限）。
+    """
+    ci = _ROOT / "ci" / "ci.yml"
+    assert ci.is_file(), "ci/ci.yml 不见了（CI 定义是交付物之一，见 PORTABILITY.md §4.1）"
+    text = ci.read_text(encoding="utf-8")
+    for need in ("check_portability.py", "gen_env_docs.py", "ubuntu-latest"):
+        assert need in text, f"ci/ci.yml 少了关键内容：{need}"
+
+    wf = _ROOT / ".github" / "workflows" / "ci.yml"
+    assert not wf.exists(), (
+        "`.github/workflows/ci.yml` 又出现了 —— 推送令牌没有 workflow 权限，"
+        "它会让**整次 push 被 GitHub 拒收**。请保留 `ci/ci.yml` 并在网页端启用（PORTABILITY.md §4.1）。")
+
+
+def test_github_issue_templates_are_not_swept_away():
+    """`.github/ISSUE_TEMPLATE/` 必须还在（oss 独有内容，别被同步脚本删掉）。
+
+    2026-10-14 实事故：`publish_acv4.ps1` 的 1.6 步第一版用了 robocopy `/MIR` 同步 `.github/`，
+    而 dev 侧**没有** `ISSUE_TEMPLATE/` ⇒ `/MIR` 忠实删除，oss 的两个模板被删掉，
+    开发机上完全看不出来（dev 本来就没有）。
+    现已改为 copy-only（`/E`），并把两个模板收进 dev 作为唯一真相；本条守卫防复发。
+    """
+    tpl = _ROOT / ".github" / "ISSUE_TEMPLATE"
+    assert tpl.is_dir(), "`.github/ISSUE_TEMPLATE/` 没了（被 /MIR 同步删掉了？）"
+    names = {p.name for p in tpl.glob("*.yml")}
+    assert {"bug_report.yml", "feature_request.yml"} <= names, \
+        f"issue 模板缺文件，实得 {sorted(names)}"
+
+    pub = (_ROOT / "publish_acv4.ps1").read_text(encoding="utf-8", errors="replace")
+    # 取"同步工具面那一段"＝从它自己的 Step 到**下一个** Step 之间
+    at = pub.find('Step "sync portability tooling')
+    assert at != -1, "找不到同步工具面那一段，脚本结构变了，请同步更新本守卫"
+    nxt = pub.find("# 目录型：design-docs", at)   # 下一段的起点（比找 "Step " 可靠）
+    seg = pub[at:nxt if nxt != -1 else len(pub)]
+    assert "'/MIR'" not in seg and '"/MIR"' not in seg, \
+        "同步工具面又用上 /MIR 了 —— 它会删掉 oss 独有的文件（2026-10-14 的 ISSUE_TEMPLATE 事故）"

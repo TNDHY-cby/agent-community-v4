@@ -28,7 +28,19 @@ import time
 import urllib.error
 import urllib.request
 
-DEFAULT_URL = "http://127.0.0.1:18920"
+
+def _default_url() -> str:
+    """平台地址：一处真相（AC4_BASE_URL/AC_BASE_URL > AC_PORT > 默认）。"""
+    try:
+        from ..platform_address import base_url_from_env
+        return base_url_from_env()
+    except Exception:
+        import os
+        return "http://127.0.0.1:" + (os.environ.get("AC_PORT") or "18920")
+
+
+# ★2026-10-14（可移植性）：默认地址委托一处真相（原来写死本机端口）
+DEFAULT_URL = ""
 
 
 def send_beat(url: str, harness_id: str, agent_id: str, status: str,

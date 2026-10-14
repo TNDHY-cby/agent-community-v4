@@ -5,6 +5,7 @@
 """
 
 from __future__ import annotations
+from .platform_address import DEFAULT_PORT as _DEFAULT_PORT
 import base64
 import json
 import os
@@ -39,7 +40,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # 默认 45s（留余量）：宁可等久一点，也不把"慢但能用"误判成"连不上"。
     "ai_verify_timeout": 45,
     "wakeup_enabled": False,
-    "port": 9103,
+    # ★2026-10-14：这里是**第三套**端口默认值（另两套在 cli.py 与 server.py），
+    #   统一引用唯一真相 platform_address（老板：「本地端口因人而异」）。
+    "port": _DEFAULT_PORT,
     # ── 规则闸门 RuleGate（L1 纯规则短路，零 token）──
     # 开启后 chat/classify/chat_with_tools 三入口统一先走规则
     "rule_gate_enabled": True,
@@ -69,6 +72,25 @@ DEFAULT_CONFIG: dict[str, Any] = {
 }
 
 
+#: 环境变量 → 配置键（**只覆盖"有这个配置键"的项**；空值不覆盖）
+_ENV_OVERRIDES = {
+    "port": "AC_PORT",
+    "data_dir": "AC_DATA_DIR",
+    "ai_provider": "AC_AI_PROVIDER",
+    "ai_base_url": "AC_AI_BASE_URL",
+    "ai_api_key": "AC_AI_API_KEY",
+    "ai_model": "AC_AI_MODEL",
+    "ai_reasoning_effort": "AC_AI_REASONING_EFFORT",
+    "ai_cache_enabled": "AC_AI_CACHE_ENABLED",
+    "ai_cache_ttl": "AC_AI_CACHE_TTL",
+    "ai_cache_max": "AC_AI_CACHE_MAX",
+    "ai_usage_enabled": "AC_AI_USAGE_ENABLED",
+    "budget_daily": "AC_BUDGET_DAILY",
+    "budget_monthly": "AC_BUDGET_MONTHLY",
+    "ai_price_per_1k": "AC_AI_PRICE_PER_1K",
+}
+
+
 def load_config() -> dict[str, Any]:
     """读取配置文件，不存在或损坏时返回默认配置。"""
     if not CONFIG_FILE.exists():
@@ -87,6 +109,16 @@ def load_config() -> dict[str, Any]:
     # 合并默认值（补齐缺失字段）
     merged = dict(DEFAULT_CONFIG)
     merged.update(data)
+    # ★2026-10-14（可移植性·工程层）：**环境变量优先于配置文件** ——
+    #   登记的键在此统一覆盖，别让"环境差异"散落在各处各读一次。
+    try:
+        from .platform import env_spec as _es
+        for _cfg_key, _env_name in _ENV_OVERRIDES.items():
+            _v = _es.get(_env_name)
+            if _v != "":
+                merged[_cfg_key] = _v
+    except Exception:  # noqa: BLE001
+        pass
     # 解密 API Key：dpapi: 前缀为 DPAPI 密文，否则视为历史明文直接透传
     if merged.get("ai_api_key"):
         merged["ai_api_key"] = _decrypt_secret(merged["ai_api_key"])

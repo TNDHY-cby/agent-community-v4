@@ -71,7 +71,7 @@ async def api_ai_providers():
             "type": "ollama",
             "description": "本地 Ollama",
             "env_vars": ["AC_OLLAMA_HOST", "AC_OLLAMA_MODEL"],
-            "default_host": "http://localhost:11434",
+            "default_host": "http://localhost:11434",   # portability: allow(Ollama 出厂地址，界面预设值)
             "default_model": "qwen2.5:7b",
         },
         {

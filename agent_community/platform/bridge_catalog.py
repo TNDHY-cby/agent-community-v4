@@ -62,7 +62,7 @@ CATALOG: dict = {
                               "可以留空，否则**必须填**，不然桥只落盘、不去叫它",
                               "python D:\\我的agent\\wake.py"),
             "PLATFORM_URL": _f(BY_PLATFORM, "平台地址", "平台自动填（你自己的平台地址）",
-                               "http://127.0.0.1:18920"),
+                               "http://127.0.0.1:<你的端口>"),
         },
         "pitfalls": [
             "TRIGGER_CMD 留空 ⇒ 消息会静静躺在邮箱里、agent 不知道（这就是「唤不醒」的常见原因）",
@@ -104,7 +104,7 @@ CATALOG: dict = {
                            "D:\\我的agent\\work"),
             "TRIGGER_CMD": _f(BY_USER, "叫醒命令（可选）", "同 file_poll：不填就不会被叫醒",
                               "python D:\\我的agent\\wake.py"),
-            "PLATFORM_URL": _f(BY_PLATFORM, "平台地址", "平台自动填", "http://127.0.0.1:18920"),
+            "PLATFORM_URL": _f(BY_PLATFORM, "平台地址", "平台自动填", "http://127.0.0.1:<你的端口>"),
         },
         "pitfalls": ["不知道自己的 agent 属于哪型时，先用这型**能跑起来**，再按需换"],
     },

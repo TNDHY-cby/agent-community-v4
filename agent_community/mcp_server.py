@@ -22,6 +22,7 @@ MCP 协调层 — 将 agent_community-v4 平台能力暴露为 MCP Server（stdi
 
 from __future__ import annotations
 
+from .platform_address import base_url_from_env
 import json
 import os
 import sys
@@ -29,7 +30,7 @@ import urllib.request
 import urllib.parse
 import uuid
 
-BASE_URL = os.environ.get("AC4_BASE_URL", "http://127.0.0.1:18920").rstrip("/")
+BASE_URL = base_url_from_env().rstrip("/")
 TOKEN = os.environ.get("AC4_TOKEN", "")
 SERVER_NAME = "agent-community-v4-mcp"
 SERVER_VERSION = "4.0.0"

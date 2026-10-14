@@ -26,6 +26,13 @@ import pytest
 
 EX = os.path.join("agent_community", "examples")
 
+# 平台地址**不写死**（2026-10-14 可移植性规则）：这些 URL 只作为参数传给桥进程，
+# 桥拿它去轮询；用例本身不连它，所以换成任何地址行为都一样。
+# 但仍然从唯一真相解析 —— 别人的机器上 `AC_PORT` 变了，这里跟着变。
+from agent_community.platform_address import base_url as _base_url  # noqa: E402
+
+_PLATFORM_URL = _base_url()
+
 
 def _spawn(bridge: str, *extra, work_dir: str, harness_id: str):
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
@@ -49,12 +56,12 @@ def test_pending_poll_bridge_refuses_second_instance(workdir):
     hid = "lock-" + uuid.uuid4().hex[:6]
     first = second = third = None
     try:
-        first = _spawn("pending_poll_bridge.py", "--url", "http://127.0.0.1:18920",
+        first = _spawn("pending_poll_bridge.py", "--url", _PLATFORM_URL,
                        "--work-dir", str(workdir), work_dir=str(workdir), harness_id=hid)
         time.sleep(3.5)
         assert first.poll() is None, "第一只桥没跑起来（锁实现把它自己拦了？）"
 
-        second = _spawn("pending_poll_bridge.py", "--url", "http://127.0.0.1:18920",
+        second = _spawn("pending_poll_bridge.py", "--url", _PLATFORM_URL,
                         "--work-dir", str(workdir), work_dir=str(workdir), harness_id=hid)
         try:
             rc = second.wait(timeout=12)
@@ -88,7 +95,7 @@ def test_lock_is_released_when_the_first_bridge_exits(workdir):
     hid = "lock2-" + uuid.uuid4().hex[:6]
     first = later = None
     try:
-        first = _spawn("pending_poll_bridge.py", "--url", "http://127.0.0.1:18920",
+        first = _spawn("pending_poll_bridge.py", "--url", _PLATFORM_URL,
                        "--work-dir", str(workdir), work_dir=str(workdir), harness_id=hid)
         time.sleep(3.5)
         assert first.poll() is None
@@ -96,7 +103,7 @@ def test_lock_is_released_when_the_first_bridge_exits(workdir):
         first.wait(timeout=10)
         time.sleep(1.0)
 
-        later = _spawn("pending_poll_bridge.py", "--url", "http://127.0.0.1:18920",
+        later = _spawn("pending_poll_bridge.py", "--url", _PLATFORM_URL,
                        "--work-dir", str(workdir), work_dir=str(workdir), harness_id=hid)
         time.sleep(3.5)
         assert later.poll() is None, \
@@ -143,7 +150,7 @@ L1_TEMPLATES = ("file_poll", "pending_poll", "cli_acp")
 def _render_params(work: str) -> dict:
     return {
         "HARNESS_ID": "tmpl-lock", "HARNESS_NAME": "tmpl-lock",
-        "PLATFORM_URL": "http://127.0.0.1:18920",
+        "PLATFORM_URL": _PLATFORM_URL,
         "TRIGGER_CMD": "", "INBOX_DIR": os.path.join(work, "inbox"), "WORK_DIR": work,
         "ACP_COMMAND": "example --acp", "ACP_CWD": work,
         "MODEL_NAME": "example-model", "PROVIDER": "example-provider",

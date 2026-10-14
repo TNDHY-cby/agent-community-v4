@@ -33,7 +33,9 @@ import urllib.request
 import uuid
 
 # 环境变量注入（--token 优先；便于远端无交互场景）
-DEFAULT_URL = os.environ.get("AC4_PEER_URL", "http://127.0.0.1:9104")
+# ★2026-10-14（可移植性）：对端地址从环境读，端口默认值取自一处真相
+DEFAULT_URL = os.environ.get("AC4_PEER_URL") or (
+    "http://127.0.0.1:" + (os.environ.get("AC4_A2A_PORT") or "9104"))
 
 
 class A2AError(RuntimeError):

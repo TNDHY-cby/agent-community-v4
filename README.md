@@ -101,6 +101,73 @@ python -m agent_community.cli harness list
 python -m agent_community.cli agents list
 ```
 
+## 环境变量
+
+<!-- ENV_TABLE:BEGIN（由 tools/gen_env_docs.py 生成，勿手改）-->
+以下**全部都有默认值** —— 一个都不设也能起（AI 不配时走规则兜底）。
+换端口 / 换数据目录 / 换服务商**都只改环境变量，不改代码**；本表由
+`agent_community/platform/env_spec.py` 自动生成（`python tools/gen_env_docs.py`）。
+
+| 变量 | 说明 | 默认值 | 必需 |
+|---|---|---|---|
+| **— 部署核心 —** | | | |
+| `AC_ENV` | 运行模式：留空=开发；`production` 时对条件必需项更严格（缺了不让启动） | `（空）` | 否 |
+| `AC_PORT` | 平台监听端口（**端口因人而异**，命令行 `--port` 优先级更高） | `18920` | 否 |
+| `AC_HOST` | 平台监听地址。默认 0.0.0.0（容器/局域网可达）；只想本机访问填 127.0.0.1 | `0.0.0.0` | 否 |
+| `AC_DATA_DIR` | 运行数据目录（工作间/审计/记忆/桥产物都落这里）。**换目录不改代码**就靠它 | `<仓库>/agent_community/data` | 否 |
+| `AC4_TOKEN` | 平台访问令牌（跨机/对外访问时必设；空=仅本机可用） | `（空）` | 条件必需（对外暴露平台（AC_HOST 非回环）时） |
+| `AC4_SHUTDOWN_PIN` | 关停口令（空=关停端点仅允许本机来源 + 二次确认） | `（空）` | 否 |
+| `AC_AI_PROVIDER` | AI 后端：`openai`（OpenAI 兼容）/`ollama`/`http_callback`；空=不接 AI | `（空）` | 否 |
+| `AC_AI_BASE_URL` | OpenAI 兼容基址（**按你的服务商填**，别照抄示例） | `（空）` | 条件必需（AC_AI_PROVIDER=openai 时） |
+| `AC_AI_API_KEY` | AI 服务密钥（**绝不入库**；本地配置里会加密保存） | `（空）` | 条件必需（AC_AI_PROVIDER=openai（或需要鉴权的服务）时） |
+| `AC_AI_MODEL` | 模型名 | `（空）` | 否 |
+| `AC_PYTHON` | 平台用哪个 Python 解释器去跑脚本/桥（默认当前解释器） | `（空）` | 否 |
+| `AC_ACP_COMMAND` | ACP 拉起命令（桥用它拉起 agent） | `（空）` | 条件必需（手工跑 ACP 类桥且平台未注入时） |
+| `AC_AGENT_TOKEN` | Agent-Token（桥回报鉴权；平台注册时签发，通常由平台注入） | `（空）` | 条件必需（平台为该 harness 启用了 Agent-Token 时） |
+| **— 功能开关 —** | | | |
+| `AC_AI_REASONING_EFFORT` | 思考强度：off/low/medium/high/max（默认 off 省钱） | `off` | 否 |
+| `AC_AI_CACHE_ENABLED` | 相同输入复用历史回复（L2 缓存，零 token） | `1` | 否 |
+| `AC_AI_CACHE_TTL` | 缓存有效期（秒） | `1800` | 否 |
+| `AC_AI_CACHE_MAX` | 缓存容量上限（LRU） | `512` | 否 |
+| `AC_AI_CACHE_DIR` | 缓存落盘目录（默认随 AC_DATA_DIR） | `（空）` | 否 |
+| `AC_AI_USAGE_ENABLED` | 用量/预算统计开关 | `1` | 否 |
+| `AC_AI_USAGE_DIR` | 用量落盘目录（默认随 AC_DATA_DIR） | `（空）` | 否 |
+| `AC_BUDGET_DAILY` | 日预算（元）；超限熔断 AI 调用 | `2.0` | 否 |
+| `AC_BUDGET_MONTHLY` | 月预算（元） | `20.0` | 否 |
+| `AC_AI_PRICE_PER_1K` | 单价（元/1K tokens）；0=只计数不估费 | `0.0` | 否 |
+| `AC_HTTP_CALLBACK_URL` | http_callback 模式的回调地址 | `（空）` | 条件必需（AC_AI_PROVIDER=http_callback 时） |
+| `AC_OLLAMA_HOST` | Ollama 地址 | `http://127.0.0.1:11434` | 否 |
+| `AC_OLLAMA_MODEL` | Ollama 模型名 | `（空）` | 否 |
+| `AC_LOCAL_AI_AUTOSTART` | 本地模型自动拉起（1/0） | `1` | 否 |
+| `AC_LOCAL_AI_QUICK_WAIT` | 本地模型快等多长（秒） | `12` | 否 |
+| `AC_LOCAL_AI_BOOT_WAIT` | 本地模型冷启等待（秒） | `90` | 否 |
+| `AC_OFFLINE_AUTO` | 掉线自动扫描抢救（**默认关**） | `0` | 否 |
+| `AC_CDP_MIRROR_ENABLED` | CDP 镜像（调试用） | `0` | 否 |
+| `AC4_BASE_URL` | 本平台对外基址（A2A/gRPC/MCP 回连平台用） | `http://127.0.0.1:<AC_PORT>` | 否 |
+| `AC4_A2A_PORT` | A2A 服务端口 | `9104` | 否 |
+| `AC4_GRPC_PORT` | gRPC 网关端口 | `9105` | 否 |
+| `AC4_A2A_RELAY` | A2A 接力插件开关（默认关） | `0` | 否 |
+| `AC4_RELAY_INBOX` | 接力信箱目录 | `（空）` | 否 |
+| `AC4_PEER_URL` | 对端平台地址（公司间协作用） | `（空）` | 条件必需（要用 A2A 客户端连对端时） |
+| `AC4_COMPANY_ID` | 本/对端公司标识 | `（空）` | 条件必需（设了 AC4_PEER_URL 时） |
+| `AC4_COMPANY_TOKEN` | 公司级令牌 | `（空）` | 条件必需（设了 AC4_PEER_URL 时） |
+| `AC_ACP_CWD` | ACP 命令的工作目录 | `（空）` | 否 |
+| `AC_ACP_REPO` | ACP 仓库根（部分 harness 需要） | `（空）` | 否 |
+| **— 开发/测试内部 —** | | | |
+| `AC_VERIFY_NO_START_BRIDGE` | 接入自检时**不**自动起桥（测试/排障用） | `（空）` | 否 |
+| `AC_FAKE_REPLY` | 假回复（离线跑测试用；**生产别设**） | `（空）` | 否 |
+| `AC_REGRESSION_BASE` | 安全回归指向的地址（测试用） | `（空）` | 否 |
+| `AC_ACTION` | 动作脚本上下文标记（平台注入） | `（空）` | 否 |
+| `AC_HARNESS_ID` | 动作脚本上下文：harness 标识（平台注入） | `（空）` | 否 |
+| `TEMP` | 临时目录（系统自带；Windows 下平台会读它） | `（空）` | 否 |
+| `USERNAME` | 当前用户名（系统自带；仅在探测/显示里用到） | `（空）` | 否 |
+| `DEEPSEEK_API_KEY` | **兼容用**：旧版示例桥读它；新配置请用 AC_AI_API_KEY | `（空）` | 否 |
+
+**用法**：`cp .env.example .env` 后按需修改（`.env` 已在 `.gitignore` 里，不会进仓库）。
+**校验**：`python -c "from agent_community.platform import env_spec as e; print(e.check_requirements())"`
+—— 缺条件必需项时它会说清「缺哪个、为什么、怎么修」；`AC_ENV=production` 下直接**启动失败**。
+<!-- ENV_TABLE:END -->
+
 ## AI Provider 配置
 
 `python -m agent_community.cli start` 支持通过参数或环境变量配置 AI Provider：

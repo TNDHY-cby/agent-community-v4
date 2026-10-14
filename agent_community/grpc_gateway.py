@@ -35,6 +35,7 @@
 """
 from __future__ import annotations
 
+from .platform_address import base_url_from_env
 import argparse
 import json
 import os
@@ -52,7 +53,7 @@ try:
 except ImportError:
     HAS_GRPC = False
 
-BASE_URL = os.environ.get("AC4_BASE_URL", "http://127.0.0.1:18920").rstrip("/")
+BASE_URL = base_url_from_env().rstrip("/")
 TOKEN = os.environ.get("AC4_TOKEN", "")
 
 # V18/候选C 边缘鉴权：与 9104 **同一决策函数**（D-C5「三面鉴权一致」）。
@@ -371,7 +372,7 @@ else:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Agent Community gRPC Gateway")
     parser.add_argument("--port", type=int, default=9105, help="gRPC 端口（默认 9105）")
-    parser.add_argument("--api", default=None, help="平台 REST 基址（默认 AC4_BASE_URL 或 127.0.0.1:18920）")
+    parser.add_argument("--api", default=None, help="平台 REST 基址（默认 AC4_BASE_URL，或按 AC_PORT 推）")
     args = parser.parse_args()
 
     if args.api:

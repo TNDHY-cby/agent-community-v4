@@ -23,6 +23,20 @@ from ..platform.ai_provider import (
 from ..platform.ai_external import run_ai_call
 
 
+def _default_platform_url() -> str:
+    """平台地址：**一处真相**（AC4_BASE_URL/AC_BASE_URL > AC_PORT > 默认）。
+
+    ★2026-10-14（可移植性）：这里原来写死 `http://127.0.0.1:9103`。
+    """
+    try:
+        from ..platform_address import base_url_from_env
+        return base_url_from_env()
+    except Exception:
+        import os
+        return "http://127.0.0.1:" + (os.environ.get("AC_PORT") or "18920")
+
+
+
 class WakeupAgent(PipeAgent):
     """唤醒 Agent — 使用通用 AI 接入层进行举手判断。
 
@@ -38,7 +52,7 @@ class WakeupAgent(PipeAgent):
         agent_id: str = "wakeup-agent",
         name: str = "WakeupAgent",
         pipe_dir: str | Path = "",
-        server_url: str = "http://127.0.0.1:9103",
+        server_url: str = "",     # 默认取 AC4_BASE_URL / AC_PORT（一处真相）
     ):
         # 使用 ai_provider.classify 作为 LLM 回调
         async def _llm_callback(prompt: str) -> str:
@@ -61,7 +75,7 @@ class WakeupAgent(PipeAgent):
             capabilities=["wakeup", "notification", "routing", "waker_selection", "ai_classification"],
             description="唤醒 Agent — 通用 AI 接入层，支持 OpenAI/Ollama/HTTP 回调多种后端",
             pipe_dir=pipe_dir,
-            server_url=server_url,
+            server_url=server_url or _default_platform_url(),
             llm_callback=_llm_callback,
             hand_raise_threshold=0.5,
         )
@@ -373,7 +387,8 @@ async def _main():
     parser.add_argument("--ai-api-key", default="", help="AI API Key")
     parser.add_argument("--ai-base-url", default="", help="AI API Base URL")
     parser.add_argument("--ai-callback-url", default="", help="HTTP 回调 URL（http_callback 类型专用）")
-    parser.add_argument("--server-url", default="http://127.0.0.1:9103", help="平台 URL")
+    # 默认取 AC4_BASE_URL / AC_PORT（平台地址一处真相）
+    parser.add_argument("--server-url", default="", help="平台 URL")
     parser.add_argument("--pipe-dir", default="", help="Pipe 目录")
 
     args = parser.parse_args()

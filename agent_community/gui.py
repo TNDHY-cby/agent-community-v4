@@ -10,6 +10,7 @@ AI Provider 配置统一从 ~/.agent_community/config.json 读取。
 
 from __future__ import annotations
 import os
+from .platform_address import DEFAULT_PORT as _DEFAULT_PORT
 import subprocess
 import sys
 import time
@@ -145,7 +146,8 @@ def main():
     """
     import argparse
     ap = argparse.ArgumentParser(description="外端Agent生产合作社（External Agent Community） 桌面窗口（pywebview）")
-    ap.add_argument("--port", type=int, default=18920, help="服务端口（默认 18920，服务未运行时自动拉起）")
+    ap.add_argument("--port", type=int, default=_DEFAULT_PORT,
+                help=f"服务端口（默认 {_DEFAULT_PORT}；也可用 AC_PORT）")
     ap.add_argument("--width", type=int, default=1280, help="窗口宽度")
     ap.add_argument("--height", type=int, default=820, help="窗口高度")
     ap.add_argument("--title", default="外端Agent生产合作社（External Agent Community）", help="窗口标题")

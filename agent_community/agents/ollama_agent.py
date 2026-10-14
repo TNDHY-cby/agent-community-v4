@@ -20,6 +20,20 @@ import httpx
 from .pipe_agent import PipeAgent
 
 
+def _default_platform_url() -> str:
+    """平台地址：**一处真相**（AC4_BASE_URL/AC_BASE_URL > AC_PORT > 默认）。
+
+    ★2026-10-14（可移植性）：这里原来写死 `http://127.0.0.1:9103`。
+    """
+    try:
+        from ..platform_address import base_url_from_env
+        return base_url_from_env()
+    except Exception:
+        import os
+        return "http://127.0.0.1:" + (os.environ.get("AC_PORT") or "18920")
+
+
+
 class OllamaAgent(PipeAgent):
     """基于 Ollama 本地 LLM 的 Pipe Agent"""
 
@@ -30,8 +44,8 @@ class OllamaAgent(PipeAgent):
         capabilities: list[str],
         description: str,
         pipe_dir: str | Path,
-        server_url: str = "http://127.0.0.1:9103",
-        ollama_host: str = "http://127.0.0.1:11434",
+        server_url: str = "",      # 默认取 AC4_BASE_URL / AC_PORT（一处真相）
+        ollama_host: str = "",     # 默认取 AC_OLLAMA_HOST
         ollama_model: str = "qwen2.5:7b",
         temperature: float = 0.7,
         max_tokens: int = 2048,
@@ -48,7 +62,7 @@ class OllamaAgent(PipeAgent):
             capabilities=capabilities,
             description=description,
             pipe_dir=pipe_dir,
-            server_url=server_url,
+            server_url=server_url or _default_platform_url(),
             llm_callback=self._ollama_llm,
         )
 
@@ -113,8 +127,9 @@ async def _main():
     parser = argparse.ArgumentParser(description="Ollama Pipe Agent")
     parser.add_argument("--agent-id", default="ollama-agent", help="Agent ID")
     parser.add_argument("--name", default="Ollama Agent", help="Agent 名称")
-    parser.add_argument("--server-url", default="http://127.0.0.1:9103", help="平台 URL")
-    parser.add_argument("--ollama-host", default="http://127.0.0.1:11434", help="Ollama 服务地址")
+    parser.add_argument("--server-url", default="", help="平台 URL（默认取 AC4_BASE_URL/AC_PORT）")
+    # 默认取 AC_OLLAMA_HOST（环境驱动；端口因人而异）
+    parser.add_argument("--ollama-host", default="", help="Ollama 服务地址")
     parser.add_argument("--ollama-model", default="qwen2.5:7b", help="Ollama 模型名")
     parser.add_argument("--pipe-dir", default="", help="Pipe 目录（默认 TEMP/agent_community_pipe）")
     args = parser.parse_args()

@@ -116,7 +116,8 @@ def main():
 
 
 @main.command()
-@click.option("--port", type=int, default=9103, help="服务端口（默认 9103）")
+@click.option("--port", type=int, default=DEFAULT_PORT,
+              help=f"服务端口（默认 {DEFAULT_PORT}；也可用 AC_PORT）")
 @click.option("--wakeup", is_flag=True, help="启动 Wakeup Agent（通用 AI 接入层）")
 @click.option("--gui/--no-gui", default=True, help="启用桌面 GUI 窗口（默认: --gui）")
 def start(port, wakeup, gui):

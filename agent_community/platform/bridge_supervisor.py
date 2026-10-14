@@ -20,7 +20,7 @@ from pathlib import Path
 _BRIDGES: dict[str, dict] = {
     "example-web-bridge": {
         "bridge_file": "{{示例Harness-E_BRIDGE_PATH}}",  # 示例：用户侧实际桥文件路径
-        "url": "http://127.0.0.1:18920",
+        "url": "",      # 运行时取平台地址（平台地址一处真相）
         "extra": [],
     },
 }

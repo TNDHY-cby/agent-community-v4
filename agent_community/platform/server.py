@@ -6213,6 +6213,8 @@ if __name__ == "__main__":
     ap.add_argument("--demo", action="store_true", help="演示模式：跳过 Harness 真实连通检查")
     ap.add_argument("--token", action="append", default=[], help="外部访问 Token（可多次指定）")
     ap.add_argument("--port", type=int, default=0, help="监听端口（覆盖 AC_PORT）")
+    # ★2026-10-14：监听地址不许再写死。留空 = 走 AC_HOST / 默认 0.0.0.0
+    ap.add_argument("--host", default="", help="监听地址（覆盖 AC_HOST；只想本机用就填 127.0.0.1）")
     args = ap.parse_args()
     DEMO_MODE = args.demo
     ALLOWED_TOKENS.update(args.token)
@@ -6224,8 +6226,23 @@ if __name__ == "__main__":
     if _alt_server_mod is not None and _alt_server_mod is not _sys.modules.get("__main__"):
         _alt_server_mod.ALLOWED_TOKENS.update(args.token)
     # ★2026-10-13：端口解析只此一处（命令行 > AC_PORT > 默认），别再各写一套
-    from ..platform_address import resolve_port as _resolve_port
+    from ..platform_address import resolve_port as _resolve_port, resolve_host as _resolve_host
     port = args.port or _resolve_port()
+    host = _resolve_host(getattr(args, "host", None))
+    # ★2026-10-14（可移植性·工程层）：**启动前做环境体检** ——
+    #   缺"条件必需"的变量时，`AC_ENV=production` 直接不让起（并打印怎么修），
+    #   开发模式只告警。别让它表现成"某个功能静默不工作"。
+    try:
+        from ..platform import env_spec as _env
+        _rep = _env.check_requirements()
+        for _w in _rep["warnings"]:
+            print(f"[环境] 提示：{_w['name']} —— {_w['why']}；{_w['fix']}", flush=True)
+        _env.assert_ready()          # production 下缺必需项 -> 抛 EnvError
+    except Exception as _e:
+        if _e.__class__.__name__ == "EnvError":
+            print(f"[环境] 启动被拒绝：\n{_e}", flush=True)
+            raise SystemExit(2)
+        print(f"[环境] 体检跳过（不影响启动）：{_e}", flush=True)
     register_builtin_agents()
     # v6 新增：从 config.json 读取 AI Provider 配置（环境变量做降级）
     # V-9 修复：优先级统一为 环境变量 > 配置文件 > 默认值，env 值永不落盘覆盖
@@ -6272,6 +6289,9 @@ if __name__ == "__main__":
     print(f"Pipe dir: {PIPE_DIR}")
     print(f"CDP mirror: {'enabled (AC_CDP_MIRROR_ENABLED=1, 将探测 9222-9225 浏览器调试端口)' if os.environ.get('AC_CDP_MIRROR_ENABLED', '0') == '1' else 'disabled (默认，仅协议级映射)'}")
     print(f"Registered agents: {list(agents.keys())}")
-    # V-26 修复: 外部 API 接入失效——host 写死 127.0.0.1 导致仅本机可访问
-    # 改为 0.0.0.0, 非本地访问由 security_middleware 的 ALLOWED_TOKENS 闸门保护
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+    # ★2026-10-14（可移植性）：监听地址**从环境变量来**，别再写死。
+    #   之前这里硬编码 `host="0.0.0.0"`，而 `AC_HOST` 已登记为部署核心变量并写进
+    #   `.env.example` / README ⇒ **文档承诺了改不动的开关**（实测 `AC_HOST=127.0.0.1` 无效）。
+    #   优先级：`--host` > `AC_HOST` > 默认 `0.0.0.0`（见 platform_address.resolve_host）。
+    print(f"[listen] 绑定 {host}:{port}（改地址用 AC_HOST / --host）", flush=True)
+    uvicorn.run(app, host=host, port=port, log_level="info")

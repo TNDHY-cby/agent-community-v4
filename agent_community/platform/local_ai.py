@@ -10,9 +10,9 @@
 配置（不入开源仓，属运行时数据）：agent_community/data/local_ai.json
 {
   "endpoints": [
-    {"base": "http://127.0.0.1:8082/v1", "backend": "llama.cpp",
+    {"base": "http://127.0.0.1:8082/v1", "backend"  # portability: allow(本机模型服务的出厂候选地址，可被用户改): "llama.cpp",
      "autostart": {"exe": "...llama-server.exe", "model": "...gguf",
-                   "port": 8082, "args": ["-c", "4096", "-t", "6", "--no-webui"]}}
+                   "port": 8082,   # portability: allow(LM Studio 的出厂端口，不是本平台的端口) "args": ["-c", "4096", "-t", "6", "--no-webui"]}}
   ]
 }
 未提供配置文件时，仅探测内置默认端点（不自动拉起任何进程）。
@@ -36,9 +36,10 @@ from pathlib import Path
 
 # 内置默认端点（按优先级探测；无配置文件时不含自启能力）
 DEFAULT_ENDPOINTS: list[dict] = [
+    # portability: allow(下面是本机模型服务的**出厂候选地址**，只用于自动探测；用户可改)
     {"base": "http://127.0.0.1:8082/v1", "backend": "llama.cpp"},
-    {"base": "http://127.0.0.1:11434/v1", "backend": "ollama"},
-    {"base": "http://127.0.0.1:1234/v1", "backend": "lmstudio"},
+    {"base": "http://127.0.0.1:11434/v1", "backend": "ollama"},   # portability: allow(Ollama 出厂地址，可改)
+    {"base": "http://127.0.0.1:1234/v1", "backend": "lmstudio"},   # portability: allow(LM Studio 出厂地址，可改)
 ]
 
 # ★2026-10-13：同上 —— 认 AC_DATA_DIR。

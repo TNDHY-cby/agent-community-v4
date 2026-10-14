@@ -26,6 +26,20 @@ from typing import Callable, Awaitable, Optional
 import httpx
 
 
+def _default_platform_url() -> str:
+    """平台地址：**一处真相**（AC4_BASE_URL/AC_BASE_URL > AC_PORT > 默认）。
+
+    ★2026-10-14（可移植性）：这里原来写死 `http://127.0.0.1:9103`。
+    """
+    try:
+        from ..platform_address import base_url_from_env
+        return base_url_from_env()
+    except Exception:
+        import os
+        return "http://127.0.0.1:" + (os.environ.get("AC_PORT") or "18920")
+
+
+
 # ── LLM 回调类型 ────────────────────────────────────────────────
 # 注入 LLM 能力的回调函数签名
 LLMCallback = Callable[[str], Awaitable[str]]
@@ -47,7 +61,7 @@ class PipeAgent:
         capabilities: list[str],
         description: str,
         pipe_dir: str | Path,
-        server_url: str = "http://127.0.0.1:9103",
+        server_url: str = "",     # 默认取 AC4_BASE_URL / AC_PORT（一处真相）
         llm_callback: Optional[LLMCallback] = None,
         hand_raise_threshold: float = 0.5,
     ):
@@ -55,7 +69,7 @@ class PipeAgent:
         self.name = name
         self.capabilities = capabilities
         self.description = description
-        self.server_url = server_url.rstrip("/")
+        self.server_url = (server_url or _default_platform_url()).rstrip("/")
         self.pipe_dir = Path(pipe_dir)
         self.to_agent_dir = self.pipe_dir / "to_agent" / agent_id
         self.from_main_dir = self.pipe_dir / "from_main"
@@ -339,7 +353,8 @@ async def _main():
     parser = argparse.ArgumentParser(description="Pipe Agent")
     parser.add_argument("--agent-id", default="pipe-demo", help="Agent ID")
     parser.add_argument("--name", default="PipeDemo", help="Agent 名称")
-    parser.add_argument("--server-url", default="http://127.0.0.1:9103", help="平台 URL")
+    # 默认取 AC4_BASE_URL / AC_PORT（平台地址一处真相）
+    parser.add_argument("--server-url", default="", help="平台 URL")
     parser.add_argument("--pipe-dir", default="", help="Pipe 目录（默认 TEMP/agent_community_pipe）")
     args = parser.parse_args()
 

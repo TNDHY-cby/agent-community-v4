@@ -88,7 +88,8 @@ def _probe_process(name_or_cmd: str, timeout: float = 30.0) -> list:
         return [{"error": f"{type(e).__name__}: {e}"}]
 
 
-def probe_harness(info: Any, *, base_url: str = "http://127.0.0.1:18920",
+def probe_harness(info: Any, *, base_url: str = "",        # 空=运行时取平台地址（AC4_BASE_URL/AC_PORT）
+
                   do_http: bool = True, hints_in: Optional[dict] = None) -> dict:
     """**平台主动探测一个 harness**：他能怎么被叫醒？返回候选 + 证据（**不下结论**）。
 
