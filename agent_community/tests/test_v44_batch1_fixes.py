@@ -806,11 +806,18 @@ def test_github_issue_templates_are_not_swept_away():
     assert {"bug_report.yml", "feature_request.yml"} <= names, \
         f"issue 模板缺文件，实得 {sorted(names)}"
 
-    pub = (_ROOT / "publish_acv4.ps1").read_text(encoding="utf-8", errors="replace")
-    # 取"同步工具面那一段"＝从它自己的 Step 到**下一个** Step 之间
+    pub_path = _ROOT / "publish_acv4.ps1"
+    if not pub_path.exists():
+        # `publish_acv4.ps1` 是 **dev-only**（不进发布面）⇒ 公开仓库里跑本用例时
+        # 只能验"模板还在"，验不了"同步脚本没再用 /MIR"（那条由 dev 侧守）。
+        # ⚠️ 2026-10-14 实测踩到：第一版没判存在，公开仓库里本用例直接 FileNotFoundError
+        #   —— 又一次"开发机全绿、别人那儿红"（判据必须两边都跑，见 PORTABILITY.md）。
+        return
+    pub = pub_path.read_text(encoding="utf-8", errors="replace")
+    # 取"同步工具面那一段"＝从它自己的 Step 到**下一段**（用下一段的注释头定位，比找 "Step " 可靠）
     at = pub.find('Step "sync portability tooling')
     assert at != -1, "找不到同步工具面那一段，脚本结构变了，请同步更新本守卫"
-    nxt = pub.find("# 目录型：design-docs", at)   # 下一段的起点（比找 "Step " 可靠）
+    nxt = pub.find("# 目录型：design-docs", at)
     seg = pub[at:nxt if nxt != -1 else len(pub)]
     assert "'/MIR'" not in seg and '"/MIR"' not in seg, \
         "同步工具面又用上 /MIR 了 —— 它会删掉 oss 独有的文件（2026-10-14 的 ISSUE_TEMPLATE 事故）"
