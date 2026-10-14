@@ -608,6 +608,39 @@ def test_portability_gate_passes():
     assert "fail=0" in (r.stdout or ""), f"扫描没报出 fail=0，结果不可信：{(r.stdout or '')[:400]}"
 
 
+# ── 反私人定制闸门（2026-10-15，老板：「以后的开发也要注意产品不是私人订制的」）──
+#
+# 判据与六种形态见 `PRODUCTIZATION.md`；实现是 `tools/check_productization.py`。
+# 这里只**包一层**：让"陌生人拿到代码第一件事跑 pytest"也能撞上同一把闸门
+# （与 test_portability_gate_passes 同一手法：同一处真相，不复制规则）。
+
+def test_productization_gate_passes():
+    """`tools/check_productization.py` 必须 fail=0（不许平台专属命令冒充通用能力 / 开箱假数据）。"""
+    import subprocess, sys as _sys
+    root = _PKG.parent
+    r = subprocess.run([_sys.executable, str(root / "tools" / "check_productization.py")],
+                       cwd=str(root), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    assert r.returncode == 0, (
+        "反私人定制扫描没通过（六种形态见 PRODUCTIZATION.md）——\n"
+        + (r.stdout or "")[-3000:] + (r.stderr or "")[-1000:])
+
+
+def test_first_run_check_tool_is_runnable():
+    """陌生人走查工具必须**存在且能起来**（真跑一次全流程由 CI 负责，这里只钉"没坏"）。
+
+    ⚠️不在这里真跑 `first_run_check.py`：它要 clone + 起服务 + 走五步（约 1 分钟），
+    放进 pytest 会让每次跑测试都多一分钟；CI 的 `test-linux` 作业已经真跑它。
+    """
+    import subprocess, sys as _sys
+    root = _PKG.parent
+    tool = root / "tools" / "first_run_check.py"
+    assert tool.is_file(), "缺少 tools/first_run_check.py（陌生人首次运行的验收入口）"
+    r = subprocess.run([_sys.executable, str(tool), "--help"], cwd=str(root),
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, "首次运行走查工具跑不起来：%s%s" % (r.stdout, r.stderr)
+
+
 def test_env_docs_are_not_drifted():
     """`.env.example` / README 环境变量表必须与 `env_spec` 一致（改一处漏一处的解药）。"""
     import subprocess, sys as _sys

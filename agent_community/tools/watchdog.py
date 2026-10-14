@@ -88,9 +88,16 @@ def probe(port: int, http_timeout: float = 5.0, mode: str | None = None) -> tupl
 
 
 # ── 进程发现 ──────────────────────────────────────────────────
+# ⚠️**已知欠账（如实标注，不是"忘了"）**：本文件的进程发现是**Windows 专属**实现
+#   （PowerShell / netstat / tasklist / taskkill）。
+#   为什么不用跨平台的 `platform/sysprobe`：本文件对外的承诺是
+#   「**全程标准库实现、无第三方依赖**」—— 它是"救一个坏掉的环境"的那只手，
+#   那时连依赖都可能装不上（而 `sysprobe` 的主路径依赖 psutil）。
+#   ⇒ 要跨平台得自己写 stdlib 分支（Linux `/proc/<pid>/cmdline` + `ss -ltnp` / `lsof -ti`）。
+#   已登记在 `PRODUCTIZATION.md` 的欠账表里；下面几处按框架要求**显式申请例外**。
 def _run_powershell(script: str, timeout: float = 15.0) -> str:
     try:
-        p = subprocess.run(
+        p = subprocess.run(  # productization: allow(看门狗承诺纯标准库自足，跨平台需 stdlib 分支，已记欠账)
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
             capture_output=True, text=True, timeout=timeout,
         )
@@ -103,7 +110,7 @@ def _listener_pids(port: int) -> list[int]:
     """返回监听该端口的 PID 列表（netstat -ano 解析，兼容中文系统）。"""
     pids: list[int] = []
     try:
-        out = subprocess.run(
+        out = subprocess.run(  # productization: allow(同上：看门狗纯标准库自足，netstat 是 Windows 专属)
             ["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True, timeout=10.0,
         ).stdout or ""
         needle = f":{port}"
@@ -123,7 +130,7 @@ def _listener_pids(port: int) -> list[int]:
 def _pid_alive(pid: int) -> bool:
     """PID 是否存活（tasklist 单 PID 过滤）。"""
     try:
-        out = subprocess.run(
+        out = subprocess.run(  # productization: allow(同上：看门狗纯标准库自足，tasklist 是 Windows 专属)
             ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
             capture_output=True, text=True, timeout=10.0,
         ).stdout or ""
@@ -253,7 +260,7 @@ def _recover(port: int, demo: bool, dry_run: bool = False) -> str:
 
 def _kill_pid(pid: int) -> None:
     try:
-        subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True, text=True, timeout=10.0)
+        subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True, text=True, timeout=10.0)  # productization: allow(同上：Windows 专属的结束进程；跨平台需 stdlib 分支)
     except Exception as e:  # noqa: BLE001
         logger.warning("kill PID=%s 失败: %s", pid, e)
 

@@ -26,6 +26,10 @@ jobs:
         run: python tools/check_portability.py
       - name: Env docs must match env_spec (no drift)
         run: python tools/gen_env_docs.py --check
+      # ── 反私人定制（2026-10-15）：平台专属命令伪装成通用能力 / 开箱假数据 ──
+      #    判据与六种形态见 PRODUCTIZATION.md
+      - name: Productization scan (must pass)
+        run: python tools/check_productization.py
 
   # ── ② 干净 Linux 上跑测试（"陌生环境能跑"的直接验收）──
   test-linux:
@@ -55,6 +59,11 @@ jobs:
             tests/test_reasoning_effort.py tests/test_provider_stack.py -q --no-header -p no:cacheprovider
       - name: Sensitive content scan
         run: python tests/scan_sensitive.py . --secrets-only
+      # ── ★陌生人首次运行走查（2026-10-15）：判据＝换目录+换端口+换数据目录、不改一行代码 ──
+      #    五步：clone → cli start --no-gui → cli task → cli task-result → cli stop，
+      #    外加"仓库保持干净"与"错误不许是空原因"。判据见 PRODUCTIZATION.md。
+      - name: First-run walkthrough (stranger path)
+        run: python tools/first_run_check.py
       - name: 只改环境变量也能起（换端口 + 换数据目录）
         run: |
           AC_PORT=34567 AC_DATA_DIR=$RUNNER_TEMP/acdata python -m agent_community.platform.server &

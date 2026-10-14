@@ -87,7 +87,7 @@ def render(action: str, params: dict, framework: Optional[Path] = None) -> str:
     # 之后，而它必须是"仅随模块 docstring 之后"的第一个语句 ⇒ SyntaxError。生成物跑在 3.11+，
     # 不需要该 future import，注入前去掉。
     common = common.replace("from __future__ import annotations\n", "", 1)
-    text = tpl.replace("{{AC_COMMON}}", common)
+    text = tpl.replace("{{AC_COMMON}}", common)  # productization: allow(渲染器自己在替换占位符，不是发给用户的数据)
     p = params or {}
     text = _LIT_RE.sub(lambda m: repr(str(p.get(m.group(1), "") or "")), text)
     text = _PH_RE.sub(lambda m: str(p.get(m.group(1), "") or ""), text)

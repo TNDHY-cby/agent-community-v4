@@ -1,4 +1,4 @@
-"""外端Agent生产合作社（External Agent Community） Platform — 外端 Agent 生产协作平台
+﻿"""外端Agent生产合作社（External Agent Community） Platform — 外端 Agent 生产协作平台
 
 定位：**让接入不同 harness 的外端 Agent 协同生产**。
 同一个 AI 接入不同 harness 之后表现并不相同——平台不假设 Agent 同构，
@@ -13,4 +13,4 @@
 - 通用 AI Provider 接入层（OpenAI / Ollama / HTTP 回调）
 """
 
-__version__ = "4.8.1"
+__version__ = "4.8.2"
