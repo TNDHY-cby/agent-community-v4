@@ -34,15 +34,14 @@ import uuid
 
 import pytest
 
-# 2026-10-14: 本文件测的是 _probe_pid_watching —— 它用 PowerShell 查进程命令行
-#   (harness_messaging.py 里 `powershell -NoProfile -Command`)。
-#   Linux 上没有 powershell => 探测恒返回 0，用例不可能真通过；
-#   更糟的是「认不出来」类断言在 Linux 上会假绿（恒 0 恰好等于期望值）。
-#   => 显式只在 Windows 上跑，并把「Linux 全功能支持」记为后续工作。
-pytestmark = pytest.mark.skipif(
-    sys.platform != "win32",
-    reason="进程探测用 PowerShell 实现（Windows 专属）；Linux 支持属后续工作")
-
+# ★2026-10-14：**撤掉"只在 Windows 上跑"的 skip** —— 这才是把探测换成 psutil 的真收益。
+#   原先探测只有 PowerShell 一条路 ⇒ Linux 上恒返回 0：
+#     · 「认不出来」类断言在 Linux 上**恒真 = 假绿**（恰好等于期望值）；
+#     · 「认得出来」那条则必红。
+#   ⇒ 上一轮只能整文件 `skipif(platform != "win32")`（= Linux 上这套判据**没人守**）。
+#   现在取进程表走 `_process_rows()`（psutil 主路径，PowerShell 只作无 psutil 时的回落）
+#   ⇒ 两个平台都能真跑，**这些用例在两边都必须通过**（不再有 skip）。
+#   判据（`_match_bridges`）另有不依赖真进程的合成行用例，见本文件末尾。
 PY = sys.executable
 EX = os.path.join("agent_community", "examples")
 
@@ -157,3 +156,69 @@ def test_real_bridge_watching_the_inbox_is_detected(inbox, tmp_path, monkeypatch
                 p.wait(timeout=8)
             except Exception:  # noqa: BLE001
                 p.kill()
+
+
+# ── 判据本身（`_match_bridges`）：合成进程表 ⇒ **不依赖真进程、两个平台都覆盖** ──────
+#
+# 为什么要单独测判据（2026-10-14，把探测换成 psutil 时补）：
+#   · 上面三条用例要真起进程，慢、且受平台影响；
+#   · 而"哪一行算桥"这件事本身是**纯判断**，可以喂合成行 ——
+#     这样 **POSIX 上进程名是 `python3.12`** 这类只在 Linux 出现的形态，在开发机（Windows）
+#     上也能被守住（否则又变成"只有 CI 才验得到"）。
+
+def _row(pid, ppid, name, cmdline):
+    return (pid, ppid, name, cmdline)
+
+
+def test_match_bridges_accepts_a_real_bridge_on_either_platform():
+    """真桥的两种"进程名形态"都要认：Windows `python.exe` / POSIX `python3.12`。"""
+    from agent_community.platform.routers.harness_messaging import _match_bridges
+
+    inbox = "/tmp/inbox_abc"
+    rows = [
+        _row(11, 1, "python.exe", "python -u bridge.py --inbox /tmp/inbox_abc"),
+        _row(12, 1, "python3.12", "python3 -u /x/bridge.py --inbox /tmp/inbox_abc"),
+    ]
+    got = _match_bridges(rows, inbox, me=999)
+    assert [h["pid"] for h in got] == [11, 12], (
+        "★进程名只认 `python*` 前缀：POSIX 上是 `python3.12`，写死 `python.exe` 就又成了"
+        "「只有 Windows 能过」的判据：%r" % got)
+
+
+def test_match_bridges_rejects_wrappers_and_mere_mentions():
+    """只提到线索、或被外壳进程包着 —— 都不算桥（多认的后果是**静默不启动**）。"""
+    from agent_community.platform.routers.harness_messaging import _match_bridges
+
+    inbox = "/tmp/inbox_abc"
+    rows = [
+        # 外壳进程（它的命令行里也有脚本路径 + 邮箱）
+        _row(21, 1, "powershell.exe", "powershell -Command ... bridge.py ... /tmp/inbox_abc"),
+        _row(22, 1, "sh", "sh -c 'python bridge.py --inbox /tmp/inbox_abc'"),
+        # 只是"提到"线索，但根本没在跑桥脚本
+        _row(23, 1, "python3.12", "python3 -c import time; # /tmp/inbox_abc"),
+        # 命令行里连 bridge.py 都没有
+        _row(24, 1, "python.exe", "python -m http.server --directory /tmp/inbox_abc"),
+    ]
+    assert _match_bridges(rows, inbox, me=999) == [], "多认 ⇒ auto-connect 静默不起桥"
+
+
+def test_match_bridges_excludes_the_probe_process_own_children():
+    """`ppid == 本进程` 必须排除（生产里本进程=平台，排除的是"探测动作自己起的子进程"）。"""
+    from agent_community.platform.routers.harness_messaging import _match_bridges
+
+    inbox = "/tmp/inbox_abc"
+    rows = [_row(31, 4242, "python.exe", "python bridge.py --inbox /tmp/inbox_abc")]
+    assert _match_bridges(rows, inbox, me=4242) == [], "自己的子进程不该算成桥"
+    assert len(_match_bridges(rows, inbox, me=1)) == 1, "父不是本进程时应当认出来"
+
+
+def test_match_bridges_tries_the_forward_slash_variant_and_ignores_empty_needle():
+    """线索**原样**用 + 额外试正斜杠变体；空线索直接返回空（不许拿空串匹配一切）。"""
+    from agent_community.platform.routers.harness_messaging import _match_bridges
+
+    win_inbox = r"D:\mail\box1"
+    rows = [_row(41, 1, "python.exe", "python bridge.py --inbox D:/mail/box1")]
+    assert [h["pid"] for h in _match_bridges(rows, win_inbox, me=999)] == [41], \
+        "进程命令行里出现的是正斜杠变体，也要能命中"
+    assert _match_bridges(rows, "", me=999) == [], "空线索不许匹配一切"
+    assert _match_bridges(rows, "   ", me=999) == [], "空白线索同上"

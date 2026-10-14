@@ -20,6 +20,13 @@ click>=8.1
 # --- runtime (transports / optional features) ---
 websockets>=12.0
 grpcio>=1.62
+# psutil: platform/router/harness_messaging.py uses it to read OTHER processes'
+# command lines ("is a bridge already watching this inbox?") on BOTH Windows and
+# Linux. There is no pure-stdlib cross-platform way to do that; before this, the
+# probe was PowerShell-only => on Linux it always returned "no bridge", which both
+# broke auto-connect and made the tests silently pass for the wrong reason
+# (measured 2026-10-14). PowerShell is kept as a fallback when psutil is absent.
+psutil>=5.9
 # protobuf: agent_community/proto/*_pb2.py imports google.protobuf directly, and
 # grpcio does NOT pull it in (grpcio Requires only typing-extensions).
 # Consequence, measured on a clean CI runner 2026-10-14: pytest died at

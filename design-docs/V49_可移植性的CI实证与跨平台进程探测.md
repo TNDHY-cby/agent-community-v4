@@ -95,4 +95,74 @@
 - 令牌**缺 `workflow` 权限**时，提交只要碰了 `.github/workflows/`，GitHub **拒收整次 push**。
 
 ---
-*示例Harness-E · 2026-10-14 · 本篇是 CI 实证记录 + 交接；制度本身见 `PORTABILITY.md`*
+---
+
+## 7. 续篇（同日晚场）：run #11 的三条真因，与 **run #12 的第一次全绿**
+
+> 本节是上一节（run #7 那一轮）的续。**结论：`7c321b4` 上 run #12 三个 job 全绿**
+> （`portability` / `test-linux (3.11)` / `test-windows (3.11)`）—— 这是 run #1 以来第一次。
+
+### 7.1 run #11 的三条失败（逐条：现象 → 真因 → 修法）
+
+| job | 失败 | 真因 | 修法 |
+|---|---|---|---|
+| windows | `test_rule19_fresh_name_and_dir_end_to_end` → `no_reply`（**从 run #5 红到 #11**） | 用例造的**假 agent** 第一件事就 `print('AGENT-SEES %r' …)`，而那行里含**中文成员目录**（验证间叫 `验证员_v0`）。它的 stdout 继承的是**桥的日志文件句柄** ⇒ 子进程按**系统 ANSI 代码页**定编码 —— runner 上是 **cp1252**，一个汉字都编不出来 ⇒ `UnicodeEncodeError` ⇒ **在写回报之前就崩**；而开发机是 cp936（编得出）⇒ 本机怎么跑都绿 | 假 agent 开头 `sys.stdout/stderr.reconfigure(encoding="utf-8", errors="replace")`（**与平台自己的桥同一纪律**） |
+| linux | `test_policy_wiring.py::TestShellToolGating::test_allow_executes` → `stderr: /bin/sh: 0: Illegal option -N` | `ShellExecTool` 把 PowerShell 的 `-NoProfile/-NonInteractive/-Command` **硬套给 `/bin/sh`**（两平台同一份 argv）⇒ `sh` 把 `-N` 当自己的选项。**"命令执行"这条能力在 Linux 上等于没有** | 平台差异收进 `shell_tool._shell_argv()` 一处（Windows: PowerShell `-Command`；POSIX: `/bin/sh -c`）；**同时**把该用例里写死的 `New-Item …` 换成按平台给命令（它的兄弟用例上一轮已改，**这一条被漏了** ⇒ 规则 20） |
+| linux | `test_v44_batch1_fixes.py::test_spawn_kwargs_is_platform_aware` → `Windows 应给 creationflags：{}` | **是守卫自己错了**：它无条件断言"`_IS_WINDOWS=True` ⇒ 必有非零 creationflags"，而 `CREATE_NEW_PROCESS_GROUP` 在 Linux 上**根本不存在**、实现用 `getattr(…, 0)` 兜底（故意的）⇒ **在 Linux 上永远不可能成立**。守"平台差异"的用例自己成了"只在我这台成立" | 改成：①真平台分支按本机实际断言；②跨分支只断言"**不许出现那个平台不该用的参数**"（两平台都成立、且仍有牙） |
+
+### 7.2 这一轮最值钱的：**怎么在本机复现"只有 CI 才会红"的失败**
+
+上一节写着"这一条本机复现不出来"。**这句话这次被推翻了** —— 办法是：
+**先在真日志里找到"CI 与开发机的唯一差别"，再在本机只制造那个差别。**
+
+1. 差别 = **子进程 stdout 的编码**（runner cp1252 / 本机 cp936）。证据不是猜的：
+   真日志里明写 `File "C:\hostedtoolcache\windows\Python\3.11.9\x64\Lib\encodings\cp1252.py"`。
+2. 复现姿势（`temp/repro_rule19_cp1252.py`、`temp/diag_agent_cp1252.py`）：
+   **在本进程内**设 `PYTHONIOENCODING=cp1252` —— 本进程的 stdout 早已建好、不受影响，
+   而之后被拉起的桥/agent 全部继承 cp1252 ⇒ 一条命令复现出与 CI **一字不差**的 `no_reply`。
+   更小的夹点（`temp/diag_agent_cp1252.py`）把机理钉死在假 agent 一行上：
+   `UnicodeEncodeError: 'charmap' codec can't encode characters in position 46-48`（正是 `验证员` 三字）。
+3. ⚠️**预测器必须忠实，否则比没有更糟**：第一版直接设 `PYTHONIOENCODING=cp1252` 跑全量，
+   报出 8 条失败 —— 全是**假失败**：`action_scripts.run_action` 里有
+   `env.setdefault("PYTHONIOENCODING", "utf-8")`（平台**故意**给自己拉起的动作脚本上的保险），
+   我先把变量设上了 ⇒ `setdefault` 失效 ⇒ 那 8 条在 CI 上本来是绿的。
+   ⇒ 忠实版（`temp/like_ci/sitecustomize.py` + `temp/run_suite_like_ci.py`）：
+   **由每个 python 子进程自己判断**要不要切成 cp1252，且**跳过已显式指定编码的进程**；
+   预测器自身也先用 `temp/check_like_ci_shim.py` 验过（无变量的子进程会炸、带 `utf-8` 的不受影响）。
+   用它跑全量 ⇒ 全绿，与 run #12 的真实结论一致。
+
+### 7.3 顺带挖出的**产品**缺陷（不是测试的）
+
+`bridge_templates/{file_poll,pending_poll,cli_acp}/bridge.py.tmpl` 渲染出来的桥**没有任何输出编码自保**，
+而它们会 print 大量中文（cli_acp 21 处 / file_poll 26 处 / pending_poll 37 处）——
+用户的 stdout 一旦被重定向（验证间、看门狗、nohup、计划任务），
+在**英文 Windows** 上就是 cp1252 ⇒ **桥进程启动即死**，用户只看到"桥不取件"。
+（上一轮只给 `examples/*.py` 加了自保，**模板漏了**。）
+⇒ 三个模板补上同一段；`tests/test_bridge_encoding_guard.py` 从"只守 examples"扩到**模板全覆盖**，
+并新增**行为级**判据：真渲染模板 + 真在 cp1252 下跑 `--help`（旧模板 rc=1 报 UnicodeEncodeError、
+新模板 rc=0 打出中文，⇒ 有牙）。`temp/verify_tmpl_encoding.py` 留了新旧对比的实测脚本。
+
+### 7.4 仍未完成（交接）
+
+- **psutil 跨平台进程探测**：仍未做（方案见 §5，老板已同意上 psutil）。
+- **产品进程/探针层仍大量 PowerShell 专属**：`harness_probe` / `server`(4 处) /
+  `routers/system` / `wakeup_bridge` / `assistant_tools`。
+  **"Linux 上全功能可用"目前仍只对：平台服务端 + shell 工具 + 桥启动。**
+- `项目完整模型.md` 的 CI 章节仍待补（本 V49 是它的素材）。
+- **WSL 这条 Linux 环境**：本机 Ubuntu-24.04 + 网络可用（`temp/wsl_setup_min.sh`），
+  建好 venv 后**Linux 侧改动就不必烧 CI 轮次**了；本轮**没装成**（pip 下载极慢），
+  所以本轮 Linux 结论**仍以 CI 真日志为准**（不在本机假装验过）。
+
+### 7.5 这一轮的纪律（新增两条，可查）
+
+1. **诊断要"看得见"，不能只"存在"**：上一版 rule19 诊断在 `teardown=True`（已拆验证间）**之后**
+   去列 inbox/隔间目录 ⇒ 现场永远是 `[]`/`{}`（**白烧一轮**）。
+   真正留证据的是**桥日志** `<DATA_DIR>/verify_sandbox/_bridge_logs/<hid>.log`（**不随拆除删除**）。
+   ⇒ 写诊断先问：**它读的那份东西，在我要读的时刻还在不在？**
+2. **一次只改一处 + 改完立刻用"同条件"验**：本轮四处改动（模板 / rule19 用例 / shell 工具 / spawn 守卫）
+   每处都在改完当场用**能判死的老条件**验过（新旧对比、cp1252 复现、WSL 里 `sh` 的语义夹点），
+   最后才推 —— 与上一轮"堆一批补丁再统一测"是两种节奏。
+
+---
+
+*示例Harness-E · 2026-10-14（含晚场续篇）· 本篇是 CI 实证记录 + 交接；制度本身见 `PORTABILITY.md`*

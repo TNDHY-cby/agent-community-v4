@@ -30,6 +30,7 @@ import json
 import os
 
 import sys
+import time
 
 import pytest
 
@@ -268,16 +269,22 @@ def test_duplicate_bridges_are_detected_and_reported():
 
     assert hasattr(hm, "bridge_instances"), "缺少'名下有几只桥'的查询"
     assert hasattr(hm, "_probe_pids_watching"), "缺少计数型扫描（原来的只回第一只）"
+    # ★2026-10-14：判据**搬家了** —— 取进程表（`_process_rows`，psutil 主路径/跨平台）
+    #   与"哪一行算桥"（`_match_bridges`）分开；本守卫跟着判据走（别对着空壳断言）。
+    #   行为层的覆盖在 `test_bridge_watch_probe.py`（合成进程表的四条用例 + 真起进程三条）。
+    assert hasattr(hm, "_match_bridges"), "缺少判据函数（取事实与判据应当分开，一处判据）"
     # ⚠️**剥掉注释再查**：函数里有一段注释专门解释"为什么不要用 GetFullPath"，
     #   不剥的话判据会被自己的注释打中（我今天已经在这上面栽了第三次）。
-    src = "\n".join(l for l in inspect.getsource(hm._probe_pids_watching).split("\n")
+    src = "\n".join(l for l in inspect.getsource(hm._match_bridges).split("\n")
                     if not l.lstrip().startswith("#"))
     # ★判据必须同时要求"在跑桥脚本"，否则任何命令行提到 harness_id 的进程都会被算成桥
     #   （实测：一个 python -c 调用脚本被计成了第 5 只桥）
-    assert "bridge.py" in src, "扫描必须要求'确实在跑桥脚本'，否则会误计"
+    assert "bridge.py" in src, "判据必须要求'确实在跑桥脚本'，否则会误计"
     # ★只认解释器：powershell/cmd 包裹进程的命令行里也含脚本路径，
     #   混进来会让"链根"变成包裹进程，且同一 powershell 连起两只时会被归并成一只（漏数）
-    assert "python*" in src, "扫描必须限定只认解释器（Name -like 'python*'），否则会把包裹进程算进去"
+    #   （这里是**文本代理**：真正的行为判据是 test_bridge_watch_probe 里
+    #     "外壳进程不算桥 + POSIX 的 python3.12 要算桥"两条。）
+    assert "python" in src, "判据必须限定只认解释器（python*），否则会把包裹进程算进去"
     # ★绝不能对非路径线索做 GetFullPath（会把 harness_id 解析成不存在的路径 ⇒ 永远匹配不到）
     assert "GetFullPath" not in src, \
         "不要把线索当路径解析 —— harness_id 会被解析成不存在的路径，导致永远扫不到"
@@ -354,19 +361,32 @@ def test_platform_started_bridge_counts_via_registry(monkeypatch):
         monkeypatch.setattr(bp, "_procs", {}, raising=False)
 
 
-@pytest.mark.skipif(sys.platform != "win32",
-                    reason="bridge_instances 用 PowerShell 扫进程（Windows 专属）；Linux 上扫不到任何桥 => 心跳数恒 0，用例不可能真通过")
-def test_bridge_instances_async_keeps_the_event_loop_free():
-    """★扫描（要跑 PowerShell）期间，**事件循环必须还能跑**。
+def test_bridge_instances_async_keeps_the_event_loop_free(monkeypatch):
+    """★同步的"要等"的活，**绝不能占住事件循环**（判据不依赖真扫描有多慢）。
 
     ★2026-10-12 实测（**我自己引进的缺陷**）：把 `bridge_instances` 直接放进 async 端点后，
     该端点从 0.02s 涨到 **1.28s**，这期间**平台无法响应任何请求**；机器忙时可达 30s。
     外部症状是 watchdog 报 `TimeoutError` + 「进程还在却不收连接」并自动重启 —— **差点查错方向**。
     ⇒ 判据：同步阻塞的活（子进程 / 扫描 / sleep）一律走 `asyncio.to_thread`。
 
-    本用例用一个 10ms 心跳计数器来量：若事件循环被占住，心跳**几乎不涨**。
+    ⚠️★2026-10-14 **重写判据**（这条原来是"假红"的）：
+      原写法直接调**真扫描**，并要求调用期间心跳 ≥5 次（10ms 一次）——
+      这等于把"**扫描得够慢**"当成了前提。把探测换成 psutil 后，扫描只要**几毫秒**
+      ⇒ 心跳自然只涨 1 次 ⇒ 用例**假红**（明明是好事：扫描变快了）。
+      "扫描耗时"是实现细节，不该当判据。要守的是"**同步慢活有没有占住事件循环**"，
+      ⇒ 现在就**注入一个有明确耗时的同步慢活**（0.5s），再看心跳涨不涨：
+        涨够 ⇒ 它走了工作线程（对）；几乎不涨 ⇒ 它把事件循环占住了（错）。
+      这样做还有个好处：**与平台无关**（Linux 上同样是真覆盖，原来它挂着 win32-only 的 skip）。
+
+    本用例用一个 10ms 心跳计数器来量。
     """
-    from agent_community.platform.routers.harness_messaging import bridge_instances_async
+    from agent_community.platform.routers import harness_messaging as hm
+
+    def _slow_sync_scan(harness_id):
+        time.sleep(0.5)                      # 模拟"要等"的同步活（子进程/进程表/网络…）
+        return {"harness_id": harness_id, "count": 0}
+
+    monkeypatch.setattr(hm, "bridge_instances", _slow_sync_scan, raising=True)
 
     async def _main():
         ticks = 0
@@ -379,15 +399,15 @@ def test_bridge_instances_async_keeps_the_event_loop_free():
 
         t = asyncio.create_task(_ticker())
         try:
-            await bridge_instances_async("no-such-harness-" + os.urandom(4).hex())
+            await hm.bridge_instances_async("no-such-harness-" + os.urandom(4).hex())
         finally:
             t.cancel()
         return ticks
 
     ticks = asyncio.run(_main())
     assert ticks >= 5, (
-        "★扫描期间事件循环被占住了（心跳只涨了 %d 次）⇒ 必须把同步扫描挪到工作线程，"
-        "否则平台会「卡住」、watchdog 会以为它死了并重启" % ticks)
+        "★同步慢活期间事件循环被占住了（0.5s 里心跳只涨了 %d 次）⇒ 必须把它挪到工作线程"
+        "（`asyncio.to_thread`），否则平台会「卡住」、watchdog 会以为它死了并重启" % ticks)
 
 
 def test_bridge_instances_shape_is_honest():

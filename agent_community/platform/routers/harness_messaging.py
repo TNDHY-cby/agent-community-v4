@@ -4,6 +4,7 @@
 拆分纪律：路由路径、参数、响应体与拆分前逐字一致（纯搬迁，零行为变更）。
 """
 from __future__ import annotations
+import os as _os2                      # 进程探测要用（getpid / name）；纯 stdlib，无循环导入风险
 from ..spawn import spawn_kwargs as _spawn_kwargs
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from ..protocol import HarnessMessage
@@ -285,68 +286,121 @@ def _set_watch_probe(fn) -> None:
     _WATCH_PROBE = fn or _probe_pid_watching
 
 
+def _process_rows():
+    """产出 `(pid, ppid, name, cmdline)` —— **跨平台拿进程表的一条真相**。
+
+    ★2026-10-14（V49 §5 的落地）：
+      此前只有 PowerShell（`Get-CimInstance Win32_Process`）一条路 ⇒ **Linux 上恒返回空**。
+      后果有两层，后一层更阴：
+        ① 真实的一层：桥在跑却认不出来 ⇒ `auto-connect` **会再起一只**（靠单实例锁兜住）；
+        ② 测试的一层：「认不出来」类断言在 Linux 上**恒真 = 假绿**（`test_bridge_watch_probe.py`
+           只能整文件 `skipif(platform != "win32")` —— 等于 Linux 上这套判据没人守）。
+      **拿别的进程的命令行没有纯 stdlib 的跨平台办法**（要么第三方库、要么各平台各写一套）
+      ⇒ 选 psutil（Win/Linux/macOS 都有 wheel）。**PowerShell 只作没有 psutil 时的回落**：
+      老环境没装它也不该让功能整块消失（那时退回"只有 Windows 能用"的旧行为）。
+
+    ⚠️两条纪律（都与本项目的历史事故对应）：
+      · 本函数只**取事实**，不做判断 —— 判据全在 `_match_bridges()` 一处（免得两平台两套口径）；
+      · 每个进程单独 try：psutil 取不到某些进程的信息（权限/Race）是常态，**不许因此整表失败**。
+    """
+    try:
+        import psutil
+    except Exception:  # noqa: BLE001 — 没装 psutil：走下面的回落
+        psutil = None
+
+    if psutil is not None:
+        for p in psutil.process_iter(["pid", "ppid", "name", "cmdline"]):
+            try:
+                info = p.info or {}
+                cmd = info.get("cmdline") or []
+                yield (int(info.get("pid") or 0), int(info.get("ppid") or 0),
+                       str(info.get("name") or ""),
+                       " ".join(str(c) for c in cmd))
+            except Exception:  # noqa: BLE001
+                continue
+        return
+
+    # ── 回落：PowerShell（**仅 Windows**；Linux 上没装 psutil 就是真扫不到，如实返回空）──
+    if _os2.name != "nt":
+        return
+    try:
+        import json as _json
+        import subprocess as _sp
+        ps = ("Get-CimInstance Win32_Process | "
+              "Select-Object ProcessId,ParentProcessId,Name,CommandLine | "
+              "ConvertTo-Json -Compress")
+        r = _sp.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
+                    text=True, encoding="utf-8", errors="replace", timeout=30)
+        out = (r.stdout or "").strip()
+        if not out or out == "null":
+            return
+        v = _json.loads(out)
+        if isinstance(v, dict):
+            v = [v]
+        for x in (v or []):
+            try:
+                yield (int(x.get("ProcessId") or 0), int(x.get("ParentProcessId") or 0),
+                       str(x.get("Name") or ""), str(x.get("CommandLine") or ""))
+            except Exception:  # noqa: BLE001
+                continue
+    except Exception:  # noqa: BLE001
+        return
+
+
+def _match_bridges(rows, needle: str, me: int) -> list:
+    """**判据只有这一处**：从进程表里挑出"在看着这个信箱的桥"。
+
+    四条必须**同时**成立（少一条就会误计或漏计，详见历史注释）：
+      ① 命令行里含 `bridge.py` —— **确实在跑桥脚本**（只按线索判会把我自己的
+         `python -c "...<harness_id>..."` 也算成桥，实测被计成"第 5 只桥"）；
+      ② 进程名以 `python` 开头 —— **只认解释器**（powershell/cmd 的包裹进程命令行里
+         同样含脚本路径，混进来会让"链根"变成包裹进程，且同一外壳连起两只桥会被归并成一只=漏数）；
+      ③ `ppid != 本进程` —— 排除**探测动作自己的子进程**（生产里本进程=平台）；
+      ④ 命令行里含该线索，或它的**正斜杠变体**（进程命令行里两种都可能出现）。
+
+    ⚠️**不要**对线索做"解析成绝对路径"那类操作：它既可能是邮箱**绝对路径**，也可能是
+      `harness_id`（普通标识符）—— 解析会把后者变成"平台当前目录下的同名文件"，永远匹配不到
+      （实测：名下 4 只桥在跑，却回 `bridges_running = 0`）。
+    ⚠️**判据不对称**：宁可**少认**也不能多认 —— 少认了会再起一只，而**单实例锁会拦下并说明理由**；
+      多认了则是 auto-connect **静默不启动**，用户无从发现（本项目最怕的死状态）。
+    """
+    needle = (needle or "").strip()
+    if not needle:
+        return []
+    alt = needle.replace("\\", "/")
+    hits = []
+    for row in (rows or []):
+        try:
+            pid, ppid, name, cmdline = row
+        except Exception:  # noqa: BLE001
+            continue
+        cmdline = cmdline or ""
+        if "bridge.py" not in cmdline:
+            continue
+        if not str(name or "").lower().startswith("python"):
+            continue
+        if int(ppid or 0) == int(me or 0):
+            continue
+        if needle not in cmdline and alt not in cmdline:
+            continue
+        hits.append({"pid": int(pid or 0), "ppid": int(ppid or 0)})
+    return hits
+
+
 def _probe_pids_watching(needle: str) -> list:
     """扫进程命令行，返回**所有**匹配该线索的 pid（不只第一个）。
 
     ★2026-10-12 新增：真机实测发现 `example-harness-01` 名下**同时有 4 只桥在跑**
       （那个 agent 在"路径引号被拆断、进程秒退"时重试了几次，每次都真的起了一只）。
       **同一 harness 多只桥 ⇒ 重复投递 / 竞争取件 / 心跳互相覆盖** —— 而平台**一个字都没说**。
-      （`harness_messaging` 里那句注释早就写着"同一邮箱多只桥 ⇒ 重复投递"，
-        问题是这个事实从来没被**报告出去**。）
       ⇒ 本函数给它一个可报告的计数。只有一只时与 `_probe_pid_watching` 等价。
+    ★2026-10-14：取进程表换成跨平台的 `_process_rows()`（psutil 主路径），
+      判据抽到 `_match_bridges()` —— 本函数只负责"取事实 + 过判据"。
     """
-    needle = (needle or "").strip()
-    if not needle:
+    if not (needle or "").strip():
         return []
     try:
-        import json as _json
-        import os as _o2
-        import subprocess as _sp
-        # ⚠️★**不要**对线索做 `[System.IO.Path]::GetFullPath`：
-        #   本函数既可能收到**绝对路径**（邮箱），也可能收到 **harness_id**（一个普通标识符）。
-        #   `GetFullPath('example-harness-01')` 会把它解析成"平台当前目录下的同名文件"，
-        #   于是拿一个**根本不存在的路径**去匹配进程命令行 ⇒ **永远匹配不到**。
-        #   （实测：名下明明有 4 只桥在跑，却回 `bridges_running = 0`。我又栽在"想当然"上。）
-        #   ⇒ 原样用线索，并额外试一次"正斜杠"变体（进程命令行里两种都可能出现）。
-        # ⚠️判据必须**同时**满足两条，否则会误计：
-        #   ① 命令行里含该 harness 的线索；
-        #   ② **确实是在跑桥脚本**（`*bridge.py*`）。
-        #   只按①判会把我自己（或用户）任何"命令行里提到这个 harness_id"的进程都算成桥 ——
-        #   实测：一个 `python -c "...example-harness-01..."` 的调用脚本被计成了第 5 只桥。
-        #   ③ ★只认**解释器**（`Name -like 'python*'`）：powershell/cmd 包裹进程的命令行里
-        #     同样含脚本路径，混进来会让"链根"变成那个包裹进程，而且
-        #     **同一个 powershell 里连起两只桥时会被归并成一只（漏数）**。
-        #     （实测：`bridge_pids` 里曾混进 powershell 的 43440 —— 归并侥幸答对，但靠运气。）
-        ps = ("$needle = $env:AC_NEEDLE; "
-              "$me = [int]$env:AC_SELF_PID; "
-              "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and "
-              "$_.CommandLine -like '*bridge.py*' -and "
-              "$_.Name -like 'python*' -and "
-              "$_.ParentProcessId -ne $me -and "
-              "($_.CommandLine -like ('*' + $needle + '*') -or "
-              " $_.CommandLine -like ('*' + ($needle -replace '\\\\','/') + '*')) } | "
-              "Select-Object ProcessId,ParentProcessId | ConvertTo-Json -Compress")
-        env = dict(_o2.environ)
-        env["AC_NEEDLE"] = needle
-        env["AC_SELF_PID"] = str(_o2.getpid())
-        r = _sp.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
-                    text=True, encoding="utf-8", errors="replace", timeout=30, env=env)
-        out = (r.stdout or "").strip()
-        if not out or out == "null":
-            return []
-        v = _json.loads(out)
-        if isinstance(v, int):          # 只有一个结果时 ConvertTo-Json 返回标量
-            v = [v]
-        if isinstance(v, dict):         # 单个对象（无数组）也包一层
-            v = [v]
-        out_p = []
-        for x in (v or []):
-            try:
-                out_p.append({"pid": int(x.get("ProcessId") or x.get("pid")),
-                              "ppid": int(x.get("ParentProcessId") or x.get("ppid") or 0)})
-            except Exception:  # noqa: BLE001
-                continue
-        return out_p
+        return _match_bridges(_process_rows(), needle, _os2.getpid())
     except Exception:  # noqa: BLE001
         return []
 
