@@ -17,14 +17,15 @@ import sys
 from pathlib import Path
 
 # 每个要跟随平台一起起停的桥。key = harness_id
-# bridge_file: 平台生成的桥脚本路径（若显式路径不存在则按实际副本动态推导）；url: 平台地址；extra: 额外参数
-_BRIDGES: dict[str, dict] = {
-    "example-web-bridge": {
-        "bridge_file": "{{示例Harness-E_BRIDGE_PATH}}",  # 示例：用户侧实际桥文件路径
-        "url": "",      # 运行时取平台地址（平台地址一处真相）
-        "extra": [],
-    },
-}
+# bridge_file: 桥脚本路径（**填实际存在的路径**）；url: 平台地址；extra: 额外参数
+#
+# ★★2026-10-15 实测缺陷（朋友第一次跑 v4.8.0 的回执）：**默认必须是空表**。
+#   原来这里塞了一条假配置 `example-web-bridge`，`bridge_file` 还是个**没渲染的模板占位**
+#   （`{{…}}`）⇒ 每次启动都往日志里打一行「桥脚本不存在: {{…}}，跳过」：
+#   在陌生人眼里就是"配置坏了 / 项目没做完"，而它**没有任何用途** ——
+#   真实 harness 是通过注册 API 动态接入的，**不靠这份静态表**。
+#   ⇒ 默认空；确实要平台托管某只桥时，在这里加一条（并保证路径真实存在）。
+_BRIDGES: dict[str, dict] = {}
 
 _procs: dict[str, subprocess.Popen] = {}
 
@@ -65,7 +66,11 @@ def start_harness_bridges() -> list[dict]:
     for hid, cfg in _BRIDGES.items():
         bf = _resolve_bridge_file(hid)
         if not os.path.isfile(bf):
-            print(f"[bridge_supervisor] {hid} 桥脚本不存在: {bf}，跳过", flush=True)
+            # 失败要说话：说清"哪一条配置、期望的路径、以及怎么改"（默认表是空的，走到这里
+            # 说明有人手工加了一条却填错了路径）
+            print(f"[bridge_supervisor] {hid} 的桥脚本不存在: {bf}（跳过）。"
+                  f"要平台托管这只桥，请在 bridge_supervisor._BRIDGES 里填它的**实际路径**。",
+                  flush=True)
             continue
         if hid in _procs and _procs[hid].poll() is None:
             print(f"[bridge_supervisor] {hid} 桥已在运行，跳过", flush=True)
@@ -73,7 +78,12 @@ def start_harness_bridges() -> list[dict]:
         cmd = [py, "-u", bf, "--url", cfg["url"], *cfg.get("extra", [])]
         try:
             env = dict(os.environ)
-            env["示例Harness-E_SUPERVISOR_PID"] = str(os.getpid())  # 桥据此探测父进程存活，父死自退出（防孤儿）
+            # ⚠️2026-10-15 删掉了一句 `env["示例Harness-E_SUPERVISOR_PID"] = ...`：
+            #   它是历史契约（桥侧 `_parent_alive` 用它"父死自退"）的**写入方**，
+            #   但**当前仓库里已没有任何读者**（桥模板/示例/平台都不读），而且名字是
+            #   被擦洗过的私有名 ⇒ 留着只会让人以为存在这么个契约。
+            #   若将来真要恢复"父死自退"，请用一个中性名（`AC_SUPERVISOR_PID`）并在
+            #   桥模板 + 文档里**同时**落地（规则 20：一处真相）。
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.DEVNULL,

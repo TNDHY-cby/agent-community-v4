@@ -6288,6 +6288,17 @@ if __name__ == "__main__":
         print(f"AI Provider: {ai_provider.provider_type} (ai_mode={ai_mode}, cfg_provider={provider_type})")
         if hasattr(ai_provider, "model"):
             print(f"  Model: {ai_provider.model}")
+        # ★2026-10-15（朋友 v4.8.0 回执）：不做任何配置时，provider 的兜底是**占位值**
+        #   （`api.example.com` + `example-model-flash`）⇒ 上面两行读起来像"AI 配好了"，
+        #   而实际上每一次调用都会失败、结果正文只有一个 `[Error: …]`。
+        #   ⇒ 在这里**明说**，免得用户拿着日志以为配置没问题。
+        try:
+            from .ai_provider import _placeholder_hint as _ph_hint
+            _hint = _ph_hint(ai_provider)
+            if _hint:
+                print(f"  ⚠ AI 未配置：{_hint}", flush=True)
+        except Exception:  # noqa: BLE001 — 提示失败不影响启动
+            pass
         if ai_mode == "manual":
             print(f"  外部接管中：待回复请求写入 {DATA_DIR / 'ai_pending'}，超时 {ai_external_get_timeout():g}s 降级")
     except Exception as e:

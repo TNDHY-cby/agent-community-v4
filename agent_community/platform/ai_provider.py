@@ -45,6 +45,11 @@ from typing import Optional
 #   （只把错误原文**显示**给人的调用点不需要它——那本来就是对的。）
 AI_ERROR_PREFIX = "[Error:"
 
+#: ★一处真相（2026-10-15 收口）：**所有**表示"这次 AI 产出不可用"的文本前缀。
+#: 此前这段元组在 `routers/workshops_discuss.py` 与 `routers/workshops_lifecycle.py`
+#: 各写了一遍（规则 20 的隐患：改一处忘另一处）。新增用法请引用本常量，别再内联。
+AI_FAILURE_PREFIXES = (AI_ERROR_PREFIX, "[AI 讨论失败:", "[AI 降级]")
+
 
 def ai_error_text(reply) -> str:
     """`reply` 是错误文本则原样返回（供如实显示）；正常回复返回空串。"""
@@ -59,6 +64,61 @@ def ai_error_text(reply) -> str:
 def ai_is_error(reply) -> bool:
     """`reply` 是不是错误文本（便捷判断）。"""
     return bool(ai_error_text(reply))
+
+
+#: "从没配过 AI 却看起来配了"的默认占位值（`OpenAIProvider.__init__` 的兜底）。
+#: ★它们**不是**可用的服务：`https://api.example.com` 是保留示例域名、解析不到任何真实服务。
+PLACEHOLDER_BASE_URL = "api.example.com"
+PLACEHOLDER_MODEL = "example-model-flash"
+
+
+def _placeholder_hint(provider) -> str:
+    """当前 provider 是不是**占位默认配置** ⇒ 返回一句"怎么改"；否则空串。
+
+    ★为什么必须有：全新安装**没配任何 AI**，而 `OpenAIProvider` 的兜底是
+      占位域名 + 占位模型 ⇒ 平台看起来"配了 AI"，任务会走 AI 路径并失败。
+      朋友第一次跑 v4.8.0 时看到的结果正文就是 `[Error: ]` —— 既没说为什么，
+      也没说"你其实没配 AI"。这里把这句话补上（只说**确定**的事：
+      base_url / model 还是占位值；不断言"没 key 就是没配"，因为本地服务本就不要 key）。
+    """
+    bu = str(getattr(provider, "base_url", "") or "")
+    model = str(getattr(provider, "model", "") or "")
+    bits = []
+    if PLACEHOLDER_BASE_URL in bu:
+        bits.append("base_url 还是占位地址 %s" % bu)
+    if model == PLACEHOLDER_MODEL:
+        bits.append("model 还是占位值 %s" % model)
+    if not bits:
+        return ""
+    return ("这看起来是**还没配 AI**（%s）。要么按 README 配好 "
+            "`AC_AI_BASE_URL` / `AC_AI_API_KEY` / `AC_AI_MODEL`，"
+            "要么让它明确不接 AI（把 `ai_mode` 设为 `off`）——"
+            "不接 AI 时任务仍会建工作间，只是不会有 AI 产出的结果。" % "、".join(bits))
+
+
+def ai_error_from(exc=None, *, status=None, body: str = "", provider=None) -> str:
+    """拼一条 `[Error: …]` 错误文本 —— **永远说得清原因**（供如实显示）。
+
+    ★2026-10-15 实测缺陷（朋友第一次跑 v4.8.0 的回执）：
+      结果正文只有一个 **`[Error: ]`** —— **不含任何原因**。
+      成因：`str(e)` 恰好为空（连接类异常常见），而原实现直接 `f"[Error: {e}]"`。
+    判据（写死在本函数里，别在各调用点各拼一遍 —— 规则 20）：
+      1. **绝不允许空原因**：`str(e)` 空 ⇒ 退到异常类型名；再空 ⇒ 退到一句人话；
+      2. HTTP 非 200 时带上服务端正文（空就说明"服务端没有给说明"）；
+      3. 若 provider 还是占位配置，附上"你其实还没配 AI + 怎么改"。
+    """
+    if status is not None:
+        detail = (body or "").strip()[:300] or "（服务端没有给说明）"
+        out = "[Error: HTTP %s] %s" % (status, detail)
+    else:
+        msg = ""
+        if exc is not None:
+            msg = str(exc).strip()
+            if not msg:
+                msg = type(exc).__name__        # ★空原因 ⇒ 退到类型名
+        out = "[Error: %s]" % (msg or "未知错误（连异常信息都没有）")
+    hint = _placeholder_hint(provider)
+    return out + ("  ← " + hint if hint else "")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -291,11 +351,11 @@ class OpenAICompatibleProvider(AIProvider):
         try:
             r = await client.post(f"{self.base_url}/v1/chat/completions", json=body)
             if r.status_code != 200:
-                return f"[Error: HTTP {r.status_code}] {r.text[:300]}"
+                return ai_error_from(status=r.status_code, body=r.text, provider=self)
             data = r.json()
             return data["choices"][0]["message"]["content"]
         except Exception as e:
-            return f"[Error: {e}]"
+            return ai_error_from(exc=e, provider=self)
 
     async def classify(
         self,
@@ -399,7 +459,7 @@ class OpenAICompatibleProvider(AIProvider):
             # 纯文本回复
             return ChatResponse(content=msg.get("content", ""))
         except Exception as e:
-            return ChatResponse(content=f"[Error: {e}]")
+            return ChatResponse(content=ai_error_from(exc=e, provider=self))
 
     async def close(self):
         if self._client:
@@ -460,11 +520,11 @@ class OllamaProvider(AIProvider):
         try:
             r = await client.post(f"{self.host}/api/chat", json=body)
             if r.status_code != 200:
-                return f"[Error: HTTP {r.status_code}] {r.text[:300]}"
+                return ai_error_from(status=r.status_code, body=r.text, provider=self)
             data = r.json()
             return data["message"]["content"]
         except Exception as e:
-            return f"[Error: {e}]"
+            return ai_error_from(exc=e, provider=self)
 
     async def classify(
         self,
@@ -568,10 +628,10 @@ class HTTPCallbackProvider(AIProvider):
         try:
             r = await client.post(self.callback_url, json=body)
             if r.status_code != 200:
-                return f"[Error: HTTP {r.status_code}] {r.text[:300]}"
+                return ai_error_from(status=r.status_code, body=r.text, provider=self)
             return r.text
         except Exception as e:
-            return f"[Error: {e}]"
+            return ai_error_from(exc=e, provider=self)
 
     async def classify(
         self,

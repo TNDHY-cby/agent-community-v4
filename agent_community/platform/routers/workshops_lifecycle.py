@@ -758,7 +758,8 @@ async def workshop_model_draft(ws_id: str):
     except Exception as e:  # noqa: BLE001
         return {"success": False, "draft": {}, "error": f"AI 调用失败：{type(e).__name__}: {e}"}
     txt = str(reply or "")
-    if txt.startswith(("[Error:", "[AI 讨论失败:", "[AI 降级]")):
+    from ..ai_provider import AI_FAILURE_PREFIXES as _AI_FAIL_PREFIXES   # 一处真相
+    if txt.startswith(_AI_FAIL_PREFIXES):
         return {"success": False, "draft": {}, "error": txt[:200]}
     i, j = txt.find("{"), txt.rfind("}")
     if i < 0 or j <= i:

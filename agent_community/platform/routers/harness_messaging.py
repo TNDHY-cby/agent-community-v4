@@ -683,7 +683,9 @@ async def harness_auto_connect(request: Request):
     full_cmd = [py_exe] + bridge_cmd
     try:
         env = dict(_os.environ)
-        env["示例Harness-E_SUPERVISOR_PID"] = str(_os.getpid())
+        # ⚠️2026-10-15 删掉 `env["示例Harness-E_SUPERVISOR_PID"]`：**当前仓库里没有任何读者**
+        #   （桥模板/示例/平台都不读它），而名字是被擦洗过的私有名 —— 见
+        #   `bridge_supervisor.start_harness_bridges` 的同一条注释。
         if bridge_type == "pending_poll":
             _os.makedirs(work_dir, exist_ok=True)
         proc = _sp.Popen(

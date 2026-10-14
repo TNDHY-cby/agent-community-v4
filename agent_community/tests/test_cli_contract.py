@@ -77,3 +77,32 @@ def test_cli_task_result_reads_fields_the_api_really_returns(srv):
     missing = sorted(need - set(got))
     assert not missing, (
         "★CLI 要显示的字段在接口返回里没有了：%s ⇒ 用户会看到「完成了却没有结果」（准则⑤）" % missing)
+
+
+# ── GUI 起不来时**不许崩**（2026-10-15 朋友 v4.8.0 回执的第二个坑）──────────────
+#
+# 实测：无图形环境（服务器/容器/沙箱）里 `start`（默认带窗口）会因缺 GTK/Qt 直接抛异常
+# ⇒ **README 第 2 步第一次跑就崩**，用户还得自己猜 `--no-gui`。
+# 判据：桌面窗口起不来时要**说清原因**、并且**不许把用户卡住**（自动退回后端模式）。
+
+def test_cli_start_survives_a_broken_gui(monkeypatch, capsys):
+    from click.testing import CliRunner
+
+    from agent_community import cli
+
+    class _BoomApp:
+        def __init__(self, *a, **k):
+            raise RuntimeError("没有 GTK/Qt，起不了窗口")
+
+    import types
+    fake_gui = types.ModuleType("agent_community.gui")
+    fake_gui.AgentCommunityApp = _BoomApp
+    monkeypatch.setitem(__import__("sys").modules, "agent_community.gui", fake_gui)
+    # 让"服务已在运行"分支成立 ⇒ 不真的去起服务（本用例只验 GUI 兜底这条路径）
+    monkeypatch.setattr(cli, "_is_running", lambda port=None: True, raising=True)
+
+    res = CliRunner().invoke(cli.start, ["--gui", "--port", "18999"])
+    out = (res.output or "") + (str(res.exception) if res.exception else "")
+    assert res.exit_code == 0, "GUI 起不来**不该**让 start 崩掉：%s" % out
+    assert "桌面窗口起不来" in out, "要说清原因（失败要说话）：%s" % out
+    assert "--no-gui" in out, "要告诉用户下次怎么办：%s" % out

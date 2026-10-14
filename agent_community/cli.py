@@ -50,13 +50,23 @@ LOG_DIR = _data_dir() / "logs"
 
 
 def _get_base_url() -> str:
-    """从 PID 文件读取端口号"""
-    port = DEFAULT_PORT
+    """CLI 该连哪个地址：**PID 文件里记的端口** > `AC_PORT` > 默认。
+
+    ★2026-10-15 实测缺陷（顺着"没配 AI"的复现发现）：
+      这里原来直接用 `platform_address.DEFAULT_PORT`（**常量 18920**）当兜底，
+      **完全不认 `AC_PORT`** ⇒ 用户/脚本用 `AC_PORT=别的端口` 起服务、或不经 `cli start`
+      起服务（看门狗拉起、手动 `python -m ...server --port X`）时，CLI 会**连到错的端口**：
+      轻则"服务未运行"，重则**打到本机另一个实例上**（实测：提示 URL 打的是 18920，
+      而服务在 18960）。
+      ⇒ 兜底改走**端口的唯一解析点** `resolve_port()`（命令行 > AC_PORT > 默认）。
+    """
+    from .platform_address import resolve_port as _resolve_port
+    port = _resolve_port()
     if PID_FILE.exists():
         try:
             data = json.loads(PID_FILE.read_text())
-            port = data.get("port", DEFAULT_PORT)
-        except (json.JSONDecodeError, KeyError):
+            port = int(data.get("port") or port)
+        except Exception:  # noqa: BLE001
             pass
     return f"http://127.0.0.1:{port}"
 
@@ -84,10 +94,14 @@ def _remove_pid():
 
 
 def _is_running(port: int = None) -> bool:
-    """检查服务是否在运行"""
+    """检查服务是否在运行（端口解析与 `_get_base_url` 同口径：PID 文件 > AC_PORT > 默认）。"""
     if port is None:
         data = _read_pid()
-        port = data["port"] if data else DEFAULT_PORT
+        if data and data.get("port"):
+            port = data["port"]
+        else:
+            from .platform_address import resolve_port as _resolve_port
+            port = _resolve_port()          # ★别写死常量：用户可能用 AC_PORT 换了端口
     try:
         r = httpx.get(f"http://127.0.0.1:{port}/api/status", timeout=3.0)
         return r.status_code == 200
@@ -124,18 +138,41 @@ def main():
 
 
 @main.command()
-@click.option("--port", type=int, default=DEFAULT_PORT,
-              help=f"服务端口（默认 {DEFAULT_PORT}；也可用 AC_PORT）")
+@click.option("--port", type=int, default=None,
+              help="服务端口（留空 = 用 AC_PORT，再留空 = 默认 18920）")
 @click.option("--wakeup", is_flag=True, help="启动 Wakeup Agent（通用 AI 接入层）")
 @click.option("--gui/--no-gui", default=True, help="启用桌面 GUI 窗口（默认: --gui）")
 def start(port, wakeup, gui):
     """启动 外端Agent生产合作社（External Agent Community） 服务（AI 配置在桌面窗口内完成）"""
-    # GUI 模式：通过 pywebview 启动桌面窗口
+    # ★2026-10-15：`--port` 的默认值原来是**常量 18920** ⇒ 用户设了 `AC_PORT` 再用
+    #   `cli start` 起服务，拿到的还是 18920（"端口因人而异"这条要求形同虚设）。
+    #   ⇒ 默认改 None，统一走端口的唯一解析点（命令行 > AC_PORT > 默认），并**回显实际端口**。
+    if port is None:
+        from .platform_address import resolve_port as _resolve_port
+        port = _resolve_port()
     if gui:
-        from .gui import AgentCommunityApp
-        app = AgentCommunityApp(port=port)
-        app.run()
-        return
+        try:
+            from .gui import AgentCommunityApp
+            app = AgentCommunityApp(port=port)
+            app.run()
+            return
+        except Exception as e:  # noqa: BLE001
+            # ★★2026-10-15 实测缺陷（朋友第一次跑 v4.8.0 的回执）：README 第 2 步就是这条命令，
+            #   而**无图形环境**（服务器 / 容器 / 沙箱）里桌面窗口必然起不来
+            #   （Linux 缺 GTK/Qt、Windows 缺 WebView2）⇒ 原实现直接抛异常，
+            #   用户看到的就是"第一次跑就崩"，还得自己去猜 `--no-gui`。
+            #   ⇒ 如实说清原因，并**自动退回后端守护模式**（功能一样，只是没有窗口）。
+            click.secho("[WARN] 桌面窗口起不来：%s: %s" % (type(e).__name__, str(e)[:160]),
+                        fg="yellow")
+            click.echo("       桌面窗口需要 GUI 库（Linux 需 GTK/Qt，Windows 需 WebView2）。")
+            # 窗口失败前可能已经把服务拉起来了 —— 那就别重复启动，如实报"服务已就绪"
+            if _is_running(port):
+                click.secho("[OK] 服务已在运行（只是没有桌面窗口）", fg="green")
+                click.echo(f"  地址: http://127.0.0.1:{port}")
+                click.echo("  下次可直接用: python -m agent_community.cli start --no-gui")
+                return
+            click.echo("       已自动改用**后端守护模式**（功能一样，起好后用浏览器打开即可）。")
+            gui = False
 
     # 无 GUI 模式：后台守护进程
     if _is_running(port):
@@ -367,7 +404,17 @@ def task_result(task_id):
             #   任务里明明有 `result`（真跑出来的一段完整回答），用户却只看得到状态与时间，
             #   会以为"没产出"。⇒ 把 result 打出来；**没有结果时说清为什么**（准则⑤）。
             res = str(t.get("result") or "").strip()
-            if res:
+            from .platform.ai_provider import ai_is_error as _ai_is_error
+            if res and _ai_is_error(res):
+                # ★2026-10-15：`[Error: …]` 是**失败文本**，不是"结果"。
+                #   朋友第一次跑时结果正文就只有一个 `[Error: ]` —— 把它当结果打印，
+                #   用户根本不知道发生了什么。⇒ 显式按失败呈现，并把怎么改指出来。
+                click.secho("\n✗ 这次没有产生有效结果（AI 调用失败）:", fg="yellow")
+                click.echo(res)
+                click.echo("  怎么改：按上面这条错误里的提示处理（多半是还没配 AI —— "
+                           "设 AC_AI_BASE_URL / AC_AI_API_KEY / AC_AI_MODEL，"
+                           "或把 ai_mode 设为 off 明确不接 AI）。")
+            elif res:
                 click.secho("\n结果:", fg="cyan")
                 click.echo(res)
             else:

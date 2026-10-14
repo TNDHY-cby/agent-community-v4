@@ -138,7 +138,9 @@ async def workshop_discuss(ws_id: str, request: Request):
         reply = f"[AI 讨论失败: {e}]"
     # V-25 F4：AI key 失效等错误文本（[Error: HTTP 401] / [AI 讨论失败: / [AI 降级]）不再静默写入讨论区
     # 冒充正常回复（此前返回 200 但流转静默失效）；改为显式报错，由前端展示失败原因，绝不落讨论区。
-    _ai_failed = str(reply or "").startswith(("[Error:", "[AI 讨论失败:", "[AI 降级]"))
+    # ★2026-10-15：前缀元组改用 `ai_provider.AI_FAILURE_PREFIXES`（一处真相，别内联）。
+    from ..ai_provider import AI_FAILURE_PREFIXES as _AI_FAIL_PREFIXES
+    _ai_failed = str(reply or "").startswith(_AI_FAIL_PREFIXES)
     if _ai_failed:
         print(f"[discuss] AI 调用失败，已显式报错（不再静默写入讨论区）: {str(reply)[:200]}", flush=True)
         return Utf8JSONResponse(
