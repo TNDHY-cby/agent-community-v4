@@ -33,6 +33,22 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+# ── 输出编码自保（2026-10-14 实测缺陷修复）──────────────────────────────
+# 与 `examples/pending_poll_bridge.py` 同款写法（同一件事只有一处口径）。
+# 为什么必须有：桥的 stdout 常被**重定向到日志文件**（验证间/看门狗就是这么起的），
+#   此时 Python 按**系统 ANSI 代码页**给 stdout 定编码 —— 英文 Windows 是 **cp1252**，
+#   它**编不出一个汉字** ⇒ 下面那些中文 print 会抛 `UnicodeEncodeError`、
+#   **把桥进程直接弄死**；而用户看到的只是"桥不取件 / 不回话"。
+#   ★实证（GitHub windows runner，run #11）：同一个坑把**测试里的假 agent** 也弄死过 ——
+#     它只打印了一行含中文成员目录（`验证员_v0`）的路径，就在写回报之前崩了
+#     ⇒ 接入自检永远 `no_reply`；而在中文 Windows（cp936）上**完全复现不出来**。
+#   ⇒ 与其要求用户记得设 PYTHONIOENCODING，不如脚本自己把 stdout/stderr 改成 UTF-8 + 出错不炸。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:  # noqa: BLE001 — 老解释器没有 reconfigure：退回原样，不因此崩
+    pass
+
 # ── 以下字段由平台模板渲染注入，请勿手改 ──
 HARNESS_ID = {{HARNESS_ID_LIT}}
 WORK_DIR = {{WORK_DIR_LIT}}

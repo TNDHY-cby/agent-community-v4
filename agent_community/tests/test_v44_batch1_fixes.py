@@ -869,25 +869,57 @@ def test_github_issue_templates_are_not_swept_away():
 # ⇒ 现在统一到 `platform/spawn.py::spawn_kwargs()`。
 
 def test_spawn_kwargs_is_platform_aware(monkeypatch):
-    """`spawn_kwargs()` 两个平台都要给出**各自可用**的参数（行为断言，不是看源码）。"""
+    """`spawn_kwargs()` 两个平台都要给出**各自可用**的参数（行为断言，不是看源码）。
+
+    ★2026-10-14 重写（CI run #11 的 Linux 真因，**是这条守卫自己错了**）：
+      原实现无条件断言「`_IS_WINDOWS=True` ⇒ 必有非零 `creationflags`」——
+      这条**在 Linux 上永远不可能成立**：`subprocess.CREATE_NEW_PROCESS_GROUP` /
+      `DETACHED_PROCESS` 这两个常量**在 Linux 上根本不存在**，而实现里用
+      `getattr(..., 0)` 兜底是**故意的**（缺常量时只是少个标志，不该把功能打成 500）
+      ⇒ flags 算出来就是 0、返回 `{}` ⇒ 断言必红（windows job 绿、linux job 红）。
+      **教训**：守"平台差异"的用例，必须自己在**两个平台上都成立**；
+      否则它不是守卫，是"只在我这台机器上成立"的又一份私人定制。
+      现在的判据（两平台都成立、且仍然有牙）：
+        ① 真平台分支：本机该给什么就给什么；
+        ② ②③ 跨分支：切到另一个平台时，**不许给出那个平台不该用的参数**
+           （Windows 分支给 `start_new_session`、POSIX 分支给 `creationflags` 都是错的 ——
+             后者正是把 Linux 一键注册打成 500 的那个 bug）。
+    """
+    import os as _os
+    import subprocess as _sp
+
     from agent_community.platform import spawn as sp
 
     # ⚠️ 这里**只能** patch 那个开关，**绝不能** patch `os.name`：
     #   3.11 的 pathlib 是实例化时读 os.name 的 ⇒ 改全局会让别处造出 WindowsPath 对象，
     #   逃出去后在 Linux 上炸成 pytest INTERNALERROR（我实测踩过，就这一条守卫造成的）。
+    real_windows = sp._IS_WINDOWS                      # 模块开关（导入时由 os.name 定）
+    assert real_windows == (_os.name == "nt"), \
+        "开关应与本机平台一致（否则守卫的前提就不成立）"
+
+    # ① 真平台分支：本机该给什么给什么
+    kw = sp.spawn_kwargs()
+    if real_windows:
+        assert kw.get("creationflags"), f"Windows 上应给非零 creationflags：{kw}"
+        assert "start_new_session" not in kw, f"Windows 上不该给 POSIX 参数：{kw}"
+    else:
+        assert kw.get("start_new_session") is True, f"POSIX 应用 start_new_session：{kw}"
+        assert "creationflags" not in kw, f"POSIX 不许出现 creationflags：{kw}"
+
+    # ② 切到 Windows 分支：绝不许漏出 POSIX 参数；本机有那两个常量时必须真用上
     monkeypatch.setattr(sp, "_IS_WINDOWS", True)
     kw = sp.spawn_kwargs()
-    assert "creationflags" in kw and "start_new_session" not in kw,         f"Windows 应给 creationflags：{kw}"
-    assert kw["creationflags"] != 0
+    assert "start_new_session" not in kw, f"Windows 分支不许给 POSIX 参数：{kw}"
+    if hasattr(_sp, "CREATE_NEW_PROCESS_GROUP"):
+        assert kw.get("creationflags"), f"本机有 Windows 标志常量，就该用上：{kw}"
 
-    # POSIX 分支：**绝不能**出现 creationflags（那正是把 Linux 打成 500 的东西）
+    # ③ 切到 POSIX 分支：**绝不能**出现 creationflags（那正是把 Linux 打成 500 的东西）
     monkeypatch.setattr(sp, "_IS_WINDOWS", False)
     kw = sp.spawn_kwargs()
     assert "creationflags" not in kw, f"POSIX 不许出现 creationflags：{kw}"
     assert kw.get("start_new_session") is True, f"POSIX 应用 start_new_session：{kw}"
 
-    # detach=False：两个平台都不加任何脱离相关的参数
-    monkeypatch.setattr(sp, "_IS_WINDOWS", False)
+    # ④ detach=False：两个平台都不加任何脱离相关的参数
     assert sp.spawn_kwargs(detach=False) == {}
     monkeypatch.setattr(sp, "_IS_WINDOWS", True)
     assert "start_new_session" not in sp.spawn_kwargs(detach=False)

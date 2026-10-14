@@ -112,6 +112,20 @@ def _make_fake_agent(work, inbox_abs: str, py_exe: str) -> str:
     #     脚本还会把它**实际看到什么**打进桥日志 —— 出问题不用猜。
     agent.write_text(
         "import json,os,sys\n"
+        # ★★2026-10-14（run #11 的 windows 真因，本机已用 PYTHONIOENCODING=cp1252 复现）：
+        #   **先给输出编码上保险**（与平台自己的桥同一纪律）。
+        #   假 agent 的 stdout **继承的是桥的日志文件句柄** ⇒ 这个新起的 python 进程
+        #   按**系统 ANSI 代码页**给 stdout 定编码：英文 Windows（GitHub runner）是
+        #   **cp1252**，它连一个汉字都编不出来 ⇒ 下面那行打印**含中文目录**
+        #   （验证间的成员目录叫 `验证员_v0`）的 `AGENT-SEES …` 会抛
+        #   `UnicodeEncodeError`，**在写回报之前就崩** ⇒ 自检永远 `no_reply`。
+        #   而开发机是中文 Windows（cp936）⇒ 编得出这些字 ⇒ **本机怎么跑都绿**
+        #   （这就是"我这台能跑不算数"的又一例：判据必须包含"陌生编码环境"）。
+        #   复现：`python temp/repro_rule19_cp1252.py cp1252`（只给子进程注入 cp1252）。
+        "try:\n"
+        "    sys.stdout.reconfigure(encoding='utf-8', errors='replace')\n"
+        "    sys.stderr.reconfigure(encoding='utf-8', errors='replace')\n"
+        "except Exception: pass\n"
         "here=os.path.dirname(os.path.abspath(__file__))\n"
         "INBOX=open(os.path.join(here,'inbox.txt'),encoding='utf-8-sig').read().strip()\n"
         "r=os.path.join(INBOX,'replies')\n"
@@ -312,54 +326,34 @@ def test_rule19_fresh_name_and_dir_end_to_end(fresh):
     out = asyncio.run(hb.harness_verify_bridge(hid, _Req({"wait": 16, "teardown": True})))
     v = _as_dict(out)
     assert v.get("stage") == "selfcheck", "应跑到自检阶段：%s" % json.dumps(v, ensure_ascii=False)[:300]
-    # ★2026-10-14：Windows runner 上这一条报 no_reply、本机复现不出来。
-    #   把**证据**放进失败信息，而不是靠猜（猜已经让我白走过两轮）。
-    #   ⚠️ 上一版这里有两个毛病，都已修：
-    #     ① 用了没导入的 `Path` ⇒ 现场变成 "name 'Path' is not defined"（诊断自己要能跑！）；
-    #     ② 没有贴**桥的日志** ⇒ 而"trigger 到底有没有被叫起来、agent 看到了什么"
-    #        恰恰只写在桥日志里（桥会打 `[唤醒] 已执行 trigger: …`，
-    #        假 agent 会打 `AGENT-SEES …` / `handled N`）。
-    def _snapshot(root, limit=24):
-        """列目录 + 抓日志尾巴（纯 os，不依赖 Path 导入）。"""
-        import os as _os
-        try:
-            items = []
-            for dirpath, _dirs, files in _os.walk(str(root)):
-                for fn in sorted(files):
-                    fp = _os.path.join(dirpath, fn)
-                    try:
-                        items.append((_os.path.relpath(fp, str(root)), _os.path.getsize(fp)))
-                    except OSError:
-                        items.append((_os.path.relpath(fp, str(root)), -1))
-            listing = sorted(items)[:limit]
-        except Exception as e:                      # noqa: BLE001
-            listing = [("<列不出>", str(e)[:90])]
-        tails = {}
-        try:
-            for dirpath, _dirs, files in _os.walk(str(root)):
-                for fn in files:
-                    if not fn.endswith((".log", ".txt", ".out")):
-                        continue
-                    fp = _os.path.join(dirpath, fn)
-                    try:
-                        with open(fp, "r", encoding="utf-8", errors="replace") as fh:
-                            tails[_os.path.relpath(fp, str(root))] = fh.read()[-700:]
-                    except OSError:
-                        pass
-        except Exception:                            # noqa: BLE001
-            pass
-        return listing, tails
+    # ★2026-10-14：不再靠"列目录"取现场（上一版就是这么写的，见下面重写说明）。
+    # ★★2026-10-14（run #11 之后重写）：上一版诊断**看错了地方、也看晚了** ——
+    #   它拿 `teardown=True`（拆验证间）**之后**的目录去当现场：那时 inbox 与验证间
+    #   目录**已经被删** ⇒ 现场永远是 `[]` / `{}`，等于什么都没看见，
+    #   害我白烧一轮 CI（"诊断代码也是代码"，这条我又交了一次学费）。
+    #   真正留得下证据的是**桥的日志**：验证间把临时桥的 stdout/stderr 落在
+    #   `<DATA_DIR>/verify_sandbox/_bridge_logs/<harness_id>.log`，**不随拆除删除**
+    #   —— 桥的 `[唤醒] 已执行 trigger: …`、假 agent 的 `AGENT-SEES …` 与它的
+    #      traceback（实测 run #11 就是靠它才看到 cp1252 那条链）都在里面。
+    _bridge_log = ""
+    try:
+        from agent_community.platform.verify_sandbox import SANDBOX_SUBDIR as _SANDS
+        _lp = os.path.join(str(srv.DATA_DIR), _SANDS, "_bridge_logs", "%s.log" % hid)
+        if os.path.isfile(_lp):
+            with open(_lp, encoding="utf-8", errors="replace") as _fh:
+                _bridge_log = _fh.read()[-1500:]
+        else:
+            _bridge_log = "<没有桥日志文件：%s>" % _lp
+    except Exception as _e:                          # noqa: BLE001
+        _bridge_log = "<读桥日志失败: %s: %s>" % (type(_e).__name__, _e)
 
-    _inbox_list, _inbox_logs = _snapshot(inbox)
-    _ws_list, _ws_logs = _snapshot(getattr(ws, "workspace_dir", inbox))
     assert v.get("state") == "ok", (
         "★全新名字+全新目录下应能真跑通（平台→桥→agent→回报）；实得 state=%r reason=%r"
         " | 平台=%s | trigger=%r"
-        " | 邮箱里的东西=%r"
-        " | 验证间里的东西=%r"
-        " | 日志尾巴=%r"
-        % (v.get("state"), v.get("reason"), sys.platform, wrap,
-           _inbox_list, _ws_list, {**_inbox_logs, **_ws_logs}))
+        " | 桥日志尾巴=%r"
+        " | （注：teardown=True 已拆除验证间，inbox/隔间目录列不出来是**正常的**，"
+        "别把它当证据 —— 要现场就看上面的桥日志）"
+        % (v.get("state"), v.get("reason"), sys.platform, wrap, _bridge_log))
     assert (v.get("committed") or {}).get("success") is True, \
         "★跑通了就必须把实测配置写进模板并标记已验证：%s" % (v.get("committed"),)
     td = v.get("torndown") or {}

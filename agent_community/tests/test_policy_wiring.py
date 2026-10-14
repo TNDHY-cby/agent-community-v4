@@ -36,17 +36,27 @@ def run(coro):
     return asyncio.run(coro)
 
 
+def _make_file_cmd(marker) -> str:
+    """造一条「真能建出这个文件」的命令 —— **按平台**给（唯一一处真相）。
+
+    ⚠️ 2026-10-14（CI run #11 的 Linux 真因，两次踩同一个坑）：
+      原来这里写死 PowerShell 的 `New-Item … | Out-Null` —— 那是 **PowerShell 专属语法**，
+      Linux 上根本没有这条命令 ⇒ 任何"真去执行"的用例在 `test-linux` 里必红。
+      上一轮我给**其中一条**用例加了平台分支，**另外两条漏了**（规则 20：一件事的对外表达
+      散在几处，就得一次全改；漏一处＝下次再红一轮）。
+      ⇒ 现在收敛到本函数：要造文件就调它，别在用例里再写平台判断。
+    """
+    if sys.platform == "win32":
+        return f"New-Item -Path '{marker}' -ItemType File -Force | Out-Null"
+    return f"touch '{marker}'"
+
+
 class TestShellToolGating:
     def test_ask_does_not_execute(self, temp_policy, tmp_path):
         """默认策略 shell.exec=ASK → 命令**不得执行**，返回待办 id。"""
         marker = tmp_path / "should_not_exist.txt"
-        # 2026-10-14: 按平台给命令 —— 原来写死 PowerShell 的 New-Item，
-        #   Linux 上 shell_exec 报「powershell.exe 未找到」=> 用例必红。
-        #   这里要验的是「ALLOW 之后命令真的被执行了」，不是 PowerShell 语法。
-        if sys.platform == "win32":
-            cmd = f"New-Item -Path '{marker}' -ItemType File -Force | Out-Null"
-        else:
-            cmd = f"touch '{marker}'"
+        # 要验的是「ALLOW 之后命令真的被执行了」，不是 PowerShell 语法 ⇒ 命令按平台给。
+        cmd = _make_file_cmd(marker)
 
         res = run(ShellExecTool().execute(command=cmd))
 
@@ -70,7 +80,7 @@ class TestShellToolGating:
         cfg.setdefault("default_by_op", {})[SHELL_EXEC] = ALLOW
 
         marker = tmp_path / "allowed_marker.txt"
-        cmd = f"New-Item -Path '{marker}' -ItemType File -Force | Out-Null"
+        cmd = _make_file_cmd(marker)
 
         res = run(ShellExecTool().execute(command=cmd))
 
@@ -99,7 +109,7 @@ class TestShellToolGating:
     def test_approved_pending_does_not_auto_execute(self, temp_policy, tmp_path):
         """批准只是**解除闸门**，不代执行 —— 下次调用才跑（避免审批即执行的反直觉语义）。"""
         marker = tmp_path / "after_approve.txt"
-        cmd = f"New-Item -Path '{marker}' -ItemType File -Force | Out-Null"
+        cmd = _make_file_cmd(marker)
 
         run(ShellExecTool().execute(command=cmd))
         rec = temp_policy.list_pending(only_pending=True)[-1]
