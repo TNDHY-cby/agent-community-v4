@@ -312,9 +312,18 @@ def test_rule19_fresh_name_and_dir_end_to_end(fresh):
     out = asyncio.run(hb.harness_verify_bridge(hid, _Req({"wait": 16, "teardown": True})))
     v = _as_dict(out)
     assert v.get("stage") == "selfcheck", "应跑到自检阶段：%s" % json.dumps(v, ensure_ascii=False)[:300]
+    # ★2026-10-14：Windows runner 上这一条报 no_reply，而本机复现不出来 ——
+    #   把"现场"放进失败信息（trigger 是什么、邮箱里有什么），下一次 CI 直接给答案。
+    _inbox_now = {}
+    try:
+        for _p in sorted(Path(inbox).rglob("*")):
+            _inbox_now[str(_p.relative_to(inbox))] = ("dir" if _p.is_dir() else _p.stat().st_size)
+    except Exception as _e:            # noqa: BLE001
+        _inbox_now = {"<列不出>": str(_e)[:80]}
     assert v.get("state") == "ok", (
         "★全新名字+全新目录下应能真跑通（平台→桥→agent→回报）；实得 state=%r reason=%r"
-        % (v.get("state"), v.get("reason")))
+        " | trigger=%r | 本机平台=%s | 邮箱现场=%r"
+        % (v.get("state"), v.get("reason"), wrap, sys.platform, _inbox_now))
     assert (v.get("committed") or {}).get("success") is True, \
         "★跑通了就必须把实测配置写进模板并标记已验证：%s" % (v.get("committed"),)
     td = v.get("torndown") or {}

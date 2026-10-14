@@ -23,6 +23,7 @@
 - quick_wait_limit()：本地可用时缩短"外部回写等待"，外部缺席即快速转本地。
 """
 from __future__ import annotations
+from .spawn import spawn_kwargs
 
 import os
 
@@ -116,7 +117,7 @@ def _autostart(ep: dict) -> bool:
     cmd = [exe, "-m", model, "--port", str(port), "--host", "127.0.0.1"] + args
     try:
         p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                             creationflags=0x00000008 | 0x00000200)  # DETACHED|NEW_GROUP
+                             **spawn_kwargs())  # 平台差异见 platform/spawn.py
         _procs.append(p)
         print(f"[local-ai] 已拉起本机推理服务 pid={p.pid} port={port}", flush=True)
         return True

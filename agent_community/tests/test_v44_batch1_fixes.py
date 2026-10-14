@@ -858,3 +858,64 @@ def test_github_issue_templates_are_not_swept_away():
     seg = pub[at:nxt if nxt != -1 else len(pub)]
     assert "'/MIR'" not in seg and '"/MIR"' not in seg, \
         "同步工具面又用上 /MIR 了 —— 它会删掉 oss 独有的文件（2026-10-14 的 ISSUE_TEMPLATE 事故）"
+
+
+# ── 子进程的平台差异：**只有一处真相**（2026-10-14 CI 逼出来的产品 bug）────────
+#
+# 事故：Linux 上"一键注册"直接 500，原文
+#     {"error": "桥启动失败: module 'subprocess' has no attribute 'CREATE_NEW_PROCESS_GROUP'"}
+# `CREATE_NEW_PROCESS_GROUP` / `DETACHED_PROCESS` / `CREATE_NO_WINDOW` **只存在于 Windows**。
+# 同一件事当时散在 5 处（3 处无条件用、1 处写成硬编码 0x8|0x200、另有 2 处自己做了平台分支）
+# ⇒ 现在统一到 `platform/spawn.py::spawn_kwargs()`。
+
+def test_spawn_kwargs_is_platform_aware(monkeypatch):
+    """`spawn_kwargs()` 两个平台都要给出**各自可用**的参数（行为断言，不是看源码）。"""
+    from agent_community.platform import spawn as sp
+
+    # Windows 分支
+    monkeypatch.setattr(sp.os, "name", "nt")
+    kw = sp.spawn_kwargs()
+    assert "creationflags" in kw and "start_new_session" not in kw,         f"Windows 应给 creationflags：{kw}"
+    assert kw["creationflags"] != 0
+
+    # POSIX 分支：**绝不能**出现 creationflags（那正是把 Linux 打成 500 的东西）
+    monkeypatch.setattr(sp.os, "name", "posix")
+    kw = sp.spawn_kwargs()
+    assert "creationflags" not in kw, f"POSIX 不许出现 creationflags：{kw}"
+    assert kw.get("start_new_session") is True, f"POSIX 应用 start_new_session：{kw}"
+
+    # detach=False：两个平台都不加任何脱离相关的参数
+    monkeypatch.setattr(sp.os, "name", "posix")
+    assert sp.spawn_kwargs(detach=False) == {}
+    monkeypatch.setattr(sp.os, "name", "nt")
+    assert "start_new_session" not in sp.spawn_kwargs(detach=False)
+
+
+def test_subprocess_platform_flags_live_in_one_place():
+    """Windows 专属的子进程标志，只允许出现在 `platform/spawn.py`（或已做平台分支处）。
+
+    判据：**直接属性访问**（`subprocess.CREATE_NEW_PROCESS_GROUP` / `_sp.DETACHED_PROCESS` …）
+    在没有平台判断的情况下就是错的；`getattr(subprocess, "…", 0)` 与 `spawn_kwargs()` 是有意的写法。
+    """
+    import re
+    names = ("CREATE_NEW_PROCESS_GROUP", "DETACHED_PROCESS", "CREATE_NO_WINDOW")
+    offenders = []
+    for py in (_PKG / "platform").rglob("*.py"):
+        if py.name == "spawn.py":
+            continue
+        txt = py.read_text(encoding="utf-8", errors="replace")
+        for i, l in enumerate(txt.splitlines(), 1):
+            if not any(n in l for n in names):
+                continue
+            if l.lstrip().startswith("#") or "getattr(" in l:
+                continue                      # 注释 / 已用 getattr 兜底
+            # 平台分支里允许（看本行与上面 4 行有没有平台判断）
+            window = "\n".join(txt.splitlines()[max(0, i - 5):i])
+            if ("sys.platform" in window or "os.name" in window
+                    or "_os.name" in window):
+                continue
+            offenders.append(f"{py.name}:{i}: {l.strip()[:90]}")
+    assert not offenders, (
+        "这些地方**无条件**用了 Windows 专属的子进程标志（Linux 上 AttributeError，"
+        "实测把一键注册打成 500）：\n  " + "\n  ".join(offenders) +
+        "\n\n修法：改用 `agent_community/platform/spawn.py::spawn_kwargs()`。")

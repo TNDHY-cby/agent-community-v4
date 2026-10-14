@@ -10,6 +10,7 @@
 """
 
 from __future__ import annotations
+from .spawn import spawn_kwargs
 import os
 import subprocess
 import sys
@@ -77,7 +78,7 @@ def start_harness_bridges() -> list[dict]:
                 cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+                **spawn_kwargs(),
                 env=env,
             )
             _procs[hid] = proc

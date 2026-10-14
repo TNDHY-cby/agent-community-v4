@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import asyncio
+import os as _os
 
 from ..core.security import _is_dangerous  # V-9 单体拆分：危险命令检测下沉 core/security.py
 from ..tool_registry import BaseTool, ToolResult, ToolSchema
@@ -73,7 +74,10 @@ class ShellExecTool(BaseTool):
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                "powershell.exe",
+                # ★2026-10-14：原来无条件走 powershell ⇒ Linux 上直接
+                #   「powershell.exe 未找到」，这条能力在非 Windows 上等于没有。
+                #   POSIX 用 /bin/sh -c（与 Windows 的 -Command 语义对应）。
+                ("powershell.exe" if _os.name == "nt" else "/bin/sh"),
                 "-NoProfile",
                 "-NonInteractive",
                 "-Command", command,

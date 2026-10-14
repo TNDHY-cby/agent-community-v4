@@ -4,6 +4,7 @@
 拆分纪律：路由路径、参数、响应体与拆分前逐字一致（纯搬迁，零行为变更）。
 """
 from __future__ import annotations
+from ..spawn import spawn_kwargs as _spawn_kwargs
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from ..protocol import HarnessMessage
 from ..protocol import WakeupMethod
@@ -684,7 +685,7 @@ async def harness_auto_connect(request: Request):
             full_cmd,
             stdout=_sp.DEVNULL,
             stderr=_sp.DEVNULL,
-            creationflags=_sp.CREATE_NEW_PROCESS_GROUP,
+            **_spawn_kwargs(),
             env=env,
         )
     except Exception as e:
