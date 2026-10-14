@@ -34,6 +34,15 @@ import uuid
 
 import pytest
 
+# 2026-10-14: 本文件测的是 _probe_pid_watching —— 它用 PowerShell 查进程命令行
+#   (harness_messaging.py 里 `powershell -NoProfile -Command`)。
+#   Linux 上没有 powershell => 探测恒返回 0，用例不可能真通过；
+#   更糟的是「认不出来」类断言在 Linux 上会假绿（恒 0 恰好等于期望值）。
+#   => 显式只在 Windows 上跑，并把「Linux 全功能支持」记为后续工作。
+pytestmark = pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="进程探测用 PowerShell 实现（Windows 专属）；Linux 支持属后续工作")
+
 PY = sys.executable
 EX = os.path.join("agent_community", "examples")
 

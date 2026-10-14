@@ -7,6 +7,8 @@
 - mask_api_key 脱敏
 - atomic_write_text 原子写盘
 """
+import sys
+
 import pytest
 
 from agent_community.platform.core.security import (
@@ -69,6 +71,8 @@ def test_is_dangerous_allows_safe(cmd):
 
 
 # ── DPAPI 加解密往返 ────────────────────────────────────────────
+@pytest.mark.skipif(sys.platform != "win32",
+                    reason="DPAPI（CryptProtectData）是 Windows 专属；Linux 上 _encrypt_secret 走明文回退")
 def test_dpapi_roundtrip():
     secret = "sk-ant-0123456789abcdef-中文密钥"
     enc = _encrypt_secret(secret)

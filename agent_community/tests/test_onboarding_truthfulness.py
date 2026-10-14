@@ -29,6 +29,8 @@ import asyncio
 import json
 import os
 
+import sys
+
 import pytest
 
 P = "agent_community/platform"
@@ -352,6 +354,8 @@ def test_platform_started_bridge_counts_via_registry(monkeypatch):
         monkeypatch.setattr(bp, "_procs", {}, raising=False)
 
 
+@pytest.mark.skipif(sys.platform != "win32",
+                    reason="bridge_instances 用 PowerShell 扫进程（Windows 专属）；Linux 上扫不到任何桥 => 心跳数恒 0，用例不可能真通过")
 def test_bridge_instances_async_keeps_the_event_loop_free():
     """★扫描（要跑 PowerShell）期间，**事件循环必须还能跑**。
 

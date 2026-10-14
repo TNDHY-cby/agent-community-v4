@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 
+import sys
+
 import pytest
 
 from agent_community.platform import policy as policy_mod
@@ -38,7 +40,13 @@ class TestShellToolGating:
     def test_ask_does_not_execute(self, temp_policy, tmp_path):
         """默认策略 shell.exec=ASK → 命令**不得执行**，返回待办 id。"""
         marker = tmp_path / "should_not_exist.txt"
-        cmd = f"New-Item -Path '{marker}' -ItemType File -Force | Out-Null"
+        # 2026-10-14: 按平台给命令 —— 原来写死 PowerShell 的 New-Item，
+        #   Linux 上 shell_exec 报「powershell.exe 未找到」=> 用例必红。
+        #   这里要验的是「ALLOW 之后命令真的被执行了」，不是 PowerShell 语法。
+        if sys.platform == "win32":
+            cmd = f"New-Item -Path '{marker}' -ItemType File -Force | Out-Null"
+        else:
+            cmd = f"touch '{marker}'"
 
         res = run(ShellExecTool().execute(command=cmd))
 

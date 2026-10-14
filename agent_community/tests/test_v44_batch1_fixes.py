@@ -505,23 +505,52 @@ def test_bridge_templates_dont_teach_a_baked_address():
 
 # ── 数据落点：必须认 AC_DATA_DIR（"路径也得因人而异"）────────────────────
 
-def test_data_roots_respect_ac_data_dir(monkeypatch, tmp_path):
-    """所有数据落点都要跟着 `AC_DATA_DIR` 走（换目录/多实例不许往仓库里写）。"""
-    import importlib
-    monkeypatch.setenv("AC_DATA_DIR", str(tmp_path))
-    mods = {
-        "memory": ("agent_community.platform.memory", "DEFAULT_MEMORY_DIR"),
-        "ai_external": ("agent_community.platform.ai_external", "PENDING_DIR"),
-        "local_ai": ("agent_community.platform.local_ai", "CONFIG_PATH"),
-    }
-    for name, (mod, attr) in mods.items():
-        m = importlib.import_module(mod)
-        importlib.reload(m)          # 落点是在**导入时**算的
-        got = str(getattr(m, attr))
-        assert got.startswith(str(tmp_path)), f"{name}.{attr} 没认 AC_DATA_DIR：{got}"
-    from agent_community.platform import identity
-    importlib.reload(identity)
-    assert str(identity._default_data_root()).startswith(str(tmp_path))
+def test_data_roots_respect_ac_data_dir(tmp_path):
+    """所有数据落点都要跟着 `AC_DATA_DIR` 走（换目录/多实例不许往仓库里写）。
+
+    ★★ 2026-10-14 重写（这条原来自己就是污染源，务必看明白再改）：
+      原实现用 `importlib.reload(module)` 去验"落点在导入时算"，**看起来无副作用，其实有毒**：
+        · `platform/memory.py` 里有**模块级单例** `task_memory = TaskMemory()`；
+        · `reload()` 会**重建**这个单例 ⇒ `memory.task_memory` 指向**新对象 B**，
+          而 `routers/workshops_discuss.py` 早就在导入时 `from ..memory import task_memory`
+          绑住了**旧对象 A**；
+        · conftest 的隔离每轮只 patch **`memory.task_memory`（当时那个）** ⇒ 从那以后
+          它一直在 patch B，**A 没人管**，A.data_dir 恢复成真实目录；
+        · 于是后面任何走 A 的用例（实测：`test_workshops_discuss` 的 complete 流程
+          → `experience_v2` → `task_memory.add` → `_save`）都**写进真实 data/**，
+          会话末被 `guard_real_data_dir` 抓成「测试污染了真实数据」。
+      **为什么开发机上一直没暴露**：dev 的 `agent_community/data/` 本来就有文件，
+      守卫按"内容变了才报"判，尺寸恰巧没变就放过了；而 CI 是**全新 clone**，
+      `memory/task_memory.json` 从"不存在"变成"存在" ⇒ 必报。
+      ⇒ 又是"我这台能跑不算数"。
+
+      现在的做法：**开子进程验**（`AC_DATA_DIR` 只在那条子进程里设）。
+      既能验"导入时确实读环境变量"，又**完全不碰本进程的模块状态**、不破坏任何单例身份。
+    """
+    import subprocess
+    import sys as _sys
+
+    code = (
+        "import json,sys\n"
+        "sys.path.insert(0, r'%s')\n"
+        "from agent_community.platform import memory, ai_external, local_ai, identity\n"
+        "out = {\n"
+        "  'memory': str(memory.DEFAULT_MEMORY_DIR),\n"
+        "  'ai_external': str(ai_external.PENDING_DIR),\n"
+        "  'local_ai': str(local_ai.CONFIG_PATH),\n"
+        "  'identity': str(identity._default_data_root()),\n"
+        "}\n"
+        "print(json.dumps(out, ensure_ascii=False))\n" % str(_ROOT)
+    )
+    env = {**os.environ, "AC_DATA_DIR": str(tmp_path), "PYTHONIOENCODING": "utf-8"}
+    r = subprocess.run([_sys.executable, "-c", code], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", env=env, cwd=str(_ROOT))
+    assert r.returncode == 0, f"子进程取落点失败：{r.stdout[-800:]}{r.stderr[-800:]}"
+    import json as _json
+    got = _json.loads(r.stdout.strip().splitlines()[-1])
+    for name, path in got.items():
+        assert path.startswith(str(tmp_path)), \
+            f"{name} 没认 AC_DATA_DIR：{path}（应落在 {tmp_path} 下）"
 
 
 def test_no_module_hardcodes_package_data_root():

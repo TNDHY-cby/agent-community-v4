@@ -35,6 +35,23 @@ import subprocess
 import sys
 from pathlib import Path
 
+# ── ★2026-10-14：**必须先把 stdout/stderr 弄成"不会因中文而炸"的** ──────────────
+# 事故（GitHub Actions windows-latest，实测）：
+#     File "tools/check_portability.py", line 203, in main
+#         print(f"可移植性扫描（范围＝发布面）：fail={n} warn={m}")
+#     UnicodeEncodeError: 'charmap' codec can't encode characters in position 0-14
+#   该 runner 的控制台编码是 **cp1252**，`print` 中文直接抛异常 ⇒ 脚本以非 0 退出
+#   ⇒ 调用它的守卫用例 `test_portability_gate_passes` 跟着红，
+#   看起来像"扫出了硬编码"，其实**扫描本身没问题，是打印炸了**（判据被伪装，极难查）。
+#   为什么开发机看不见：本机控制台是 cp936，**编得出中文** ⇒ 永远绿。
+#   这正是老板那句"我这台能跑不算数"的又一个实例。
+#   修法：显式 UTF-8 + `errors="replace"`。后者保证**任何**编码环境下都不会因打印而失败。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:   # noqa: BLE001  （被重定向成非 TextIO 时忽略）
+        pass
+
 ROOT = Path(__file__).resolve().parents[1]
 
 ALLOW_RE = re.compile(r"portability:\s*allow\(([^)]*)\)")

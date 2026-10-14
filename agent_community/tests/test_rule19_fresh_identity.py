@@ -190,7 +190,13 @@ def _make_launcher(work, py_exe: str) -> str:
     if sys.platform == "win32":
         wrap = work / "wake.cmd"
         _write_cmd(wrap, py_exe)
-        return 'cmd.exe /c "%s"' % wrap
+        # 2026-10-14: 不要再套一层 cmd.exe /c。
+        #   桥是用 subprocess.Popen(trigger, shell=True) 执行的，Windows 上
+        #   Python 自己就会包一层 cmd.exe /c "..." => 原写法实际是
+        #       cmd.exe /c "cmd.exe /c "D:\...\wake.cmd""
+        #   嵌套引号，脆弱且难查（CI 的 windows runner 上就是 no_reply）。
+        #   用户真实会填的就是那个 .cmd 的路径，交给 shell 去跑。
+        return '"%s"' % wrap
 
     wrap = work / "wake.sh"
     # `$(dirname "$0")` —— 脚本自己所在目录（别写死绝对路径，目录要因人而异）
@@ -236,7 +242,15 @@ def test_launcher_is_platform_appropriate(tmp_path):
 
     if sys.platform == "win32":
         assert (work / "wake.cmd").is_file(), "Windows 上应当生成 wake.cmd"
-        assert trigger.startswith("cmd.exe /c"), f"Windows 的 TRIGGER_CMD 应为 cmd.exe /c：{trigger}"
+        # ★2026-10-14 改：**不再**要求前缀 `cmd.exe /c`。
+        #   桥用 `subprocess.Popen(trigger, shell=True)` 执行，Windows 上 Python 自己会包
+        #   一层 `cmd.exe /c "…"`；再手动套一层就成了嵌套引号
+        #   （`cmd.exe /c "cmd.exe /c "D:\…\wake.cmd""`）—— CI 的 windows runner 上就是
+        #   卡在这里拿到 `no_reply`。用户真实会填的就是那个 .cmd 的路径。
+        assert trigger.strip().startswith('"') and trigger.strip().endswith('.cmd"'), \
+            f"Windows 的 TRIGGER_CMD 应当就是带引号的 .cmd 路径：{trigger}"
+        assert "cmd.exe" not in trigger, \
+            f"不要把 cmd.exe 写进 TRIGGER_CMD（shell=True 已经会包一层）：{trigger}"
     else:
         sh = work / "wake.sh"
         assert sh.is_file(), "POSIX 上应当生成 wake.sh（Linux 没有 cmd.exe）"

@@ -119,7 +119,14 @@ class TestAutoConnectActorGrading:
 
         status, payload = unpack(run(hm.harness_auto_connect(req)))
 
-        assert calls["n"] == 1, f"operator 应被放行到启动，实得 {calls}"
+        # ★2026-10-14：把**真实返回值**放进失败信息。
+        #   起因：Linux CI 上报 `{'n': 0, 'cmd': None}`（进程没被启动），
+        #   而原断言只看 calls、**看不到端点到底返回了什么** ⇒ 无法定位（只能猜）。
+        #   判据：诊断信息里必须带上"被测函数实际返回了什么"，否则下一次还是查不出。
+        #   ⚠️ 这里**故意不跳过**：没找到真因就跳过 = 假装绿（本项目最反对的那种）。
+        assert calls["n"] == 1, (
+            f"operator 应被放行到启动，实得 {calls}；"
+            f"端点返回 status={status} payload={payload}")
         assert payload.get("success") is True
         assert payload.get("status") == "connected"
 

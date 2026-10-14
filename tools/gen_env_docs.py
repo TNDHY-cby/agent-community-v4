@@ -12,6 +12,21 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+# ── ★2026-10-14：**先把 stdout/stderr 弄成"不会因中文而炸"的** ──────────────
+# 事故（GitHub Actions windows-latest，实测）：
+#     File "tools/gen_env_docs.py", line 68, in main
+#         print("[OK] 环境变量文档与 env_spec 一致")
+#     UnicodeEncodeError: 'charmap' codec can't encode characters in position 5-11
+#   该 runner 控制台编码是 **cp1252**，`print` 中文直接抛 ⇒ 脚本非 0 退出 ⇒
+#   守卫用例 `test_env_docs_are_not_drifted` 跟着红，**看起来像"文档漂移了"**，
+#   其实文档完全一致（判据被伪装）。本机控制台是 cp936、编得出中文 ⇒ 永远绿。
+#   修法：显式 UTF-8 + `errors="replace"`（任何编码环境下都不因打印而失败）。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:   # noqa: BLE001
+        pass
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
