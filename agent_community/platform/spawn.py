@@ -21,6 +21,14 @@ from __future__ import annotations
 import os
 import subprocess
 
+#: ★**不要**在别处读 `os.name` 来判断本模块的行为；也不要 monkeypatch `os.name`——
+#:   那是**全局副作用**：CPython 3.11 的 `pathlib.Path.__new__` 是实例化时读 `os.name`
+#:   来决定造 Posix/WindowsPath 的，改一下全局就会让别处造出 `WindowsPath`，
+#:   逃出去之后在 Linux 上炸成 `NotImplementedError: cannot instantiate 'WindowsPath'`
+#:   （实测：pytest 自己的失败报告就会中招，整场变 INTERNALERROR）。
+#:   需要测试另一个平台分支，就 patch **这个开关**。
+_IS_WINDOWS = os.name == "nt"
+
 
 def spawn_kwargs(*, detach: bool = True) -> dict:
     """返回 `subprocess.Popen(..., **spawn_kwargs())` 用的平台相关 kwargs。
@@ -29,7 +37,7 @@ def spawn_kwargs(*, detach: bool = True) -> dict:
     ⚠️ 一律用 `getattr(subprocess, ...)` 兜底：即使将来在某个平台缺属性，也只是少个标志，
     **不会把功能整个打成 500**。
     """
-    if os.name == "nt":
+    if _IS_WINDOWS:
         if not detach:
             return {}
         flags = 0

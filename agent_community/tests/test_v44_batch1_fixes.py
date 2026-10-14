@@ -872,22 +872,24 @@ def test_spawn_kwargs_is_platform_aware(monkeypatch):
     """`spawn_kwargs()` 两个平台都要给出**各自可用**的参数（行为断言，不是看源码）。"""
     from agent_community.platform import spawn as sp
 
-    # Windows 分支
-    monkeypatch.setattr(sp.os, "name", "nt")
+    # ⚠️ 这里**只能** patch 那个开关，**绝不能** patch `os.name`：
+    #   3.11 的 pathlib 是实例化时读 os.name 的 ⇒ 改全局会让别处造出 WindowsPath 对象，
+    #   逃出去后在 Linux 上炸成 pytest INTERNALERROR（我实测踩过，就这一条守卫造成的）。
+    monkeypatch.setattr(sp, "_IS_WINDOWS", True)
     kw = sp.spawn_kwargs()
     assert "creationflags" in kw and "start_new_session" not in kw,         f"Windows 应给 creationflags：{kw}"
     assert kw["creationflags"] != 0
 
     # POSIX 分支：**绝不能**出现 creationflags（那正是把 Linux 打成 500 的东西）
-    monkeypatch.setattr(sp.os, "name", "posix")
+    monkeypatch.setattr(sp, "_IS_WINDOWS", False)
     kw = sp.spawn_kwargs()
     assert "creationflags" not in kw, f"POSIX 不许出现 creationflags：{kw}"
     assert kw.get("start_new_session") is True, f"POSIX 应用 start_new_session：{kw}"
 
     # detach=False：两个平台都不加任何脱离相关的参数
-    monkeypatch.setattr(sp.os, "name", "posix")
+    monkeypatch.setattr(sp, "_IS_WINDOWS", False)
     assert sp.spawn_kwargs(detach=False) == {}
-    monkeypatch.setattr(sp.os, "name", "nt")
+    monkeypatch.setattr(sp, "_IS_WINDOWS", True)
     assert "start_new_session" not in sp.spawn_kwargs(detach=False)
 
 
@@ -919,3 +921,41 @@ def test_subprocess_platform_flags_live_in_one_place():
         "这些地方**无条件**用了 Windows 专属的子进程标志（Linux 上 AttributeError，"
         "实测把一键注册打成 500）：\n  " + "\n  ".join(offenders) +
         "\n\n修法：改用 `agent_community/platform/spawn.py::spawn_kwargs()`。")
+
+
+def test_no_test_monkeypatches_global_os_name():
+    """测试**不许** monkeypatch 全局 `os.name`（会连锁炸掉 pathlib）。
+
+    ★实证（2026-10-14，run #8 的 Linux job）：我写的一条守卫为了验另一个平台分支，
+    写了 `monkeypatch.setattr(os, "name", "nt")`。而 CPython 3.11 的
+    `pathlib.Path.__new__` 是**实例化时读 `os.name`** 决定造 Posix/WindowsPath 的
+    ⇒ 那个窗口里造出的 `Path` 是 `WindowsPath`；只要有一个对象逃出该用例
+    （实测：pytest 自己的失败报告里就有一个），会话后半程就炸成：
+
+        NotImplementedError: cannot instantiate 'WindowsPath' on your system
+        _pytest/nodes.py: abspath = Path(os.getcwd()) != ...
+
+    整场变成 INTERNALERROR —— **不是某个用例失败，是所有结果都不可信**。
+    正确姿势：把平台判断提成被测模块自己的开关（如 `platform/spawn.py::_IS_WINDOWS`），
+    patch 那个开关，而不是 patch 全局。
+    """
+    import re
+    bad = []
+    for py in sorted(_PKG.joinpath("tests").glob("*.py")):
+        in_doc = False
+        for i, l in enumerate(py.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            # 三引号状态机：docstring 里的**示例文本**不是代码
+            # （本守卫第一版就栽在这：它把本文档字符串里那行示例当成了真代码）
+            if l.count('"""') % 2 == 1:
+                in_doc = not in_doc
+                continue
+            if in_doc or l.lstrip().startswith("#"):
+                continue
+            # setattr(os, "name", ...) / setattr(sp.os, "name", ...) / os.name = ...
+            if re.search(r'setattr\([^,]*\bos[^,]*,\s*["\']name["\']', l) or \
+               re.search(r'^\s*os\.name\s*=', l):
+                bad.append(f"{py.name}:{i}: {l.strip()[:90]}")
+    assert not bad, (
+        "这些地方 monkeypatch 了**全局 `os.name`** —— 会让 pathlib 造出 WindowsPath，"
+        "进而把整场 pytest 炸成 INTERNALERROR（所有结果都不可信）：\n  " + "\n  ".join(bad) +
+        "\n\n修法：在**被测模块**里留一个平台开关（如 `_IS_WINDOWS`），patch 那个。")
