@@ -194,16 +194,48 @@ class WakeupBridge:
           （用户看到"剪贴板写入失败"却不知道是平台不支持还是别的原因）。
           现在按平台挑可用工具；一个都没有就**如实说清楚要装什么**（规则 19：不硬撑）。
         """
+        import base64 as _b64
         import subprocess
         import shutil as _shutil
         if os.name == "nt":
-            # Windows：Set-Clipboard 直吃 stdin（原实现；实测可用，保留）
-            proc = subprocess.run(
-                ["powershell", "-Command", "Set-Clipboard -Value $input"],
-                input=text, capture_output=True, text=True, encoding="utf-8",
-            )
-            if proc.returncode != 0:
-                raise RuntimeError(proc.stderr.strip() or "Set-Clipboard 返回非 0")
+            # ★2026-10-15 **实测修一处"静默送垃圾"**（可移植性缺陷**条 E**）：
+            #   原实现是 `Set-Clipboard -Value $input` + `input=text`（把文本走 **stdin**）——
+            #   而 **PS 5.1 按控制台输入码页解码 stdin**（中文 Windows = cp936），
+            #   Python 送进去的却是 **UTF-8 字节** ⇒ **任何非 ASCII 都会变乱码**：
+            #       实测 `中文标记` → 剪贴板里是 `涓\ue15f枃鏍囪\ue187`（UTF-8 被当 GBK 解）
+            #   而函数**照常返回成功** ⇒ 中文 Windows 上「剪贴板型唤醒」一直在送垃圾，
+            #   V25 §5 那个"永远可用"的兜底档 f 就靠它。这正是"看起来成功"的典型。
+            #   修法：**不经 stdin** —— 把文本 base64 嵌进命令（命令全 ASCII，不受码页影响），
+            #   在 PowerShell 里解回 UTF-8 字符串再 `Set-Clipboard -Value`。
+            payload = _b64.b64encode(text.encode("utf-8")).decode("ascii")
+            if len(payload) <= 20000:
+                ps = ("Set-Clipboard -Value ([Text.Encoding]::UTF8.GetString("
+                      "[Convert]::FromBase64String('%s')))" % payload)
+                proc = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                                      capture_output=True, text=True, encoding="utf-8",
+                                      errors="replace")
+                if proc.returncode != 0:
+                    raise RuntimeError(proc.stderr.strip() or "Set-Clipboard 返回非 0")
+                return
+            # 超长文本（命令行长度的上限 ~32K，base64 还要膨胀 4/3）⇒ 走临时文件，
+            # PowerShell 侧显式按 UTF-8 读回来（同样不经过 stdin）。
+            import tempfile
+            fd, tmp = tempfile.mkstemp(suffix=".txt", prefix="ac_clip_")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+                    f.write(text)
+                ps = ("Set-Clipboard -Value (Get-Content -Raw -Encoding UTF8 -LiteralPath '%s')"
+                      % tmp.replace("'", "''"))
+                proc = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                                      capture_output=True, text=True, encoding="utf-8",
+                                      errors="replace")
+                if proc.returncode != 0:
+                    raise RuntimeError(proc.stderr.strip() or "Set-Clipboard 返回非 0")
+            finally:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
             return
         # POSIX：按常见工具依次试（都是"把 stdin 写进剪贴板"的语义）
         for argv in (["xclip", "-selection", "clipboard"],

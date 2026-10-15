@@ -28,6 +28,16 @@ from ..state import workshops
 router = APIRouter()
 
 
+def _visual_options(member, probe: bool = True):
+    """取"这个成员能怎么被视觉拉起"（**只读**，见 `V51`）。
+
+    做成薄包装：router 不在导入期就把 `visual_launch` 拖进来（与本文件其它跨模块引用同一风格）。
+    `probe=False` 时**不列窗口**（不起子进程）—— 步骤 9 那条路径用它，免得为了一个提示付一次 PowerShell 启动。
+    """
+    from ..visual_launch import options as _opts
+    return _opts(member, probe=probe)
+
+
 def _json_response(*a, **kw):
     from ..server import Utf8JSONResponse
     return Utf8JSONResponse(*a, **kw)
@@ -815,10 +825,73 @@ def establish_one(ws, m, *, new_name: str = "") -> dict:
         "manual": manual,                 # 没配脚本的步骤 —— 给人工指引，**不是失败**
         "session_ref": session_ref,
         "session_aliases": m.session_aliases,
+        # ★2026-10-15（V51 §3.3）：步骤 9 写完名字**别停在这儿** —— 把"下一步能怎么拉起"
+        #   一并给出来，界面才有按钮可点（此前"名字进数据"之后就没有然后了）。
+        #   ⚠️这里**不做窗口探测**（probe=False）：探测要起 PowerShell，放在命名这条路径上太贵；
+        #     真要看有哪些窗口，调 `GET …/visual-options`。
+        "visual_options": _visual_options(m, probe=False),
         "note": ("全部动作由脚本完成并自证" if verified and all(verified.values())
                  else "部分步骤为**人工模式**（未核实）：按 manual 里的指引操作即可；"
                       "平台不会把它当成已完成"),
     }
+
+
+@router.get("/api/workshop/{ws_id}/member/{member_id}/visual-options")
+async def workshop_visual_options(ws_id: str, member_id: str):
+    """**只读**：这个成员现在能怎么被"视觉拉起"（给界面按钮的可用性用）。**无任何副作用**。
+
+    对齐 `V51` §2：档位照抄 `V25` §5 —— `wmpaste`（Windows 消息式注入）＋ `clipboard`（半自动兜底）。
+    """
+    from ..server import Utf8JSONResponse
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    m = next((x for x in ws.members if x.member_id == member_id), None)
+    if not m:
+        return Utf8JSONResponse({"error": "成员不存在"}, status_code=404)
+    # 列窗口要起子进程（阻塞）⇒ **必须 to_thread**（铁律：async 里绝不许同步阻塞）
+    info = await asyncio.to_thread(_visual_options, m)
+    return {"success": True, "workshop_id": ws_id, "member_id": member_id, **info}
+
+
+@router.post("/api/workshop/{ws_id}/member/{member_id}/visual-launch")
+async def workshop_visual_launch(ws_id: str, member_id: str, request: Request):
+    """**真拉起**：把一段文本送进这个成员的会话（消息式注入优先，失败退剪贴板兜底）。
+
+    body: `{"text": "...", "method": "auto|wmpaste|clipboard"}`（默认 `auto`）
+    ⚠️这是**写动作**（会动剪贴板 / 往目标窗口投文本）⇒ 落审计，且**结果如实回报**
+    （`ok=False` 时 `detail` 说清为什么、`next_step` 说清人该做什么）。
+    """
+    from ..server import Utf8JSONResponse
+    from ..visual_launch import METHODS, launch as _launch
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    m = next((x for x in ws.members if x.member_id == member_id), None)
+    if not m:
+        return Utf8JSONResponse({"error": "成员不存在"}, status_code=404)
+    body = await request.json()
+    text = str(body.get("text") or "")
+    method = str(body.get("method") or "auto").strip().lower()
+    if method not in METHODS:
+        return Utf8JSONResponse(
+            {"error": "未知的拉起方式 %r（可选：%s）" % (method, " / ".join(METHODS))},
+            status_code=400)
+    if not text.strip():
+        return Utf8JSONResponse({"error": "text 不能为空（这是要送进会话的内容）"}, status_code=400)
+    result = await asyncio.to_thread(_launch, m, text, method=method)
+    try:
+        _audit_log.record("workshop.visual_launch", actor="user", target=ws_id,
+                          detail=f"member={member_id} method={result.get('method')} "
+                                 f"ok={bool(result.get('ok'))} need_human={bool(result.get('need_human'))}",
+                          extra={"member_id": member_id, "method": result.get("method"),
+                                 "ok": bool(result.get("ok")),
+                                 "need_human": bool(result.get("need_human")),
+                                 "chars": len(text)})
+    except Exception:  # noqa: BLE001
+        pass
+    return {"success": bool(result.get("ok")), "workshop_id": ws_id, "member_id": member_id,
+            **result}
 
 
 def channel_session_name(ws, m, seq: int) -> str:

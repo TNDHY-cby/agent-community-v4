@@ -210,7 +210,7 @@ pid 是否存活 / 谁在监听某端口 / 结束进程——**一律走 `agent_
 | 桥目录进回收站 | `server.py::_trash_bridge_dir` | 回收站是 Windows 机制；非 Windows **不代删**（承诺的是"可恢复"，换个删法就是数据丢失） |
 
 
-### 5.1 按"陌生人的方式"实跑验收，抓出的四个真缺陷（都已修，且都上了守卫）
+### 5.1 按"陌生人的方式"实跑验收，抓出的五个真缺陷（都已修，且都上了守卫）
 
 这四条**不是读代码发现的**，是**真起服务/真跑那个平台**发现的 ——
 所以下面的验收判据只能是"起真服务 / 真平台实跑"，不许退化成读源码：
@@ -221,6 +221,7 @@ pid 是否存活 / 谁在监听某端口 / 结束进程——**一律走 `agent_
 | B | 生产模式缺必需项**只警告不失败** | `AC_ENV=production` 且缺 `AC_DATA_DIR` / 关停口令 / 令牌，一路打警告**照样起服务** ⇒ "生产缺必需项就失败"等于没做 | `_conditional_issues()` 里生产模式的两条升格为 `error`；回环部署只把令牌/口令当提示 | `test_production_missing_required_fails_startup`（真调 `assert_ready()`，不看文本） |
 | C | `AC4_TOKEN` 是**设了也没用的令牌**（2026-10-15 容器真机走查抓出） | README 环境变量表 / `env_spec` / **`docker-compose.yml` 头部**三处都写着「在 `.env` 里设 `AC4_TOKEN=<令牌>`，请求带 `Authorization: Bearer`」，而实现**只读 `--token` 命令行** ⇒ 容器里（`Dockerfile` 的 `CMD` 没有 `--token`）与 `cli start`（`Popen` 也没传）**设了令牌完全无效**。真机实测 `403 {"error":"服务未配置访问 Token"}` —— **看起来像"你没配"，其实配了** | 新增 `server.collect_allowed_tokens()`：`--token` **＋ 环境变量 `AC4_TOKEN`** 合并；启动时如实打印"已配置 N 个 / 未配置 ⇒ 只有本机能访问" | `tests/test_ac4_token_env.py`（9 条：真读环境变量、真调 `_auth_check`、真调中间件、**真起一个只设 env 不带 `--token` 的服务进程**）；突变 `temp/ac4token_mutation_check.py` ⇒ **2/2 KILLED** |
 | D | AI 密钥"**已加密保存**"是**假话**（非 Windows，2026-10-15 真 Linux 复现） | `config.py::save_config()` **无条件**打印「AI API Key 已加密保存（DPAPI 当前用户绑定）」，而非 Windows 上 `_encrypt_secret` 是**明文回退** ⇒ 真 Linux 实测：屏幕说"已加密"，磁盘上是 `sk-repro-…` **原文**。一句话同时违反两条承诺：README「本地配置里会加密保存」、《安全披露_CDP镜像与密钥存储》「非 Windows 降级为明文保存**并在保存时打印告警**」 | 按**实际落盘形态**分档说：带 `dpapi:` 前缀 → "已用 DPAPI 加密保存（当前用户绑定）"；否则 → "**警告**：…以**明文**保存 … 请 `chmod 600`，或改用 `AC_AI_API_KEY`（不落盘）" | `tests/test_security.py::test_save_config_message_matches_disk`（**平台无关的不变量**：消息必须与磁盘字节一致）、`test_secret_storage_roundtrip_on_every_platform`（**撤掉整条 skip**：两平台都验，差异如实断言）；突变 `temp/dpapi_mutation_check.py` **两平台各跑一遍** ⇒ 关键突变 KILLED |
+| E | 剪贴板把**中文写坏**（中文 Windows 上「剪贴板型唤醒」一直在送垃圾，2026-10-15 实测） | `wakeup_bridge._set_clipboard()` 的 Windows 分支用 `Set-Clipboard -Value $input` 把文本走 **stdin**，而 **PS 5.1 按控制台输入码页解码 stdin**（中文 Windows = cp936），Python 送进去的却是 **UTF-8 字节** ⇒ 实测 `中文标记` 进到剪贴板变成 `涓\ue15f枃鏍囪\ue187`（UTF-8 被当 GBK 解），**而函数照常返回成功**。中文 Windows 上 `V25` §5 那个"永远可用"的兜底档 f 送的全是乱码 | **不经 stdin**：把文本 base64 嵌进命令（命令全 ASCII，不受码页影响），在 PowerShell 里 `[Text.Encoding]::UTF8.GetString(...)` 解回再 `Set-Clipboard`；超长文本（>20KB，命令行长度上限）走临时文件、PowerShell 侧显式按 UTF-8 读 | `tests/test_visual_launch.py::test_clipboard_fallback_really_writes_or_says_what_to_install`（**写中文 → 真读回来比对**；读回时还必须逼 PowerShell 吐 UTF-8，否则分不清"剪贴板坏了"还是"我读坏了"） |
 
 > **教训（写进档案）**：文档里承诺一个"改不动的开关"，比不写这个开关**更坏** ——
 > 用户会照文档改，改完以为生效了，然后拿错误的现象来问"为什么没用"。
@@ -231,7 +232,8 @@ pid 是否存活 / 谁在监听某端口 / 结束进程——**一律走 `agent_
 `python temp/acceptance_mutation_check.py` ⇒ 突变 A / B-1 / B-2 全部 `KILLED`；
 `python temp/ac4token_mutation_check.py` ⇒ 突变 C 全部 `KILLED`；
 `python temp/dpapi_mutation_check.py` ⇒ 突变 D **两个平台各跑一遍**、各自的关键突变 `KILLED`
-（"无条件说已加密"只在 Linux 上咬得住，"无条件说明文"只在 Windows 上咬得住 —— **合起来才是完整的不变量**）。
+（"无条件说已加密"只在 Linux 上咬得住，"无条件说明文"只在 Windows 上咬得住 —— **合起来才是完整的不变量**）；
+`python temp/visual_launch_mutation_check.py` ⇒ 视觉拉起那 5 个突变（含**条 E** 的剪贴板读回）全部 `KILLED`。
 
 ---
 *示例Harness-E · 2026-10-14 起稿，**2026-10-15 增补条 C（容器真机走查）与条 D（真 Linux 复现的密钥落盘假话）**·
