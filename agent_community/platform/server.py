@@ -12,6 +12,14 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
+# ★★2026-10-15（外部用户真跑 + 本机复现换来的）：**标准输出必须先钉在 UTF-8**。
+#   必须在**本模块任何 print 之前**执行 —— 本文件末尾那句 `[static] 前端已挂载` 是**导入期**打印的，
+#   而 `cli start` 会把 server 的 stdout/stderr **重定向到日志文件**，此时 Python 用**区域编码**
+#   （中文 Windows = cp936 / 英文 Windows = cp1252），启动横幅里的中文与 `⇒` 编不出去 ⇒
+#   `UnicodeEncodeError` ⇒ **服务启动第一秒就死**（外部用户实测：起了后台进程又立刻没了）。
+#   一处真相：`agent_community/stdio_utf8.py`（桥模板/procprobe 各自写过的那件事，平台入口一直缺）。
+from ..stdio_utf8 import force_utf8_stdio as _force_utf8_stdio
+_force_utf8_stdio()
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles

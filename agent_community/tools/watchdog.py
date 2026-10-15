@@ -359,6 +359,15 @@ def daemon_loop(port: int, interval: float, demo: bool = False) -> None:
 
 # ── 入口 ──────────────────────────────────────────────────────
 def main() -> int:
+    # ★2026-10-15：看门狗**承诺全程标准库、且被按文件路径加载**（拿不到 agent_community 包）⇒
+    #   这里按 `procprobe` / 桥模板那一族的同一做法**内联**自保：输出被重定向到文件时，
+    #   区域编码（中文 Windows = cp936 / 英文 Windows = cp1252）会让它崩在一句中文或 `⇒` 上
+    #   （外部用户实测过 server 的同款崩溃；`agent_community/stdio_utf8.py` 是包内那一路的口径）。
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 —— 流不支持就跳过（自保动作不该变成新的崩溃点）
+        pass
     ap = argparse.ArgumentParser(description="外端Agent生产合作社（External Agent Community） v4 平台进程看门狗（R3 部署层工具）")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"监听端口（默认 {DEFAULT_PORT}）")
     ap.add_argument("--check", action="store_true", help="单次健康检查（不触发恢复，exit 0=健康/1=异常）")

@@ -134,6 +134,11 @@ def _table(headers: list[str], rows: list[list[str]]):
 @click.group()
 def main():
     """外端Agent生产合作社（External Agent Community） Platform — 外端 Agent 生产协作平台 CLI"""
+    # ★2026-10-15：CLI 自己的输出也要钉在 UTF-8 —— 外部用户把 `cli start` 的输出重定向到文件时，
+    #   中文/符号会按区域编码（cp936/cp1252）编不出去、整个命令崩掉（与 server 同一个根因，
+    #   一处真相见 `agent_community/stdio_utf8.py`）。
+    from .stdio_utf8 import force_utf8_stdio
+    force_utf8_stdio()
     pass
 
 

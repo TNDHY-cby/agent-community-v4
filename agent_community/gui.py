@@ -144,6 +144,10 @@ class AgentCommunityApp:
 def main():
     """命令行入口：python -m agent_community.gui [--port 18920] [--no-subprocess]
     """
+    # ★2026-10-15：桌面窗口这一路也会打印中文（并拉起 server 子进程）—— 输出被重定向到文件时
+    #   区域编码（cp936/cp1252）会让它崩在一句中文上。一处真相见 `agent_community/stdio_utf8.py`。
+    from .stdio_utf8 import force_utf8_stdio
+    force_utf8_stdio()
     import argparse
     ap = argparse.ArgumentParser(description="外端Agent生产合作社（External Agent Community） 桌面窗口（pywebview）")
     ap.add_argument("--port", type=int, default=_DEFAULT_PORT,

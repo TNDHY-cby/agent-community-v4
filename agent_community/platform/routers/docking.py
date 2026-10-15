@@ -27,8 +27,10 @@ GET /api/docking/overview?ws=<wsid>  # 单间：只回该间
 """
 from __future__ import annotations
 
+import re
 import types
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 from fastapi import APIRouter, Request
 
@@ -386,3 +388,216 @@ async def docking_harness_update(harness_id: str, request: Request):
         "changed": sorted(k for k in (patch or {})),
         "saved_at": _now_iso(),
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# FE-26 §11（2026-10-15 深夜）：继承书 §7.2 的两件后端收尾
+#   ① **候选关键词** —— §4 要求前台「主动给候选（可点即填）」，可候选全是平台侧的事实
+#      （`probe_hints` 的三条线索、真扫到的进程名、成员的会话名、真扫到的窗口标题）
+#      ⇒ 界面自己拼不出来（要它自己拼＝把平台知识抄进界面，规则 20 禁止）⇒ 一个**只读**端点。
+#   ② **脚本副本导出** —— §5 末句「导出成 `.ps1` 只是**给用户看的副本**，不是第二份真相」。
+#   两件**都是 GET（只读）** ⇒ **不进写请求白名单**（那份白名单管的是**非 GET**）⇒
+#   §5 的契约与 §3.5 交接包都不用改，外包方照旧按同一份白名单验收。
+# ══════════════════════════════════════════════════════════════════════════
+
+def suggest_keywords(info: dict, *, probe_hints: dict | None = None, session_names=None,
+                     process_names=None, window_titles=None, limit: int = 12) -> list:
+    """**纯函数**：从**已有事实**推候选关键词（`FE-26` §4）。
+
+    返回 `[{text, source, why}]`（去重、按来源优先级排序，最多 `limit` 条）。
+
+    纪律：**每条候选都得有出处**（`source` ＋ 一句给人看的 `why`）——
+    编不出出处的不给：用户点了一个没来由的词、找不到窗口，只会以为平台在瞎猜
+    （`FE-26` §4 的原话就是"不让用户卡在第一步、也不让用户干瞪眼"）。
+    """
+    info = dict(info or {})
+    hints = dict(probe_hints or {})
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    def add(text, source: str, why: str) -> None:
+        t = str(text if text is not None else "").strip()
+        if not t or len(t) > 120 or t.lower() in seen:
+            return
+        seen.add(t.lower())
+        out.append({"text": t, "source": source, "why": why})
+
+    # 优先级＝"最可能出现在窗口标题里"的顺序（会话名 > 线索 > 真扫到的进程名 > 名字 > 端口 > 扫到的标题）
+    for n in (session_names or []):
+        add(n, "会话名", "成员登记时用的会话名 —— 那个窗口的标题里通常就有它")
+    ph = str(hints.get("process_hint") or "").strip()
+    if ph:
+        add(ph, "进程线索", "登记时你给过的进程名线索")
+    for p in (process_names or []):
+        add(p, "进程名（真扫到）", "平台刚在本机**真的扫到了**这个进程")
+    pa = str(hints.get("path_hint") or "").strip()
+    if pa:
+        add(pa.replace("\\", "/").rstrip("/").split("/")[-1], "路径线索",
+            "登记时你给过的安装路径（取最后一段当线索）")
+    add(info.get("harness_name"), "员工名", "这位员工在档案里的名字")
+    pt = hints.get("port_hint")
+    if pt not in (None, "", 0):
+        add(pt, "端口线索", "登记时你给过的端口线索（窗口标题里带端口号时才用得上）")
+    # ★窗口标题里的**相关内容排在前面**（它更可能就是你要找的那个窗口），其余照原样跟在后面 ——
+    #   一条都不藏（用户可能就是要在里面点出那个窗口），但也不让无关标题把有关系的挤到看不见
+    #   （"哪个最像"正是 §3.2 屏 2 要回答的问题）。
+    titles = [str(t or "") for t in (window_titles or [])]
+    related = [t for t in titles if t and any(s in t.lower() for s in seen)]
+    others = [t for t in titles if t and t not in related]
+    for t in related:
+        add(t, "窗口标题（跟这位员工有关）", "标题里出现了上面的线索 —— 最可能就是你要找的那个窗口")
+    for t in others:
+        add(t, "窗口标题", "平台刚扫到的一个窗口标题（整条标题＝最精确的关键词）")
+    return out[:max(1, int(limit or 12))]
+
+
+def _session_names_for(harness_id: str) -> list:
+    """**平台的**这个 harness 相关的会话名（从工作间成员表反查，与总览同一处口径）。"""
+    names: list[str] = []
+    for w in workshops.values():
+        for m in (getattr(w, "members", None) or []):
+            if str(harness_id) not in [str(h) for h in (getattr(m, "harness_ids", None) or [])]:
+                continue
+            n = _binding(w, m, str(harness_id)).get("session_name") or ""
+            if n and n not in names:
+                names.append(n)
+    return names
+
+
+@router.get("/api/docking/keyword-suggestions")
+async def docking_keyword_suggestions(harness_id: str = "", probe: int = 1):
+    """**只读**：给「脚本激活」第一步的**候选关键词**（`FE-26` §4）—— 每条都带出处。
+
+    `?probe=0` 跳过本机扫描（只按档案推，快路径）。**不写状态、不改档案。**
+    探不到（非 Windows 等）⇒ `supported=false` ＋ `probe_note` **说清为什么**，不是空列表。
+    """
+    from ..server import Utf8JSONResponse
+    from .. import visual_launch
+    import asyncio
+
+    hid = (harness_id or "").strip()
+    if not hid:
+        return Utf8JSONResponse(
+            {"error": "得先说是**哪一位员工**（带 harness_id）—— 候选关键词是从它的档案和线索里推的"},
+            status_code=400)
+    sess = _find_harness(hid)
+    if sess is None:
+        return Utf8JSONResponse({"error": "没有这个 harness（可能已注销或 id 写错）"}, status_code=404)
+    dump = sess.info.model_dump()
+    hints = dict((dump.get("metadata") or {}).get("probe_hints") or {})
+
+    process_names: list[str] = []
+    window_titles: list[str] = []
+    supported = True
+    probe_note = "（未扫本机：probe=0）"
+    notes: list[str] = []
+    if int(probe or 0):
+        needles = [v for v in (hints.get("process_hint"), hints.get("path_hint"))
+                   if str(v or "").strip()]
+        if needles:
+            def _scan():
+                from .. import sysprobe
+                return sysprobe.find_processes(needles, limit=8)
+            try:
+                for row in (await asyncio.to_thread(_scan) or []):
+                    nm = str((row or {}).get("name") or "").strip()
+                    if nm and nm not in process_names:
+                        process_names.append(nm)
+            except Exception as e:  # noqa: BLE001
+                notes.append("本机进程没扫成：%s（不影响下面的候选）" % str(e)[:80])
+        res = await asyncio.to_thread(visual_launch.list_windows, "")
+        supported = bool(res.get("supported"))
+        probe_note = str(res.get("detail") or "")
+        window_titles = [str(w.get("title") or "") for w in (res.get("windows") or [])]
+
+    sugs = suggest_keywords(dump, probe_hints=hints,
+                            session_names=_session_names_for(hid),
+                            process_names=process_names,
+                            window_titles=window_titles)
+    if not sugs:
+        notes.append("档案和你给过的线索里都推不出候选 ⇒ 直接手填一个"
+                     "**会出现在那个窗口标题里**的字（它窗口上写着的那个名字最准）")
+    if not window_titles and not supported:
+        notes.append("这台机器上平台看不到窗口列表 ⇒ 关键词只能手填；"
+                     "消息式注入是 Windows 专有，其它平台走剪贴板兜底档（如实说）")
+    return {
+        "harness_id": hid,
+        "suggestions": sugs,
+        "windows_scanned": len(window_titles),
+        "supported": supported,        # 能不能扫窗口（探不到 ≠ 真没有，见 probe_note）
+        "probe_note": probe_note,
+        "notes": notes,
+        "checked_at": _now_iso(),
+    }
+
+
+def render_script_export(info: dict, script: dict, *, generated_at: str) -> str:
+    """**纯函数**：把档案里那份脚本正文渲染成**给人看的 `.ps1` 副本**（`FE-26` §11.2）。
+
+    **只是副本**：真相在档案的 `activation_script` 里（`protocol.py` 的字段注释原话就是
+    "text 是唯一真相，导出只是副本"）⇒ 注释头必须写明这一点，免得有人拿副本当正本改。
+
+    三态**如实**：`verified` 不是 `True` 就写"⚠ 未核实"，**绝不写"已完成"**（准则⑤）。
+    含中文 ⇒ **带 UTF-8 BOM**（PS 5.1 无 BOM 时按 GBK 读 ⇒ ParserError，本项目已有同款事故）。
+    """
+    info = dict(info or {})
+    script = dict(script or {})
+    text = str(script.get("text") or "")
+    kws = [str(k) for k in (script.get("keywords") or []) if str(k).strip()]
+    state = ("✓ 已自证（上次试投读回一致）" if script.get("verified") is True
+             else "⚠ 未核实（还没自证过 —— 别当成已验证）")
+    lines = [
+        "# ⚠ 这是**副本**，不是真相：真相在平台的 harness 档案里（activation_script）。",
+        "#   在平台上改了脚本，这份副本不会跟着变 —— 要新的就重新导出。",
+        "# 员工：%s（harness_id=%s）" % (info.get("harness_name") or "", info.get("harness_id") or ""),
+        "# 走的档：%s" % (script.get("method") or "（档案里没写）"),
+        "# 定位关键词：%s" % ("、".join(kws) if kws else "（档案里没写）"),
+        "# 上次试投：%s" % state,
+        "# 导出时间：%s" % generated_at,
+        "# 怎么用：把下面正文按你机器上的实际情况确认/改好，再用 PowerShell 执行；",
+        "#   平台侧的等价动作在对接中心的**脚本激活**工作台（用的是档案里同一份参数）。",
+        "",
+        text,
+    ]
+    body = "\n".join(lines)
+    if not body.endswith("\n"):
+        body += "\n"
+    if any(ord(ch) > 127 for ch in body):
+        body = "\ufeff" + body
+    return body
+
+
+@router.get("/api/docking/harness/{harness_id}/export.ps1")
+async def docking_harness_export_ps1(harness_id: str):
+    """**只读**：把员工档案里的视觉激活脚本导出成 `.ps1` 副本（`FE-26` §11.2）。
+
+    ⚠️ **副本，不是第二份真相**：正文＝`activation_script.text` 的**原样副本** ＋ 一段注释头
+    （说明这是副本、属于谁、走哪一档、上次试投的三态、导出时间）。
+    **没存过脚本** ⇒ 404 ＋ 中文 error **并指出下一步去哪做**（不许给"下载了个空文件"的死状态）。
+    """
+    from fastapi.responses import Response
+    from ..server import Utf8JSONResponse
+
+    sess = _find_harness(harness_id)
+    if sess is None:
+        return Utf8JSONResponse({"error": "没有这个 harness（可能已注销或 id 写错）"}, status_code=404)
+    dump = sess.info.model_dump()
+    script = dict(dump.get("activation_script") or {})
+    if not str(script.get("text") or "").strip():
+        return Utf8JSONResponse(
+            {"error": "这位员工还没有存过激活脚本，没有副本可导 —— 先去「脚本激活」工作台做一份并保存"
+                      "（填关键词 → 让平台去找 → 确认试投 → 保存为它的激活方式），之后这里就能导出了"},
+            status_code=404)
+    body = render_script_export(dump, script, generated_at=_now_iso())
+    raw = "activation_%s.ps1" % (harness_id or "harness")
+    real = re.sub(r'[\\/:*?"<>|\s]+', "_", raw) or "activation.ps1"
+    ascii_name = re.sub(r"[^0-9A-Za-z_.-]+", "_", raw) or "activation.ps1"
+    return Response(
+        content=body.encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": "attachment; filename=\"%s\"; filename*=UTF-8''%s"
+                                   % (ascii_name, quote(real)),
+            "Cache-Control": "no-store",
+        },
+    )

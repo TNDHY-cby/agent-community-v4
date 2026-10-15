@@ -2,6 +2,85 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.8.22] - 2026-10-15
+
+**对接中心收尾（FE-26 §11）：候选关键词 + 脚本 `.ps1` 副本** —— 界面重做前，先把**契约钉死**。
+
+### 背景（老板 2026-10-15 晚场定调）
+
+> 「**前端我要外包给别人做**，到时候把做好的再发给当时在开发的会话」
+
+⇒ 前端（`docking.html`/`docking.js`）交由外部实现，**本会话只做后端 + 契约 + 验收**；
+继承书 §7.2 把「`FE-26` 里与界面无关的收尾」列为下一步 —— 本版就是那两件。
+设计依据：`design-docs/FE-26_对接中心前台与脚本激活设计.md` **§11**。
+
+### 新增（只读）：候选关键词 `GET /api/docking/keyword-suggestions`
+
+`?harness_id=<id>&probe=1` → `{suggestions:[{text, source, why}], windows_scanned, supported, probe_note, notes[], checked_at}`
+
+- **补的是什么洞**：`FE-26` §4 要求前台**主动给候选**（可点即填），而候选全是**平台侧的事实**
+  （登记时存下的 `probe_hints`、真扫到的进程名、成员的会话名、真扫到的窗口标题）
+  ⇒ 界面自己拼不出来（要它自己拼＝把平台知识抄进界面，规则 20 禁止）。
+- **每条候选都带出处**（`source` + 一句给人看的 `why`）：**编不出出处的不给** ——
+  用户点了没来由的词、找不到窗口，只会以为平台在瞎猜。
+- 排序＝会话名 → 线索 → 真扫到的进程名 → 员工名 → 端口 → 扫到的窗口标题；
+  窗口标题里**跟这位员工有关的排前面**（"哪个最像"是 §3.2 屏 2 要回答的问题），**一条都不藏**。
+- **只读**：不写状态、不改档案；`probe=0` **真的不碰本机**（不扫进程、不列窗口）。
+- **探不到 ≠ 真没有**：非 Windows 等 ⇒ `supported=false` ＋ `probe_note` **说清为什么**，
+  并给"手填一个会出现在窗口标题里的字"的下一步；harness 不存在 ⇒ 404、缺 `harness_id` ⇒ 400，**都是中文**。
+
+### 新增（只读）：脚本副本导出 `GET /api/docking/harness/{harness_id}/export.ps1`
+
+- 正文＝档案里 `activation_script.text` 的**原样副本** ＋ 一段注释头
+  （写明**这是副本、真相在档案**、属于谁、走哪一档、上次试投**三态**、导出时间、怎么用）。
+  **不另存第二份真相** —— 与 `protocol.py` 里那句"`text` 是唯一真相，导出只是副本"是同一口径。
+- **三态如实**：`verified` 不是 `True` ⇒ 一律「⚠ 未核实」，**任何情况都不出现"已完成"**（准则⑤）。
+- 含中文 ⇒ 正文带 **UTF-8 BOM**（PS 5.1 无 BOM 按 GBK 读 ⇒ `ParserError`，本项目已有同款事故）。
+- **没存过脚本 ⇒ 404 ＋ 中文 error ＋ 指出下一步去哪做一份**（不许给"下载了个空文件"的死状态）。
+
+### 修复（**外部用户真跑抓到 → 本机同条件复现**）：非 UTF-8 输出下**服务启动即崩**
+
+> 外部朋友按 README 第 2 步 `python -m agent_community.cli start --no-gui`：
+> CLI 起了后台进程、几秒后报「服务启动超时」，日志里只有一句 ——
+> `UnicodeEncodeError: 'gbk' codec can't encode character '\u21d2' in position 13`
+> （`agent_community/platform/server.py` 启动横幅那一行）。
+
+- **根因**：`cli start` 把 server 的 stdout/stderr **重定向到日志文件** ⇒ Python 用**区域编码**
+  （中文 Windows = cp936；英文 Windows = cp1252）⇒ 启动横幅里的 `⇒`（U+21D2）编不出去 ⇒
+  **服务在启动第一秒就死**；英文 Windows 更狠：**连中文横幅都编不出去**。
+  ⚠️ 这条**有真控制台时不发作**（PEP 528 走 `WriteConsoleW`）⇒ 开发者本机常常看不见，
+  专挑「陌生人的第一次」发作 —— 正是本项目最反对的那类缺陷。
+- **修法**：新增**一处真相** `agent_community/stdio_utf8.py::force_utf8_stdio()`
+  （`encoding="utf-8", errors="replace"`；**流不支持就安静跳过，绝不反过来把服务搞崩**），
+  接进 **server 模块导入的第一件事**（本文件末尾那句 `[static] 前端已挂载` 是**导入期**打印，
+  自保必须比它更早）、`cli` 入口、`gui` 入口；看门狗（承诺标准库、按文件路径加载、拿不到包）
+  按 `procprobe`/桥模板同款**内联**自保。
+- **守卫** `agent_community/tests/test_stdio_encoding_guard.py`（**7 条**）：**真起 server 进程**、
+  stdout/stderr 重定向到文件、把输出编码逼成 **cp1252**（英文 Windows 同款）与**本机区域编码**
+  ⇒ 必须活着（`/api/status` 答 running）且日志里**没有 `UnicodeEncodeError`**；
+  `cli status` 也真跑一遍；★**对照组**证明"中文 + `⇒` 在 cp1252 下**真的会崩**"（守卫不是纸老虎）；
+  还有一条证明**只钉编码不够**（孤立代理项连 UTF-8 都编不出去 ⇒ 必须 `errors="replace"`）。
+- **突变检验** `temp/mutation_check_stdio_utf8.py`：**3/3 KILLED**（拿掉 server 入口自保 /
+  拿掉 CLI 入口自保 / 改成 `strict`，守卫都当场变红，跑完按原字节还原）。
+- **真跑复验**：同一条命令（输出重定向、**不设** `PYTHONIOENCODING`）⇒ `cli exit=0`、
+  `/api/status` 答 `running` v4.8.22、日志无 `UnicodeEncodeError`、`cli stop` 干净退出。
+
+### 契约
+
+- 两件**都是 `GET`** ⇒ **写请求白名单（管的是非 GET）一条没动**，`FE-26` §5 与外包交接包的
+  白名单契约**不变**；外包方按同一份白名单验收照旧。
+
+### 守卫与真跑
+
+- 新守卫 `agent_community/tests/test_docking_keywords_and_export.py`（**15 条**）：纯函数（出处/去重/限量/
+  不瞎编/有关标题优先）、端点（400/404 中文、`probe=0` 真不碰本机、探不到要说清）、
+  导出（逐字副本 / 注释头 / **BOM** / 三态如实 / 下载头 / **只读**）。
+- **突变检验** `temp/mutation_check_docking_export.py`：**6/6 KILLED**（注入 6 个语义错误全部被抓，
+  跑完**按原字节还原**）—— 守卫"看起来在断言"不等于能抓到错误实现。
+- 真跑走查 `temp/walkthrough_docking.py` 新增 **5 步**（[20]~[24]）：候选有出处、`probe=0` 快路径、
+  错误路径 404/400、没存过脚本 404 说下一步、存过给真 `.ps1`（正文/注释头/BOM/三态全绿）；
+  并在候选端点前后核对 `harnesses.json` 指纹不变（**只读**）。
+
 ## [4.8.21] - 2026-10-15
 
 **对接中心 P1（FE-26）：视觉激活的"定位"打通** —— 平台 Agent 拿到了它缺的那一个工具。
