@@ -29,6 +29,8 @@ DEFAULT_OVERLAP = 0.5
 MIN_GAIN = 1
 #: 轮次上限（修订稿：2–3 轮内闭环）
 MAX_ROUNDS = 3
+#: 一个工作间最多留多少条陈述（防状态文件无限增长）——**一处真相**：端点与成员回报都用它
+MAX_STATEMENTS = 60
 
 #: 成本口径（照抄修订稿 §四，别装作免费）——会随裁决一起如实回报
 COST_NOTE = "总成本 ≈ N_agent × R_round × 单次上下文成本 + 检索成本（N=3,R=3 时仅生成 token 就 ≥ 单模型的 9 倍）"
@@ -129,6 +131,48 @@ def cluster(statements: list, threshold: float = DEFAULT_OVERLAP) -> list:
     for i in range(n):
         groups.setdefault(find(i), []).append(i)
     return [sorted(v) for _, v in sorted(groups.items())]
+
+
+def parse_statement(body: dict, *, speaker: str = "") -> tuple:
+    """把一段外部输入解析成**结构化陈述**（观点 → 证据 → 推理）。
+
+    ★**一处真相**：对接中心的 `…/debate/statements` 端点与**成员回报**（`/api/harness/task-result`）
+    走的是**同一个解析器** —— 否则两边字段口径迟早分叉（规则 20）。
+
+    返回 `(陈述 dict, 错误原因)`；解析失败时前者为 `None`。
+    - `claim` / `speaker` 必填：裁决要**指名道姓**，匿名发言没有意义；
+    - **`evidence` 可以不给**（那是常态）：记成"无证据"，裁决里权重 0 ——
+      **但发言本身不会被丢掉**（原话留在讨论区）；
+    - 证据项 `{kind, ref, verified}`：`kind` 是自由文本（`url`/`doc`/`tool`/`file`/`commit`…），
+      好让**完成声明**那套 `{commit, file, test}` 也能直接喂进来（不新增第二套字段名）。
+    """
+    body = body or {}
+    claim = str(body.get("claim") or "").strip()
+    if not claim:
+        return None, "claim（一句话结论）不能为空"
+    who = str(body.get("speaker") or speaker or "").strip()
+    if not who:
+        return None, "speaker（谁说的）不能为空 —— 裁决要指名道姓，不能匿名"
+    ev_in = body.get("evidence") or []
+    if not isinstance(ev_in, list):
+        return None, "evidence 必须是数组：[{kind, ref, verified}]"
+    evidence = []
+    for e in ev_in[:20]:
+        if isinstance(e, dict):
+            ref = str(e.get("ref") or "").strip()
+            if not ref:
+                continue
+            evidence.append({"kind": str(e.get("kind") or "url"), "ref": ref,
+                             "verified": bool(e.get("verified"))})
+        elif str(e).strip():
+            evidence.append({"kind": "url", "ref": str(e).strip(), "verified": False})
+    return {
+        "speaker": who,
+        "claim": claim,
+        "evidence": evidence,
+        "reasoning": str(body.get("reasoning") or "").strip()[:2000],
+        "conflicts_with_checker": bool(body.get("conflicts_with_checker")),
+    }, ""
 
 
 def _verified_count(idents: set, statements: list, cluster_idx: list) -> int:

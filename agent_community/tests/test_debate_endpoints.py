@@ -69,3 +69,24 @@ def test_debate_state_tolerates_missing_and_corrupt_data():
 def test_statement_cap_is_bounded():
     """陈述有上限（保留最近 N 条）—— 无限增长会把状态文件撑爆。"""
     assert isinstance(wd._DEBATE_MAX_STATEMENTS, int) and 10 <= wd._DEBATE_MAX_STATEMENTS <= 500
+
+
+def test_parser_is_one_source_of_truth():
+    """★解析器**只有一份**（内核 `debate.parse_statement`）：对接中心端点与**成员回报**共用它。
+
+    不这么收口的话，两边字段口径迟早分叉（规则 20）——2026-10-15 就是这么收的：
+    原来路由里手写了一份，成员回报要用时把它搬进内核，路由改成薄包装。
+    """
+    import pathlib
+    from agent_community.platform import debate
+    assert hasattr(debate, "parse_statement"), "内核里没有共用的解析器"
+    body = {"speaker": "A", "claim": "X", "evidence": [{"ref": "https://e.example.com/a"}]}
+    a, _ = debate.parse_statement(body)
+    b, _ = wd._parse_statement(body)
+    assert a == b, "端点与内核给出的结构不一致（说明有两份实现）"
+    # 成员回报那条路也必须是同一个（结构判据：它 import 了内核的解析器）
+    src = pathlib.Path(_ROOT, "agent_community", "platform", "routers",
+                       "harness_messaging.py").read_text(encoding="utf-8")
+    assert "from ..debate import" in src and "parse_statement" in src, \
+        "成员回报没有用内核的解析器 —— 字段口径会分叉"
+    assert "MAX_STATEMENTS" in src, "成员回报没有用内核的陈述上限（会各留一份数）"

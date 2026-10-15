@@ -175,6 +175,31 @@ async def harness_task_result(request: Request):
         else:
             _apply_harness_reply(body.get("workshop_id", ""), mid or "", result, hid, source="harness_http",
                                  status=status, summary=summary)
+        # ★2026-10-15（V52 最后一环）：**成员回报里的三段陈述自动进辩论池** ——
+        #   这样"辩论"才是**全员参与**的，而不是只能靠用户/组长手动提交。
+        #   三条纪律：① 解析器与对接中心端点**同一个**（kernel `debate.parse_statement`，规则 20）；
+        #            ② **没有 `claim` 就什么都不做** —— 普通回报完全不受影响（向后兼容）；
+        #            ③ 收集失败**绝不能影响回报本身**（回报是主流程，辩论是附加层）。
+        if str(body.get("claim") or "").strip():
+            try:
+                from ..debate import MAX_STATEMENTS, parse_statement
+                _spk = ""
+                for _m in getattr(ws, "members", []):
+                    if _m.member_id == mid:
+                        _spk = getattr(_m, "display_name", "") or _m.member_id
+                        break
+                _st, _err = parse_statement(body, speaker=_spk or hid or mid or "")
+                if _st is None:
+                    print(f"[debate] 成员回报里的陈述被拒（不影响回报）: {_err}", flush=True)
+                else:
+                    _ds = dict(getattr(ws, "debate_state", None) or {})
+                    _st["at"] = __import__("time").time()
+                    _ds["statements"] = (list(_ds.get("statements") or []) + [_st])[-MAX_STATEMENTS:]
+                    ws.debate_state = _ds
+                    save_state()
+                    print(f"[debate] 已收成员陈述：{_st['speaker']}（证据 {len(_st['evidence'])} 项）", flush=True)
+            except Exception as _e:  # noqa: BLE001
+                print(f"[debate] 收集成员陈述失败（不影响回报）: {_e}", flush=True)
     return {"success": True}
 
 @router.post("/api/harness/api-probe")

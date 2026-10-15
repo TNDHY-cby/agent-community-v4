@@ -448,8 +448,8 @@ async def sm_status(ws_id: str):
 #   · **不判"谁对"**：没有 ground truth 时只按证据质量加权，同分如实并列。
 # ══════════════════════════════════════════════════════════════════════════
 
-#: 陈述上限（防无限增长；保留最近的）
-_DEBATE_MAX_STATEMENTS = 60
+#: 陈述上限（防无限增长；保留最近的）—— **一处真相**在内核里
+from ..debate import MAX_STATEMENTS as _DEBATE_MAX_STATEMENTS
 
 
 def _debate_state(ws) -> dict:
@@ -464,34 +464,15 @@ def _debate_state(ws) -> dict:
     return st
 
 
-def _parse_statement(body: dict) -> tuple[dict | None, str]:
-    """解析一条**结构化陈述**（观点 → 证据 → 推理）。返回 `(陈述, 错误原因)`。"""
-    claim = str((body or {}).get("claim") or "").strip()
-    if not claim:
-        return None, "claim（一句话结论）不能为空"
-    speaker = str((body or {}).get("speaker") or "").strip()
-    if not speaker:
-        return None, "speaker（谁说的）不能为空 —— 裁决要指名道姓，不能匿名"
-    ev_in = body.get("evidence") or []
-    if not isinstance(ev_in, list):
-        return None, "evidence 必须是数组：[{kind, ref, verified}]"
-    evidence = []
-    for e in ev_in[:20]:
-        if isinstance(e, dict):
-            ref = str(e.get("ref") or "").strip()
-            if not ref:
-                continue
-            evidence.append({"kind": str(e.get("kind") or "url"), "ref": ref,
-                             "verified": bool(e.get("verified"))})
-        elif str(e).strip():
-            evidence.append({"kind": "url", "ref": str(e).strip(), "verified": False})
-    return {
-        "speaker": speaker,
-        "claim": claim,
-        "evidence": evidence,            # 可以为空 —— 那就是"无证据"，权重 0（**不删原话**）
-        "reasoning": str((body or {}).get("reasoning") or "").strip()[:2000],
-        "conflicts_with_checker": bool((body or {}).get("conflicts_with_checker")),
-    }, ""
+def _parse_statement(body: dict, *, speaker: str = "") -> tuple[dict | None, str]:
+    """解析一条**结构化陈述**（观点 → 证据 → 推理）。
+
+    ★2026-10-15：实现在内核 `platform/debate.py::parse_statement`（**一处真相**）——
+    成员回报（`/api/harness/task-result`）走的是**同一个**解析器，
+    不这样收口的话，两边的字段口径迟早分叉（规则 20）。
+    """
+    from ..debate import parse_statement
+    return parse_statement(body, speaker=speaker)
 
 
 @router.get("/api/workshop/{ws_id}/debate")
