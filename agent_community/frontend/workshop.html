@@ -1063,6 +1063,37 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
             <div class="side-head" style="display:flex;align-items:center;gap:8px"><h2 style="margin:0">💬 三级讨论 <span class="zone-tag">进度</span></h2><button class="btn mini" style="margin-left:auto" onclick="openWorkshopView()">🛠 展开车间</button></div>
 
+            <!-- ★V52 辩论模式（**可开可关**，默认关）：判定全在后端 platform/debate.py；
+                 裁决只作为**一条消息**进讨论区，不改任何人的原话。 -->
+            <style>
+              .debate-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0;font-size:11px}
+              .debate-state{color:var(--dim)}
+              .debate-state.on{color:#2e7d32;font-weight:600}
+              .debate-form{display:flex;flex-direction:column;gap:4px;margin:6px 0;padding:6px;
+                           border:1px dashed var(--dim);border-radius:6px;font-size:11px}
+              .debate-form input,.debate-form textarea{width:100%;font-size:11px;padding:3px;box-sizing:border-box}
+              .debate-form-actions{display:flex;align-items:center;gap:6px}
+              .debate-msg{color:var(--dim)}
+            </style>
+            <div class="debate-bar" id="debateBar">
+              <span class="debate-state" id="debateState">辩论模式：关（默认关）</span>
+              <button class="btn mini" id="debateToggleBtn" onclick="toggleDebate()">开启</button>
+              <button class="btn mini" onclick="openDebateForm()">＋ 陈述</button>
+              <button class="btn mini" onclick="runDebate()">⚖ 跑一轮</button>
+            </div>
+            <div class="debate-form" id="debateForm" style="display:none">
+              <input id="debateSpeaker" placeholder="谁说的（裁决要指名道姓，不能匿名）">
+              <input id="debateClaim" placeholder="一句话结论（观点）">
+              <textarea id="debateEvidence" rows="2"
+                        placeholder="证据，一行一条：kind|ref|verified&#10;例：url|https://example.com/report|1&#10;没有证据也可以提交——裁决里权重为 0，但不会被丢掉"></textarea>
+              <textarea id="debateReasoning" rows="2" placeholder="推理：这些证据为什么支持这个结论（可留空）"></textarea>
+              <div class="debate-form-actions">
+                <button class="btn mini" onclick="submitDebateStatement()">提交</button>
+                <button class="btn mini" onclick="document.getElementById('debateForm').style.display='none'">取消</button>
+                <span class="debate-msg" id="debateFormMsg"></span>
+              </div>
+            </div>
+
 
             <div class="chat" id="discussion3"></div>
 
@@ -3575,6 +3606,101 @@ async function confirmHumanEnter(btn){
 }
 
 
+// ══════════════════════════════════════════════════════════════════════
+// ★V52 辩论模式（**可开可关**，默认关）
+//   判定全在后端 `platform/debate.py`（纯逻辑内核）；这里只做三件事：
+//   读状态 / 开关 / 提交陈述 / 触发一轮。**没有在前端重算任何权重或分数** ——
+//   否则就是"两套口径"，界面上看到的会和裁决书不一致。
+// ══════════════════════════════════════════════════════════════════════
+let debateInfo = {enabled:false, round:0, statement_count:0};
+
+async function loadDebate(){
+  try{
+    const d = await fetch(`/api/workshop/${wsId}/debate`).then(r=>r.json());
+    debateInfo = d || {};
+    paintDebateBar(d);
+  }catch(e){ /* 读不到就保持原样，不假装知道 */ }
+}
+
+function paintDebateBar(d){
+  const st = document.getElementById('debateState');
+  const btn = document.getElementById('debateToggleBtn');
+  if(!st) return;
+  const on = !!(d && d.enabled);
+  st.textContent = on
+    ? `辩论模式：开 · 第 ${d.round||0} 轮 · 已收陈述 ${d.statement_count||0} 条`
+    : '辩论模式：关（默认关）';
+  st.className = 'debate-state' + (on ? ' on' : '');
+  if(btn) btn.textContent = on ? '关闭' : '开启';
+  // 只在三级讨论里能跑（后端也会拒，这里只是别让按钮骗人）
+  const runBtn = [...document.querySelectorAll('#debateBar .btn')].find(b=>b.textContent.includes('跑一轮'));
+  if(runBtn) runBtn.title = (d && d.in_review) ? '跑一轮证据裁决' : '辩论只在三级讨论（review）里跑';
+}
+
+function openDebateForm(){
+  const f = document.getElementById('debateForm');
+  if(f) f.style.display = 'flex';
+  const s = document.getElementById('debateSpeaker');
+  if(s && !s.value){
+    // 默认填第一个成员名字，省一次输入（**能改**，不是写死）
+    const first = document.querySelector('#roster .roster-item .ri-name');
+    s.value = (first && first.textContent.trim()) || '';
+  }
+}
+
+function parseDebateEvidence(txt){
+  const out = [];
+  (txt||'').split('\n').forEach(line=>{
+    const t = line.trim();
+    if(!t) return;
+    const parts = t.split('|');
+    const kind = (parts[0]||'url').trim() || 'url';
+    const ref = (parts[1]||'').trim();
+    if(!ref) return;
+    out.push({kind, ref, verified: (parts[2]||'').trim() === '1' || /^(true|yes|是)$/i.test((parts[2]||'').trim())});
+  });
+  return out;
+}
+
+async function submitDebateStatement(){
+  const msg = document.getElementById('debateFormMsg');
+  const body = {
+    speaker: (document.getElementById('debateSpeaker').value||'').trim(),
+    claim:   (document.getElementById('debateClaim').value||'').trim(),
+    evidence: parseDebateEvidence(document.getElementById('debateEvidence').value),
+    reasoning: (document.getElementById('debateReasoning').value||'').trim(),
+  };
+  if(!body.claim){ if(msg) msg.textContent = '结论不能为空'; return; }
+  if(!body.speaker){ if(msg) msg.textContent = '要说清楚是谁说的（裁决要指名道姓）'; return; }
+  const r = await fetch(`/api/workshop/${wsId}/debate/statements`,
+    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok){ if(msg) msg.textContent = d.error || ('提交失败 HTTP '+r.status); return; }
+  if(msg) msg.textContent = `已记录（共 ${d.statement_count} 条）` + (d.evidence_count ? '' : '｜注意：这条没有证据，裁决里权重为 0');
+  document.getElementById('debateClaim').value = '';
+  document.getElementById('debateEvidence').value = '';
+  document.getElementById('debateReasoning').value = '';
+  loadDebate();
+}
+
+async function toggleDebate(){
+  const want = !(debateInfo && debateInfo.enabled);
+  const r = await fetch(`/api/workshop/${wsId}/debate`,
+    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:want})});
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok){ alert(d.error || ('操作失败 HTTP '+r.status)); return; }
+  await loadDebate();
+}
+
+async function runDebate(){
+  const r = await fetch(`/api/workshop/${wsId}/debate/run`,
+    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_asked:true})});
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok){ alert(d.error || ('裁决失败 HTTP '+r.status)); return; }   // 后端的三道闸门都有中文原因
+  await loadDebate();
+  loadWorkshop(wsId);          // 裁决是**追加**一条消息，刷新即可看到（不改任何人的原话）
+}
+
 function startReview(){
   document.getElementById('reviewBtn').style.display='none';
   fetch(`/api/workshop/${wsId}/review`,{method:'POST'}).then(x=>x.json()).then(d=>{
@@ -3801,6 +3927,7 @@ function loadWorkshop(id){
     loadHarnesses();
     await loadStageBar();   /* FE-20：拉权威阶段并施门控（放在最后，保证门控生效顺序） */
     await loadOrphans();    /* FE-23：孤儿横幅（并联动放开名单） */
+    loadDebate();           /* V52：辩论模式状态（开关/轮次/陈述数）—— 默认关，读不到就保持原样 */
 
 
   });
