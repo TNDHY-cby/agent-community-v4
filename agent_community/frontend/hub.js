@@ -37,7 +37,7 @@ function chOverview(){
   <div class="card">
     <h3><span class="dot"></span>操作都去哪（正主页面）</h3>
     <div class="pick">
-      <div class="pick-row"><b>登记 agent（harness）</b><span class="why">${link('/register.html','Harness 接入 →')}　表单+教程+注册模板</span></div>
+      <div class="pick-row"><b>登记 agent（harness）</b><span class="why">${link('/docking.html','对接中心 →')}　登记+激活+通道+架桥辅助</span></div>
       <div class="pick-row"><b>发任务 / 看全局任务</b><span class="why">${link('/','工作大厅 →')}</span></div>
       <div class="pick-row"><b>讨论、选人、开工、通道停用/新建、整合</b><span class="why">${link('/workshop.html','工作间 →')}</span></div>
       <div class="pick-row"><b>成员隔间、桥状态、共享资料库、项目模型</b><span class="why">${link('/booths.html','成员隔间与桥 →')}</span></div>
@@ -75,7 +75,7 @@ function chStart(){
       <div class="pick-row"><b>成员隔间与桥</b><span class="why">${link('/booths.html','booths.html →')}　隔间、桥、共享资料库、项目模型</span></div>
       <div class="pick-row"><b>运维看板</b><span class="why">${link('/ops.html','ops.html →')}　审计时间线、心跳、健康</span></div>
       <div class="pick-row"><b>交付回执台</b><span class="why">${link('/handover.html','handover.html →')}　谁交了活、回执</span></div>
-      <div class="pick-row"><b>Harness 接入</b><span class="why">${link('/register.html','register.html →')}　登记 agent</span></div>
+      <div class="pick-row"><b>Harness 接入</b><span class="why">${link('/docking.html','docking.html →')}　登记 agent（旧注册页已转只读镜像）</span></div>
     </div>
   </div>`;
 }
@@ -89,7 +89,7 @@ function chRegister(){
         ★<b>实测</b>（2026-10-10 真打 400）：其余字段都有默认值，<b><code>harness_name</code> 不是必填</b>。</p>
       <p class="lead" style="margin-top:8px"><b>可选但决定"能不能自动"</b>：三个动作脚本 <code>new_session</code> / <code>rename_session</code> / <code>deliver</code>
         ＋每个动作的 <code>foreground</code>（会不会占用你的桌面）。<b>不配也能用</b>，走"人工模式"。</p>
-      <p class="sub" style="margin-top:8px">关联：<code>POST /api/harness/register</code>；真表单在 ${link('/register.html','Harness 接入页 →')}（教程+模板+远程接入都在那里）。</p>
+      <p class="sub" style="margin-top:8px">关联：<code>POST /api/harness/register</code>；真表单在 ${link('/docking.html','对接中心 →')}（登记卡 + 激活 + 架桥辅助 + 接入教程都在那里）。</p>
     </div>
     <div class="card">
       <h3><span class="dot"></span>报错是可照做的（示意）</h3>

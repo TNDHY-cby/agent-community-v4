@@ -427,8 +427,8 @@ def task_result(task_id):
                     why = "本次没有产出结果"
                 click.secho(f"\n（暂无结果：{why}）", fg="yellow")
                 if not (_raises or _deleg or _res):
-                    click.echo("  下一步：先接入一个 Harness —— 见 README「Harness 接入指南」，"
-                               "或在界面里按引导走一遍： %s/register.html" % base)
+                    click.echo("  下一步：先接入一个 Harness —— 在「对接中心」按引导走一遍："
+                               " %s/docking.html（登记 → 建会话 → 送桥）" % base)
             ws_id = t.get("workshop_id") or ""
             if ws_id:
                 click.echo(f"  工作间: {ws_id}（界面里可看讨论与成员）")

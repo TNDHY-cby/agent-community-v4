@@ -86,7 +86,7 @@ function dockRender(d){
     body.innerHTML = '<div class="card"><h3>还没有登记任何外部 Agent</h3>' +
       '<p class="lead">三步就能接一个进来：</p>' +
       '<p class="sub">① 在你的 agent 那边准备一句话命令 / 一个目录 / 一个地址（<b>你自己有什么填什么</b>）；<br>' +
-      '② 到 <a href="/register.html" target="_blank" rel="noopener">注册页</a> 登记（平台会自己探一次，补齐没填的字段）；<br>' +
+      '② 在上面那张<b>登记卡</b>里填标识 + 你有的线索，点「探测并登记」（<b>就在本页</b>，平台会自己探一次补齐）；<br>' +
       '③ 回到工作间「进行三级讨论」前的成员卡上，点<b>建会话 → 送桥</b>，把它对上岗位。</p>' +
       '<p class="sub">本页会用同一套数据告诉你：<b>谁接进了哪个工作间、对上哪个岗位</b>。</p></div>';
     return;

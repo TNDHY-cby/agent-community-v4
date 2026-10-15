@@ -175,9 +175,10 @@ async def workshop_select_members(ws_id: str):
             "members": [],
             "error_code": "no_harness",
             "reason": "平台上还**没有接入任何 agent** —— 没有员工可选，所以选不出人",
-            "advice": ("先去「🔌 注册 Harness」接入一个 agent，再回来点这个按钮；"
+            "advice": ("先去「🔌 对接中心」接入一个 agent，再回来点这个按钮；"
                        "也可以点「+ 添加职位 / harness」手工填名单"),
-            "register_url": "/register.html",
+            # ★2026-10-15：旧注册页已转**只读镜像**（V34 §5）⇒ 接入入口改指对接中心（规则 20 整体同步）
+            "register_url": "/docking.html",
             "hall_content": (ws.hall_content or "")[:120],
         }
 

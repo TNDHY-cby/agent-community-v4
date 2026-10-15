@@ -2769,7 +2769,7 @@ function renderNextStep(){
      走查实测：0 个 agent 时，"下一步"条照样引导「结束讨论，选定员工 →」，
      用户照做、点完才发现没人可选 ⇒ 卡住而不知道为什么。这里**提前说**（不硬拦发布）。 */
   if(_noAgentWarn() && (S==='draft'||S==='discussing'||S==='selecting')){
-    m=[m[0]+' '+_agentWarnText(), m[1].concat([['🔌 去接入 agent',()=>window.open('/register.html','_blank')]])];
+    m=[m[0]+' '+_agentWarnText(), m[1].concat([['🔌 去接入 agent',()=>window.open('/docking.html','_blank')]])];
   }
   t.textContent=m[0];
   m[1].forEach(pair=>{
@@ -3355,7 +3355,9 @@ function showSelectionNotice(reason,advice,registerUrl){
   const text=document.createElement('div');text.textContent=reason||'';box.appendChild(text);
   if(advice){const next=document.createElement('div');next.textContent=advice;box.appendChild(next);}
   if(registerUrl){
-    const link=document.createElement('a');link.href='/register.html';link.target='_blank';link.rel='noopener';
+    /* ★2026-10-15：原来这里**硬写**了旧注册页路径，把传进来的 registerUrl 参数忽略了 ——
+       旧页转只读镜像后它就指错了地方。现在**用参数**（后端给的是 /docking.html），兜底也对。 */
+    const link=document.createElement('a');link.href=registerUrl||'/docking.html';link.target='_blank';link.rel='noopener';
     link.textContent='接入员工（保留当前工作间）';box.appendChild(link);
     const retry=document.createElement('button');retry.className='btn mini';retry.textContent='接入后刷新员工';
     retry.onclick=async()=>{const hs=await loadHarnesses();renderHarnessList(hs);updateSelectionReadiness(hs);};
@@ -3373,7 +3375,7 @@ function syncAgentAwareness(hs){
 function updateSelectionReadiness(hs){
   if(!Array.isArray(hs))return;
   if(hs.length===0){
-    showSelectionNotice('还没有接入员工。任务和讨论已保留，你可以先把需求聊清楚。','选人前，请先接入一个能执行任务的 agent。','/register.html');
+    showSelectionNotice('还没有接入员工。任务和讨论已保留，你可以先把需求聊清楚。','选人前，请先接入一个能执行任务的 agent。','/docking.html');
   }else{
     showSelectionNotice('已接入 '+hs.length+' 个员工，可以按任务需要选人。','点击「让平台 AI 选定员工」，或手工指定名单。');
   }
