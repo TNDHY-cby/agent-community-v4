@@ -2,6 +2,46 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.8.8] - 2026-10-15
+
+**对接中心 P1：只读跨间总览** `GET /api/docking/overview` —— 补上一个此前**没有任何端点能回答**的问题。
+
+### 新增
+- **`GET /api/docking/overview`**（`platform/routers/docking.py`）：回答「**这个 harness 现在接在哪个工作间、
+  哪个岗位**」。此前 `GET /api/harness/list` 只给"已注册的 harness"，工作间侧 `members-status` 只给一个间
+  ⇒ 总控（大厅）视角根本立不住。
+- **两种范围、同一份实现**：不带参数＝全局（总控）；`?ws=<工作间id>`＝只回该间（工作间入口）。
+  不存在的 ws 返回 **404 + 中文 error**（**不许**悄悄退化成全局）。
+- **绑定关系由工作间成员表反查**（成员里记着 `harness_ids` + 通道状态），**不新建存储、不留影子状态**。
+- **`dangling_bindings`（新增的诚实字段）**：成员引用了**未注册**的 harness（注销/改名/手改数据都会造成）
+  时必须报出来 —— 否则界面会显示"接上了"却谁也找不到（准则⑤ 失败要说话）。
+
+### 与设计稿的一处偏差（实现期以现行裁定为准）
+- 设计稿形状提案里有 `access_tier`，那已被裁定为「**只写不读、界面话术一律不引用**」
+  （同一个"档位"概念历史上曾有三份定义）⇒ 改为输出 `tier_guidance` 的**事实判断**：
+  `interface_class`（有命令 / 盯目录 / 常驻 HTTP / 只能人工）+ 中文标签 +
+  `can_be_woken_by_platform` + `needs_protocol`。设计稿里的 `has_template` 实测**不存在**于
+  `list_sessions()`，**不凭空造**。
+
+### 守卫与验证
+- `tests/test_docking_overview.py` **10 条**：跨间绑定正确 / 四个计数分开给 / 单间真收窄 /
+  不存在的 ws 不退化成全局 / 悬空引用报出 / **只读无副作用**（同一输入两次一致 + 成员数据不被改）/
+  接入事实取自 `tier_guidance` / **载荷里不许出现 `access_tier`** / 端点**真的挂进 app** /
+  只读路径里不许出现写调用（**AST 结构判据**）。
+- 突变检验 ⇒ **5/5 KILLED**。
+- 真跑走查（隔离实例 + 真 HTTP）：注册两个 harness → 建间绑成员 → 总览里两个 harness 各带 1 条绑定、
+  `interface_class` 正确（`has_http_api` / `manual_only`）、未注册那个进 `dangling_bindings`；
+  `?ws=` 真收窄；不存在的 ws → 404；★**全部 GET 调用前后 `workshops.json` 的 sha256 一字不变**。
+
+### 已知限制（如实标注，未变）
+- 对接中心 **P2~P6（界面 `docking.html`、`register.html` 两步下线）未开始**。
+- 窗口激活、桥目录进回收站：**Windows 专属**，其它平台如实返回"不支持"。
+- **非 Windows 上 AI 密钥是明文保存**（会明确告警并给出路：`chmod 600` 或环境变量 `AC_AI_API_KEY`）。
+- 视觉拉起的**消息式注入只在 Windows 有**；其它平台只有剪贴板半自动兜底。
+- CI 覆盖 Python **3.11**（Linux + Windows）；其它版本未逐一验证。
+
+反馈问题请带上**版本号**（本版为 `4.8.8`）与 `<数据目录>/logs/server_stdout.log` 尾部。
+
 ## [4.8.7] - 2026-10-15
 
 **视觉拉起（把"名字进数据"接成"真的送进会话"）＋ 一条静默送垃圾的老缺陷（剪贴板把中文写坏）**
