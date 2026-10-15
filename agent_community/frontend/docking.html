@@ -18,6 +18,12 @@
   .dock-kv code{color:var(--dim)}
   #dockBody details,#dockRegisterWrap details{margin-top:6px;font-size:11px}
   #dockBody pre,#dockRegisterWrap pre{white-space:pre-wrap;word-break:break-all;font-size:11px}
+  .dock-steps{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;font-size:11px}
+  .dock-step{display:inline-flex;align-items:center;gap:4px}
+  .dock-ok2{color:#2e7d32;font-size:11px}
+  .dock-warn2{color:#ef6c00;font-size:11px}
+  .dock-warn{margin:6px 0;padding:5px 8px;border-left:3px solid #ef6c00;background:rgba(239,108,0,.08);font-size:12px}
+  #dockActivateWrap pre{white-space:pre-wrap;word-break:break-all;font-size:11px}
 </style>
 </head>
 <body>
@@ -64,6 +70,9 @@
 
       <!-- ★V34 §1：**注册是全局能力**（总控才有）—— 单间模式这一块由 JS 整块不渲染 -->
       <section id="dockRegisterWrap"></section>
+
+      <!-- ★V34 §2/§1：激活类端点是 `/{ws}/…` 的语义 ⇒ 这块**只在单间范围**由 JS 挂载 -->
+      <section id="dockActivateWrap"></section>
 
       <template id="tpl-dock-register">
         <div class="card">

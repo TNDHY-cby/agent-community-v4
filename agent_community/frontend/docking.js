@@ -123,17 +123,54 @@ function dockRender(d){
 }
 
 /* ── 写请求白名单（V34 §4.3）─────────────────────────────────────────────
- * 本页**只允许**调用这些写端点；`/discuss` 出现即 FAIL（对接中心不做讨论）。
- * 守卫 `test_docking_ui_static.py` 会把本文件里所有 POST 路径抽出来跟这张表对。
+ * 本页**只允许**调用这些写端点（`*` = 一个路径段，用来容纳 ws/member id）；
+ * 对接动作之外的一律拒绝；`/discuss` 出现即 FAIL（对接中心不做讨论）。
+ * 守卫 `test_docking_ui_static.py` 会：① 核对这张表就是**期望的那 10 条**；
+ * ② 核对下面那张路径表里每一条都能被白名单匹配；③ 核对没有绕过 `dockPost` 的写请求。
  */
 const DOCK_WRITE_WHITELIST = [
   '/api/harness/pre-register',
   '/api/harness/probe-register',
   '/api/harness/register',
+  '/api/workshop/*/onboard-members',
+  '/api/workshop/*/recover-scan',
+  '/api/workshop/*/member/*/establish-session',
+  '/api/workshop/*/member/*/deliver-bridge',
+  '/api/workshop/*/member/*/recover',
+  '/api/workshop/*/member/*/channel/retire',
+  '/api/workshop/*/member/*/channel/establish',
 ];
 
+/** 路径模板（**字面量、唯一来源**）：界面上的每个动作都从这里取路径。 */
+const DOCK_PATH = {
+  preRegister:   '/api/harness/pre-register',
+  probeRegister: '/api/harness/probe-register',
+  register:      '/api/harness/register',
+  onboard:       '/api/workshop/{ws}/onboard-members',
+  rescan:        '/api/workshop/{ws}/recover-scan',
+  establish:     '/api/workshop/{ws}/member/{mid}/establish-session',
+  deliver:       '/api/workshop/{ws}/member/{mid}/deliver-bridge',
+  recover:       '/api/workshop/{ws}/member/{mid}/recover',
+  retire:        '/api/workshop/{ws}/member/{mid}/channel/retire',
+  newChannel:    '/api/workshop/{ws}/member/{mid}/channel/establish',
+};
+
+function dockAllowed(path){
+  const a = String(path).split('/');
+  return DOCK_WRITE_WHITELIST.some(p => {
+    const s = p.split('/');
+    return s.length === a.length && s.every((seg, i) => seg === '*' || seg === a[i]);
+  });
+}
+
+function dockPath(tpl, ws, mid){
+  return String(tpl)
+    .replace('{ws}', encodeURIComponent(ws || ''))
+    .replace('{mid}', encodeURIComponent(mid || ''));
+}
+
 async function dockPost(path, body){
-  if (DOCK_WRITE_WHITELIST.indexOf(path) === -1){
+  if (!dockAllowed(path)){
     // 白名单是**代码里的一道闸**：写错路径时当场说清，而不是偷偷发出去
     return {ok:false, data:{error:'这个页面不允许调用 ' + path + '（对接中心只做接入与激活）'}};
   }
@@ -213,5 +250,112 @@ function dockMountRegister(){
   wrap.dataset.mounted = '1';
 }
 
+/* ══ P4：激活操作台（**只在单间范围**）────────────────────────────────────
+ * 激活类端点本来就是 `/{ws}/…` 的语义 ⇒ 只有"这个间"的入口才该出现这些操作
+ * （总控要先选一个间再进来，避免"在一个页面里同时对多个间动手"）。
+ *
+ * 三条纪律（V34 §7）：
+ *   ① **逐项如实回报**：批量操作分栏（自动/人工），不合并、不美化；
+ *   ② `verified=false` **一律显示「⚠ 待人工/未核实」，绝不显示"完成"**；
+ *   ③ 每个写动作**逐个点击**，不做"一键点完所有成员的所有步骤"这种会掩盖失败的按钮。
+ */
+function dockStepBadge(st){
+  const auto = !!(st && st.automatic), ver = !!(st && st.verified);
+  if (auto && ver) return '<span class="dock-ok2">✓ 已自证</span>';
+  if (auto && !ver) return '<span class="dock-warn2">⚠ 未核实</span>';
+  return '<span class="dock-warn2">⚠ 人工模式</span>';
+}
+
+function dockRenderSteps(steps){
+  if (!steps) return '';
+  return '<div class="dock-steps">' + Object.keys(steps).map(k =>
+    '<span class="dock-step"><code>' + esc(k) + '</code>' + dockStepBadge(steps[k]) + '</span>').join('') + '</div>';
+}
+
+async function dockLoadActivation(){
+  const wrap = document.getElementById('dockActivateWrap');
+  if (!wrap) return;
+  if (DOCK_GLOBAL){ wrap.innerHTML = ''; return; }   // 激活是"这个间"的事，总控不挂
+  const ws = DOCK_WS;
+  let d;
+  try {
+    const r = await fetch('/api/workshop/' + encodeURIComponent(ws) + '/members-status');
+    d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  } catch (e){
+    wrap.innerHTML = '<div class="card"><h3>激活操作台</h3><div class="dock-err">✗ ' +
+      esc(e.message || e) + '</div><p class="sub">读不到成员状态 —— 不显示成"没有成员"。</p></div>';
+    return;
+  }
+  const ms = d.members || [];
+  const sum = d.summary || {};
+  const head = '<div class="card"><h3>激活操作台 <span class="sub">（本工作间）</span></h3>' +
+    '<p class="lead">成员 ' + ms.length + ' 名' +
+    (sum.manual_members && sum.manual_members.length
+      ? '　·　⚠ <b>' + sum.manual_members.length + ' 名有"人工模式"的步骤</b>（那些步骤**没被核实**，不算完成）'
+      : '　·　全部步骤都由脚本自证') + '</p>' +
+    '<div class="dock-form-actions">' +
+    '<button class="btn mini" onclick="dockWsAct(\'onboard\')">全员对接（建会话+命名）</button>' +
+    '<button class="btn mini" onclick="dockWsAct(\'rescan\')">掉线扫描</button>' +
+    '<span class="dock-msg" id="actMsg"></span></div></div>';
+
+  const cards = ms.map(m => {
+    const ch = m.channel || {};
+    const st = {active:'已接入', pending:'未接入', retired:'已停用'}[ch.state] || ch.state || '';
+    return '<div class="card">' +
+      '<h3>' + esc(m.role || '') + '　' + esc(m.display_name || m.member_id) +
+      ' <span class="sub">(' + esc(m.member_id) + ')</span></h3>' +
+      '<p class="lead">通道 <b>' + esc(st) + '</b> · 第 ' + esc(ch.seq || 1) + ' 条' +
+      '　·　会话名：<code>' + esc(m.session_name || '（还没命名）') + '</code>' +
+      '　·　状态 ' + esc(m.status || '') + '</p>' +
+      (m.orphan ? ('<div class="dock-warn">⚠ ' + esc(m.orphan_text || '这个成员的 agent 已不在平台上') +
+                   '　' + esc(m.orphan_advice || '') + '</div>') : '') +
+      dockRenderSteps(m.steps) +
+      '<div class="dock-form-actions">' +
+      '<button class="btn mini" onclick="dockMemberAct(\'establish\',\'' + esc(m.member_id) + '\')">建会话</button>' +
+      '<button class="btn mini" onclick="dockMemberAct(\'deliver\',\'' + esc(m.member_id) + '\')">送桥</button>' +
+      '<button class="btn mini" onclick="dockMemberAct(\'recover\',\'' + esc(m.member_id) + '\')">抢救</button>' +
+      '<button class="btn mini" onclick="dockMemberAct(\'retire\',\'' + esc(m.member_id) + '\')">停用通道</button>' +
+      '<button class="btn mini" onclick="dockMemberAct(\'newChannel\',\'' + esc(m.member_id) + '\')">新建通道</button>' +
+      '</div><div id="actResult-' + esc(m.member_id) + '"></div></div>';
+  }).join('');
+
+  wrap.innerHTML = head + (cards || '<div class="card"><p class="lead">这个工作间还没有成员。</p></div>');
+}
+
+async function dockMemberAct(kind, mid){
+  const path = dockPath(DOCK_PATH[kind], DOCK_WS, mid);
+  const box = document.getElementById('actResult-' + mid);
+  if (box) box.innerHTML = '<p class="sub">执行中…（要起子进程/等回报，可能几秒）</p>';
+  const res = await dockPost(path, {});
+  if (!box) return;
+  // ★`verified=false` 一律说"待人工/未核实"，**绝不**显示"完成"（V34 §7.3）
+  const d = res.data || {};
+  let head = '';
+  if (res.ok){
+    if (d.all_verified === true) head = '<div class="dock-ok">✓ 全部动作由脚本完成并自证</div>';
+    else if (d.all_verified === false || (d.manual && d.manual.length))
+      head = '<div class="dock-warn">⚠ 部分步骤为**人工模式**（未核实）—— 按下面的指引做，平台不会把它当成已完成</div>';
+    else head = '<div class="dock-ok2">已执行（返回里没有 all_verified，请看下面的原始结果）</div>';
+  }
+  box.innerHTML = head;
+  dockRenderResult(box, Object.assign({}, res, {_keepHead:true}));
+}
+
+async function dockWsAct(kind){
+  const msg = document.getElementById('actMsg');
+  if (msg) msg.textContent = '执行中…';
+  const res = await dockPost(dockPath(DOCK_PATH[kind], DOCK_WS, ''), {});
+  if (msg) msg.textContent = res.ok ? '已执行' : '失败，看下方原因';
+  const box = document.getElementById('actResult-_ws');
+  const target = box || (function(){
+    const d = document.createElement('div'); d.id = 'actResult-_ws';
+    document.getElementById('dockActivateWrap').appendChild(d); return d;
+  })();
+  dockRenderResult(target, res);
+  dockLoadActivation();          // 状态刷新（逐项结果仍在上面那条里）
+}
+
 dockMountRegister();
 dockLoad();
+dockLoadActivation();

@@ -29,12 +29,18 @@ def _read(name: str) -> str:
 def _js_code(src: str) -> str:
     """去掉注释后的 JS（**判"代码里有没有"必须去注释** —— 否则注释里提一句就误报）。
 
-    ⚠️ 本守卫被这件事咬过一次：我写了个"`/discuss` 出现即 FAIL"，结果**那句注释本身**
-    就含 `/discuss` ⇒ 守卫判自己红。断言"代码里有没有"就先把注释剥掉。
+    ⚠️ 这个助手被咬过**两次**，两次都是"别用天真办法剥注释"：
+      ① 我写了句注释"`/discuss` 出现即 FAIL"，结果**那句注释本身**含 `/discuss` ⇒ 守卫判自己红；
+      ② 第一版用 `re.sub(r"/\\*.*?\\*/", ...)` 剥块注释，而白名单里的
+         `'/api/workshop/*/onboard-members'` **字符串里就含 `/*`** ⇒ 它把字符串后半段
+         当注释删了，于是"动作路径不在白名单里"的**假红**。
+      现在只剥**行锚定**的块注释（整行以 `/*` 开头、以 `*/` 结尾）与行注释 ——
+      既够用（本文件的注释就是这么写的），又不会吃掉字符串里的 `/*`。
     """
-    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
-    src = re.sub(r"(?m)^\s*//.*$", "", src)
-    return re.sub(r"(?m)//.*$", "", src)
+    src = re.sub(r"(?m)^\s*/\*.*?\*/\s*$", "", src, flags=re.S)   # 整行块注释
+    src = re.sub(r"(?m)^\s*\*.*$", "", src)                       # JSDoc 续行
+    src = re.sub(r"(?m)//.*$", "", src)                           # 行注释
+    return src
 
 
 def test_page_and_script_exist_with_the_readonly_contract():
@@ -45,33 +51,91 @@ def test_page_and_script_exist_with_the_readonly_contract():
     assert "dockingMain" in html and "dockBody" in html, "页面骨架缺关键容器"
 
 
-def test_page_has_zero_write_requests():
-    """★P2 只读时整页零写请求；P3 起**只允许白名单里的写端点**（V34 §4.3）。
+def test_write_whitelist_matches_the_design_contract():
+    """★写请求白名单必须**正好**是 V34 §4.3 那一份（10 条）。
 
-    判据：把 `docking.js` 里所有 POST 路径抽出来，逐个跟白名单对；
-    **`/discuss` 出现即 FAIL**（对接中心不做讨论 UI / 不转发讨论）。
+    对接中心能调的写端点是有明确清单的：多一条就是"偷偷扩大了权限面"，
+    少一条就是"界面上的按钮会点不动"。
     """
     js = _read("docking.js")
     code = _js_code(js)
-    posts = set(re.findall(r"fetch\(\s*['\"]([^'\"]+)['\"]\s*,\s*\{[^}]*method\s*:\s*['\"]POST['\"]", code))
-    posts |= set(re.findall(r"dockPost\(\s*['\"]([^'\"]+)['\"]", code))
-    assert posts, "一个写请求都没有？P3 应该已经带上注册了（若退回纯只读，请同步本守卫）"
     m = re.search(r"DOCK_WRITE_WHITELIST\s*=\s*\[(.*?)\]", code, re.S)
     assert m, "找不到写请求白名单（V34 §4.3 要求白名单外零 POST）"
-    allowed = set(re.findall(r"['\"]([^'\"]+)['\"]", m.group(1)))
-    outside = sorted(p for p in posts if p not in allowed)
-    assert not outside, "出现白名单外的写请求：%s（白名单＝%s）" % (outside, sorted(allowed))
+    got = set(re.findall(r"['\"]([^'\"]+)['\"]", m.group(1)))
+    expect = {
+        "/api/harness/pre-register", "/api/harness/probe-register", "/api/harness/register",
+        "/api/workshop/*/onboard-members", "/api/workshop/*/recover-scan",
+        "/api/workshop/*/member/*/establish-session",
+        "/api/workshop/*/member/*/deliver-bridge",
+        "/api/workshop/*/member/*/recover",
+        "/api/workshop/*/member/*/channel/retire",
+        "/api/workshop/*/member/*/channel/establish",
+    }
+    assert got == expect, "白名单与 V34 §4.3 不一致：多=%s 少=%s" % (sorted(got - expect), sorted(expect - got))
+
+
+def test_every_action_path_is_inside_the_whitelist():
+    """界面上的**每一个**动作路径都必须落在白名单里（否则按钮会被自己的闸拦住）。"""
+    code = _js_code(_read("docking.js"))
+    m = re.search(r"DOCK_PATH\s*=\s*\{(.*?)\};", code, re.S)
+    assert m, "找不到 DOCK_PATH 路径表（动作路径的唯一来源）"
+    paths = re.findall(r"['\"]([^'\"]*\{ws\}[^'\"]*)['\"]", m.group(1))
+    assert paths, "DOCK_PATH 里没有带 {ws} 的路径？"
+    wl = _read("docking.js")
+    wl = re.search(r"DOCK_WRITE_WHITELIST\s*=\s*\[(.*?)\]", _js_code(wl), re.S).group(1)
+    allowed = set(re.findall(r"['\"]([^'\"]+)['\"]", wl))
+
+    def norm(p):
+        return p.replace("{ws}", "*").replace("{mid}", "*")
+
+    outside = [p for p in paths if norm(p) not in allowed]
+    assert not outside, "这些动作路径不在白名单里（按钮会被闸拦住）：%s" % outside
+
+
+def test_no_discuss_no_bypass_writes():
+    """两条纪律：**代码里（去注释后）不许出现 `/discuss`**；**写请求只有 `dockPost` 一条通道**。
+
+    后者是突变体逼出来的：只要能绕过 `dockPost` 直接 fetch，白名单那道闸就是摆设。
+    """
+    code = _js_code(_read("docking.js"))
     assert "/discuss" not in code, \
         "**代码里**出现了 /discuss —— V34 §4.3 明令：出现即 FAIL（注释里提一句不算）"
-
-    # ★写请求**只有一条通道**：所有 POST 都必须走 `dockPost`（白名单+错误处理都在它里面）。
-    #   否则可以绕开那道闸直接 fetch —— 白名单就成了摆设（本守卫被突变体 M2 逼出来的）。
     i = code.find("async function dockPost(")
     assert i != -1, "找不到 dockPost 通道"
     j = code.find("\n}", i)
     outside = code[:i] + code[j:]
     bypass = re.findall(r"fetch\([^)]*method\s*:\s*['\"]POST['\"]", outside)
     assert not bypass, "有写请求绕过了 dockPost 通道（白名单闸被绕过）：%s" % bypass
+
+
+def test_activation_panel_is_single_workshop_only():
+    """★激活是 `/{ws}/…` 的语义 ⇒ 只在单间挂载；总控要先选一个间再进来（V34 §1）。"""
+    js = _read("docking.js")
+    i = js.find("async function dockLoadActivation(){")
+    assert i != -1, "找不到 dockLoadActivation"
+    j = js.find("\n}", i)
+    body = js[i:j]
+    assert "DOCK_GLOBAL" in body and "innerHTML = ''" in body, \
+        "激活面板没有「只在单间挂载、总控清空」的分支"
+    assert "dockLoadActivation();" in js, "激活面板没被真正调用（用户看不到它）"
+
+
+def test_unverified_steps_are_never_rendered_as_done():
+    """★V34 §7.3：`verified=false` **一律**显示"⚠ 待人工/未核实"，**绝不**显示"完成"。
+
+    这里按结构判两件事：① 步骤徽章对"自动但未核实"和"人工模式"都给 ⚠；
+    ② 动作结果只有在 `all_verified === true` 时才给 ✓ 的成功样式；其余情况必须出现"⚠"或"未核实"字样。
+    """
+    js = _read("docking.js")
+    i = js.find("function dockStepBadge(")
+    assert i != -1, "找不到 dockStepBadge"
+    badge = js[i:js.find("\n}", i)]
+    assert "⚠" in badge and "未核实" in badge and "人工模式" in badge, \
+        "步骤徽章没有把「未核实/人工模式」如实标出来：%s" % badge
+    k = js.find("async function dockMemberAct(")
+    act = js[k:js.find("\n}", k)]
+    assert "all_verified === true" in act, "动作结果没有按 all_verified 分档（会把未核实显示成成功）"
+    assert "待人工" in act or "未核实" in act, "未核实的路径没有给出「待人工/未核实」的说法"
 
 
 def test_single_workshop_mode_hides_the_workshop_picker():
