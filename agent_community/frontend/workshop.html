@@ -923,6 +923,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 
       <a class="sidebar-back" href="/" title="返回大厅">← <span class="sb-text">返回大厅</span></a>
+      <!-- ★V34 §1：工作间入口**只指向本工作间**（`?ws=`）—— 不带参数的总控入口在大厅 -->
+      <a class="hub-pill" id="dockingPill" href="/docking.html" title="对接中心 · 本工作间的成员对接（看谁接上了、对上哪个岗位）">🔌 对接中心</a>
       <a class="hub-pill" href="/hub.html" title="流程说明 · 全流程（只讲不做）">◈ 流程说明</a>
 
 
@@ -3928,6 +3930,11 @@ function loadWorkshop(id){
     await loadStageBar();   /* FE-20：拉权威阶段并施门控（放在最后，保证门控生效顺序） */
     await loadOrphans();    /* FE-23：孤儿横幅（并联动放开名单） */
     loadDebate();           /* V52：辩论模式状态（开关/轮次/陈述数）—— 默认关，读不到就保持原样 */
+    /* V34 §1：工作间那个入口**必须带上本间 id**，否则它就成了总控（能看/动别的间）—— 串范围。 */
+    (function(){
+      const pill = document.getElementById('dockingPill');
+      if (pill) pill.href = '/docking.html?ws=' + encodeURIComponent(id);
+    })();
 
 
   });

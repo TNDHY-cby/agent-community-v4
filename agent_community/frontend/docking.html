@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#121316">
+<title>对接中心</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="hub.css">
+</head>
+<body>
+<a class="skip-link" href="#dockingMain">跳到主内容</a>
+<div class="app">
+
+  <!-- ===== topbar ===== -->
+  <header class="topbar">
+    <div class="logo"><span class="logo-mark">🔌</span> 对接中心<span class="sub" id="dockScopeSub">· 总控（全局）</span></div>
+    <div class="position" id="dockPosition">把外部 Agent 接进来、唤醒起来 · 讨论与工作仍在工作间</div>
+    <div class="spacer"></div>
+    <nav class="live-links">
+      <a href="/" target="_blank" rel="noopener">◈ 实时大厅</a>
+      <a href="/workshop.html" target="_blank" rel="noopener">💬 工作间</a>
+      <a href="/register.html" target="_blank" rel="noopener">🔌 注册页（旧）</a>
+      <a href="/hub.html" target="_blank" rel="noopener">◈ 流程说明</a>
+      <a href="/ops.html" target="_blank" rel="noopener">📡 看板</a>
+    </nav>
+  </header>
+
+  <div class="scope-banner" role="note" id="dockScopeBanner">◈ 正在读取对接总览…</div>
+
+  <div class="layout">
+    <!-- ===== 左：范围与工作间 ===== -->
+    <aside class="rail">
+      <div class="rail-head">范围 <span class="rail-sub" id="railScopeSub">SCOPE</span></div>
+      <!-- ★总控才有工作间选择器；单间模式（?ws=）**整块不渲染** —— V34 §1「工作间的只能进入对应的」 -->
+      <div id="wsPickerWrap" style="padding:8px 10px"></div>
+      <ol id="railList" class="rail-list"></ol>
+    </aside>
+
+    <!-- ===== 右：主舞台 ===== -->
+    <main class="stage" id="dockingMain" tabindex="-1">
+      <div class="stage-head">
+        <div class="stage-no" id="dockNo">P1</div>
+        <div>
+          <h1 id="dockTitle">对接总览</h1>
+          <p id="dockUser" class="stage-user">—</p>
+        </div>
+        <div class="stage-api" id="dockApi">GET /api/docking/overview</div>
+      </div>
+
+      <section id="dockBody" class="stage-body"><!-- JS 渲染 --></section>
+
+      <footer class="stage-foot">
+        <span>本页只做<b>接入与激活</b>；<b>讨论与工作仍在工作间</b>（对接中心不做讨论 UI、不做开工按钮）。</span>
+        <span class="demo-note">依据 V34 对接中心设计 · 本版为 P2（只读总览）</span>
+      </footer>
+    </main>
+  </div>
+</div>
+
+<!-- 模板：一个 harness 的绑定行 -->
+<template id="tpl-binding">
+  <li class="bind-row">
+    <span class="b-ws"></span>
+    <span class="b-role"></span>
+    <span class="b-state"></span>
+    <span class="b-name"></span>
+  </li>
+</template>
+
+<script src="docking.js"></script>
+</body>
+</html>

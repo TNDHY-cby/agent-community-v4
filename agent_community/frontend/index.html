@@ -365,7 +365,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
     <div class="ws-status"><span class="ws-dot" id="wsDot"></span><span id="wsText">未连接</span></div>
     <div class="spacer"></div>
     <button class="btn" onclick="openSettings()">⚙ 设置</button>
-    <button class="btn" onclick="location.href='/register.html'">🔌 注册 Harness</button>
+    <button class="btn" onclick="location.href='/docking.html'" title="对接中心 · 把外部 Agent 接进来、并让它跟工作间对上">🔌 对接中心</button>
     <button class="btn" onclick="location.href='/ops.html'" title="运维看板 · 工单审计与Agent在线">📡 看板</button>
     <button class="btn" onclick="location.href='/handover.html'" title="交付回执台 · 无证据不回执">🧾 回执</button>
     <button class="btn" onclick="location.href='/booths.html'" title="成员隔间与桥">🏗 隔间</button>
@@ -397,7 +397,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
             <textarea id="cmdInput" placeholder="描述你想完成的任务，例如：做一个本地记账工具" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
             <button class="send-btn" id="sendBtn" onclick="sendCommand()">发布</button>
           </div>
-          <div class="hi-hint">Enter 发布 · Shift+Enter 换行 · 可先发布和讨论；执行前需接入员工。<a href="/register.html" target="_blank" rel="noopener">接入员工</a></div>
+          <div class="hi-hint">Enter 发布 · Shift+Enter 换行 · 可先发布和讨论；执行前需接入员工。<a href="/docking.html" target="_blank" rel="noopener">接入员工（对接中心）</a></div>
         </div>
       </div>
       <div class="workshop-view" id="workshopView">
