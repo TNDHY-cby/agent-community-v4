@@ -198,6 +198,8 @@ from .routers.sessions import router as _sessions_router
 app.include_router(_sessions_router)  # V-15 步骤8：会话可见性：GET /api/sessions（§12.2.1 保留待复用必配可见性）
 from .routers.company_admin import router as _company_admin_router
 app.include_router(_company_admin_router)  # 远程接入（公司间令牌授权）管理：登记/签发/吊销/校验
+from .routers.docking import router as _docking_router
+app.include_router(_docking_router)  # V34 对接中心：GET /api/docking/overview（只读跨间总览；老板 2026-10-15 拍板「做对接中心」）
 from .routers.handover import router as _handover_router
 app.include_router(_handover_router)  # V-23 交接体系：证据栏 + 送达回执（无证据不回执）
 from .routers.system import router as _system_router
