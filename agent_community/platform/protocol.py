@@ -477,6 +477,16 @@ class HarnessInfo(BaseModel):
     bridge_dir: str = ""        # 桥文件所在文件夹路径（对象告知的"桥坐标"）
     bridge_status: str = ""     # 桥状态：""未登记 / "reported"已告知路径 / "tested"测试通过
 
+    # ── 视觉激活脚本（FE-26 §2b/§5，2026-10-15 老板裁定）────────────────
+    # 「脚本存 harness 列表里的具体成员里」⇒ 存进**档案**，不另建目录。
+    # 结构（都可缺省）：{text, method, keywords[], verified, saved_at, source}
+    #   · text     —— 脚本正文（给人看得懂、能手工改的那份；**唯一真相**在这里，导出只是副本）
+    #   · method   —— 它靠哪一档把话送进去（wmpaste / clipboard）
+    #   · keywords —— 定位用的关键词（下次可以直接复用）
+    #   · verified —— 上次试投的结果（**没自证过就是 False，不假装**）
+    # **默认空 = 向后兼容**：老记录里没有这个键，读到就是 {}（不改老数据也能跑）。
+    activation_script: dict = Field(default_factory=dict)
+
     # 封装的 AI
     ai: HarnessAI = Field(default_factory=HarnessAI)
 

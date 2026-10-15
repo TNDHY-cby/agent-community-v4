@@ -165,20 +165,45 @@ def test_endpoint_is_mounted_as_get():
 
 
 def test_source_has_no_write_calls_in_the_readonly_path():
-    """只读端点里不许出现 `save_state` / 激活调用（结构判据，不看文本行号）。
+    """**只读的那几个函数**里不许出现 `save_state` / 激活调用（结构判据，不看文本行号）。
 
-    用 AST 找**本模块顶层函数体内**的调用名 —— 与"扫描器要按结构写"同一条教训。
+    用 AST 找**只读函数体内**的调用名 —— 与"扫描器要按结构写"同一条教训。
+
+    ⚠️ 2026-10-15 收窄过一次：本模块后来**也放了写端点**（`FE-26` P1 的试投与改档案），
+    原来扫"整个模块"的写法会把它一并判红。**保证不丢、范围收窄** ——
+    只读函数（`_interface_facts` / `build_overview` / `docking_overview` /
+    `docking_locate` / `docking_harness_get` / `match_candidates` / `patch_harness_dump`）
+    仍然一个写动作都不许有。
     """
     import ast
     import pathlib
     src = pathlib.Path(docking.__file__).read_text(encoding="utf-8")
     tree = ast.parse(src)
     banned = {"save_state", "establish_session", "deliver_bridge", "onboard_members"}
+    readonly_fns = {"_interface_facts", "build_overview", "docking_overview",
+                    "docking_locate", "docking_harness_get",
+                    "match_candidates", "patch_harness_dump"}
     found = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            fn = node.func
-            name = getattr(fn, "attr", None) or getattr(fn, "id", None)
-            if name in banned:
-                found.append((name, getattr(node, "lineno", 0)))
-    assert not found, "只读总览里出现了写动作：%r" % found
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name not in readonly_fns:
+            continue
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Call):
+                fn = sub.func
+                name = getattr(fn, "attr", None) or getattr(fn, "id", None)
+                if name in banned:
+                    found.append((node.name, name, getattr(sub, "lineno", 0)))
+    assert not found, "只读函数里出现了写动作：%r" % found
+
+
+def test_readonly_functions_are_still_covered():
+    """反面对照：上面那张只读函数表**不许变成空转**（函数改名/删了要一起改，否则守卫失效）。"""
+    import ast
+    import pathlib
+    src = pathlib.Path(docking.__file__).read_text(encoding="utf-8")
+    names = {n.name for n in ast.walk(ast.parse(src))
+             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    for want in ("build_overview", "docking_overview", "docking_locate", "docking_harness_get"):
+        assert want in names, "只读函数 %s 不在了 —— 守卫会静默空转，请同步更新列表" % want

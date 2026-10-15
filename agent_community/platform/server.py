@@ -930,12 +930,14 @@ async def api_assistant_chat(request: Request):
         ReadFileTool, WriteFileTool, ShellExecTool, WebFetchTool,
         GenerateBridgeTool, ListBridgeTemplatesTool,
         ListHarnessTool, LaunchHarnessTool, BridgeTestTool, ProbeHarnessTool,
+        FindWindowTool,
     )
     tr = ToolRegistry()
     tr.register_many([
         ReadFileTool(), WriteFileTool(), ShellExecTool(), WebFetchTool(),
         GenerateBridgeTool(), ListBridgeTemplatesTool(),
         ListHarnessTool(), LaunchHarnessTool(), BridgeTestTool(), ProbeHarnessTool(),
+        FindWindowTool(),
     ])
     system_prompt = (
         "你是 外端Agent生产合作社（External Agent Community） 平台的内置 AI 助手（平台 Agent）。"
@@ -947,6 +949,11 @@ async def api_assistant_chat(request: Request):
         "当用户要接入一个新的外部 Agent 但说不清技术细节时，用 probe_harness 工具探测它"
         "（给进程名/端口/路径线索即可），摸清它是 HTTP API 型、文件型还是 ACP 型，"
         "然后给出推荐的注册配置（wakeup_method + api_base_url 等），帮助用户完成接入。"
+        # ★2026-10-15（FE-26 §3.4）：视觉激活的"定位"这一步 —— 与上一条同一个写法（规则 20）
+        "当用户要**视觉激活**某个 agent（把它从桌面上叫起来）时：先向他确认几个**会出现在那个窗口标题里**"
+        "的关键词，用 find_window 工具去定位，把候选窗口（标题/进程/匹配命中）如实报给他，"
+        "让他在界面上点选；**不要自己注入、不要替他点** —— 试投与保存都由他在界面上按按钮完成。"
+        "定位不到就把关键词放宽一点重试，或让他先把那个 agent 的窗口打开再找你。"
         "优先使用工具获取信息，然后给出准确回答，使用中文回复。"
     )
     # 每步工具调用推送给前端（前端已连 /ws，走 message 事件）

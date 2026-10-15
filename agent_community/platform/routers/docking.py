@@ -179,3 +179,210 @@ async def docking_overview(request: Request, ws: str = ""):
         if found is None:
             return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
     return build_overview(only or None)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# FE-26：前台的四件事 —— **定位 / 试投 / 档案读 / 档案写**
+#
+# 老板 2026-10-15 晚场裁定：
+#   · 脚本**存进 harness 档案**（`HarnessInfo.activation_script`，不另建目录）；
+#   · 加「详情」按钮可看可改四块（框架性能/适配模型/具体桥模板/激活方式）；
+#   · 视觉激活＝**用户填关键词 → agent 去定位 → 落成脚本**。
+#
+# 三条纪律（照 FE-26 §3.3）：
+#   ① **定位只读**（只列窗口，不注入、不改状态）；② **试投放给界面按钮**（不是给 Agent 自动跑）；
+#   ③ **保存必须用户点**（可审计、可回退）。⇒ 所以本文件里没有"Agent 自己往窗口送字"的路。
+# ══════════════════════════════════════════════════════════════════════════
+
+#: 档案里**允许通过本端点改**的字段（白名单制：不在表里的一律拒绝，避免手滑改坏身份字段）
+_HARNESS_EDITABLE = (
+    "harness_name", "harness_type", "harness_version", "description",
+    "transports", "preferred_transport", "callback_url",
+    "wakeup_method", "wakeup_url", "wakeup_dir", "acp_command", "acp_cwd",
+    "api_base_url", "api_message_path", "api_outbox_dir",
+    "bridge_dir", "bridge_status",
+    "can_wake", "waking_models", "waking_protocols",
+    "ai", "tools", "metadata", "activation_script",
+)
+
+
+def match_candidates(windows: list, keywords: list, limit: int = 20) -> list:
+    """**纯函数**：按关键词给窗口打分排序（可单测，不碰系统）。
+
+    匹配＝关键词**逐个**在标题里出现（大小写不敏感）；匹配分＝命中数/关键词数。
+    排序：分高在前，同分按标题（稳定，便于界面与测试对照）。
+    """
+    kws = [str(k).strip().lower() for k in (keywords or []) if str(k).strip()]
+    if not kws:
+        return []
+    scored = []
+    for w in (windows or []):
+        title = str((w or {}).get("title") or "")
+        low = title.lower()
+        hits = [k for k in kws if k in low]
+        if hits:
+            scored.append({**w, "hits": hits, "score": round(len(hits) / len(kws), 3)})
+    scored.sort(key=lambda x: (-x["score"], str(x.get("title"))))
+    return scored[:max(1, int(limit or 20))]
+
+
+def patch_harness_dump(old: dict, patch: dict) -> tuple:
+    """**纯函数**：把界面提交的补丁并进档案。返回 `(新档案 dict, 错误中文)`。
+
+    只接受 `_HARNESS_EDITABLE` 里的键；**未知键直接拒绝并列出**（不静默忽略 ——
+    静默忽略会让用户以为改了，实际没改，正是准则⑤要防的那种状态）。
+    """
+    patch = dict(patch or {})
+    bad = sorted(k for k in patch if k not in _HARNESS_EDITABLE)
+    if bad:
+        return None, "这些字段不允许在这里改（或字段名写错了）：%s" % "、".join(bad)
+    new = dict(old or {})
+    new.update(patch)
+    return new, ""
+
+
+@router.post("/api/docking/locate")
+async def docking_locate(request: Request):
+    """**定位（只读）**：按关键词列出候选窗口。**不注入、不改任何状态。**
+
+    body: `{"keywords": ["TraeCode","合作社"], "limit": 20}`
+    返回：`{ok, supported, keywords, total_windows, candidates[], probe_note}`
+    —— 非 Windows / 没有注入脚本时 `supported=false` 且 `probe_note` **说清为什么**。
+    """
+    from ..server import Utf8JSONResponse
+    from .. import visual_launch
+    import asyncio
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    keywords = [str(k).strip() for k in (body.get("keywords") or []) if str(k).strip()]
+    if not keywords:
+        return Utf8JSONResponse({"error": "keywords 不能为空 —— 给几个**会出现在那个窗口标题里**的字"}, status_code=400)
+    res = await asyncio.to_thread(visual_launch.list_windows, "")
+    wins = res.get("windows") or []
+    cands = match_candidates(wins, keywords, body.get("limit") or 20)
+    return {
+        "ok": bool(res.get("ok")),
+        "supported": bool(res.get("supported")),
+        "keywords": keywords,
+        "total_windows": len(wins),
+        "candidates": cands,
+        "probe_note": res.get("detail") or "",
+        "checked_at": _now_iso(),
+    }
+
+
+@router.post("/api/docking/try-activate")
+async def docking_try_activate(request: Request):
+    """**试投一次**（写：真的往窗口送一句话）—— 由**界面按钮**调用，**Agent 不自动调**。
+
+    body: `{"title": "<选中的窗口标题>", "keywords": [...], "text": "可选", "method": "auto"}`
+    `title` 优先（用户选中的那个窗口最精确）；没有 `title` 就用第一个关键词当匹配键。
+
+    返回 `visual_launch.launch()` 的**原样结果**（含 `verified` 三态）＋ `key`（实际用的匹配键）。
+    **本端点不保存任何东西** —— 保存是用户下一步按「保存」时的事（可审计、可回退）。
+    """
+    from ..server import Utf8JSONResponse
+    from .. import visual_launch
+    import asyncio
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    title = str(body.get("title") or "").strip()
+    keywords = [str(k).strip() for k in (body.get("keywords") or []) if str(k).strip()]
+    key = title or (keywords[0] if keywords else "")
+    if not key:
+        return Utf8JSONResponse({"error": "得先给我**要投给哪个窗口**（选中一个候选，或给一个关键词）"}, status_code=400)
+    text = str(body.get("text") or "").strip() or (
+        "【平台试投】视觉激活自检 %s —— 看到这行说明这条路能通，可以忽略。" % _now_iso())
+    # ★★2026-10-15 走查抓到的**假成功**（准则⑤）：
+    #   `method="auto"` 在 wmpaste 失败后**会自动退到剪贴板**，而剪贴板**总是成功** ⇒
+    #   把一段文本投给**根本不存在的窗口**时，`launch()` 返回 `ok=True`（附一句 wmpaste 失败），
+    #   包装层若照抄 `ok` 就会显示"试投成功" —— 而真相是"这个窗口根本没找到"。
+    #   ⇒ **试投必须钉住方法**（默认钉在消息式注入上，不自动兜底）：
+    #     试投回答的是"**这条路能不能通**"；剪贴板兜底是**另一档服务**，要由用户显式选。
+    import os as _os
+    method = str(body.get("method") or "").strip() or ("wmpaste" if _os.name == "nt" else "clipboard")
+    if method == "auto":
+        method = "wmpaste" if _os.name == "nt" else "clipboard"
+    res = await asyncio.to_thread(visual_launch.launch, None, text, method=method,
+                                 session_name=key, verify=True)
+    out = dict(res or {})
+    out["key"] = key
+    out["text"] = text
+    out["method"] = method                 # 钉住的那个方法（不是 auto）
+    out["checked_at"] = _now_iso()
+    if out.get("ok") is not True and method == "wmpaste":
+        out["next_step"] = (out.get("next_step") or "") + (
+            "　（消息式注入走不通时，可以改用**剪贴板兜底档**：把 method 传 clipboard，"
+            "平台会把内容放好剪贴板、你点一下那个窗口再粘贴 —— 那一档**不等于**验证通过。）")
+    return out
+
+
+def _find_harness(harness_id: str):
+    """按 id 找已注册的 harness 会话（找不到返回 None）。"""
+    from ..harness_adapter import harness_manager
+    return harness_manager.sessions.get(harness_id)
+
+
+@router.get("/api/docking/harness/{harness_id}")
+async def docking_harness_get(harness_id: str):
+    """**档案详情（只读）**：`FE-26` §2b 那四块 ＋ 平台算出的档位事实（只读项）。"""
+    from ..server import Utf8JSONResponse
+    sess = _find_harness(harness_id)
+    if sess is None:
+        return Utf8JSONResponse({"error": "没有这个 harness（可能已注销或 id 写错）"}, status_code=404)
+    dump = sess.info.model_dump()
+    facts = _interface_facts(dump.get("wakeup_method") or "")
+    return {
+        "harness_id": harness_id,
+        "archive": dump,                       # ① 可编辑的档案本体（四块都在这）
+        "facts": facts,                        # ② 平台算出来的档位事实（**只读**，别回写）
+        "editable": list(_HARNESS_EDITABLE),   # ③ 哪些字段允许改（与后端白名单**同一处真相**）
+        "readonly_reason": ("档位事实由 tier_guidance 按档案现算，不落库、不许回写 —— "
+                            "它要是能被改，界面就会出现「改了唤醒方式、档位还显示旧的」那种假状态"),
+        "checked_at": _now_iso(),
+    }
+
+
+@router.post("/api/docking/harness/{harness_id}")
+async def docking_harness_update(harness_id: str, request: Request):
+    """**改档案**（写）—— 只改声明白名单里的字段，**不重建会话/桥**（那与"重新注册"是两件事）。
+
+    body: 要改的字段（可含 `activation_script`）。返回**改后的档案 ＋ 重算后的档位事实**
+    （改了 `wakeup_method` ⇒ 事实跟着变，界面据此回显 —— 不许"改了还显示旧档位"）。
+    """
+    from ..server import Utf8JSONResponse, save_state
+    from ..protocol import HarnessInfo
+    sess = _find_harness(harness_id)
+    if sess is None:
+        return Utf8JSONResponse({"error": "没有这个 harness（可能已注销或 id 写错）"}, status_code=404)
+    try:
+        patch = await request.json()
+    except Exception:  # noqa: BLE001
+        return Utf8JSONResponse({"error": "请求体不是 JSON"}, status_code=400)
+    if not isinstance(patch, dict):
+        return Utf8JSONResponse({"error": "请求体必须是一个对象（字段名 → 新值）"}, status_code=400)
+    merged, err = patch_harness_dump(sess.info.model_dump(), patch)
+    if err:
+        return Utf8JSONResponse({"error": err}, status_code=400)
+    try:
+        new_info = HarnessInfo(**merged)      # 逐字段校验（类型/枚举/必填）
+    except Exception as e:  # noqa: BLE001
+        return Utf8JSONResponse({"error": "改不动：%s" % str(e)[:300]}, status_code=400)
+    if new_info.harness_id != harness_id:     # 身份字段不许被顺手改掉
+        return Utf8JSONResponse({"error": "harness_id 不能改（要换身份请注销后重新登记）"}, status_code=400)
+    sess.info = new_info
+    save_state()
+    dump = new_info.model_dump()
+    return {
+        "ok": True,
+        "archive": dump,
+        "facts": _interface_facts(dump.get("wakeup_method") or ""),
+        "changed": sorted(k for k in (patch or {})),
+        "saved_at": _now_iso(),
+    }
