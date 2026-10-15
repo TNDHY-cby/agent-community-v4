@@ -143,6 +143,8 @@ const DOCK_WRITE_WHITELIST = [
   '/api/harness/bridge-path',
   '/api/harness/bridge-verify',
   '/api/harness/auto-connect',
+  // 平台 Agent 直聊（V34 §5 登记过：它属于"协助架桥"的一部分，故进对接中心白名单）
+  '/api/assistant/chat',
 ];
 
 /** 路径模板（**字面量、唯一来源**）：界面上的每个动作都从这里取路径。 */
@@ -162,6 +164,7 @@ const DOCK_PATH = {
   bridgePath:    '/api/harness/bridge-path',
   bridgeVerify:  '/api/harness/bridge-verify',
   autoConnect:   '/api/harness/auto-connect',
+  chat:          '/api/assistant/chat',
 };
 
 function dockAllowed(path){
@@ -359,6 +362,29 @@ async function dockMemberAct(kind, mid){
   }
   box.innerHTML = head;
   dockRenderResult(box, Object.assign({}, res, {_keepHead:true}));
+}
+
+/** 平台 Agent 直聊（V34 §5：它是"协助架桥"的一部分 ⇒ 进对接中心白名单）。 */
+async function dockChat(){
+  const box = document.getElementById('chatInput');
+  const msg = document.getElementById('chatMsg');
+  const out = document.getElementById('chatReply');
+  const text = (box && box.value || '').trim();
+  if (!text){ if (msg) msg.textContent = '先写一句你要问的'; return; }
+  if (msg) msg.textContent = '平台助手在想…（可能要十几秒）';
+  const res = await dockPost(DOCK_PATH.chat, {message: text});
+  if (msg) msg.textContent = res.ok ? '' : '失败，看下面原因';
+  const d = res.data || {};
+  if (!res.ok || d.error){
+    out.innerHTML = '<div class="dock-err">✗ ' + esc(d.error || ('HTTP ' + (res.status || '?'))) +
+      '</div><p class="sub">这一页不会把失败显示成「没内容」。</p>';
+    return;
+  }
+  const steps = d.steps || [];
+  out.innerHTML = '<div class="dock-ok2">平台助手：</div><div class="dock-chat">' + esc(d.reply || '') + '</div>' +
+    (steps.length ? ('<details><summary>它用了哪些工具（' + steps.length + ' 步）</summary><pre>' +
+                     esc(JSON.stringify(steps, null, 2)) + '</pre></details>') : '');
+  if (box) box.value = '';
 }
 
 async function dockBridgeAct(kind, hid, mid){

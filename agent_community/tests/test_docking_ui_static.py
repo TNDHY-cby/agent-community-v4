@@ -72,6 +72,8 @@ def test_write_whitelist_matches_the_design_contract():
         "/api/workshop/*/member/*/channel/establish",
         # 架桥辅助（V34 §2 明列要迁进对接中心的三个写动作）
         "/api/harness/bridge-path", "/api/harness/bridge-verify", "/api/harness/auto-connect",
+        # 平台 Agent 直聊（V34 §5 登记过：属"协助架桥"，进对接中心白名单）
+        "/api/assistant/chat",
     }
     assert got == expect, "白名单与 V34 §4.3 不一致：多=%s 少=%s" % (sorted(got - expect), sorted(expect - got))
 
@@ -109,12 +111,25 @@ def test_bridge_helpers_are_per_harness_not_per_member_path():
     assert i != -1 and "harness_id" in act[i:i + 400], "dockBridgeAct 没有把 harness_id 放进 body"
 
 
-def test_legacy_register_page_points_to_the_docking_center():
-    """V34 §5 第二步的准备：`register.html` 保持可达，但**必须**告诉来的人去哪才是正主。"""
+def test_legacy_register_page_is_a_readonly_mirror_not_the_entry():
+    """V34 §5 第二步：旧注册页**不再是入口**，但按设计稿允许的第二个选项**留作只读镜像**。
+
+    ⚠️ **本守卫的来历（一次真事故）**：我一度把 `register.html` 整个换成重定向页 ——
+    结果**静默删掉了产品内容**（注册模板的字段契约、自测题 Q1~Q5、按桥型的架桥匹配表），
+    是**四条既有守卫当场变红**才发现的（`test_template_contract` / `test_v44_batch1_fixes`）。
+    而这批内容**不能抄进对接中心**：抄一遍就是"同一件事两份口径"（规则 20 明令禁止）。
+    ⇒ 结论：**留只读镜像**（V34 §5 原文允许），内容原地保留、入口改向。
+
+    判据：① 文件在且**内容完整**（模板/自测题仍在）；② 顶上明说已被取代并指向对接中心；
+    ③ 大厅主入口不再导向它（由 `test_hall_entry_points_to_the_docking_center` 保证）。
+    """
     reg = _read("register.html")
-    assert "/docking.html" in reg, "旧注册页没有指向对接中心"
+    assert "⚑ 索引" in reg, "旧页的注册模板索引块被删了（产品内容）"
+    assert "选 **Q1**" in reg and "选 **Q5**" in reg, "旧页的自测题 Q1~Q5 被删了（产品内容）"
+    assert "/docking.html" in reg, "旧页没有指向对接中心"
     assert "已被「对接中心」取代" in reg or "已被对接中心取代" in reg, \
-        "旧注册页没有说明它已被取代（人会以为这里才是正主）"
+        "旧页没有说明它已被取代（人会以为这里才是正主）"
+    assert "只读镜像" in reg, "旧页没有说明自己现在的身份是「只读镜像」"
 
 
 def test_no_discuss_no_bypass_writes():

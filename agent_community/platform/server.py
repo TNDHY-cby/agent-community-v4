@@ -921,7 +921,9 @@ async def api_assistant_chat(request: Request):
     # 而不是只改文档（避免已按旧文档接入的一方踩坑）。
     message = (body.get("message") or body.get("content") or "").strip()
     if not message:
-        return Utf8JSONResponse({"error": "message required"}, status_code=400)
+        # 2026-10-15：原来是英文 `message required` —— 与 register 那两处同一个毛病
+        #（V34 §9.2：错误一律中文；第一次接入的人看不懂英文报错就卡住）。
+        return Utf8JSONResponse({"error": "缺少必填字段 message（你想问平台助手的问题）"}, status_code=400)
     from .react_loop import ReActLoop
     from .tool_registry import ToolRegistry
     from .tools import (

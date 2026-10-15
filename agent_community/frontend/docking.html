@@ -25,6 +25,9 @@
   .dock-warn{margin:6px 0;padding:5px 8px;border-left:3px solid #ef6c00;background:rgba(239,108,0,.08);font-size:12px}
   .dock-bridge{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;padding-top:6px;
                border-top:1px dashed var(--dim);font-size:11px}
+  .dock-chat{white-space:pre-wrap;margin:6px 0;padding:6px 8px;border-left:3px solid var(--dim);
+             background:rgba(128,128,128,.06);font-size:12px}
+  #dockGuideWrap textarea{width:100%;font-size:12px;padding:4px;box-sizing:border-box}
   #dockActivateWrap pre{white-space:pre-wrap;word-break:break-all;font-size:11px}
 </style>
 </head>
@@ -72,6 +75,37 @@
 
       <!-- ★V34 §1：**注册是全局能力**（总控才有）—— 单间模式这一块由 JS 整块不渲染 -->
       <section id="dockRegisterWrap"></section>
+
+      <!-- ★V34 §5 第二步：教程/模板类**只读内容**已迁到本页。
+           口径不在这里重写一遍 —— 完整流程仍以「流程说明」为准（一处真相，规则 20）。 -->
+      <section id="dockGuideWrap">
+        <div class="card">
+          <h3>接入教程（三步骨架）</h3>
+          <p class="lead"><b>① 你手头有什么就给什么</b>：一句话命令 / 一个目录 / 一个地址
+            （<b>不知道就留空</b> —— 平台会自己探一次再补齐，不用你去猜它怎么被叫醒）。</p>
+          <p class="lead"><b>② 登记</b>：在上面那张登记卡里填标识 + 你有的线索 → 点「探测并登记」。</p>
+          <p class="lead"><b>③ 对上岗位</b>：去工作间，在成员卡上点「建会话 → 送桥」；
+            进不去时用本页单间范围的「挂起/抢救/停用通道/新建通道」和架桥辅助。</p>
+          <p class="sub" style="margin-top:6px"><b>怎么自己验证通了没</b>：① 总览里这个 harness 出现且<b>在线</b>；
+            ② 单间范围里对应成员<b>通道＝已接入</b>且会话名不为空；③ 成员卡上的步骤徽章是「✓ 已自证」——
+            出现「⚠ 人工模式 / 未核实」就<b>还没通</b>，按指引补。</p>
+          <p class="sub" style="margin-top:6px">完整流程与每一步的边界：<a href="/hub.html" target="_blank" rel="noopener">流程说明（只讲不做）→</a>
+            　·　隔间与桥：<a href="/booths.html" target="_blank" rel="noopener">隔间面板 →</a></p>
+        </div>
+        <div class="card">
+          <h3>平台 Agent 直聊 <span class="sub">（协助架桥 · 不懂就问）</span></h3>
+          <p class="lead">说不清"我的 agent 该怎么接"时，直接问平台助手 ——
+            它会用平台自己的工具去看现状（列 harness、试桥、探端口），而不是让你背文档。</p>
+          <div class="dock-form">
+            <textarea id="chatInput" rows="2" placeholder="例如：我有个桌面版 agent，只会盯一个目录，怎么接进来？"></textarea>
+            <div class="dock-form-actions">
+              <button class="btn mini" id="chatSend" onclick="dockChat()">发送</button>
+              <span class="dock-msg" id="chatMsg"></span>
+            </div>
+          </div>
+          <div id="chatReply"></div>
+        </div>
+      </section>
 
       <!-- ★V34 §2/§1：激活类端点是 `/{ws}/…` 的语义 ⇒ 这块**只在单间范围**由 JS 挂载 -->
       <section id="dockActivateWrap"></section>
