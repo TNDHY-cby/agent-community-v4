@@ -226,6 +226,31 @@ SYSTEM_DIR_PREFIXES = [               # 禁止写入的系统目录
 # ── 本地免认证开关 ──────────────────────────
 ALLOWED_TOKENS: set[str] = set()
 DEMO_MODE: bool = False
+
+
+def collect_allowed_tokens(cli_tokens: "list[str] | None" = None) -> list[str]:
+    """"允许谁外部访问"的令牌：**命令行 `--token` 与环境变量 `AC4_TOKEN` 合并**（一处入口）。
+
+    ★2026-10-15 真机容器走查撞出来的缺陷（缺陷见 `PORTABILITY.md` §5.1 条 C）：
+    `AC4_TOKEN` 早就在**三处文档**里承诺过——
+      · README 环境变量表：「平台访问令牌（跨机/对外访问时必设；空=仅本机可用）」；
+      · `env_spec`：缺它就报"没配令牌"，并告诉用户「设 `AC4_TOKEN=<你的令牌>`，或用
+        `AC_HOST=127.0.0.1` 只在本机跑」；
+      · `docker-compose.yml` 头部：「① 只想用命令行 / API：在 `.env` 里设 `AC4_TOKEN=<你的令牌>`，
+        请求带 `Authorization: Bearer <令牌>`」——
+    而实现**只读 `--token` 命令行**。后果：容器里（`Dockerfile` 的 `CMD` 没有 `--token`）、
+    `cli start`（`Popen([python, -m, ...])` 同样没传）里**设了令牌完全无效**，
+    真机实测（`temp/verify_container.py`）打出来的是
+    `带令牌应 200，实得 403 {"error":"服务未配置访问 Token"}` ——
+    **看起来像"你没配"，其实配了**：这是最坏的一类失败（失败不说话）。
+    判据沿用 2026-10-14 那条：**文档承诺的开关必须真能用**。
+    """
+    out = [str(t).strip() for t in (cli_tokens or []) if str(t or "").strip()]
+    env_token = str(os.environ.get("AC4_TOKEN") or "").strip()
+    if env_token:
+        out.append(env_token)
+    return out
+
 def _is_localhost(request: Request) -> bool:
     """判断请求是否来自本地"""
     host = request.client.host if request.client else ""
@@ -6224,14 +6249,22 @@ if __name__ == "__main__":
     ap.add_argument("--host", default="", help="监听地址（覆盖 AC_HOST；只想本机用就填 127.0.0.1）")
     args = ap.parse_args()
     DEMO_MODE = args.demo
-    ALLOWED_TOKENS.update(args.token)
+    # ★2026-10-15：令牌 = `--token` **+ 环境变量 `AC4_TOKEN`**（文档承诺的那一半此前没接上）
+    _tokens = collect_allowed_tokens(args.token)
+    ALLOWED_TOKENS.update(_tokens)
     # 修复: python -m agent_community.platform.server 启动时存在 __main__ 与
     # agent_community.platform.server 双模块副本, 此处仅更新 __main__ 副本会导致
     # routers/plugins.py 延迟导入读到空 ALLOWED_TOKENS (invoke 永远"未配置 Token")
     import sys as _sys
     _alt_server_mod = _sys.modules.get("agent_community.platform.server")
     if _alt_server_mod is not None and _alt_server_mod is not _sys.modules.get("__main__"):
-        _alt_server_mod.ALLOWED_TOKENS.update(args.token)
+        _alt_server_mod.ALLOWED_TOKENS.update(_tokens)
+    if _tokens:
+        print(f"[访问] 外部访问令牌已配置 {len(_tokens)} 个（非本机请求需带 "
+              f"Authorization: Bearer <令牌>）", flush=True)
+    else:
+        print("[访问] 未配置访问令牌 ⇒ **只有本机能访问**（要开外部访问：设 AC4_TOKEN=<令牌> "
+              "或加 --token <令牌>）", flush=True)
     # ★2026-10-13：端口解析只此一处（命令行 > AC_PORT > 默认），别再各写一套
     from ..platform_address import resolve_port as _resolve_port, resolve_host as _resolve_host
     port = args.port or _resolve_port()

@@ -130,7 +130,7 @@ python -m agent_community.cli agents list
 | `AC4_SHUTDOWN_PIN` | 关停口令（空=关停端点仅允许本机来源 + 二次确认） | `（空）` | 否 |
 | `AC_AI_PROVIDER` | AI 后端：`openai`（OpenAI 兼容）/`ollama`/`http_callback`；空=不接 AI | `（空）` | 否 |
 | `AC_AI_BASE_URL` | OpenAI 兼容基址（**按你的服务商填**，别照抄示例） | `（空）` | 条件必需（AC_AI_PROVIDER=openai 时） |
-| `AC_AI_API_KEY` | AI 服务密钥（**绝不入库**；本地配置里会加密保存） | `（空）` | 条件必需（AC_AI_PROVIDER=openai（或需要鉴权的服务）时） |
+| `AC_AI_API_KEY` | AI 服务密钥（**绝不入库**；本地配置里保存时：**Windows 走 DPAPI 加密**（绑定当前用户），其它系统**明文**保存并**打告警**提示改用本环境变量） | `（空）` | 条件必需（AC_AI_PROVIDER=openai（或需要鉴权的服务）时） |
 | `AC_AI_MODEL` | 模型名 | `（空）` | 否 |
 | `AC_PYTHON` | 平台用哪个 Python 解释器去跑脚本/桥（默认当前解释器） | `（空）` | 否 |
 | `AC_ACP_COMMAND` | ACP 拉起命令（桥用它拉起 agent） | `（空）` | 条件必需（手工跑 ACP 类桥且平台未注入时） |

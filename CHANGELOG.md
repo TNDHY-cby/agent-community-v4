@@ -2,6 +2,63 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.8.4] - 2026-10-15
+
+**容器路线真机验证 + 两条"说话不算数"的缺陷修复** —— `PRODUCTIZATION.md` 欠账表第 2 条还清、
+**平台专属 `skipif` 由 1 条降到 0 条**，并在走查/复现中抓出并修掉**可移植性缺陷条 C 与条 D**
+（见 `PORTABILITY.md` §5.1）。
+
+### 修复
+- **`AC4_TOKEN` 是"设了也没用"的令牌**（条 C，与 2026-10-14 的 `AC_HOST` 同族）：
+  README 环境变量表 / `env_spec` / **`docker-compose.yml` 头部**三处都承诺
+  「在 `.env` 里设 `AC4_TOKEN=<你的令牌>`，请求带 `Authorization: Bearer <令牌>`」，
+  而实现**只读 `--token` 命令行** ⇒ 容器里（`Dockerfile` 的 `CMD` 没有 `--token`）
+  与 `python -m agent_community.cli start`（`Popen` 也没传）**设了令牌完全无效**。
+  真机实测打出来的是 `403 {"error":"服务未配置访问 Token"}` ——
+  **看起来像"你没配"，其实配了**：这是最坏的一类失败（失败不说话）。
+  - 修法：新增 `server.collect_allowed_tokens()`，把 `--token` **＋ 环境变量 `AC4_TOKEN`** 合并
+    （`__main__` 与 `platform.server` 双副本**一起**更新）；
+    启动时如实打印「外部访问令牌已配置 N 个（非本机请求需带 Bearer）」或
+    「未配置 ⇒ **只有本机能访问**（怎么开）」。
+- **AI 密钥"已加密保存"是假话（非 Windows）**（条 D，真 Linux 上复现出来的）：
+  `config.save_config()` **无条件**打印「AI API Key 已加密保存（DPAPI 当前用户绑定）」，
+  而 `_encrypt_secret` 在非 Windows 上是**明文回退** ⇒ 真 Linux 实测：屏幕说"已加密"、
+  磁盘上是 `sk-repro-…` **原文**。一句话同时违反 README「本地配置里会加密保存」与
+  《安全披露_CDP镜像与密钥存储》「非 Windows 降级为明文保存**并在保存时打印告警**」两条承诺
+  —— **对安全属性撒谎**是最坏的一类"失败不说话"。
+  - 修法：按**实际落盘形态**分档说 —— 带 `dpapi:` 前缀 → 「已用 DPAPI 加密保存（当前用户绑定）」；
+    否则 → 「**警告**：当前系统没有 DPAPI（非 Windows），AI API Key 以**明文**保存在 …，
+    请限制该文件权限（如 `chmod 600`），或改用环境变量 `AC_AI_API_KEY`（不落盘）」。
+  - README 环境变量表同步改成「Windows 走 DPAPI 加密 / 其它系统明文并打告警」。
+
+### 文档（规则 20：一次全改）
+- `docker-compose.yml` 头部把安全边界说得**更准**：端口映射下**没配置** `AC4_TOKEN` 是
+  **403「服务未配置访问 Token」**；**配置了**但请求没带令牌是 **401**；带对的是 **200 running**。
+  这两档的差别本身就是"令牌有没有被读到"的可观测证据。
+- `PORTABILITY.md` §5.1 从「两个真缺陷」变「**四个**」，条 C / 条 D 各自记录症状 / 修法 / 守卫 / 突变结论；
+- `PRODUCTIZATION.md` 欠账表：**看门狗跨平台**、**容器路线**、**平台专属 skipif** 全部移入「已还」表。
+
+### 守卫（按真结果写，且验过有牙）
+- `agent_community/tests/test_ac4_token_env.py`（**9 条**）：真读环境变量、
+  真调 `_auth_check`（用真的 `Request`，`client.host` 给成**非本机地址**）、真调中间件、
+  **真起一个只设 `AC4_TOKEN`、不带 `--token` 的服务进程**。
+- `test_security.py::test_save_config_message_matches_disk`：**平台无关的不变量** ——
+  存密钥时说的话必须与磁盘上的字节一致；
+  `test_secret_storage_roundtrip_on_every_platform`：**撤掉原来那条整条 skip**，
+  两个平台都验往返、平台差异如实断言。
+- 突变检验：`temp/ac4token_mutation_check.py` **2/2 KILLED**；
+  `temp/dpapi_mutation_check.py` **两个平台各跑一遍**、各自的关键突变 KILLED
+  （"无条件说已加密"只在 Linux 咬得住，"无条件说明文"只在 Windows 咬得住 —— 合起来才是完整的不变量）。
+
+### 实测（真机 · 两阶段 · 都真起容器）
+- `docker compose build` → 阶段 A（**配了**令牌）：不带令牌 **401 有原因**、带对令牌 **200 running**；
+  阶段 B（**完全不配**）：**403 且文案就是「服务未配置访问 Token」**、带任何令牌仍 403。
+- 容器内 `python -m agent_community.platform.procprobe` ⇒ **`backend=procfs`**
+  （**V50 的纯标准库模块在干净 Linux 镜像里能跑**）；容器内 `test_procprobe.py` +
+  `test_ac4_token_env.py` **21 条全绿**。
+- 真 Linux（WSL）：条 D 修前/修后**同一条命令**对照（修前说"已加密"、修后如实说"明文"），
+  `test_security.py` **42 条全绿**，`check_productization.py` **平台专属 skip=0**。
+
 ## [4.8.3] - 2026-10-15
 
 **看门狗跨平台化（欠账清偿）** —— 看门狗从此不再只是"Windows 上能用的那只手"。

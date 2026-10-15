@@ -3,7 +3,8 @@
 覆盖：
 - _is_dangerous 危险命令黑名单拦截（format/net stop/rm -rf/rd /s /q/reg delete 等命中，
   echo 等安全命令不命中）
-- Windows DPAPI 密钥加解密往返（_encrypt_secret / _decrypt_secret）
+- 密钥加解密往返（**两个平台都验**：Windows 走 DPAPI，非 Windows 明文回退；平台差异如实断言）
+- 存密钥时的**消息必须与磁盘事实一致**（条 D：曾出现"磁盘明文、屏幕说已加密"）
 - mask_api_key 脱敏
 - atomic_write_text 原子写盘
 """
@@ -70,15 +71,46 @@ def test_is_dangerous_allows_safe(cmd):
     assert _is_dangerous(cmd) is None, f"安全命令被误拦截: {cmd!r}"
 
 
-# ── DPAPI 加解密往返 ────────────────────────────────────────────
-@pytest.mark.skipif(sys.platform != "win32",
-                    reason="DPAPI（CryptProtectData）是 Windows 专属；Linux 上 _encrypt_secret 走明文回退")
-def test_dpapi_roundtrip():
+# ── 密钥落盘：两种平台都必须**往返正确**，且"说的话"必须与磁盘事实一致 ──────
+# ★2026-10-15（可移植性缺陷**条 D**）：原来这一条**整条 skip 在非 Windows 上**
+#   ⇒ Linux 上"密钥到底怎么存"根本没人守。而实际上 Linux 上存的是**明文**、
+#   屏幕上却打印"已加密保存（DPAPI 当前用户绑定）"（真 Linux 实测复现，见 `PORTABILITY.md` §5.1 条 D）。
+#   现在：往返在**两个平台都验**，平台差异**如实断言**，再加一条"消息 vs 磁盘"的硬判据。
+def test_secret_storage_roundtrip_on_every_platform():
     secret = "sk-ant-0123456789abcdef-中文密钥"
     enc = _encrypt_secret(secret)
-    assert enc.startswith("dpapi:")
-    assert enc != secret
-    assert _decrypt_secret(enc) == secret
+    assert _decrypt_secret(enc) == secret, "加解密往返必须成立（两个平台都是硬要求）"
+    if sys.platform == "win32":
+        assert enc.startswith("dpapi:"), "Windows 上必须真的走 DPAPI，不是明文"
+        assert enc != secret
+    else:
+        assert enc == secret, (
+            "非 Windows 是**明文回退**（既定设计，不是 bug）；但它必须被如实说出来 —— "
+            "见 test_save_config_message_matches_disk")
+
+
+def test_save_config_message_matches_disk(capsys, tmp_path, monkeypatch):
+    """★条 D 的核心判据：**存密钥时说的话，必须与磁盘上的字节一致**。
+
+    实测过的错误形态（真 Linux）：磁盘是明文 `sk-repro-…`，屏幕却说
+    「AI API Key 已加密保存（DPAPI 当前用户绑定）」—— **对安全属性撒谎**。
+    这条判据**与平台无关**：加密了就必须说加密，明文就必须说明文（并给出路）。
+    """
+    from agent_community import config as config_mod
+
+    monkeypatch.setattr(config_mod, "CONFIG_FILE", tmp_path / "config.json")
+    config_mod.save_config({**config_mod.DEFAULT_CONFIG,
+                            "ai_api_key": "sk-repro-0123456789abcdef"})
+    out = capsys.readouterr().out
+    raw = (tmp_path / "config.json").read_text(encoding="utf-8")
+    encrypted_on_disk = '"ai_api_key": "dpapi:' in raw
+    if encrypted_on_disk:
+        assert "已用 DPAPI 加密保存" in out, out
+        assert "明文" not in out, "磁盘是密文却说成明文：%r" % out
+    else:
+        assert "明文" in out, "密钥以明文落盘却没说 —— 这就是对用户撒谎：%r" % out
+        assert "已用 DPAPI 加密保存" not in out, out
+        assert "AC_AI_API_KEY" in out, "明文时必须告诉用户该改用什么：%r" % out
 
 
 def test_encrypt_empty_returns_empty():

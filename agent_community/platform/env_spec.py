@@ -91,7 +91,14 @@ SPEC: dict[str, Var] = {v.name: v for v in [
     Var("AC_AI_BASE_URL", "OpenAI 兼容基址（**按你的服务商填**，别照抄示例）",
         default="", kind="core", example="https://api.example.com/v1",
         required_when="AC_AI_PROVIDER=openai 时"),
-    Var("AC_AI_API_KEY", "AI 服务密钥（**绝不入库**；本地配置里会加密保存）",
+    # ★2026-10-15（可移植性缺陷**条 D**）：这一句**就是** README 那张环境变量表的真相源
+    #   （README 的表由 `tools/gen_env_docs.py` 生成 —— 改 README 而不改这里 = 制造"两处口径"，
+    #   守卫 `test_env_docs_are_not_drifted` 会当场报红，本轮就踩了一次）。
+    #   原来写的是「本地配置里会加密保存」——在**非 Windows 上是假话**：`_encrypt_secret` 走
+    #   **明文回退**，而 `save_config()` 还无条件打印"已加密保存"（真 Linux 上实测复现）。
+    Var("AC_AI_API_KEY",
+        "AI 服务密钥（**绝不入库**；本地配置里保存时：**Windows 走 DPAPI 加密**（绑定当前用户），"
+        "其它系统**明文**保存并**打告警**提示改用本环境变量）",
         default="", kind="core", example="sk-your-key",
         required_when="AC_AI_PROVIDER=openai（或需要鉴权的服务）时"),
     Var("AC_AI_MODEL", "模型名", default="", kind="core", example="example-model-flash"),

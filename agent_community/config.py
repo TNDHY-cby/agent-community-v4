@@ -132,15 +132,34 @@ def save_config(data: dict[str, Any]) -> None:
     clean: dict[str, Any] = {}
     for key in DEFAULT_CONFIG:
         clean[key] = data.get(key, DEFAULT_CONFIG[key])
-    # V-9 修复：ai_api_key 落盘前加密（Windows DPAPI，当前用户绑定；非 Windows 降级明文并告警）
+    # V-9 修复：ai_api_key 落盘前加密（Windows DPAPI，当前用户绑定；非 Windows **明文回退**）
+    # ★2026-10-15（可移植性缺陷**条 D**）：**消息必须与磁盘上的事实一致**。
+    #   原来这里**无条件**打印「AI API Key 已加密保存（DPAPI 当前用户绑定）」——
+    #   而 `_encrypt_secret` 在非 Windows 上是**原样返回**（明文回退）。
+    #   真 Linux（WSL）实测复现：
+    #       屏幕 → 「[config] 提示: AI API Key 已加密保存到 …（DPAPI 当前用户绑定）」
+    #       磁盘 → `"ai_api_key": "sk-repro-0123456789abcdef"`（**原文**）
+    #   ⇒ 一句话同时违反两条承诺：README「本地配置里会加密保存」、
+    #     `design-docs/安全披露_CDP镜像与密钥存储.md`「非 Windows 降级为明文保存**并在保存时打印告警**」。
+    #     对**安全属性**撒谎是最坏的一类"失败不说话"。
+    #   现在按**实际落盘形态**分档说，并把"那该怎么办"一并说清。
     if clean.get("ai_api_key"):
         clean["ai_api_key"] = _encrypt_secret(clean["ai_api_key"])
     CONFIG_FILE.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
     if clean.get("ai_api_key"):
-        print(
-            "[config] 提示: AI API Key 已加密保存到 %s（DPAPI 当前用户绑定）" % CONFIG_FILE,
-            flush=True,
-        )
+        if str(clean["ai_api_key"]).startswith(_SECRET_PREFIX):
+            print(
+                "[config] 提示: AI API Key 已用 DPAPI 加密保存到 %s"
+                "（当前用户绑定：换用户或换机器都解不开）" % CONFIG_FILE,
+                flush=True,
+            )
+        else:
+            print(
+                "[config] 警告: 当前系统没有 DPAPI（非 Windows），AI API Key 以**明文**保存在 %s —— "
+                "请限制该文件权限（如 chmod 600），或改用环境变量 AC_AI_API_KEY（不落盘）"
+                % CONFIG_FILE,
+                flush=True,
+            )
 
 
 # ── 密钥落盘保护（DPAPI）──
