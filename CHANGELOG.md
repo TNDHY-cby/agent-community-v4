@@ -2,6 +2,46 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.8.3] - 2026-10-15
+
+**看门狗跨平台化（欠账清偿）** —— 看门狗从此不再只是"Windows 上能用的那只手"。
+对应 `PRODUCTIZATION.md` 欠账表第 1 条；设计稿 `design-docs/V50_看门狗stdlib跨平台化与纯标准库进程探测.md`。
+
+### 修复
+- **看门狗在 Linux 上等于没有**（`tools/watchdog.py`、`deploy/watchdog_all.py`）：
+  这两个文件承诺「全程标准库实现、无第三方依赖」（它是"救一个坏掉的环境"的那只手，
+  那时连依赖都可能装不上）⇒ **不能引 psutil**，于是它们的进程发现一直是 **Windows 专属**实现
+  （`powershell` / `netstat` / `tasklist` / `taskkill`）。后果不是报错，而是
+  **在 Linux 上静默降级**：端口被谁占着查不到、僵死进程杀不掉 ⇒ 服务挂了不会重生。
+- **`is_pid_alive()` 把僵尸当活着的**（真 Linux 上实测出来的）：进程被 `SIGKILL` 后先进入僵尸态，
+  `os.kill(pid, 0)` 对它**照样成功** ⇒ `kill_pid()` **永远返回 False**。
+  Windows 没有僵尸态，所以这个问题在本机怎么测都是绿的。现在认 `/proc/<pid>/stat` 的状态字符，
+  `Z` 不算活着。
+
+### 新增
+- **`agent_community/platform/procprobe.py`**：**零第三方依赖**的本机事实探测
+  （进程表 / 命令行 / pid 存活 / 端口归属 / 结束进程）。Windows 走本机命令、Linux 走 `/proc`
+  （`/proc/net/tcp{,6}` 的 LISTEN inode → 扫 `/proc/*/fd` 反查 pid，取不到再问 `ss -ltnp`）、
+  其它 POSIX 走 `ps` / `lsof`。看门狗**按文件路径**加载它（保住"包不在 `sys.path` 上也能单独跑"）。
+- `tools/watchdog.py --probe-info`：一条命令看清"本机事实现在走哪条路、探不到时怎么办"。
+
+### 变更
+- **`platform/sysprobe.py` 没有 psutil 时整层转向 `procprobe`**（原先在非 Windows 上
+  "如实返回空"）⇒ 安装平台**不再以"装上 psutil"为前提**；`backend()` 新增 `procfs` / `ps` 取值。
+- `tools/check_productization.py` 的扫描面加上「**未跟踪但未被 `.gitignore` 排除**的 `.py`」——
+  此前新写出来的文件对扫描器是**隐形**的，它会照样打印"OK"，那句话在那一刻是假的。
+
+### 守卫（都按真结果写，并做过突变检验）
+- `agent_community/tests/test_procprobe.py`：真进程 / 真端口 / 真子进程（含"父→孙"整树） /
+  **按生产调用方式真跑一次看门狗**（`python agent_community/tools/watchdog.py --check …`）；
+  "纯标准库"这条承诺用 `sys.stdlib_module_names` **真判**，不靠肉眼看 import 行。
+- `agent_community/tests/test_sysprobe.py::TestStdlibTierWithoutPsutil`：把 psutil 封成 `None` 之后，
+  上面这些事实**仍须答对**（把"没 psutil 就瞎"钉死）。
+- `test_watchdog_health.py` 里两条**源码文本**断言升级为行为判据（喂合成进程行）。
+- 突变检验 `temp/procprobe_mutation_check.py`：**4/4 KILLED**（Windows 与真 Linux 各跑一遍）。
+- 实测：Windows 全量 `agent_community/tests` 全绿；真 Linux（WSL Ubuntu-24.04）22 passed；
+  换端口 + 换数据目录起真服务打真请求全通。
+
 ## [4.8.2] - 2026-10-15
 
 **把「产品不是私人定制的」从口号变成可执行判据**（老板 2026-10-15：「完善开发框架，以后的开发

@@ -38,7 +38,9 @@ python -m pytest -q                      # 形态 2、5 以及全部回归
 ## 二、形态 3/4 的具体判据（`check_productization.py` 在查什么）
 
 - **规则 A｜平台专属命令**：`powershell` / `netstat` / `tasklist` / `taskkill` / `Get-CimInstance` …
-  只允许出现在：① `platform/sysprobe.py`（跨平台取事实的**唯一入口**，psutil 优先）；
+  只允许出现在：① `platform/sysprobe.py`（跨平台取事实的**唯一入口**，psutil 优先）
+  与 `platform/procprobe.py`（**同一件事的纯标准库层**，没有 psutil 时的回落实现，
+  也是看门狗那一族唯一能用的那一份 —— 见 §五 已还欠账）；
   ② 有**平台分支**的函数里（`os.name` / `sys.platform` / `_IS_WINDOWS`，函数级 early-return 也算）；
   ③ 显式申请例外：该行写 `# productization: allow(<一句话理由>)`。
 - **规则 B｜未渲染的模板占位**：产品代码的**字符串字面量**里出现 `{{名字}}`（AST 判，注释/docstring 不算）
@@ -74,10 +76,20 @@ clone → `cli start --no-gui`（**换端口 + 换数据目录**）→ `cli task
 
 | 欠账 | 位置 | 为什么先留着 | 怎么还 |
 |---|---|---|---|
-| 看门狗的进程发现是 Windows 专属 | `agent_community/tools/watchdog.py`、`deploy/watchdog_all.py` | 这两处**承诺"全程标准库、无第三方依赖"**（它是"救一个坏掉的环境"的那只手，那时连依赖都装不上，所以不能引 psutil） | 写 stdlib 分支：Linux `/proc/<pid>/cmdline` + `ss -ltnp` / `lsof -ti` |
 | 窗口激活、桥目录进回收站 | `platform/server.py` | **Windows 独有的系统概念**（Win32 前台窗口模型 / 系统回收站），别的平台没有等价物 | 已**如实返回不支持**（不假装成功）；保持 |
 | 平台专属 `skipif` 1 条 | `tests/test_security.py` | DPAPI 是 Windows 专属的加密 API | 非 Windows 上覆盖等价能力（或明确不覆盖并说明） |
 | 容器（docker）路线未在真机验证 | `Dockerfile` / `docker-compose.yml` | 本机 Docker daemon 未运行 | 在真机跑一次 `docker compose up` + 走查；注意端口映射下浏览器界面会 403（有意的安全边界） |
+
+### 已还（**留记录，不留欠账**）
+
+| 欠账 | 还法 | 守卫 |
+|---|---|---|
+| ~~看门狗的进程发现是 Windows 专属~~（2026-10-15 还清） | 把"零第三方依赖的本机事实探测"收成**一处真相** `platform/procprobe.py`：Windows 走本机命令、Linux 走 `/proc`、其它 POSIX 走 `ps`/`lsof`/`ss`；`tools/watchdog.py` 与 `deploy/watchdog_all.py` **按文件路径**加载它（保住"能单独跑"），`sysprobe` 没有 psutil 时**整层转向它**。设计稿 `V50` | `tests/test_procprobe.py`（真进程 / 真端口 / 真子进程 / **按生产调用方式真跑一次看门狗**；"纯标准库"用 `sys.stdlib_module_names` 真判）、`tests/test_sysprobe.py::TestStdlibTierWithoutPsutil`（把 psutil 打成 None 后仍须答对） |
+
+> ⚠️ **扫描器自己的一个坑（2026-10-15 一并修掉）**：`check_productization.py` 原先只扫
+> `git ls-files`（**已跟踪**文件）⇒ **新写出来的文件对扫描器是隐形的**，它会照样打印
+> 「OK：没有发现…」——**那句话在那一刻是假的**。现改为「已跟踪 + 未跟踪但未被 `.gitignore` 排除」，
+> 发布面口径不变。
 
 ## 六、给未来的 agent / 协作者：开工话术
 

@@ -86,16 +86,31 @@ SKIP_SCAN_DIRS = (".git", "__pycache__", "node_modules", ".pytest_cache", "bridg
 
 
 def _tracked_py() -> list:
-    """扫描面 = **被 git 跟踪**的 .py（发布面即真相；dev-only 杂物不算）。"""
-    try:
-        out = subprocess.run(["git", "-C", str(ROOT), "ls-files", "*.py"],
-                             capture_output=True, text=True, encoding="utf-8",
-                             errors="replace", timeout=60)
-        files = [ROOT / line.strip() for line in (out.stdout or "").splitlines() if line.strip()]
-        if files:
-            return files
-    except Exception:  # noqa: BLE001
-        pass
+    """扫描面 = **被 git 跟踪的 .py** ＋ **未跟踪但没被 `.gitignore` 排除的 .py**。
+
+    ★2026-10-15（V50）：为什么必须加后半句 —— 否则**新写出来的文件对扫描器是隐形的**。
+    实测：本场新增的 `platform/procprobe.py` 与两个新测试文件当时都还没进 git 索引，
+    扫描器照样报 `fail=0`、照样打印"OK：没有发现…" —— **那句话在那一刻是假的**
+    （它压根没看那些文件）。这正是本项目最忌讳的"看起来成功"。
+    仍尊重 `.gitignore`（`--exclude-standard`）⇒ 发布面口径一点没变。
+    """
+    files: list = []
+    for extra in (["--cached"], ["--others", "--exclude-standard"]):
+        try:
+            out = subprocess.run(["git", "-C", str(ROOT), "ls-files", *extra, "*.py"],
+                                 capture_output=True, text=True, encoding="utf-8",
+                                 errors="replace", timeout=60)
+            files += [ROOT / line.strip() for line in (out.stdout or "").splitlines() if line.strip()]
+        except Exception:  # noqa: BLE001
+            continue
+    uniq: list = []
+    seen: set = set()
+    for f in files:
+        if f not in seen:
+            seen.add(f)
+            uniq.append(f)
+    if uniq:
+        return uniq
     return [p for p in PKG.rglob("*.py")
             if not any(part in SKIP_SCAN_DIRS for part in p.parts)]
 
@@ -266,7 +281,7 @@ def scan() -> tuple:
 def main() -> int:
     only_list = "--list" in sys.argv
     fails, warns, report = scan()
-    print("反私人定制扫描（范围＝被 git 跟踪的 .py）")
+    print("反私人定制扫描（范围＝被 git 跟踪的 .py ＋ 未忽略的新 .py）")
     print("-" * 66)
     for f in fails:
         print("  FAIL " + f)

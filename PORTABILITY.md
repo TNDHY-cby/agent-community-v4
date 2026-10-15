@@ -175,20 +175,29 @@ pid 是否存活 / 谁在监听某端口 / 结束进程——**一律走 `agent_
 外部看到的是"桥明明在跑却认不出来""端口被占了却查不到""点了退出却关不掉"，
 而**测试里"认不出来"类断言会恒真 = 假绿**（本项目为此付过好几轮 CI）。
 
-**主路径 psutil，回落只作兜底**：`sysprobe` 有 psutil 时走 psutil（Win/Linux/macOS 都有 wheel），
-没有时在 Windows 上回落到 PowerShell/netstat/tasklist，其它平台**如实返回空并说明**
-（`probe_note()` —— "探不到 ≠ 真没有"）。
-守卫：`agent_community/tests/test_sysprobe.py`（**行为判据**：真开一个监听端口问它、
-真起一个子进程杀掉它、以及"**把回落通道整个封死，主路径仍须工作**"）。
+**两层实现，一处真相**（2026-10-15 补齐第二层）：
 
-**已经在 Linux 上真的能用**（都经真 Linux 环境实跑，见 `design-docs/V49…md` §8）：
+| 层 | 模块 | 依赖 | 谁用 |
+|---|---|---|---|
+| ① 首选 | `platform/sysprobe.py` | **psutil 优先**，允许第三方 | 平台业务（桥监管 / 退出并关闭 / 系统信息） |
+| ② 兜底 | **`platform/procprobe.py`** | **纯标准库，零第三方** | **看门狗那一族**（它们**不能**引 psutil：承诺"救一个坏掉的环境"，那时连依赖都装不上），以及 `sysprobe` 没有 psutil 时的**整层回落** |
+
+⇒ "**Linux 上真的能用**"这件事，**不再以"装了 psutil"为前提**。
+守卫：`agent_community/tests/test_procprobe.py`（真进程 / 真端口 / 真子进程 / **按生产调用方式
+`python agent_community/tools/watchdog.py --check` 真跑一次** / "纯标准库"用 `sys.stdlib_module_names` 真判）、
+`agent_community/tests/test_sysprobe.py`（**行为判据**：真开一个监听端口问它、
+真起一个子进程杀掉它、"**把回落通道整个封死，主路径仍须工作**"，以及
+`TestStdlibTierWithoutPsutil`：**把 psutil 封成 None 之后这些事实仍须答对**）。
+
+**已经在 Linux 上真的能用**（都经真 Linux 环境实跑，见 `design-docs/V49…md` §8 与 `V50`）：
 
 | 能力 | 载体 |
 |---|---|
 | 平台服务端本体（起服务、端点、工作间、会话） | `platform/server.py` + `routers/` |
 | 命令执行工具 | `platform/tools/shell_tool.py`（POSIX 走 `/bin/sh -c`） |
 | 桥的启动 / 结束 | `platform/spawn.py`、`platform/examples/*_bridge.py` |
-| **进程/端口事实**（桥在不在跑、端口归属、pid 存活、结束进程） | `platform/sysprobe.py` |
+| **进程/端口事实**（桥在不在跑、端口归属、pid 存活、结束进程） | `platform/sysprobe.py`（psutil）+ **`platform/procprobe.py`**（纯标准库兜底） |
+| **看门狗**（健康判定 / 查出端口归属 / 杀掉僵死进程 / 按原命令行拉起） | `tools/watchdog.py`、`deploy/watchdog_all.py`（**全程标准库**，走 `procprobe`） |
 | 主动探测外端 agent（进程/端口/HTTP/文件） | `platform/harness_probe.py` |
 | 「退出并关闭」的整条链路 | `platform/routers/system.py` |
 | 剪贴板型唤醒 | `platform/wakeup_bridge.py`（非 Windows 走 `xclip`/`xsel`/`pbcopy`） |
@@ -199,7 +208,6 @@ pid 是否存活 / 谁在监听某端口 / 结束进程——**一律走 `agent_
 |---|---|---|
 | 激活软件窗口（监控室点画面） | `server.py::_activate_windows_by_pids` | 靠 Win32 的前台窗口模型；非 Windows 上**如实返回不支持**（不假装成功） |
 | 桥目录进回收站 | `server.py::_trash_bridge_dir` | 回收站是 Windows 机制；非 Windows **不代删**（承诺的是"可恢复"，换个删法就是数据丢失） |
-| 看门狗的进程发现 | `tools/watchdog.py` | 该文件**承诺"全程标准库、无第三方依赖"**（它要能救一个坏掉的环境）⇒ 不能引 psutil；要跨平台得自己写 stdlib 分支（Linux `/proc` + `ss`/`lsof`）—— **下一场的事** |
 
 
 ### 5.1 按"陌生人的方式"实跑验收，抓出的两个真缺陷（都已修，且都上了守卫）

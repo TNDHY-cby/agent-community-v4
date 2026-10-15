@@ -113,23 +113,46 @@ class TestHealthModes:
         assert ok2 is False
 
 
-class TestGuiShellRegexNotHardcoded:
-    """V19 缺陷②：GUI 壳正则不得硬编码 18920。"""
+class TestGuiShellDetection:
+    """V19 缺陷②：GUI 壳判据必须按**本守护自己的 port**。
 
-    def test_function_body_has_no_hardcoded_18920(self):
-        src = io.open(wd.__file__, encoding="utf-8").read()
-        i = src.find("def _gui_shell_exists")
-        assert i > 0, "找不到 _gui_shell_exists"
-        body = src[i:src.find("\ndef ", i + 1)]
-        assert "18920" not in body, (
-            "_gui_shell_exists 里仍有硬编码 18920 —— 会让非 18920 的守护"
-            "因平台 GUI 在跑而误入只守护模式（网关挂了不拉）")
+    ★2026-10-15（V50）**升级为行为判据**：原来这里是两条**源码文本**断言
+      （"函数体里不许出现 18920" / "必须出现 `'{port}'`"）——
+      按本项目铁律那不算守卫（它只保证写法、不保证行为），而且实现一改写法就误伤
+      （跨平台化那一改就把它撞红了，红的原因和它想守的东西毫无关系）。
+      现在判据抽成纯函数 `_looks_like_gui_shell(name, cmdline, port)`，**直接喂合成行**。
+    """
 
-    def test_filter_uses_current_port(self):
-        src = io.open(wd.__file__, encoding="utf-8").read()
-        i = src.find("def _gui_shell_exists")
-        body = src[i:src.find("\ndef ", i + 1)]
-        assert "'{port}'" in body, "GUI 壳过滤应按本守护自己的 port"
+    def test_recognizes_the_real_gui_shell_shape(self):
+        cmd = r'"C:\py\python.exe" -m agent_community.gui --port 18920'
+        assert wd._looks_like_gui_shell("python.exe", cmd, 18920) is True
+
+    def test_other_port_is_not_our_shell(self):
+        """★缺陷②本体：平台 GUI（18920）在跑，不能让 **9105** 的守护误入"只守护模式"。"""
+        cmd = r'"C:\py\python.exe" -m agent_community.gui --port 18920'
+        assert wd._looks_like_gui_shell("python.exe", cmd, 9105) is False
+
+    def test_server_cmdline_is_not_a_gui_shell(self):
+        cmd = r'"C:\py\python.exe" -m agent_community.platform.server --port 18920'
+        assert wd._looks_like_gui_shell("python.exe", cmd, 18920) is False
+
+    def test_non_python_process_is_not_a_shell(self):
+        assert wd._looks_like_gui_shell("node.exe", "node gui.js --port 18920", 18920) is False
+
+    def test_empty_cmdline_is_not_a_shell(self):
+        assert wd._looks_like_gui_shell("python.exe", "", 18920) is False
+
+    def test_exists_really_reads_the_process_table(self, monkeypatch):
+        """行为判据（不是源码文本）：`_gui_shell_exists` 真的去读进程表，并按 port 过滤。"""
+        if wd.PROBE is None:
+            pytest.skip("本机 procprobe 加载失败：这条判据的前提不成立")
+        rows = [(1, 0, "python.exe", r'python -m agent_community.gui --port 18920')]
+        monkeypatch.setattr(wd.PROBE, "iter_processes", lambda: iter(rows))
+        wd._gui_cache.update(ts=0.0, found=False)
+        assert wd._gui_shell_exists(18920, cache_seconds=0.0) is True
+        wd._gui_cache.update(ts=0.0, found=False)
+        assert wd._gui_shell_exists(9105, cache_seconds=0.0) is False, \
+            "别的端口的守护被平台 GUI 挡住了（V19 缺陷②回归）"
 
 
 class TestAutostartPortAware:

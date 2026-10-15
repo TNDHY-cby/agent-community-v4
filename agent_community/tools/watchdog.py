@@ -13,6 +13,20 @@
      否则按“原命令行”（上次 spawn 记录 > 现有 server 命令行 > 默认 -m agent_community.platform.server）拉起并轮询健康；
   3) 日志写 <项目根>/agent_community/data/logs/watchdog.log（目录不存在自动创建）；
   4) 全程标准库实现，无第三方依赖，不侵入 server.py 主逻辑。
+
+★2026-10-15（V50）跨平台化
+──────────────────────────
+本文件**不能引 psutil**（承诺"全程标准库、无第三方依赖"——它是"救一个坏掉的环境"的那只手，
+那时连依赖都可能装不上），所以它的进程发现此前是**Windows 专属**实现
+（`powershell` / `netstat` / `tasklist` / `taskkill`）⇒ **在 Linux 上静默降级**：
+端口被谁占着查不到、僵死进程杀不掉 ⇒ **看门狗在 Linux 上等于没有**。
+
+修法：把"零第三方依赖的本机事实探测"收进一个纯标准库模块
+`agent_community/platform/procprobe.py`（Windows 走本机命令，Linux 走 `/proc`，其它 POSIX 走 `ps`/`lsof`/`ss`），
+本文件**按文件路径**把它加载进来 —— 用**文件路径**而不是 `import agent_community...`，
+是为了让看门狗**在包不可导入时也能单独跑**（`python agent_community/tools/watchdog.py` 的
+`sys.path[0]` 是脚本目录，包并不一定在路径上）。
+设计稿：`design-docs/V50_看门狗stdlib跨平台化与纯标准库进程探测.md`。
 """
 import argparse
 import json
@@ -44,6 +58,36 @@ HEALTH_MODES = ("http", "tcp")
 _HEALTH_MODE = "http"
 
 logger = logging.getLogger("watchdog")
+
+
+# ── 本机事实探测层：纯标准库的 procprobe（**按文件路径加载**，见文件头 ★）──────
+def _load_procprobe():
+    """加载 `agent_community/platform/procprobe.py`；拿不到返回 None（**失败要说话**）。
+
+    为什么不 `import`：看门狗要能在"包不在 sys.path 上"时单独跑
+    （`python agent_community\\tools\\watchdog.py`、或被人拷出去救火）。
+    """
+    path = PROJECT_ROOT / "agent_community" / "platform" / "procprobe.py"
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_ac_procprobe_standalone", path)
+        if spec is None or spec.loader is None:
+            raise ImportError("spec_from_file_location 返回空（路径：%s）" % path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception as e:  # noqa: BLE001
+        global _PROBE_ERROR
+        _PROBE_ERROR = "%s: %s" % (type(e).__name__, e)
+        return None
+
+
+_PROBE_ERROR = ""
+PROBE = _load_procprobe()
+#: 探测层不可用时的**如实说明**（别让"查不到进程"看起来像"真的没有进程"）
+PROBE_NOTE = ("" if PROBE is not None else
+              "⚠️本机事实探测不可用（procprobe 加载失败：%s）—— 看门狗仍会判 TCP/HTTP 健康，"
+              "但**查不到端口归属、也杀不掉僵死进程**（探不到 ≠ 真没有）" % _PROBE_ERROR)
 
 
 # ── 基础探测 ──────────────────────────────────────────────────
@@ -87,80 +131,64 @@ def probe(port: int, http_timeout: float = 5.0, mode: str | None = None) -> tupl
     return ok, f"HTTP /api/status: {detail}"
 
 
-# ── 进程发现 ──────────────────────────────────────────────────
-# ⚠️**已知欠账（如实标注，不是"忘了"）**：本文件的进程发现是**Windows 专属**实现
-#   （PowerShell / netstat / tasklist / taskkill）。
-#   为什么不用跨平台的 `platform/sysprobe`：本文件对外的承诺是
-#   「**全程标准库实现、无第三方依赖**」—— 它是"救一个坏掉的环境"的那只手，
-#   那时连依赖都可能装不上（而 `sysprobe` 的主路径依赖 psutil）。
-#   ⇒ 要跨平台得自己写 stdlib 分支（Linux `/proc/<pid>/cmdline` + `ss -ltnp` / `lsof -ti`）。
-#   已登记在 `PRODUCTIZATION.md` 的欠账表里；下面几处按框架要求**显式申请例外**。
-def _run_powershell(script: str, timeout: float = 15.0) -> str:
-    try:
-        p = subprocess.run(  # productization: allow(看门狗承诺纯标准库自足，跨平台需 stdlib 分支，已记欠账)
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-            capture_output=True, text=True, timeout=timeout,
-        )
-        return (p.stdout or "").strip() + ("\n" + (p.stderr or "").strip() if p.stderr else "")
-    except Exception as e:  # noqa: BLE001
-        return f"__ERR__{e}"
-
-
+# ── 进程发现（一律走 procprobe；**本节不再有任何平台专属命令**）──────────────
 def _listener_pids(port: int) -> list[int]:
-    """返回监听该端口的 PID 列表（netstat -ano 解析，兼容中文系统）。"""
-    pids: list[int] = []
+    """返回监听该端口的 PID 列表（跨平台：Windows 本机命令 / Linux `/proc` / POSIX `ss`·`lsof`）。"""
+    if PROBE is None:
+        return []
     try:
-        out = subprocess.run(  # productization: allow(同上：看门狗纯标准库自足，netstat 是 Windows 专属)
-            ["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True, timeout=10.0,
-        ).stdout or ""
-        needle = f":{port}"
-        for line in out.splitlines():
-            parts = line.split()
-            if len(parts) >= 5 and "LISTEN" in line.upper():
-                if needle in parts[1] or needle in parts[2]:
-                    try:
-                        pids.append(int(parts[-1]))
-                    except ValueError:
-                        continue
+        return list(PROBE.listening_pids(int(port)))
     except Exception as e:  # noqa: BLE001
-        logger.warning("netstat 解析失败: %s", e)
-    return sorted(set(pids))
+        logger.warning("查端口归属失败 port=%s: %s", port, e)
+        return []
 
 
 def _pid_alive(pid: int) -> bool:
-    """PID 是否存活（tasklist 单 PID 过滤）。"""
+    """PID 是否存活（跨平台）。"""
+    if PROBE is None:
+        return False
     try:
-        out = subprocess.run(  # productization: allow(同上：看门狗纯标准库自足，tasklist 是 Windows 专属)
-            ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
-            capture_output=True, text=True, timeout=10.0,
-        ).stdout or ""
-        return "INFO: No tasks" not in out and str(pid) in out
+        return bool(PROBE.is_pid_alive(pid))
     except Exception:  # noqa: BLE001
         return False
 
 
 def _cmdline_of(pid: int) -> str:
-    """取指定 PID 的命令行（WMI）。"""
-    if not pid:
+    """取指定 PID 的命令行（跨平台；取不到返回空串）。"""
+    if not pid or PROBE is None:
         return ""
-    out = _run_powershell(
-        f"$p = Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\" -ErrorAction SilentlyContinue; if ($p) {{ $p.CommandLine }}"
-    )
-    if out.startswith("__ERR__"):
+    try:
+        return (PROBE.process_cmdline(pid) or "").strip()
+    except Exception:  # noqa: BLE001
         return ""
-    return out.strip()
 
 
 def _is_server_cmdline(cmdline: str, port: int) -> bool:
-    """命令行是否指向本平台 server（platform.server / server.py + 本端口）。"""
+    """命令行是否指向本平台 server（platform.server / server.py）。"""
     cl = (cmdline or "").lower()
     if "agent_community.platform.server" not in cl and "platform\\server.py" not in cl and "platform/server.py" not in cl:
         return False
     return True
 
 
-# ── GUI 壳共存检测（缓存 300s，避免每轮都起 PowerShell）───────────
+# ── GUI 壳共存检测（缓存 300s，避免每轮都扫进程表）───────────────
 _gui_cache: dict = {"ts": 0.0, "found": False}
+
+
+def _looks_like_gui_shell(name: str, cmdline: str, port: int) -> bool:
+    """**纯判据**：这一行进程是不是"守着 `port` 的 GUI 壳"。
+
+    抽成纯函数是为了**可喂合成行**（守卫 `test_watchdog_health.py` 直接喂），
+    也为了把"必须按本守护自己的 port 过滤"这条钉在**行为**上而不是源码文本上
+    （V19 缺陷②：正则里硬编码 18920 ⇒ 平台 GUI 一在跑，9105 守护就误入"只守护模式"、
+    网关挂了也不拉）。
+    """
+    low = (cmdline or "").lower()
+    if "gui" not in low:
+        return False
+    if str(int(port)) not in low:
+        return False
+    return str(name or "").lower().startswith("python")
 
 
 def _gui_shell_exists(port: int, cache_seconds: float = 300.0) -> bool:
@@ -168,14 +196,17 @@ def _gui_shell_exists(port: int, cache_seconds: float = 300.0) -> bool:
     if now - _gui_cache["ts"] < cache_seconds:
         return _gui_cache["found"]
     found = False
-    out = _run_powershell(
-        "Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" -ErrorAction SilentlyContinue "
-        "| Where-Object { $_.CommandLine -match 'gui' } "
-        f"| Where-Object {{ $_.CommandLine -match '{port}' }} | Select-Object -First 1 ProcessId"
-    )
-    if out and not out.startswith("__ERR__") and out.strip():
-        found = True
-        logger.info("检测到 GUI 壳进程（PID %s），进入只守护模式：server 消失时仅告警、不重复拉起", out.strip())
+    if PROBE is not None:
+        try:
+            for pid, _ppid, name, cmdline in PROBE.iter_processes():
+                if _looks_like_gui_shell(name, cmdline, port):
+                    found = True
+                    logger.info("检测到 GUI 壳进程（PID %s），进入只守护模式：server 消失时仅告警、不重复拉起", pid)
+                    break
+        except Exception as e:  # noqa: BLE001
+            logger.warning("GUI 壳检测失败（当作没有壳处理）: %s", e)
+    elif PROBE_NOTE:
+        logger.warning("%s", PROBE_NOTE)
     _gui_cache.update(ts=now, found=found)
     return found
 
@@ -259,10 +290,17 @@ def _recover(port: int, demo: bool, dry_run: bool = False) -> str:
 
 
 def _kill_pid(pid: int) -> None:
+    """结束进程（跨平台；`tree=True` —— server 会带子进程，别留下孤儿）。"""
+    if PROBE is None:
+        logger.warning("杀进程失败 PID=%s：%s", pid, PROBE_NOTE or "本机事实探测不可用")
+        return
     try:
-        subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True, text=True, timeout=10.0)  # productization: allow(同上：Windows 专属的结束进程；跨平台需 stdlib 分支)
+        ok = PROBE.kill_pid(int(pid), tree=True)
     except Exception as e:  # noqa: BLE001
         logger.warning("kill PID=%s 失败: %s", pid, e)
+        return
+    if not ok:
+        logger.warning("kill PID=%s 后它**仍然存活**（命令返回不等于已结束）", pid)
 
 
 # ── 单次检查 / 守护循环 ────────────────────────────────────────
@@ -274,16 +312,22 @@ def check_once(port: int, verbose: bool = True) -> int:
     if ok:
         if verbose:
             print(f"[watchdog] OK  port={port} detail={detail} listener_pids={alive}")
+            if PROBE_NOTE:
+                print(f"[watchdog] note: {PROBE_NOTE}")
         return 0
     if verbose:
         reason = _recover(port, demo=False, dry_run=True)
         print(f"[watchdog] FAIL port={port} detail={detail} listener_pids={alive}")
         print(f"[watchdog] recover-plan: {reason}")
+        if PROBE_NOTE:
+            print(f"[watchdog] note: {PROBE_NOTE}")
     return 1
 
 
 def daemon_loop(port: int, interval: float, demo: bool = False) -> None:
     logger.info("看门狗启动：port=%s interval=%ss demo=%s 日志=%s", port, interval, demo, LOG_DIR / "watchdog.log")
+    if PROBE_NOTE:
+        logger.warning("%s", PROBE_NOTE)
     consecutive_fail = 0
     while True:
         ok, detail = probe(port)
@@ -325,10 +369,20 @@ def main() -> int:
     ap.add_argument("--health", choices=list(HEALTH_MODES), default="http",
                     help="健康判据：http=TCP+/api/status（默认，18920 现行为）；"
                          "tcp=只判 TCP（给没有 HTTP 端点的目标用，如 gRPC 网关 9105）")
+    ap.add_argument("--probe-info", action="store_true",
+                    help="只打印「本机事实探测」走哪条路（排障用；不连服务）")
     args = ap.parse_args()
 
     global _HEALTH_MODE
     _HEALTH_MODE = args.health
+
+    if args.probe_info:
+        if PROBE is None:
+            print(PROBE_NOTE)
+            return 1
+        print("backend=%s" % PROBE.backend())
+        print("note   =%s" % PROBE.probe_note())
+        return 0
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")

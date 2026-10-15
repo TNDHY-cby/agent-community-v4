@@ -13,7 +13,18 @@
     · 更阴的一层：**测试里"认不出来"类断言恒真 = 假绿**
       （`test_bridge_watch_probe.py` 此前只能整文件 skip，等于 Linux 上没人守）。
 ⇒ 收成**一处真相**：主路径 **psutil**（Win/Linux/macOS 都有 wheel），
-  `PowerShell` / `netstat` / `tasklist` 只作**没有 psutil 时的回落**（老环境不许整块失效）。
+  **没有 psutil 时整层转向 `platform/procprobe.py`**（纯标准库、零第三方依赖）。
+
+两层为什么这样分（2026-10-15，V50）
+──────────────────────────────────
+`procprobe` 不是"给看门狗专用的一份副本"，而是**回落实现本身**：
+  · 平台侧：本模块 = psutil 优先 + 没有 psutil 时整层转 procprobe；
+  · 看门狗侧（`tools/watchdog.py` / `deploy/watchdog_all.py`）：承诺"**全程标准库、无第三方依赖**"
+    （它是"救一个坏掉的环境"的那只手，那时连依赖都可能装不上）⇒ **不能引 psutil**，
+    于是直接用 procprobe。
+⇒ 同一个事实（谁在监听某端口）**只有一份实现**（规则 20：一处真相），两条约束都满足。
+不改层的话，看门狗在 Linux 上等于没有（端口查不到、僵死进程杀不掉）。
+设计稿：`design-docs/V50_看门狗stdlib跨平台化与纯标准库进程探测.md`。
 
 纪律
 ────
@@ -25,9 +36,9 @@
 """
 from __future__ import annotations
 
-import os
 import re
-import subprocess
+
+from . import procprobe as _pp
 
 #: 进程表里"只认解释器"时用的名字前缀（两个平台的实际进程名形态都覆盖：
 #: Windows `python.exe` / POSIX `python3`、`python3.12`）
@@ -48,47 +59,30 @@ def has_psutil() -> bool:
 
 
 def backend() -> str:
-    """现在走哪条路：`"psutil"` / `"powershell"` / `"none"`。
+    """现在走哪条路：`"psutil"` / `"windows"` / `"procfs"` / `"ps"` / `"none"`。
 
-    ⚠️`"powershell"` 只在 **Windows** 上可能出现（其它平台没有它，也不该假装有）。
+    没有 psutil 时**如实报回落层自己走的路**（`procprobe.backend()`）——
+    `"none"` 表示"**平台看不见**"，不等于"真的没有进程/端口"。
     """
     if has_psutil():
         return "psutil"
-    if os.name == "nt":
-        return "powershell"
-    return "none"
+    return _pp.backend()
 
 
 def probe_note() -> str:
     """人话说明"现在能探到什么"（供界面/接口如实展示，别让用户以为"真没有"）。"""
-    b = backend()
-    if b == "psutil":
+    if has_psutil():
         return "本机事实走 psutil（跨平台）"
-    if b == "powershell":
-        return ("没装 psutil：退回 Windows 专属的 PowerShell 探测（能用，但慢且只在 Windows）；"
-                "建议 `pip install -r requirements.txt` 补上 psutil")
-    return ("**探不到本机进程/端口**：本平台既没有 psutil、当前系统也没有 PowerShell 回落路径。"
-            "⚠️注意：这表示**平台看不见**，不等于「桥/端口真的不存在」—— "
-            "装上 psutil（`pip install psutil`）即可恢复。")
-
-
-def _run(argv, timeout: float = 30.0) -> str:
-    """跑一条只读命令并取 stdout（失败一律返回空串，由调用方按"没探到"处理）。"""
-    try:
-        r = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=timeout)
-        return r.stdout or ""
-    except Exception:  # noqa: BLE001
-        return ""
+    return ("没装 psutil：退回**纯标准库**探测 —— " + _pp.probe_note()
+            + "。建议 `pip install -r requirements.txt` 补上 psutil（更快、更全）。")
 
 
 # ── ① 进程表 ────────────────────────────────────────────────────────────────
 def iter_processes():
     """产出 `(pid, ppid, name, cmdline)` —— **取进程表的一条真相**。
 
-    psutil 主路径；没有 psutil 时：
-      · Windows → `Get-CimInstance Win32_Process` 回落；
-      · 其它平台 → **如实返回空**（没有等价命令；这里不许假装有）。
+    psutil 主路径；没有 psutil 时整层转 `procprobe`（Windows 走 PowerShell，
+    Linux 走 `/proc`，其它 POSIX 走 `ps`）——**任何平台上都不再是"恒空"**。
     """
     psutil = _psutil()
     if psutil is not None:
@@ -102,30 +96,7 @@ def iter_processes():
             except Exception:  # noqa: BLE001
                 continue
         return
-
-    if os.name != "nt":
-        return
-
-    import json as _json
-    out = _run(["powershell", "-NoProfile", "-Command",
-                "Get-CimInstance Win32_Process | "
-                "Select-Object ProcessId,ParentProcessId,Name,CommandLine | "
-                "ConvertTo-Json -Compress"])
-    out = out.strip()
-    if not out or out == "null":
-        return
-    try:
-        rows = _json.loads(out)
-    except Exception:  # noqa: BLE001
-        return
-    if isinstance(rows, dict):
-        rows = [rows]
-    for x in (rows or []):
-        try:
-            yield (int(x.get("ProcessId") or 0), int(x.get("ParentProcessId") or 0),
-                   str(x.get("Name") or ""), str(x.get("CommandLine") or ""))
-        except Exception:  # noqa: BLE001
-            continue
+    yield from _pp.iter_processes()
 
 
 def find_processes(needles=None, *, name_matches=None, exclude_ppid=None,
@@ -177,17 +148,7 @@ def process_cmdline(pid: int) -> str:
             return " ".join(psutil.Process(pid).cmdline())
         except Exception:  # noqa: BLE001
             return ""
-    if os.name == "nt":
-        out = _run(["powershell", "-NoProfile", "-Command",
-                    f"(Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\").CommandLine"],
-                   timeout=20)
-        return (out or "").strip()
-    # POSIX 无 psutil：/proc 是标准做法（Linux；其它 unix 取不到就如实返回空）
-    try:
-        with open("/proc/%d/cmdline" % pid, "rb") as f:
-            return f.read().decode("utf-8", "replace").replace("\x00", " ").strip()
-    except Exception:  # noqa: BLE001
-        return ""
+    return _pp.process_cmdline(pid)
 
 
 def is_pid_alive(pid: int) -> bool:
@@ -204,26 +165,10 @@ def is_pid_alive(pid: int) -> bool:
             return bool(psutil.pid_exists(pid))
         except Exception:  # noqa: BLE001
             return False
-    if os.name == "nt":
-        out = _run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], timeout=10)
-        return str(pid) in out
-    try:
-        os.kill(pid, 0)          # 信号 0 = 只做存在性/权限检查，不真发信号
-        return True
-    except PermissionError:
-        return True              # 存在但不属于我（这就是"活着"）
-    except Exception:  # noqa: BLE001
-        return False
+    return _pp.is_pid_alive(pid)
 
 
 # ── ② 端口 ──────────────────────────────────────────────────────────────────
-def _netstat_lines() -> list:
-    """Windows `netstat -ano` 的输出行（没有它就返回空）。"""
-    if os.name != "nt":
-        return []
-    return _run(["netstat", "-ano", "-p", "TCP"], timeout=10).splitlines()
-
-
 def listening_pids(port: int) -> list:
     """谁在监听该端口 → pid 列表（**可能不全**，见 `probe_note()`）。
 
@@ -235,37 +180,29 @@ def listening_pids(port: int) -> list:
     except Exception:  # noqa: BLE001
         return []
     psutil = _psutil()
-    if psutil is not None:
-        pids = []
+    if psutil is None:
+        return _pp.listening_pids(port)
+    pids = []
+    try:
+        conns = psutil.net_connections(kind="tcp")
+    except Exception:  # noqa: BLE001 — 权限受限时拿不到全部；退回逐个查监听地址
+        conns = []
         try:
-            conns = psutil.net_connections(kind="tcp")
-        except Exception:  # noqa: BLE001 — 权限受限时拿不到全部；退回逐个查监听地址
+            for t in psutil.net_connections(kind="tcp4"):
+                conns.append(t)
+        except Exception:  # noqa: BLE001
             conns = []
-            try:
-                for t in psutil.net_connections(kind="tcp4"):
-                    conns.append(t)
-            except Exception:  # noqa: BLE001
-                conns = []
-        for c in conns:
-            try:
-                if c.status != psutil.CONN_LISTEN:
-                    continue
-                if not c.laddr or int(getattr(c.laddr, "port", 0)) != port:
-                    continue
-                if c.pid and int(c.pid) not in pids:
-                    pids.append(int(c.pid))
-            except Exception:  # noqa: BLE001
+    for c in conns:
+        try:
+            if c.status != psutil.CONN_LISTEN:
                 continue
-        return pids
-    out = []
-    pat = re.compile(r":%d\s+\S+\s+LISTENING\s+(\d+)" % port)
-    for line in _netstat_lines():
-        m = pat.search(line)
-        if m:
-            pid = int(m.group(1))
-            if pid and pid not in out:
-                out.append(pid)
-    return out
+            if not c.laddr or int(getattr(c.laddr, "port", 0)) != port:
+                continue
+            if c.pid and int(c.pid) not in pids:
+                pids.append(int(c.pid))
+        except Exception:  # noqa: BLE001
+            continue
+    return pids
 
 
 def port_listening(port: int) -> bool:
@@ -277,8 +214,9 @@ def port_listening(port: int) -> bool:
     psutil = _psutil()
     if psutil is not None:
         return bool(listening_pids(port))
-    pat = re.compile(r":%d\s+\S+\s+LISTENING" % port)
-    return any(pat.search(ln) for ln in _netstat_lines())
+    # 没有 psutil：**不逐 pid 反查**（那要看 `/proc/<pid>/fd`，非 root 只能看到自己）
+    # 而是直接问"监听表里有没有这个端口" —— 这个判据在 Linux 上对所有进程都成立。
+    return port in _pp.listening_ports()
 
 
 def listening_ports(*, local_only: bool = False) -> list:
@@ -287,34 +225,24 @@ def listening_ports(*, local_only: bool = False) -> list:
     `local_only=True` 时只保留绑定在回环/通配地址上的（界面"本机服务"用）。
     """
     psutil = _psutil()
-    if psutil is not None:
-        ports = set()
-        try:
-            conns = psutil.net_connections(kind="tcp")
-        except Exception:  # noqa: BLE001
-            conns = []
-        for c in conns:
-            try:
-                if c.status != psutil.CONN_LISTEN or not c.laddr:
-                    continue
-                if local_only:
-                    ip = str(getattr(c.laddr, "ip", "") or "")
-                    if ip not in ("127.0.0.1", "0.0.0.0", "::", "::1"):
-                        continue
-                ports.add(int(c.laddr.port))
-            except Exception:  # noqa: BLE001
-                continue
-        return sorted(ports)
+    if psutil is None:
+        return _pp.listening_ports(local_only=local_only)
     ports = set()
-    for line in _netstat_lines():
-        if "LISTENING" not in line:
+    try:
+        conns = psutil.net_connections(kind="tcp")
+    except Exception:  # noqa: BLE001
+        conns = []
+    for c in conns:
+        try:
+            if c.status != psutil.CONN_LISTEN or not c.laddr:
+                continue
+            if local_only:
+                ip = str(getattr(c.laddr, "ip", "") or "")
+                if ip not in ("127.0.0.1", "0.0.0.0", "::", "::1"):
+                    continue
+            ports.add(int(c.laddr.port))
+        except Exception:  # noqa: BLE001
             continue
-        m = re.search(r"(\d+\.\d+\.\d+\.\d+|\[::\]|0\.0\.0\.0):(\d+)\s+\S+\s+LISTENING", line)
-        if not m:
-            continue
-        if local_only and m.group(1) not in ("127.0.0.1", "0.0.0.0", "[::]"):
-            continue
-        ports.add(int(m.group(2)))
     return sorted(ports)
 
 
@@ -331,36 +259,25 @@ def kill_pid(pid: int, *, tree: bool = False) -> bool:
     if pid <= 0:
         return False
     psutil = _psutil()
-    if psutil is not None:
-        try:
-            proc = psutil.Process(pid)
-            targets = proc.children(recursive=True) if tree else []
-            targets.append(proc)
-            for p in targets:
-                try:
-                    p.terminate()
-                except Exception:  # noqa: BLE001
-                    pass
-            psutil.wait_procs(targets, timeout=5)
-            for p in targets:
-                try:
-                    if p.is_running():
-                        p.kill()
-                except Exception:  # noqa: BLE001
-                    pass
-            psutil.wait_procs(targets, timeout=5)
-        except Exception:  # noqa: BLE001
-            pass
-        return not is_pid_alive(pid)
-    if os.name == "nt":
-        args = ["taskkill", "/F", "/PID", str(pid)]
-        if tree:
-            args.insert(1, "/T")
-        _run(args, timeout=15)
-        return not is_pid_alive(pid)
-    import signal
+    if psutil is None:
+        return _pp.kill_pid(pid, tree=tree)
     try:
-        os.kill(pid, signal.SIGTERM)
-        return True
+        proc = psutil.Process(pid)
+        targets = proc.children(recursive=True) if tree else []
+        targets.append(proc)
+        for p in targets:
+            try:
+                p.terminate()
+            except Exception:  # noqa: BLE001
+                pass
+        psutil.wait_procs(targets, timeout=5)
+        for p in targets:
+            try:
+                if p.is_running():
+                    p.kill()
+            except Exception:  # noqa: BLE001
+                pass
+        psutil.wait_procs(targets, timeout=5)
     except Exception:  # noqa: BLE001
-        return not is_pid_alive(pid)
+        pass
+    return not is_pid_alive(pid)
