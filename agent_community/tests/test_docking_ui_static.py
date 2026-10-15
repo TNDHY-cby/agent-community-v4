@@ -26,6 +26,17 @@ def _read(name: str) -> str:
         return f.read()
 
 
+def _js_code(src: str) -> str:
+    """去掉注释后的 JS（**判"代码里有没有"必须去注释** —— 否则注释里提一句就误报）。
+
+    ⚠️ 本守卫被这件事咬过一次：我写了个"`/discuss` 出现即 FAIL"，结果**那句注释本身**
+    就含 `/discuss` ⇒ 守卫判自己红。断言"代码里有没有"就先把注释剥掉。
+    """
+    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    src = re.sub(r"(?m)^\s*//.*$", "", src)
+    return re.sub(r"(?m)//.*$", "", src)
+
+
 def test_page_and_script_exist_with_the_readonly_contract():
     html = _read("docking.html")
     js = _read("docking.js")
@@ -35,10 +46,32 @@ def test_page_and_script_exist_with_the_readonly_contract():
 
 
 def test_page_has_zero_write_requests():
-    """★P2 只读：整页**不许有**任何写请求（POST/PUT/DELETE）。"""
+    """★P2 只读时整页零写请求；P3 起**只允许白名单里的写端点**（V34 §4.3）。
+
+    判据：把 `docking.js` 里所有 POST 路径抽出来，逐个跟白名单对；
+    **`/discuss` 出现即 FAIL**（对接中心不做讨论 UI / 不转发讨论）。
+    """
     js = _read("docking.js")
-    bad = re.findall(r"method\s*:\s*['\"](POST|PUT|DELETE|PATCH)['\"]", js, re.IGNORECASE)
-    assert not bad, "P2 是只读总览，但出现写请求：%s" % bad
+    code = _js_code(js)
+    posts = set(re.findall(r"fetch\(\s*['\"]([^'\"]+)['\"]\s*,\s*\{[^}]*method\s*:\s*['\"]POST['\"]", code))
+    posts |= set(re.findall(r"dockPost\(\s*['\"]([^'\"]+)['\"]", code))
+    assert posts, "一个写请求都没有？P3 应该已经带上注册了（若退回纯只读，请同步本守卫）"
+    m = re.search(r"DOCK_WRITE_WHITELIST\s*=\s*\[(.*?)\]", code, re.S)
+    assert m, "找不到写请求白名单（V34 §4.3 要求白名单外零 POST）"
+    allowed = set(re.findall(r"['\"]([^'\"]+)['\"]", m.group(1)))
+    outside = sorted(p for p in posts if p not in allowed)
+    assert not outside, "出现白名单外的写请求：%s（白名单＝%s）" % (outside, sorted(allowed))
+    assert "/discuss" not in code, \
+        "**代码里**出现了 /discuss —— V34 §4.3 明令：出现即 FAIL（注释里提一句不算）"
+
+    # ★写请求**只有一条通道**：所有 POST 都必须走 `dockPost`（白名单+错误处理都在它里面）。
+    #   否则可以绕开那道闸直接 fetch —— 白名单就成了摆设（本守卫被突变体 M2 逼出来的）。
+    i = code.find("async function dockPost(")
+    assert i != -1, "找不到 dockPost 通道"
+    j = code.find("\n}", i)
+    outside = code[:i] + code[j:]
+    bypass = re.findall(r"fetch\([^)]*method\s*:\s*['\"]POST['\"]", outside)
+    assert not bypass, "有写请求绕过了 dockPost 通道（白名单闸被绕过）：%s" % bypass
 
 
 def test_single_workshop_mode_hides_the_workshop_picker():
@@ -92,6 +125,35 @@ def test_empty_state_guides_the_first_run():
 
 
 # ── 入口接线（规则 20：一件事的对外表达只有一处真相，但入口要对）──────────────
+def test_register_panel_is_global_only():
+    """★注册是**全局能力** ⇒ 只在总控挂载；单间模式整块不出现（V34 §1）。"""
+    js = _read("docking.js")
+    i = js.find("function dockMountRegister(){")
+    assert i != -1, "找不到 dockMountRegister"
+    j = js.find("\n}", i)
+    body = js[i:j]
+    assert "DOCK_GLOBAL" in body and "innerHTML = ''" in body, \
+        "注册区没有「只在总控挂载、单间清空」的分支"
+    assert "dockMountRegister();" in js, "注册区没被真正调用（那用户看不到它）"
+
+
+def test_register_errors_are_shown_verbatim():
+    """注册失败必须**原样显示后端的中文原因**（V34 §9.2 验收：错误路径要有中文 error 直显）。
+
+    ⚠️ 本守卫被突变体抓过一次（M8 存活）：第一版只查函数里有没有 `esc(`，
+    而同一函数里**别的地方**（渲染其它字段、渲染探测输出）也有 `esc(` ⇒
+    把错误那行的渲染换成一句"操作未完成"依旧通过（**因为错误的原因通过**）。
+    现在要求**错误值本身**经过转义送进页面：`esc(d.error`。
+    """
+    js = _read("docking.js")
+    i = js.find("function dockRenderResult(")
+    assert i != -1, "找不到 dockRenderResult"
+    j = js.find("\n}", i)
+    body = js[i:j]
+    assert "esc(d.error" in body, "后端 error **本身**没有被渲染出来（只是函数里别处有 esc()）"
+    assert "没内容" in body, "失败提示没有明确说「不显示成没内容」（准则⑤）"
+
+
 def test_hall_entry_points_to_the_docking_center():
     """★大厅的**主入口按钮**必须指向对接中心。
 

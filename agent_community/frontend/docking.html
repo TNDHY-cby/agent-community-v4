@@ -7,6 +7,18 @@
 <title>对接中心</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="hub.css">
+<style>
+  .dock-form{display:flex;flex-direction:column;gap:5px;margin:8px 0;font-size:12px}
+  .dock-form input,.dock-form select{padding:4px;font-size:12px}
+  .dock-form-actions{display:flex;align-items:center;gap:8px;margin-top:2px}
+  .dock-msg{color:var(--dim);font-size:11px}
+  .dock-err{margin:8px 0;padding:6px 8px;border-left:3px solid #c62828;background:rgba(198,40,40,.08);font-size:12px}
+  .dock-ok{margin:8px 0;color:#2e7d32;font-weight:600;font-size:12px}
+  .dock-kv{margin:6px 0 6px 18px;font-size:12px}
+  .dock-kv code{color:var(--dim)}
+  #dockBody details,#dockRegisterWrap details{margin-top:6px;font-size:11px}
+  #dockBody pre,#dockRegisterWrap pre{white-space:pre-wrap;word-break:break-all;font-size:11px}
+</style>
 </head>
 <body>
 <a class="skip-link" href="#dockingMain">跳到主内容</a>
@@ -49,6 +61,37 @@
       </div>
 
       <section id="dockBody" class="stage-body"><!-- JS 渲染 --></section>
+
+      <!-- ★V34 §1：**注册是全局能力**（总控才有）—— 单间模式这一块由 JS 整块不渲染 -->
+      <section id="dockRegisterWrap"></section>
+
+      <template id="tpl-dock-register">
+        <div class="card">
+          <h3>接入一个外部 Agent（登记）</h3>
+          <p class="lead">平台会<b>自己先探一次</b>再补齐没填的字段 —— 你只给<b>你手头有的东西</b>：
+            一句话命令 / 一个目录 / 一个地址（<b>有什么填什么，能留空就留空</b>）。</p>
+          <div class="dock-form">
+            <input id="regId" placeholder="给它起的标识（字母数字短横线，如 my-agent-1）">
+            <input id="regCmd" placeholder="① 一句话命令：能把它拉起来的那条（可留空）">
+            <input id="regDir" placeholder="② 盯着的目录（可留空）">
+            <input id="regPort" placeholder="③ 端口（可留空）">
+            <select id="regWake">
+              <option value="">唤醒方式：让平台探（推荐）</option>
+              <option value="acp">acp · 一条命令拉起</option>
+              <option value="file_poll">file_poll · 盯一个目录</option>
+              <option value="http_api">http_api · 自带 HTTP 接口</option>
+              <option value="mcp">mcp · MCP 服务器</option>
+              <option value="clipboard">clipboard · 只能人工中转</option>
+            </select>
+            <div class="dock-form-actions">
+              <button class="btn mini" onclick="dockProbeRegister()">① 探测并登记</button>
+              <button class="btn mini" onclick="dockPreRegister()">② 只存草稿（稍后再探）</button>
+              <span class="dock-msg" id="regMsg"></span>
+            </div>
+          </div>
+          <div id="regResult"></div>
+        </div>
+      </template>
 
       <footer class="stage-foot">
         <span>本页只做<b>接入与激活</b>；<b>讨论与工作仍在工作间</b>（对接中心不做讨论 UI、不做开工按钮）。</span>

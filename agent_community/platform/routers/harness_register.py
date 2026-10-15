@@ -88,7 +88,7 @@ async def harness_pre_register(request: Request):
     hid = (body.get("harness_id") or "").strip()
     name = (body.get("harness_name") or hid).strip()
     if not hid:
-        return Utf8JSONResponse({"error": "harness_id required"}, status_code=400)
+        return Utf8JSONResponse({"error": "缺少必填字段 harness_id（给这个 agent 起的标识，字母数字短横线）"}, status_code=400)
     # 存为待探测的初步注册（放到 pending_pre_register 全局）
     entry = {
         "harness_id": hid,
@@ -135,7 +135,7 @@ async def harness_probe_register(request: Request):
     body = await request.json()
     hid = (body.get("harness_id") or "").strip()
     if not hid:
-        return Utf8JSONResponse({"error": "harness_id required"}, status_code=400)
+        return Utf8JSONResponse({"error": "缺少必填字段 harness_id（给这个 agent 起的标识，字母数字短横线）"}, status_code=400)
     # 合并初步注册线索
     pre = pending_pre_register.get(hid, {})
     process_hint = body.get("process_hint") or pre.get("process_hint", "") or hid
@@ -584,7 +584,7 @@ async def api_harness_launch(request: Request):
         return Utf8JSONResponse({"error": "JSON body required"}, status_code=400)
     harness_id = (body.get("harness_id") or "").strip()
     if not harness_id:
-        return Utf8JSONResponse({"error": "harness_id required"}, status_code=400)
+        return Utf8JSONResponse({"error": "缺少必填字段 harness_id（给这个 agent 起的标识，字母数字短横线）"}, status_code=400)
     wait_online = bool(body.get("wait_online", True))
     timeout = float(body.get("timeout", 60.0))
     sess = harness_manager.sessions.get(harness_id)
@@ -615,7 +615,7 @@ async def harness_heartbeat(harness_id: str = ""):
     """Harness 心跳保活"""
     # 支持 query param 和 JSON body
     if not harness_id:
-        return Utf8JSONResponse({"error": "harness_id required（请通过 URL query 传入，如 /api/harness/heartbeat?harness_id=xxx）"}, status_code=400)
+        return Utf8JSONResponse({"error": "缺少必填字段 harness_id（请通过 URL query 传入，如 /api/harness/heartbeat?harness_id=xxx）"}, status_code=400)
     # ★2026-10-13：审计**只记上线跃迁**，不再记每一次心跳。
     #   老写法（函数首行无条件记一条 `target=""` 的"心跳"）有两个毛病，都是实测出来的：
     #   ① **每 15 秒一条** × N 只 harness，会把 **500 条 ring buffer 刷成纯心跳** ——

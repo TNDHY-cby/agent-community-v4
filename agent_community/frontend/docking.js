@@ -122,4 +122,96 @@ function dockRender(d){
   body.innerHTML = html;
 }
 
+/* ── 写请求白名单（V34 §4.3）─────────────────────────────────────────────
+ * 本页**只允许**调用这些写端点；`/discuss` 出现即 FAIL（对接中心不做讨论）。
+ * 守卫 `test_docking_ui_static.py` 会把本文件里所有 POST 路径抽出来跟这张表对。
+ */
+const DOCK_WRITE_WHITELIST = [
+  '/api/harness/pre-register',
+  '/api/harness/probe-register',
+  '/api/harness/register',
+];
+
+async function dockPost(path, body){
+  if (DOCK_WRITE_WHITELIST.indexOf(path) === -1){
+    // 白名单是**代码里的一道闸**：写错路径时当场说清，而不是偷偷发出去
+    return {ok:false, data:{error:'这个页面不允许调用 ' + path + '（对接中心只做接入与激活）'}};
+  }
+  const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'},
+                               body: JSON.stringify(body || {})});
+  const d = await r.json().catch(()=>({error:'返回不是 JSON（HTTP ' + r.status + '）'}));
+  return {ok: r.ok, data: d, status: r.status};
+}
+
+/** 把后端返回**如实**画出来：`error` 原样显示；其余字段逐条列出；原始输出放 details 里。 */
+function dockRenderResult(box, res){
+  const d = res.data || {};
+  if (!res.ok || d.error){
+    box.innerHTML = '<div class="dock-err">✗ ' +
+      esc(d.error || ('HTTP ' + (res.status || '?'))) + '</div>' +
+      '<p class="sub">这一页不会把失败显示成「没内容」—— 按上面的原因改完再点一次。</p>';
+    return;
+  }
+  const skip = {probe_text:1};
+  const rows = Object.keys(d).filter(k => !skip[k]).map(k => {
+    let v = d[k];
+    if (v && typeof v === 'object') v = JSON.stringify(v);
+    return '<li><code>' + esc(k) + '</code>：' + esc(String(v)) + '</li>';
+  }).join('');
+  box.innerHTML = '<div class="dock-ok">✓ 已登记</div><ul class="dock-kv">' + rows + '</ul>' +
+    (d.probe_text ? ('<details><summary>平台探测的原始输出</summary><pre>' + esc(d.probe_text) + '</pre></details>') : '') +
+    '<p class="sub">接着去<b>工作间</b>的成员卡上点「建会话 → 送桥」，把它对上岗位（对接中心不管讨论与工作）。</p>';
+}
+
+function _dockRegBody(){
+  const b = {
+    harness_id: (document.getElementById('regId').value || '').trim(),
+    process_hint: (document.getElementById('regCmd').value || '').trim(),
+    path_hint: (document.getElementById('regDir').value || '').trim(),
+    wakeup_method: (document.getElementById('regWake').value || '').trim(),
+  };
+  const port = (document.getElementById('regPort').value || '').trim();
+  if (port) b.port_hint = Number(port) || port;
+  Object.keys(b).forEach(k => { if (b[k] === '') delete b[k]; });
+  return b;
+}
+
+function _dockRegGuard(){
+  const b = _dockRegBody();
+  const msg = document.getElementById('regMsg');
+  if (!b.harness_id){ if (msg) msg.textContent = '至少要给它起个标识'; return null; }
+  if (msg) msg.textContent = '';
+  return b;
+}
+
+async function dockPreRegister(){
+  const b = _dockRegGuard(); if (!b) return;
+  const msg = document.getElementById('regMsg'); if (msg) msg.textContent = '提交中…';
+  const res = await dockPost('/api/harness/pre-register', b);
+  if (msg) msg.textContent = res.ok ? '草稿已存' : '失败';
+  dockRenderResult(document.getElementById('regResult'), res);
+  dockLoad();
+}
+
+async function dockProbeRegister(){
+  const b = _dockRegGuard(); if (!b) return;
+  const msg = document.getElementById('regMsg'); if (msg) msg.textContent = '平台正在探测…（可能几秒）';
+  const res = await dockPost('/api/harness/probe-register', b);
+  if (msg) msg.textContent = res.ok ? '已登记' : '失败，看下面的原因';
+  dockRenderResult(document.getElementById('regResult'), res);
+  dockLoad();
+}
+
+function dockMountRegister(){
+  const wrap = document.getElementById('dockRegisterWrap');
+  if (!wrap) return;
+  // ★注册是**全局能力**：单间模式整块不挂（V34 §1「工作间的只能进入对应的」）
+  if (!DOCK_GLOBAL){ wrap.innerHTML = ''; return; }
+  if (wrap.dataset.mounted) return;
+  const tpl = document.getElementById('tpl-dock-register');
+  wrap.appendChild(tpl.content.cloneNode(true));
+  wrap.dataset.mounted = '1';
+}
+
+dockMountRegister();
 dockLoad();
