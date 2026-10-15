@@ -24,9 +24,20 @@
 | 真实凭据样式（`sk-` + 长串） | 一律 | **fail** |
 
 用法：
-    python tools/check_portability.py            # 全量（CI / 发布前）
-    python tools/check_portability.py --strict-md # .md 也按 fail 处理
-    python tools/check_portability.py --list      # 只列不判（排障用）
+    python tools/check_portability.py               # 全量（CI / 发布前）
+    python tools/check_portability.py --strict-md   # .md 也按 fail 处理
+    python tools/check_portability.py --warn-detail # 警告**全部列出**（默认只列 5 条 + 分组汇总）
+    python tools/check_portability.py --list        # 只列不判（排障用）
+
+## ★2026-10-15：warn 档要"会解释自己"
+
+warn 档长期只打印一个数字加一屏行号 ⇒ 实测逐条看过后，**97 条里没有一条是产品面硬编码**
+（测试夹具的"陷阱串"、说明历史修复的 docstring、可被环境变量覆盖的 dev 验收脚本兜底）。
+一个不解释的大数字会让人以为产品千疮百孔，于是**下一个人就去加 `--exclude`，判据从此失效**
+（同 `check_productization` 第一版 52 条噪音的教训）。
+现在 warn 档按**规则**与**位置**分组汇总，并明说"这些不是产品逻辑里的写死"；
+同时 `.txt` **产物/报告**不再参与扫描（拿源码的尺子量报告属判据错位）。
+守卫：`agent_community/tests/test_portability_report.py`（4 条，突变 3/3 KILLED）。
 """
 from __future__ import annotations
 
@@ -113,11 +124,21 @@ def is_dev_only(rel: str) -> bool:
     return any(name.startswith(p) for p in DEV_ONLY_PREFIXES)
 
 
+#: ★2026-10-15：`git ls-files` 拿不到时（不是 git 仓库 / 被 git 拒绝，如 "dubious ownership"）
+#:  会退化成**整树遍历** —— 扫描面就变了（会扫到未跟踪文件与临时产物）。
+#:  实测踩到：同一份仓库，Windows 上 `warn=96`、WSL 里 `warn=121`，
+#:  差别**全部**来自"WSL 的 git 因 safe.directory 拒绝工作 ⇒ 走了退化分支"。
+#:  这就是"看着像同一件事、其实不是"的陷阱 ⇒ 走退化分支时**必须在报告里说出来**。
+_USED_FALLBACK_WALK = False
+
+
 def tracked_files() -> list[str]:
+    global _USED_FALLBACK_WALK
     out = subprocess.run(["git", "ls-files"], cwd=str(ROOT), capture_output=True)
     files = out.stdout.decode("utf-8", "replace").split("\n")
     if not any(files):
-        # 非 git 环境：退化为遍历（CI 里被 clone 出来一定有 git）
+        # 非 git 环境 / git 拒绝：退化为遍历（CI 里被 clone 出来一定有 git）
+        _USED_FALLBACK_WALK = True
         return [str(p.relative_to(ROOT)).replace("\\", "/")
                 for p in ROOT.rglob("*") if p.is_file()]
     return [f for f in files if f.strip()]
@@ -144,7 +165,32 @@ def is_skipped(rel: str) -> bool:
         return True
     if any(low.endswith(s) for s in SKIP_SUFFIX):
         return True
+    # ★2026-10-15：`.txt` **只扫白名单里的那几个**（`requirements.txt` 等）。
+    #   其余 `.txt` 都是**运行/验证产物或说明**（实测：`tests/offline_assert_report.txt`
+    #   是某次断网自证的输出报告），拿"源码硬编码"的尺子去量它属于**判据错位**：
+    #   报告里出现本机地址是**记录**，不是"把环境写死在逻辑里"。
+    if low.endswith(".txt") and low not in SCAN_SCOPE_FILES:
+        return True
     return not low.endswith(TEXT_SUFFIX)
+
+
+def _where(rel_low: str, is_md: bool, was_in_doc: bool) -> str:
+    """这条命中**长在哪**（用于把 warn 报告说清楚，而不是甩一个吓人的总数）。
+
+    ★2026-10-15：warn 档的 97 条里没有一条是产品面硬编码 —— 它们是
+    测试夹具的"陷阱串"、说明历史修复的 docstring、可被环境变量覆盖的 dev 验收脚本兜底。
+    **判据本身没问题，问题是报告只会甩数字**（一个"97"会让人以为产品千疮百孔，
+    于是下一个人就会去加 `--exclude`，判据从此失效）。所以按位置分类说清楚。
+    """
+    if is_md:
+        return "文档(.md)"
+    if rel_low.startswith("agent_community/frontend/verify/"):
+        return "dev 验收脚本(frontend/verify)"
+    if rel_low.startswith(("agent_community/tests/", "tests/")):
+        return "测试夹具/断言"
+    if was_in_doc:
+        return "docstring（说明文字）"
+    return "代码"
 
 
 def scan() -> tuple[list[dict], list[dict], list[str]]:
@@ -193,7 +239,8 @@ def scan() -> tuple[list[dict], list[dict], list[str]]:
                     continue
                 if allowed:
                     continue
-                item = {"rule": name, "file": rel, "line": i, "text": line.strip()[:110]}
+                item = {"rule": name, "file": rel, "line": i, "text": line.strip()[:110],
+                        "where": _where(low, is_md, was_in_doc)}
                 # 降级：测试/文档/验收脚本/docstring 里的命中 -> warn
                 downgrade = (any(low.startswith(d) for d in WARN_ONLY_DIRS)
                              or (is_md and level == "fail" and scope != "一律")
@@ -206,10 +253,18 @@ def scan() -> tuple[list[dict], list[dict], list[str]]:
     return fails, warns, skipped_out_of_scope
 
 
+def _group(items: list, key: str) -> str:
+    """把命中按某个字段汇总成 "A × 3 · B × 2"（降序）。"""
+    import collections
+    c = collections.Counter(str(it.get(key) or "?") for it in items)
+    return " · ".join("%s × %d" % (k, v) for k, v in c.most_common())
+
+
 def main() -> int:
     args = set(sys.argv[1:])
     fails, warns, out_of_scope = scan()
     list_only = "--list" in args
+    detail = list_only or "--warn-detail" in args
     strict_md = "--strict-md" in args
     if strict_md:
         # 把 .md 的 warn 里属于"本机地址"的提到 fail
@@ -219,12 +274,23 @@ def main() -> int:
 
     print(f"可移植性扫描（范围＝发布面）：fail={len(fails)} warn={len(warns)}"
           f"  跳过（非发布面）={len(out_of_scope)}")
+    if _USED_FALLBACK_WALK:
+        print("\n⚠️ **git 不可用**（不是 git 仓库，或被 git 拒绝，如 'dubious ownership'）"
+              "⇒ 本次扫描退化成**整树遍历**：")
+        print("   扫描面与 CI **不一致**（CI 里 git 一定可用）——别拿这个数字跟 CI 对齐。")
+        print("   修法：`git config --global --add safe.directory <仓库路径>` 之后重跑。")
     if warns:
-        print("\n-- 警告（测试/文档/验收脚本内部；不阻断）--")
-        for w in warns[:15]:
+        print("\n-- 警告（**不阻断**：这些不是「产品逻辑里写死环境」，是夹具/说明/dev 脚本）--")
+        print("   按规则: " + _group(warns, "rule"))
+        print("   按位置: " + _group(warns, "where"))
+        for w in warns[:5 if not detail else len(warns)]:
             print(f"   [{w['rule']}] {w['file']}:{w['line']}  {w['text']}")
-        if len(warns) > 15:
-            print(f"   …另 {len(warns)-15} 条")
+        if not detail and len(warns) > 5:
+            print(f"   …另 {len(warns)-5} 条（要看全部：`--warn-detail` 或 `--list`）")
+        print("   判据说明：测试夹具里的「陷阱串」（如 harness 名 + 用户目录那类反面样例）、")
+        print("            说明历史修复的 docstring、`process.env.X || 'http://127.0.0.1:…'` 这种")
+        print("            **可被环境变量覆盖**的 dev 脚本兜底，都不属于产品面硬编码 ——")
+        print("            真正要拦的是 **产品逻辑**里的写死，那一条仍然是 fail。")
     if fails:
         print("\n-- 失败（必须改：产品代码里不许有环境相关硬编码）--")
         for f in fails:

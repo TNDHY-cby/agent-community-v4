@@ -184,6 +184,12 @@ DECLARATION_EXEMPT = {
     # 能跑 pytest 就必然有 pip（pytest 就是 pip 装的），且那条用例缺 pip 时
     # 是 `pytest.fail` 而不是 skip ⇒ 不会变成静默失效。
     "pip": "测试专用：校验 requirements.txt 可被 pip 解析；有 pytest 就必有 pip",
+    # 本仓库自己的**可移植性扫描器**（`tools/check_portability.py`）：
+    # 它是**仓库内工具脚本**，不是第三方发行包（没有 PyPI 上有意义的对应物）。
+    # 测试里 import 它，为的是核对"报告印出来的数字 == scan() 的真实条数"。
+    # 判据：它在仓库里、跟着 clone 一起过来；真有缺失也只是那条用例红，
+    # 不会像真的第三方依赖那样让**整个 pytest 收集阶段**崩掉。
+    "check_portability": "仓库内工具（tools/ 下），非第三方发行包；测试用它核对报告数字",
 }
 
 #: 扫描时跳过的目录：运行期产物（.gitignore 忽略），**不进发布面**，
