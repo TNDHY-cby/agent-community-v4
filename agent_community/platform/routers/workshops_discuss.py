@@ -435,3 +435,225 @@ async def sm_status(ws_id: str):
     logs = task_state_machine._states.get(ws_id, {}).get("logs", [])[-20:]
     return {"success": True, "state": st, "logs": logs}
 
+
+# ══════════════════════════════════════════════════════════════════════════
+# V52 三级讨论区的「辩论模式」（**可开可关**）
+#
+# 判定逻辑**全在** `platform/debate.py`（纯函数内核，已有 19 条守卫 + 5/5 突变）；
+# 这里只负责：收陈述 → 存状态 → 落讨论区（**追加**一条 orchestrator 消息，不改任何人的原话）。
+#
+# 三条硬约束（V52 §1/§7）：
+#   · **默认关**；开关是"允许"，触发阈值是"该不该"，两者都要满足；
+#   · **只在三级讨论（`review`）里出裁决** —— 别的状态下如实拒绝并说明当前状态；
+#   · **不判"谁对"**：没有 ground truth 时只按证据质量加权，同分如实并列。
+# ══════════════════════════════════════════════════════════════════════════
+
+#: 陈述上限（防无限增长；保留最近的）
+_DEBATE_MAX_STATEMENTS = 60
+
+
+def _debate_state(ws) -> dict:
+    """归一 `ws.debate_state`（老数据没有 / 被写坏都能用）。"""
+    st = dict(getattr(ws, "debate_state", None) or {})
+    st.setdefault("statements", [])
+    st.setdefault("round", 0)
+    st.setdefault("prev_evidence", [])
+    st.setdefault("last_verdict", {})
+    if not isinstance(st["statements"], list):
+        st["statements"] = []
+    return st
+
+
+def _parse_statement(body: dict) -> tuple[dict | None, str]:
+    """解析一条**结构化陈述**（观点 → 证据 → 推理）。返回 `(陈述, 错误原因)`。"""
+    claim = str((body or {}).get("claim") or "").strip()
+    if not claim:
+        return None, "claim（一句话结论）不能为空"
+    speaker = str((body or {}).get("speaker") or "").strip()
+    if not speaker:
+        return None, "speaker（谁说的）不能为空 —— 裁决要指名道姓，不能匿名"
+    ev_in = body.get("evidence") or []
+    if not isinstance(ev_in, list):
+        return None, "evidence 必须是数组：[{kind, ref, verified}]"
+    evidence = []
+    for e in ev_in[:20]:
+        if isinstance(e, dict):
+            ref = str(e.get("ref") or "").strip()
+            if not ref:
+                continue
+            evidence.append({"kind": str(e.get("kind") or "url"), "ref": ref,
+                             "verified": bool(e.get("verified"))})
+        elif str(e).strip():
+            evidence.append({"kind": "url", "ref": str(e).strip(), "verified": False})
+    return {
+        "speaker": speaker,
+        "claim": claim,
+        "evidence": evidence,            # 可以为空 —— 那就是"无证据"，权重 0（**不删原话**）
+        "reasoning": str((body or {}).get("reasoning") or "").strip()[:2000],
+        "conflicts_with_checker": bool((body or {}).get("conflicts_with_checker")),
+    }, ""
+
+
+@router.get("/api/workshop/{ws_id}/debate")
+async def workshop_debate_get(ws_id: str):
+    """**只读**：辩论模式现状（开关 / 轮次 / 已收陈述数 / 上次裁决）。"""
+    from ..server import Utf8JSONResponse
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    st = _debate_state(ws)
+    return {
+        "success": True, "workshop_id": ws_id,
+        "enabled": bool(getattr(ws, "debate_enabled", False)),
+        "status": ws.status,
+        "in_review": ws.status == "review",
+        "round": int(st.get("round") or 0),
+        "statements": st.get("statements") or [],
+        "statement_count": len(st.get("statements") or []),
+        "last_verdict": st.get("last_verdict") or {},
+        "note": ("辩论模式默认关：开关是「允许」，触发阈值是「该不该」，两者都要满足才真跑；"
+                 "裁决只在三级讨论（review）里出，且只是追加一条消息，不改任何人的原话。"),
+    }
+
+
+@router.post("/api/workshop/{ws_id}/debate")
+async def workshop_debate_set(ws_id: str, request: Request):
+    """开/关辩论模式（写动作，落审计）。body: `{"enabled": true|false}`"""
+    from ..server import Utf8JSONResponse, save_state
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    body = await request.json()
+    if "enabled" not in body:
+        return Utf8JSONResponse({"error": "缺少 enabled（true/false）"}, status_code=400)
+    ws.debate_enabled = bool(body.get("enabled"))
+    try:
+        _audit_log.record("workshop.debate_toggle", actor="user", target=ws_id,
+                          detail="enabled=%s" % ws.debate_enabled,
+                          extra={"enabled": bool(ws.debate_enabled)})
+    except Exception:  # noqa: BLE001
+        pass
+    save_state()
+    return {"success": True, "workshop_id": ws_id, "enabled": ws.debate_enabled,
+            "note": "已开启：只在触发阈值成立时才真跑一轮（不是每句话都跑）" if ws.debate_enabled
+                    else "已关闭：不会再产生任何裁决"}
+
+
+@router.post("/api/workshop/{ws_id}/debate/statements")
+async def workshop_debate_add_statement(ws_id: str, request: Request):
+    """提交一条**结构化陈述**（观点 → 证据 → 推理）。写动作，落审计。
+
+    ⚠️ **不带 `evidence` 也收**，但它在裁决里**权重为 0**（`unsupported`），
+    且界面必须如实显示"无证据" —— 不许把它显示成"参与裁决"（V52 §5.1）。
+    """
+    from ..server import Utf8JSONResponse, save_state
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    body = await request.json()
+    st, err = _parse_statement(body)
+    if st is None:
+        return Utf8JSONResponse({"error": "陈述格式不对：%s" % err}, status_code=400)
+    state = _debate_state(ws)
+    st["at"] = __import__("time").time()
+    state["statements"] = (state["statements"] + [st])[-_DEBATE_MAX_STATEMENTS:]
+    ws.debate_state = state
+    try:
+        _audit_log.record("workshop.debate_statement", actor="user", target=ws_id,
+                          detail="speaker=%s evidence=%d" % (st["speaker"], len(st["evidence"])),
+                          extra={"speaker": st["speaker"], "evidence_count": len(st["evidence"])})
+    except Exception:  # noqa: BLE001
+        pass
+    save_state()
+    return {"success": True, "workshop_id": ws_id, "statement_count": len(state["statements"]),
+            "evidence_count": len(st["evidence"]),
+            "note": "已记录；没有证据也不会被丢掉，但裁决里权重为 0（界面须如实显示）"}
+
+
+@router.post("/api/workshop/{ws_id}/debate/run")
+async def workshop_debate_run(ws_id: str, request: Request):
+    """**跑一轮裁决**并把结果**追加**到三级讨论区（zone=3）。写动作，落审计。
+
+    拒绝的三种情况都**如实说明原因**（不静默、不假装）：
+      ① 工作间不在三级讨论（`review`）；② 辩论模式没开；③ 还没有任何陈述。
+    """
+    from ..server import Utf8JSONResponse, _append_msg, save_state
+    from ..debate import Statement, Evidence, arbitrate, cluster
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    if ws.status != "review":
+        return Utf8JSONResponse(
+            {"error": "辩论只在三级讨论里跑（当前状态：%s）" % ws.status,
+             "success": False}, status_code=400)
+    if not bool(getattr(ws, "debate_enabled", False)):
+        return Utf8JSONResponse(
+            {"error": "辩论模式未开启（默认关）：先 POST 本端点同路径 {\"enabled\": true}",
+             "success": False}, status_code=400)
+    state = _debate_state(ws)
+    raw = state.get("statements") or []
+    if not raw:
+        return Utf8JSONResponse(
+            {"error": "还没有任何结构化陈述（观点→证据→推理）；先提交再裁决",
+             "success": False}, status_code=400)
+    body = await request.json() if await request.body() else {}
+    threshold = float(body.get("threshold") or 0.5)
+    error_cost = str(body.get("error_cost") or "normal")
+    user_asked = bool(body.get("user_asked", True))
+
+    stmts = [Statement(speaker=s.get("speaker", ""), claim=s.get("claim", ""),
+                       evidence=[Evidence(kind=e.get("kind", "url"), ref=e.get("ref", ""),
+                                          verified=bool(e.get("verified")))
+                                 for e in (s.get("evidence") or [])],
+                       reasoning=s.get("reasoning", ""),
+                       conflicts_with_checker=bool(s.get("conflicts_with_checker")))
+             for s in raw]
+    round_no = int(state.get("round") or 0) + 1
+    prev = state.get("prev_evidence") or []
+    out = arbitrate(stmts, round_no=round_no, prev_evidence=prev if prev else None,
+                    threshold=threshold, allow=True, error_cost=error_cost,
+                    user_asked=user_asked)
+
+    # ── 落讨论区：**追加**一条 orchestrator 消息（不改任何人的原话）
+    o = out["output"]
+    if out["triggered"]:
+        lines = [
+            "【辩论裁决·第 %d 轮】%s" % (out["round"], out["stop"]["reason"]),
+            "触发原因：%s" % out["trigger_reason"],
+            "结论：%s" % (o["conclusion"] or "（没有哪一方的证据站得住 —— 如实为空，不硬给结论）"),
+            "置信度：%.2f（**启发式示意值，不是概率**，需按场景标定）" % o["confidence"],
+            "关键证据：%s" % ("、".join(o["key_evidence"]) or "（无）"),
+            "分歧点：%s" % ("；".join(o["disagreements"]) or "（无）"),
+            "注：证据同源的论点已合并降权（一簇总权重 1）；**无证据的断言权重 0**，"
+            "但它和其他发言一样**原样留在讨论区**。",
+        ]
+    else:
+        lines = [
+            "【辩论裁决·第 %d 轮】未触发辩论：%s" % (out["round"], out["trigger_reason"]),
+            "→ 这一轮**没有**产生结论（不值得付 N×R 倍 token 的代价）。",
+        ]
+    msg = _append_msg(ws, "orchestrator", "\n".join(lines), zone=3,
+                      meta={"debate": out, "round": out["round"]})
+    state["round"] = round_no
+    # ⚠️ 这里必须用内核的 `evidence_set()`（**一处真相**的归一逻辑）——
+    #   第一版我在路由里手写了一段 `x.get("kind")`，而 `Statement.evidence` 里装的是
+    #   `Evidence` 对象（没有 `.get`）⇒ **AttributeError ⇒ 500**，且崩在落盘之前
+    #   （表现为"消息已落讨论区、但轮次没保存"，重启后 round 仍是 0）。
+    #   本项目的真跑走查当场抓住了它 —— 这就是"接线层不要自己再算一遍"的理由。
+    from ..debate import evidence_set
+    state["prev_evidence"] = sorted(set().union(*[evidence_set(s) for s in stmts]) if stmts else set())
+    state["last_verdict"] = out
+    ws.debate_state = state
+    try:
+        _audit_log.record("workshop.debate_run", actor="user", target=ws_id,
+                          detail="round=%d triggered=%s stop=%s"
+                                 % (round_no, out["triggered"], out["stop"]["reason"]),
+                          extra={"round": round_no, "triggered": bool(out["triggered"]),
+                                 "conclusion": o["conclusion"][:200],
+                                 "disagreements": len(o["disagreements"])})
+    except Exception:  # noqa: BLE001
+        pass
+    save_state()
+    return {"success": True, "workshop_id": ws_id, "message_id": msg.get("id") if isinstance(msg, dict) else None,
+            "clusters": len(cluster(stmts, threshold)), **out}
+

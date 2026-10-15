@@ -95,6 +95,15 @@ class Workshop:
     # 用它做幂等键与反查（GET /api/tasks/{task_id}/workshop），避免为此再开一个状态文件。
     origin_task_id: str = ""
 
+    # ── V52：三级讨论区的「辩论模式」（可开可关）─────────────────────────────
+    # **默认关**（对齐老板既定优先级「自动兜底默认关」）：开关是"允许"，触发阈值是"该不该"，
+    # 两者都要满足才真跑。判定逻辑全在 `platform/debate.py`（纯函数内核），这里只存状态。
+    debate_enabled: bool = False
+    # 落盘口径（重启不丢，这是本项目反复吃过的亏）：
+    #   statements —— 已收到的**结构化陈述**（观点→证据→推理），有上限，防无限增长；
+    #   round / prev_evidence / last_verdict —— 轮次、上一轮证据（算"有没有新信息"）、上次裁决。
+    debate_state: dict = field(default_factory=dict)
+
     def to_dict(self) -> dict:
         """序列化为 dict（持久化 + 列表 API 用）。"""
         return {
@@ -140,6 +149,9 @@ class Workshop:
             "resources": self.resources,
             "task_tree": self.task_tree,
             "assignments": self.assignments,
+            # V52 辩论模式：不落盘的话重启后"开关被悄悄关回去 / 轮次清零"—— 属于状态静默丢失
+            "debate_enabled": bool(getattr(self, "debate_enabled", False)),
+            "debate_state": dict(getattr(self, "debate_state", {}) or {}),
         }
 
     @classmethod
@@ -181,6 +193,9 @@ class Workshop:
             created_at=d.get("created_at", ""),
             assignments=d.get("assignments", {}),
             origin_task_id=d.get("origin_task_id", ""),
+            # V52：旧数据没有这两个键 ⇒ 默认关、空状态（向后兼容，不假装开过）
+            debate_enabled=bool(d.get("debate_enabled", False)),
+            debate_state=dict(d.get("debate_state") or {}),
         )
 
 
