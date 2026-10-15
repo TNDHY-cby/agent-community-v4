@@ -101,3 +101,56 @@ def test_fallback_walk_is_reported(monkeypatch):
     files = cp.tracked_files()
     assert files, "退化分支也要能扫到文件（否则等于静默不扫）"
     assert cp._USED_FALLBACK_WALK is True, "走了退化分支却没留标记 —— 报告里就不会说"
+
+
+# ── ★AST 精化（老板 2026-10-15 点名的 A 项）：docstring 与"代码里的字符串"必须分开 ──
+class TestDocstringVsCode:
+    """判据：**docstring 里的「本机地址/端口默认」不算命中；代码里写死仍然算。**"""
+
+    def test_docstring_localhost_is_not_a_hit(self):
+        text = ('"""示例：默认监听 http://127.0.0.1:18999 与 localhost:18999。"""\n'
+                'VERSION = "1"\n')
+        fails, warns = cp.scan_text("agent_community/some_mod.py", text)
+        assert not fails and not warns, \
+            "docstring 里解释「默认值长什么样」被当成写死了：%r %r" % (fails, warns)
+
+    def test_code_localhost_is_still_a_fail(self):
+        text = 'BASE = "http://127.0.0.1:18999"\n'
+        fails, _warns = cp.scan_text("agent_community/some_mod.py", text)
+        assert fails, "产品代码里写死地址**必须**仍然判 fail（降噪不许把判据降没了）"
+        assert fails[0]["where"] == "代码"
+
+    def test_triple_quoted_string_in_code_is_not_mistaken_for_docstring(self):
+        """★"要 AST 不要数三引号"的**直接收益**：
+
+        下面那个三引号字符串**不是 docstring**（赋值给了变量）。旧实现按"数三引号"会把它
+        当文档、**降级成 warn** ⇒ 产品代码里真写死的地址被**漏判**。AST 之后它按代码处理。
+        """
+        text = 'TEMPLATE = """<a href="http://127.0.0.1:18999/x">go</a>"""\n'
+        fails, warns = cp.scan_text("agent_community/some_mod.py", text)
+        assert fails, "三引号字符串（非 docstring）里的写死地址被漏判：fails=%r warns=%r" % (fails, warns)
+
+    def test_docstring_still_flags_private_paths(self):
+        """★**`一律` 级规则在 docstring 里照抓** —— 文档里写出真实的私有路径本身就是问题。
+
+        （依据：HANDOVER 记过一次全仓扫描抓出 16 处私有根路径，其中 5 处是当天新引入的，
+          就落在 docstring 与测试夹具里 ⇒ "过滤 docstring"不能连这一类一起放过。）
+
+        ⚠️**本用例自己踩过一次坑（留作教训）**：合成文本最初写成 `C:\\Users\\...`，
+        而它在**被 ast 解析的源码里是非法转义**（`\\U` 要 8 位十六进制）⇒ `ast.parse` 抛错
+        ⇒ 代码走了"保守回落"分支 ⇒ **AST 那条路径根本没被考到**，突变体 M6 因此存活。
+        ⇒ 合成源码本身必须是**合法 Python**（路径写双反斜杠），否则测的是回落分支、不是判据。
+        """
+        text = '"""本机示例：C:\\\\Users\\\\someone\\\\proj 下运行。"""\n'
+        # 先自证：合成文本必须能被 ast 正常解析（否则整条用例测的是回落分支）
+        assert cp._docstring_lines(text)[1] is True, "合成文本不是合法 Python，测不到 AST 路径"
+        hits = cp.scan_text("agent_community/some_mod.py", text)
+        allhits = hits[0] + hits[1]
+        assert allhits, "docstring 里的真实私有路径应当仍被报出来"
+        assert any("Windows用户目录" in x["rule"] for x in allhits), allhits
+
+    def test_unparseable_python_falls_back_conservatively(self):
+        """语法错的 .py 解析不了 ⇒ 退回旧启发式（**保守：宁可多报**，不静默放过）。"""
+        text = 'def broken(:\n    """http://127.0.0.1:18999"""\n'
+        fails, warns = cp.scan_text("agent_community/broken_mod.py", text)
+        assert fails or warns, "解析失败时不该变成「什么都不查」"

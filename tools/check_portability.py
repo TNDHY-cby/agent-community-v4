@@ -41,6 +41,7 @@ warn 档长期只打印一个数字加一屏行号 ⇒ 实测逐条看过后，*
 """
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
 import sys
@@ -174,12 +175,39 @@ def is_skipped(rel: str) -> bool:
     return not low.endswith(TEXT_SUFFIX)
 
 
-def _where(rel_low: str, is_md: bool, was_in_doc: bool) -> str:
+def _docstring_lines(text: str) -> tuple[set, bool]:
+    """AST：这份 .py 里**所有 docstring 覆盖的行号**，以及"解析成功了吗"。
+
+    ★2026-10-15（老板点名的 A 项）：原来靠**数三引号**猜 docstring —— 那有两个真问题：
+      ① **猜错就误降级**：代码里一个三引号字符串（不是 docstring）会被当成"文档"降成 warn，
+         真正写死在产品逻辑里的地址因此**漏判**；
+      ② 只能"降级"，不能真区分。
+    改用 AST 后，**docstring 与"代码里的字符串字面量"分得清清楚楚**
+    —— 同 `check_productization` 第一版（52 条噪音 → 12 条真问题）那条教训：**要 AST 不要正则全文**。
+    解析失败（语法错 / 非 Python）→ `(set(), False)`，调用方退回旧的启发式（保守，不放松）。
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return set(), False
+    out: set = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = getattr(node, "body", None) or []
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(getattr(body[0], "value", None), ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                v = body[0].value
+                out.update(range(v.lineno, (getattr(v, "end_lineno", None) or v.lineno) + 1))
+    return out, True
+
+
+def _where(rel_low: str, is_md: bool, in_doc: bool) -> str:
     """这条命中**长在哪**（用于把 warn 报告说清楚，而不是甩一个吓人的总数）。
 
-    ★2026-10-15：warn 档的 97 条里没有一条是产品面硬编码 —— 它们是
+    ★2026-10-15：warn 档的 96 条里没有一条是产品面硬编码 —— 它们是
     测试夹具的"陷阱串"、说明历史修复的 docstring、可被环境变量覆盖的 dev 验收脚本兜底。
-    **判据本身没问题，问题是报告只会甩数字**（一个"97"会让人以为产品千疮百孔，
+    **判据本身没问题，问题是报告只会甩数字**（一个"96"会让人以为产品千疮百孔，
     于是下一个人就会去加 `--exclude`，判据从此失效）。所以按位置分类说清楚。
     """
     if is_md:
@@ -188,9 +216,69 @@ def _where(rel_low: str, is_md: bool, was_in_doc: bool) -> str:
         return "dev 验收脚本(frontend/verify)"
     if rel_low.startswith(("agent_community/tests/", "tests/")):
         return "测试夹具/断言"
-    if was_in_doc:
+    if in_doc:
         return "docstring（说明文字）"
     return "代码"
+
+
+def scan_text(rel: str, text: str) -> tuple[list[dict], list[dict]]:
+    """扫**一份文件的内容** → `(fails, warns)`。全量扫描与守卫**共用这一个函数**（同一套口径）。
+
+    分档规则（2026-10-15 精化）：
+      · **`:一律` 级规则**（本机绝对路径 / 真实凭据样式）：**docstring 里也照抓**（fail）——
+        文档里写出别人真实的私有路径或密钥样式，本身就是问题（HANDOVER 记过：一次全仓扫描
+        抓出 16 处私有根路径，其中 5 处是当天新引入的，就落在 docstring / 测试夹具里）。
+      · **`产品代码` 级规则**（写死 `localhost:端口` / `127.0.0.1:端口` / 端口默认值）：
+        **docstring 里不算命中** —— 那是"文档在讲默认值长什么样"，不是"把环境写死在逻辑里"。
+    """
+    low = rel.replace("\\", "/")
+    is_md = low.endswith(".md")
+    lines = text.split("\n")
+    doc_lines, parsed = _docstring_lines(text) if low.endswith(".py") else (set(), False)
+
+    fails, warns = [], []
+    in_doc = False
+    for i, line in enumerate(lines, 1):
+        # `in_doc`：这一行"看起来是文档"（用于降级）；`doc_confident`：**AST 确认**它确实是 docstring
+        # （只有后者才允许"整行不算命中"—— 解析失败时不许凭空跳过，宁可多报）
+        doc_confident = False
+        if low.endswith(".py"):
+            if parsed:
+                in_doc = i in doc_lines
+                doc_confident = in_doc
+            else:                                        # 解析失败：退回旧的三引号启发式（保守）
+                quotes = line.count('"""') + line.count("'''")
+                in_doc = in_doc or quotes >= 1 or line.lstrip().startswith(('"""', "'''"))
+                if quotes % 2 == 1:
+                    in_doc = not in_doc
+        if line.lstrip().startswith("#") and "portability: allow" not in line:
+            # 注释行跳过（规则定义、说明文字不算硬编码）
+            continue
+        # 行尾注释之后的部分不算（代码写完后的说明）
+        if "#" in line and not ALLOW_RE.search(line):
+            line = line.split("#", 1)[0]
+        allowed = bool(ALLOW_RE.search(line)) or (i > 1 and bool(ALLOW_RE.search(lines[i - 2])))
+        for name, rx, level, scope in RULES:
+            if not rx.search(line):
+                continue
+            if allowed:
+                continue
+            if doc_confident and scope != "一律":
+                # ★AST 确认是 docstring 里的"本机地址/端口默认" ⇒ 那是**说明文字**，不是写死；
+                #   连 warn 都不进。但 `一律` 级（私有路径/凭据）仍然照抓 —— 见函数头说明。
+                continue
+            item = {"rule": name, "file": rel, "line": i, "text": line.strip()[:110],
+                    "where": _where(low, is_md, in_doc)}
+            # 降级：测试/文档/验收脚本/docstring 里的命中 -> warn
+            downgrade = (any(low.startswith(d) for d in WARN_ONLY_DIRS)
+                         or (is_md and level == "fail" and scope != "一律")
+                         or (in_doc and level == "fail" and scope != "一律"))
+            if level == "fail" and not downgrade:
+                fails.append(item)
+            else:
+                warns.append(item)
+            break
+    return fails, warns
 
 
 def scan() -> tuple[list[dict], list[dict], list[str]]:
@@ -202,10 +290,6 @@ def scan() -> tuple[list[dict], list[dict], list[str]]:
         p = ROOT / rel
         if not p.is_file():
             continue
-        try:
-            lines = p.read_text(encoding="utf-8", errors="replace").split("\n")
-        except OSError:
-            continue
         low = rel.replace("\\", "/")
         if is_dev_only(low):          # 明确点名的 dev-only 文件
             continue
@@ -215,41 +299,13 @@ def scan() -> tuple[list[dict], list[dict], list[str]]:
         if not in_publish_scope(low):  # 不在发布面：本机运维脚本等，不拦
             skipped_out_of_scope.append(low)
             continue
-        is_md = low.endswith(".md")
-        # 三引号 docstring 跟踪（文档说明里的示例地址 -> 只 warn）
-        in_doc = False
-        for i, line in enumerate(lines, 1):
-            quotes = line.count('"""') + line.count("'''")
-            # 单行里成对的三引号（如单行 docstring）也算文档行
-            _stripped = line.lstrip()
-            was_in_doc = (in_doc or quotes >= 1
-                          or _stripped.startswith(('"""', "'''")))
-            if quotes % 2 == 1:
-                in_doc = not in_doc
-            if line.lstrip().startswith("#") and "portability: allow" not in line:
-                # 注释行跳过（规则定义、说明文字不算硬编码）
-                continue
-            # 行尾注释之后的部分不算（代码写完后的说明）
-            code_part = line.split("#", 1)[0] if "#" in line else line
-            if "#" in line and not ALLOW_RE.search(line):
-                line = code_part
-            allowed = bool(ALLOW_RE.search(line)) or (i > 1 and bool(ALLOW_RE.search(lines[i - 2])))
-            for name, rx, level, scope in RULES:
-                if not rx.search(line):
-                    continue
-                if allowed:
-                    continue
-                item = {"rule": name, "file": rel, "line": i, "text": line.strip()[:110],
-                        "where": _where(low, is_md, was_in_doc)}
-                # 降级：测试/文档/验收脚本/docstring 里的命中 -> warn
-                downgrade = (any(low.startswith(d) for d in WARN_ONLY_DIRS)
-                             or (is_md and level == "fail" and scope != "一律")
-                             or (was_in_doc and level == "fail" and scope != "一律"))
-                if level == "fail" and not downgrade:
-                    fails.append(item)
-                else:
-                    warns.append(item)
-                break
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        f, w = scan_text(rel, text)
+        fails += f
+        warns += w
     return fails, warns, skipped_out_of_scope
 
 
