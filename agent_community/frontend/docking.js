@@ -139,6 +139,10 @@ const DOCK_WRITE_WHITELIST = [
   '/api/workshop/*/member/*/recover',
   '/api/workshop/*/member/*/channel/retire',
   '/api/workshop/*/member/*/channel/establish',
+  // 架桥辅助（V34 §2 明列要迁进对接中心的那些）
+  '/api/harness/bridge-path',
+  '/api/harness/bridge-verify',
+  '/api/harness/auto-connect',
 ];
 
 /** 路径模板（**字面量、唯一来源**）：界面上的每个动作都从这里取路径。 */
@@ -153,6 +157,11 @@ const DOCK_PATH = {
   recover:       '/api/workshop/{ws}/member/{mid}/recover',
   retire:        '/api/workshop/{ws}/member/{mid}/channel/retire',
   newChannel:    '/api/workshop/{ws}/member/{mid}/channel/establish',
+  // 架桥辅助：按 **harness** 作用（同一条桥服务该 harness 的所有会话）——
+  // 所以下面三个动作**不带 {ws}/{mid}**，参数走 body 的 harness_id。
+  bridgePath:    '/api/harness/bridge-path',
+  bridgeVerify:  '/api/harness/bridge-verify',
+  autoConnect:   '/api/harness/auto-connect',
 };
 
 function dockAllowed(path){
@@ -307,7 +316,8 @@ async function dockLoadActivation(){
       ' <span class="sub">(' + esc(m.member_id) + ')</span></h3>' +
       '<p class="lead">通道 <b>' + esc(st) + '</b> · 第 ' + esc(ch.seq || 1) + ' 条' +
       '　·　会话名：<code>' + esc(m.session_name || '（还没命名）') + '</code>' +
-      '　·　状态 ' + esc(m.status || '') + '</p>' +
+      '　·　状态 ' + esc(m.status || '') +
+      '　·　桥文件 ' + ((m.bridge_files || []).length) + ' 个</p>' +
       (m.orphan ? ('<div class="dock-warn">⚠ ' + esc(m.orphan_text || '这个成员的 agent 已不在平台上') +
                    '　' + esc(m.orphan_advice || '') + '</div>') : '') +
       dockRenderSteps(m.steps) +
@@ -317,7 +327,16 @@ async function dockLoadActivation(){
       '<button class="btn mini" onclick="dockMemberAct(\'recover\',\'' + esc(m.member_id) + '\')">抢救</button>' +
       '<button class="btn mini" onclick="dockMemberAct(\'retire\',\'' + esc(m.member_id) + '\')">停用通道</button>' +
       '<button class="btn mini" onclick="dockMemberAct(\'newChannel\',\'' + esc(m.member_id) + '\')">新建通道</button>' +
-      '</div><div id="actResult-' + esc(m.member_id) + '"></div></div>';
+      '</div>' +
+      // 架桥辅助（V34 §2）：按 **harness** 作用 —— 成员没绑 harness 就不给按钮（别给空动作）
+      (m.harness_id
+        ? ('<div class="dock-bridge"><span class="sub">架桥辅助（作用于 ' + esc(m.harness_id) + '）：</span>' +
+           '<button class="btn mini" onclick="dockBridgeAct(\'bridgePath\',\'' + esc(m.harness_id) + '\',\'' + esc(m.member_id) + '\')">桥路径</button>' +
+           '<button class="btn mini" onclick="dockBridgeAct(\'bridgeVerify\',\'' + esc(m.harness_id) + '\',\'' + esc(m.member_id) + '\')">验证桥</button>' +
+           '<button class="btn mini" onclick="dockBridgeAct(\'autoConnect\',\'' + esc(m.harness_id) + '\',\'' + esc(m.member_id) + '\')">自动连接</button>' +
+           '</div>')
+        : '<div class="dock-bridge"><span class="sub">这个成员还没绑 harness（先在工作间里给他绑一个）。</span></div>') +
+      '<div id="actResult-' + esc(m.member_id) + '"></div></div>';
   }).join('');
 
   wrap.innerHTML = head + (cards || '<div class="card"><p class="lead">这个工作间还没有成员。</p></div>');
@@ -340,6 +359,15 @@ async function dockMemberAct(kind, mid){
   }
   box.innerHTML = head;
   dockRenderResult(box, Object.assign({}, res, {_keepHead:true}));
+}
+
+async function dockBridgeAct(kind, hid, mid){
+  const path = DOCK_PATH[kind];
+  const box = document.getElementById('actResult-' + mid);
+  if (box) box.innerHTML = '<p class="sub">执行中…（要起子进程/连一次，可能几秒）</p>';
+  // 架桥辅助按 **harness** 作用：参数走 body（V34 §2 口径），路径不带 ws/mid
+  const res = await dockPost(path, {harness_id: hid});
+  if (box) dockRenderResult(box, res);
 }
 
 async function dockWsAct(kind){

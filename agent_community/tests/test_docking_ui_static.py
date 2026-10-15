@@ -70,6 +70,8 @@ def test_write_whitelist_matches_the_design_contract():
         "/api/workshop/*/member/*/recover",
         "/api/workshop/*/member/*/channel/retire",
         "/api/workshop/*/member/*/channel/establish",
+        # 架桥辅助（V34 §2 明列要迁进对接中心的三个写动作）
+        "/api/harness/bridge-path", "/api/harness/bridge-verify", "/api/harness/auto-connect",
     }
     assert got == expect, "白名单与 V34 §4.3 不一致：多=%s 少=%s" % (sorted(got - expect), sorted(expect - got))
 
@@ -90,6 +92,29 @@ def test_every_action_path_is_inside_the_whitelist():
 
     outside = [p for p in paths if norm(p) not in allowed]
     assert not outside, "这些动作路径不在白名单里（按钮会被闸拦住）：%s" % outside
+
+
+def test_bridge_helpers_are_per_harness_not_per_member_path():
+    """架桥辅助按 **harness** 作用 ⇒ 路径里**不该**带 `{ws}`/`{mid}`（参数走 body）。"""
+    code = _js_code(_read("docking.js"))
+    m = re.search(r"DOCK_PATH\s*=\s*\{(.*?)\};", code, re.S)
+    block = m.group(1)
+    for key in ("bridgePath", "bridgeVerify", "autoConnect"):
+        mm = re.search(key + r"\s*:\s*['\"]([^'\"]+)['\"]", block)
+        assert mm, "DOCK_PATH 里没有 %s" % key
+        assert "{ws}" not in mm.group(1) and "{mid}" not in mm.group(1), \
+            "%s 的路径带了 ws/mid（架桥辅助是按 harness 作用的）：%s" % (key, mm.group(1))
+    act = _js_code(_read("docking.js"))
+    i = act.find("async function dockBridgeAct(")
+    assert i != -1 and "harness_id" in act[i:i + 400], "dockBridgeAct 没有把 harness_id 放进 body"
+
+
+def test_legacy_register_page_points_to_the_docking_center():
+    """V34 §5 第二步的准备：`register.html` 保持可达，但**必须**告诉来的人去哪才是正主。"""
+    reg = _read("register.html")
+    assert "/docking.html" in reg, "旧注册页没有指向对接中心"
+    assert "已被「对接中心」取代" in reg or "已被对接中心取代" in reg, \
+        "旧注册页没有说明它已被取代（人会以为这里才是正主）"
 
 
 def test_no_discuss_no_bypass_writes():
