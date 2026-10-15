@@ -1963,6 +1963,45 @@ window.acToast=function(msg,err){var t=document.querySelector('.acm-toast');if(!
 
 
 
+<!-- ★2026-10-15（V34 §5 第二步）：**只读闸**。
+     本页保留为只读镜像（内容完整、旧链接可达），但**不再承担任何写操作** ——
+     注册 / 激活 / 通道 / 架桥辅助 / 直聊全部在对接中心。
+     做法：拦截本页所有的**非 GET** 请求，一律回 403 + 中文原因（并提示去哪做），
+     同时在页面顶部插一条说明。这样不用改那 1900 行里的 10 个调用点，
+     也不会出现"看起来点了没反应"的死状态（准则⑤）。
+     为什么不是删掉这些按钮：镜像的价值就是**可回查原文**；写操作只是被闸住。 -->
+<script>
+(function () {
+  var NOTICE = '本页是<b>只读镜像</b>（V34 §5）：写操作已停用，请去「对接中心」做。';
+  var _origFetch = window.fetch ? window.fetch.bind(window) : null;
+  if (_origFetch) {
+    window.fetch = function (url, opts) {
+      var m = String((opts && opts.method) || 'GET').toUpperCase();
+      if (m !== 'GET' && m !== 'HEAD') {
+        // 明确回绝，而不是让请求发出去再失败（避免"看起来成功/看起来没反应"）
+        return Promise.resolve(new Response(
+          JSON.stringify({ error: '本页是只读镜像，写操作已停用；请到对接中心 /docking.html 操作',
+                           moved_to: '/docking.html' }),
+          { status: 403, headers: { 'Content-Type': 'application/json' } }));
+      }
+      return _origFetch.apply(null, arguments);
+    };
+  }
+  function banner() {
+    var w = document.querySelector('.wrap');
+    if (!w || document.getElementById('readonlyBar')) return;
+    var d = document.createElement('div');
+    d.id = 'readonlyBar';
+    d.style.cssText = 'margin:8px 0;padding:6px 10px;border-left:3px solid #c62828;' +
+                      'background:rgba(198,40,40,.08);font-size:12px';
+    d.innerHTML = '⛔ ' + NOTICE + '（<a href="/docking.html">去对接中心 →</a>）';
+    w.parentNode.insertBefore(d, w);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', banner);
+  } else { banner(); }
+})();
+</script>
 
 </body>
 

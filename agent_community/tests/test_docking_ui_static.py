@@ -130,6 +130,10 @@ def test_legacy_register_page_is_a_readonly_mirror_not_the_entry():
     assert "已被「对接中心」取代" in reg or "已被对接中心取代" in reg, \
         "旧页没有说明它已被取代（人会以为这里才是正主）"
     assert "只读镜像" in reg, "旧页没有说明自己现在的身份是「只读镜像」"
+    # ★"只读"不能只是自称：**必须有闸**把写操作拦下来（V34 §5 的措辞就是"只读镜像"）。
+    assert "window.fetch" in reg and "只读闸" in reg, "旧页自称只读，却没有拦截写请求的闸"
+    assert "m !== 'GET'" in reg or 'm !== "GET"' in reg, "只读闸没有按 HTTP 方法判（拦不住写请求）"
+    assert "403" in reg and "moved_to" in reg, "只读闸没有明确回绝（会出现「点了没反应」的死状态）"
 
 
 def test_no_discuss_no_bypass_writes():
