@@ -4,6 +4,55 @@
 
 # 4.8.26
 
+## [4.8.31] - 2026-10-17
+
+**CI 替代判据落地为「一条命令」＋ Gitee 侧配置补齐**（老板拍板：「GitHub CI 停更 / 更新 Gitee /
+本机双平台真跑替代 / Gitee 配置最优解化 / 交给 MiMo」）
+
+### ① 新增 `tools/dual_platform_check.py` —— 双平台真跑＝**现行判据**（一条命令）
+
+```bash
+python tools/dual_platform_check.py            # 两侧都真跑 + 一张表 + 结论
+python tools/dual_platform_check.py --plan     # 只打印"它会怎么做"（守卫/文档用）
+python tools/dual_platform_check.py --selftest # 自证判据有效（拿迷你套件跑真 pytest，几秒）
+python tools/dual_platform_check.py --local-only [--target <路径>]
+```
+
+- **退出码本身就是判据**：`0`=两侧都绿；`1`=有侧红；**`2`=只跑成了一侧（＝部分，不算通过）**。
+- Windows 侧＝本机 `pytest`；Linux 侧＝WSL 里跑仓库自己的 POSIX 运行器 **`tools/run_suite_in_repo.sh`**。
+- **本机适配只改 `.env`**（`AC_LINUX_WSL_DISTRO` / `AC_LINUX_PYTHON`），**不改源码**；这两个键
+  **不进 `env_spec`**（不是平台运行期变量）。
+- **首次真跑就抓到三条真问题**（这就是它存在的理由）：
+  ① Linux 侧 4 条**假失败**（用例 `spawn("python")`，而运行器没把解释器所在 bin 放进 PATH）
+     ⇒ 已在 `run_suite_in_repo.sh` 里固化 `export PATH="$(dirname …):$PATH"`；
+  ② 本机 `/etc/wsl.conf` 的 `[automount] enabled=false` ⇒ WSL 重启后 `/mnt/d` 是空目录，
+     Linux 侧报 `No such file or directory`（看着像脚本没了，其实是盘没挂）⇒ 工具**按需 `mount -t drvfs`**
+     （**不改用户系统配置**），挂不上就如实给两条补救路径；
+  ③ 本机侧计数原来抓不到（pytest stdout 里没有那一行）⇒ 改成**从 junit XML 解析**。
+
+### ② 判据口径一次全改（规则 20）
+
+`AGENTS.md`（命令块 + 可移植性第 5 条）、`PORTABILITY.md` §4.1（新增"判据怎么跑"＋两个实测坑，
+原 CI 定义降为 §4.1.1「已停更，仅归档」并在 §4.1.2 保留依赖声明的老教训）、
+`PRODUCTIZATION.md`（形态 5 的检查器换成新命令）、`design-docs/项目完整模型.md`（§9/§10/§11 三处）。
+**守卫 `agent_community/tests/test_dual_platform_judgement.py`（6 条）盯着**：工具在、`--plan` 两侧都写、
+`--selftest` 真会绿也会红、Linux 运行器是 POSIX 且不写死本机路径、**四个规则源都提到新口径**。
+
+### ③ Gitee 侧配置最优解化（它现在是唯一主仓库）
+
+- **仓库元数据**：description（一句话定位）+ homepage（发行版页）已设；仓库保持**公开**。
+- **发行版补齐**：从 CHANGELOG 条目补建 **v4.8.20 / v4.8.21 / v4.8.22** ⇒ 现在是 **v4.8.20 ~ v4.8.30 连续 11 个**。
+- **Gitee 原生模板**：新增 `.gitee/ISSUE_TEMPLATE/{bug_report,feature_request}.md` 与
+  `.gitee/PULL_REQUEST_TEMPLATE.md`（Gitee 认这两个位置），并把 `.gitee/` 纳入发布同步面
+  （copy-only，**不用 `/MIR`**）—— 否则"Gitee 侧配置"只存在于开发机。
+- `CONTRIBUTING.md`（发布副本独有）新增「主仓库在 Gitee」一节：分支/PR/issue 路径 + 提交前要跑的四条判据。
+
+### ④ 判据（真跑）
+
+- **双平台真跑：两侧全绿** —— Windows `1631 passed / 0 failed`、Linux(WSL) `1631 passed / 0 failed`、
+  仓库根脏目录 **0**（`python tools/dual_platform_check.py` → 退出码 **0**）。
+- 工具自证：`--selftest` 迷你套件 通过→0 / 失败→1 ✅；守卫 6/6 ✅。
+
 ## [4.8.30] - 2026-10-16
 
 **前端负责人改为 MiMo（老板重新启用）—— 接手材料与对外措辞一次对齐**

@@ -19,7 +19,7 @@
 | 2 | 代码/文档里出现真实 harness 名或私有产品名（用户会照抄） | `agent_community/tests/test_bridge_catalog.py::test_onboarding_assets_carry_no_private_names` | **fail** |
 | 3 | **平台专属能力伪装成通用能力**（只有 Windows 能跑的实现，别的平台静默失效） | `python tools/check_productization.py` 规则 A | **fail** |
 | 4 | **开箱默认里塞假数据**（看起来配好了其实必然失败；未渲染的模板占位） | `python tools/check_productization.py` 规则 B | **fail** |
-| 5 | **只在我这台机器绿**（编码 / 换行 / 平台差异导致别人那儿红） | CI 双平台（`test-linux` + `test-windows`）+ `test_bridge_encoding_guard.py` 等 | **fail** |
+| 5 | **只在我这台机器绿**（编码 / 换行 / 平台差异导致别人那儿红） | ★2026-10-17 起 **GitHub CI 停更** ⇒ 判据＝**本机双平台真跑**：`python tools/dual_platform_check.py`（Windows 侧 `pytest` ＋ WSL Linux 侧 `tools/run_suite_in_repo.sh`；**退出码 2 ＝只跑成一侧 ＝ 不算通过**）+ `test_bridge_encoding_guard.py` 等 | **fail** |
 | 6 | **用户第一次跑就撞到**（入口命令不可用、失败不说话、文档承诺了却没实现） | `python tools/first_run_check.py` + `tests/test_cli_contract.py` | **fail** |
 
 **一次全跑**（发布前 / 大改后）：
@@ -28,7 +28,8 @@
 python tools/check_portability.py        # 形态 1（fail=0 才合格）
 python tools/check_productization.py     # 形态 3、4（fail=0 才合格）
 python tools/first_run_check.py --src <发布副本>   # 形态 6（五步走查，见下）
-python -m pytest -q                      # 形态 2、5 以及全部回归
+python tools/dual_platform_check.py      # 形态 5（两侧真跑；退出码 2＝只跑成一侧＝不算通过）
+python -m pytest -q                      # 形态 2 以及全部回归
 ```
 
 > ⚠️ `first_run_check.py` **clone 已提交内容**：陌生人拿到的是**发布副本（oss）**，

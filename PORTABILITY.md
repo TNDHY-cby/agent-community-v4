@@ -77,13 +77,39 @@ python tools/gen_env_docs.py --check   # 环境变量文档是否漂移
 python -m pytest -q                    # 回归
 ```
 
-### 4.1 CI 定义：`.github/workflows/ci.yml`（**已启用**，改它之前先读这段）
+### 4.1 判据怎么跑（★2026-10-17 起：**本机双平台真跑**替代 CI）
 
-CI 工作流只有一份，位置就是 GitHub 唯一会执行的地方：**`.github/workflows/ci.yml`**。
-（曾短暂放在 `ci/ci.yml` 绕过令牌限制，老板 2026-10-14 在网页端建好标准位置那份之后，
-`ci/` 那份已删除 —— 两份定义并存必然漂移，规则 20 不允许。）
+> 老板 2026-10-16/17 拍板：「**GitHub CI 停更**」「更新 Gitee」「**本机双平台真跑替代**」。
+> ⇒ **现行判据＝一条命令**（Gitee 侧没有免费 CI；GitHub Actions 不再跟随新提交）：
 
-**当前令牌的硬约束**：推送用的 Personal Access Token **没有 `workflow` 权限**，GitHub 会直接拒收：
+```bash
+python tools/dual_platform_check.py            # 两侧都真跑 + 一张表 + 结论
+python tools/dual_platform_check.py --plan     # 只打印"它会怎么做"（不跑）
+python tools/dual_platform_check.py --local-only   # 只跑本机这一侧（诚实标"部分"）
+```
+
+**退出码本身就是判据**：`0`=两侧都绿；`1`=有侧红；**`2`=只跑成了一侧（＝部分，不算通过）**。
+Windows 侧＝本机 `pytest`；Linux 侧＝**WSL 里跑 `tools/run_suite_in_repo.sh`**（同一个仓库、同一套用例）。
+
+**本机适配只改 `.env`（不改源码）**：`AC_LINUX_WSL_DISTRO`（默认 `Ubuntu-24.04`）与
+`AC_LINUX_PYTHON`（WSL 里**装好依赖的那个解释器**）。这两个键是**工具本地配置**，
+**不进 `env_spec`**（它们不是平台运行期变量）；跑不了另一侧时工具**如实报缺什么、返回 2**，绝不假装通过。
+
+> ⚠️ **两个实测坑（2026-10-17 都踩过，别再花时间）**：
+> 1. **`/mnt/<盘>` 可能是空的**：本机 `/etc/wsl.conf` 里 `[automount] enabled=false` ⇒ WSL 重启后
+>    `/mnt/d` 是**空目录**，Linux 侧会报 `bash: /mnt/d/…: No such file or directory`
+>    —— **看着像脚本没了，其实是盘没挂**。工具会**按需 `mount -t drvfs`**（不改你的系统配置）；
+>    挂不上就如实给两条补救路径（临时挂载 / 改 `wsl.conf` 后 `wsl --shutdown`）。
+> 2. **Linux 侧必须把解释器所在 bin 放进 PATH**：否则用例里 `spawn("python", …)` 的子进程找不到解释器
+>    ⇒ `test_workshops_session` **4 条假失败**（Windows 绿、Linux 红，看着像真 bug）。
+>    这条已固化在 `tools/run_suite_in_repo.sh` 里，**别删那行**。
+
+#### 4.1.1 `.github/workflows/ci.yml`（**已停更，仅归档**）
+
+GitHub 那边的工作流文件**保留**（谁要重启用照着跑即可），但**不再跟随新提交、不再是判据**。
+（历史：曾短暂放在 `ci/ci.yml` 绕过令牌限制，老板 2026-10-14 在网页端建好标准位置那份之后 `ci/` 已删除 ——
+两份定义并存必然漂移，规则 20 不允许。）若将来要改它，注意那个老坑：
+推送用的令牌**没有 `workflow` 权限**时，GitHub 会整次拒收：
 
 ```
 ! [remote rejected] master -> master
@@ -91,16 +117,9 @@ CI 工作流只有一份，位置就是 GitHub 唯一会执行的地方：**`.gi
    `.github/workflows/ci.yml` without `workflow` scope)
 ```
 
-⇒ 只要某次提交**碰了** `.github/workflows/`，**整次 push 都会被拒**（= 别人拿不到任何更新）。
-**改 CI 的正确姿势**（二选一）：
+⇒ 要么在网页端改，要么给令牌补 `workflow` 权限（且本地那份必须与远端逐字节一致）。
 
-1. **网页端直接编辑**（推荐，当前唯一可行）：GitHub → 打开 `.github/workflows/ci.yml` → 编辑/提交；
-2. **给令牌补权限**：GitHub → Settings → Developer settings → Tokens → 勾上 `workflow`；
-   之后再改本地这份就能推上去。本地这份必须与远端**逐字节一致**。
-
-工作流跑的就是上面那三条自查，外加一条「只改 `AC_PORT` / `AC_DATA_DIR` 也能起」的真启动验证。
-
-#### 4.1.1 依赖必须全部声明（2026-10-14 CI 第一次真跑的收获）
+#### 4.1.2 依赖必须全部声明（2026-10-14 CI 第一次真跑的收获；结论对今天仍然有效）
 
 CI 首跑**两个 job 同一步挂掉**，`portability` job 是过的：
 
@@ -130,7 +149,7 @@ E   ModuleNotFoundError: No module named 'google'
 > 改成 `pip install --retries 5 --timeout 60 -r requirements.txt` —— 要的是抗网络抖动，
 > 不是"装个残缺环境然后假装通过"。
 
-#### 4.1.2 路径里的非 ASCII（中文用户名/中文目录）是同一类假绿
+#### 4.1.3 路径里的非 ASCII（中文用户名/中文目录）是同一类假绿
 
 干净环境验收顺带抓到的第二个缺陷：`agent_community/tests/test_rule19_fresh_identity.py`
 造"假 agent"的 `.cmd` 启动器时写死 `encoding="ascii"`，注释理由是"纯 ASCII、无 BOM —— cmd 的坑"。

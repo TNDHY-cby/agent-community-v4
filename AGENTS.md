@@ -31,7 +31,8 @@
 3. 默认值只用于开发且**可被环境变量覆盖**；`AC_ENV=production` 下缺必需项**启动失败并提示**；
 4. 本地适配只改 `.env`（已在 `.gitignore`），**不得改源码**；
 5. 改完跑三条自查：`python tools/check_portability.py`（必须 fail=0）→
-   `python tools/gen_env_docs.py --check` → `python -m pytest -q`，
+   `python tools/gen_env_docs.py --check` → `python -m pytest -q`；**改了跨平台相关的东西再加**
+   `python tools/dual_platform_check.py`（双平台真跑；2026-10-17 起这是 CI 的替代判据），
    并输出**环境变量清单 + 默认值 + 是否必需 + 自查结果**。
 
 **派任务时的标准话术**（复制给任何 agent）：
@@ -57,9 +58,15 @@
 python tools/check_portability.py       # 硬编码坐标（端口/路径/凭据）
 python tools/check_productization.py    # 平台专属命令冒充通用能力 / 开箱假数据
 python tools/first_run_check.py --src <发布副本>   # 陌生人首次运行五步走查
+python tools/dual_platform_check.py     # ★双平台真跑（Windows + WSL Linux）——2026-10-17 起的 CI 替代判据
 python -m pytest -q                     # 全部回归（含双平台守卫）
 python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 ```
+
+> ★**2026-10-17 老板拍板：GitHub CI 停更、只用 Gitee**（Gitee 侧没有免费 CI）⇒ **双平台判据＝
+> `python tools/dual_platform_check.py`**：Windows 侧 `pytest` ＋ WSL Linux 侧 `tools/run_suite_in_repo.sh`。
+> **退出码 2 ＝只跑成了一侧 ＝不算通过**（如实报"部分"）；本机适配只改 `.env`
+> （`AC_LINUX_WSL_DISTRO` / `AC_LINUX_PYTHON`），**不改源码**。详见 `PORTABILITY.md` §4.1。
 
 **两条最容易犯的**：
 1. **平台专属实现不许冒充通用能力**：要拿本机事实（进程/命令行/pid/端口/结束进程）一律走
