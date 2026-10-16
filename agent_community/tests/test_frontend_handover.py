@@ -95,6 +95,21 @@ def test_checker_reports_every_item_with_a_reason():
     assert "PASS" in out and ("FAIL" in out or "待人工" in out), "报告没有分档结论"
 
 
+def test_live_page_meets_the_contract():
+    """★★**从这一版起，对外预检就是 CI 里的硬判据**（前端已落地 v4.8.26，判据不再只是"给外包方看的"）。
+
+    - `check_frontend_spec.py` 是**对着 `FE-26`** 写的那份可执行契约（交付方也能自己跑）；
+    - 这里真跑它对**当前页面**：**必须 0 FAIL**（`待人工` 的手感项不参与退出码，由人走查）；
+    - 于是"契约"只有一处真相：**页面要过预检**；`test_docking_ui_static.py` 里那些结构断言是补充细节。
+    """
+    r = subprocess.run([sys.executable, str(CHECKER)],
+                       capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=180, cwd=str(_ROOT))
+    out = (r.stdout or "") + (r.stderr or "")
+    assert r.returncode == 0, \
+        "当前页面没通过对外预检（对着 FE-26 的硬判据，详见 design-docs/FE-26…md §2/§3/§5/§8/§12）：\n%s" % out[-1500:]
+
+
 def test_area_is_actually_published():
     """③ 同步漏检：这个目录**必须真的进得了公开仓库**，否则外包方看不到它。
 

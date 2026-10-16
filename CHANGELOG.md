@@ -4,6 +4,44 @@
 
 # 4.8.26
 
+## [4.8.29] - 2026-10-16
+
+**把「对外预检」变成 CI 硬判据 + 给 P6 联合验收一条命令**
+
+### ① 交接区预检 = CI 里的硬判据（一处真相）
+
+前端已落地（v4.8.26）。此前 `外包交接_前端界面/check_frontend_spec.py` 只是"给外包方自查的预检"，
+而 CI 里另有一套结构断言（`test_docking_ui_static.py`）—— 同一件事两份口径。
+本版把预检**接进 CI**：新增守卫
+`agent_community/tests/test_frontend_handover.py::test_live_page_meets_the_contract`
+**真跑预检、对当前页面要求 0 FAIL**（`待人工` 的手感项不参与退出码）。
+
+⇒ 效果：页面一旦退化成"说明书"、白名单被动过、脚本激活四屏少一个端点，**CI 当场红**；
+`test_docking_ui_static.py` 降为"结构细节的补充守卫"（前端侧已在 v4.8.26 同步到新契约）。
+文档同步（规则 20）：`外包交接_前端界面/验收清单.md` §4 重写，删掉"旧页面契约/不必让它变绿"那段
+已经过期的说明。
+
+### ② P6 联合验收：从"我写一段话请你走查"变成**一条命令**
+
+新增 `temp/p6_acceptance.py`（DSH 侧工具，dev-only）：
+
+```powershell
+python temp/p6_acceptance.py            # 起独立实例（换端口 + 换数据目录）+ 开浏览器 + 逐条走查
+python temp/p6_acceptance.py --no-open  # 不开浏览器
+```
+
+- 起实例用**独立数据目录** `temp/_p6_run/`，并**跑前跑后对比** `agent_community/data` 的内容
+  ⇒ 结尾会如实打印"真实数据有没有被动过"（不是"存不存在"——开发机上它本来就在）；
+- 逐条念 `FE-26` 的 **M1~M7 手感项**，答 `n` 的写进 `temp/p6_findings.md`（现象 + 条目号），
+  退出时打印小结；全过我这边就可以进 P6 收尾；
+- 真跑验证：脚本自己跑通一遍（含"中断/异常也停服务"的 `finally`），无残留进程、无脏数据。
+
+### ③ 复核（本轮真跑）
+
+- `test_frontend_handover.py` **7/7 通过**（含新判据：当前页面预检 **0 FAIL**）。
+- `tools/first_run_check.py --src <发布副本>`：**陌生人五步全过 + 仓库保持干净**（v4.8.28 树上跑的）。
+- Windows 全量 `pytest` **1624 passed / 0 failed**；Linux（WSL）全量同样 1624 passed / 0 failed。
+
 ## [4.8.28] - 2026-10-16
 
 **两份 `项目完整模型.md` 合并为同一份内容**（老板点名：「记得更新知识库那份」）
