@@ -36,7 +36,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 FE = ROOT / "agent_community" / "frontend"
 
-#: `FE-26` §5 的白名单（页面里**非 GET** 的请求只能落在这些路径上；带 `*` 的是路径段）
+#: `FE-26` §5 ＋ §12 的白名单（页面里**非 GET** 的请求只能落在这些路径上；带 `*` 的是路径段）
 WHITELIST_EXPECT = {
     "/api/harness/pre-register", "/api/harness/probe-register", "/api/harness/register",
     "/api/workshop/*/onboard-members", "/api/workshop/*/recover-scan",
@@ -49,6 +49,8 @@ WHITELIST_EXPECT = {
     "/api/assistant/chat",
     "/api/docking/locate", "/api/docking/try-activate",
     "/api/docking/harness/*",
+    # ★2026-10-16 §12 补的两条：正文生成（屏 4）与一键脚本激活
+    "/api/docking/compose-script", "/api/docking/run-script",
 }
 
 #: `FE-26` §2a：第一屏的功能模块（每块＝一件能当场办的事）。`data-dock-service` 用这些 id。
@@ -164,7 +166,9 @@ def checks(html: str, js: str) -> list:
             ("S2", "/api/docking/locate", "屏2 让平台去找"),
             ("S3", "/api/docking/try-activate", "屏3 确认 + 试投一次"),
             ("S4", "/api/docking/harness/", "屏4 保存进档案（脚本正文）"),
-            ("S5", "export.ps1", "脚本可导出 .ps1 副本")):
+            ("S5", "export.ps1", "脚本可导出 .ps1 副本"),
+            ("S6", "/api/docking/compose-script", "屏4 生成脚本正文（平台给，别自己编）"),
+            ("S7", "/api/docking/run-script", "屏4 之后的一键脚本激活")):
         add(cid, "脚本激活工作台 · %s" % desc, path in code,
             "代码里没有用到 %s" % path, "用到 %s" % path)
 
@@ -238,6 +242,7 @@ const blocks = ['框架性能','适配模型','桥模板','激活方式'];
 const tag = '未核实 / 待人工'; const done = '已自证'; const ok = all_verified === true;
 const s1 = '/api/docking/keyword-suggestions', s2 = '/api/docking/locate', s3 = '/api/docking/try-activate';
 const s4 = '/api/docking/harness/H-1', s5 = 'export.ps1';
+const s6 = '/api/docking/compose-script', s7 = '/api/docking/run-script';
 const err = d.error;   // 失败要说清
 """ % ",".join("'%s'" % p for p in sorted(WHITELIST_EXPECT))
 

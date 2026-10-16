@@ -2,6 +2,47 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.8.25] - 2026-10-16
+
+**把前端马上会撞到的两个契约缺口补上**：脚本正文的「**从哪来**」与「**一键脚本激活**」
+
+### 背景（前端正在外包开发中 → 契约必须先钉死）
+
+老板 2026-10-16：「前端正在开发」。而 `FE-26` §3.2 屏 4 要
+「显示**脚本正文**（可见/可复制/可手改）」并「保存为该员工的激活方式 ⇒ 之后这位员工可以**一键脚本激活**」，
+可 §5 只给了 候选关键词 / 定位 / 试投 / 档案读写 / 导出 —— **没给"正文怎么生成"与"一键跑"**。
+⇒ 前端要么卡住、要么**自己编一套正文**，那就会与平台真实的激活路径不一致
+（同一个词两套含义，规则 20 明令禁止）。本版把它补成契约（设计稿 `FE-26` **§12**）。
+
+### 新增 `POST /api/docking/compose-script` —— 生成脚本正文（**只读、确定性、不落盘**）
+
+- 入参 `{keywords[], title?, method?, text?, harness_id?}`；出参 `{ok, script:{text, method, keywords, title, message, verified, source, saved_at}, notes[]}`。
+- 正文＝一份 **PowerShell**：① 自己解析平台地址（`$env:AC_BASE_URL` → `$env:AC_PORT` → **平台自己的默认端口**，生成时从 `platform_address` 取，源码里不写死）；② 把标题/关键词与激活话术**按 UTF-8 字节**发给 `try-activate`
+  （⚠️ PS 5.1 的 `Invoke-RestMethod` 会把中文换成字面 `?` —— 项目里踩过）；③ **原样打印三态**，`verified` 不是 `true` 时**非零退出**（脚本不许自己报成功）。
+- **不落盘、不改档案**：保存仍是用户在屏 4 点的事（实测：调用前后 `harnesses.json` 指纹不变）。
+
+### 新增 `POST /api/docking/run-script` —— 一键脚本激活（**用户点一次**）
+
+- 只用**档案里已保存**的 `method`/`keywords`/`title`/`message`；**钉住档位、不 auto 兜底**
+  （`auto` 在 wmpaste 失败后会退剪贴板，而剪贴板**总是成功** ⇒ 会把"窗口根本没找到"报成成功，本项目的"假成功"教训）。
+- 三态**原样透传** ＋ `used:{method, keywords, title, key}`（界面据此解释"用了什么"）；失败附下一步。
+- 没存过脚本 ⇒ **404 ＋ 中文下一步**；缺 `harness_id` ⇒ 400；档案里没有标题也没有关键词 ⇒ 400（说清"不知道该找哪个窗口"）。
+
+### 契约与同步（规则 20 一次全改）
+
+- 写请求白名单 **17 → 19 条**：`外包交接_前端界面/硬约束.md`、`验收清单.md`、预检
+  `check_frontend_spec.py`（`WHITELIST_EXPECT` ＋ 新条目 **S6/S7**）、守卫 `test_frontend_handover.py` 的条目集，**一处不落**。
+- `HarnessInfo.activation_script` 的结构注释补 `title` / `message`（一键激活要送进去的话术，
+  缺省＝`docking.DEFAULT_ACTIVATION_MESSAGE`，**一处真相**）；默认话术常量放后端，前端不复制。
+
+### 守卫与真跑
+
+- 新守卫 `agent_community/tests/test_docking_script_lifecycle.py`（**12 条**）：正文可复现/可移植/转义、
+  只读不落盘、档位钉死、一键跑只吃档案参数、失败给下一步、没脚本给 404、两条新端点必须是 POST。
+- 真跑走查 `temp/walkthrough_docking.py` 新增 **3 步**（[25]~[27]）：正文生成（200、关键约束齐全、**指纹不变**）、
+  缺参 400、没脚本 404 说清下一步、真跑一次（档位钉住 = `clipboard`、`used.key` 来自档案）。
+- 交接区预检基线更新为 **PASS 10 / FAIL 10 / 待人工 2**（共 22 条），`--selftest` 仍证明判据能抓错。
+
 ## [4.8.24] - 2026-10-16
 
 **修 CI 红：交接区守卫不许依赖 dev-only 的东西**（run #45 两个测试作业红的真因）

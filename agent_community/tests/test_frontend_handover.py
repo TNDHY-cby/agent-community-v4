@@ -89,7 +89,7 @@ def test_checker_reports_every_item_with_a_reason():
     assert r.returncode in (0, 1), "预检脚本异常退出（%s）：\n%s" % (r.returncode, out[-800:])
     ids = re.findall(r"^(X\d+|W\d+|D\d+|S\d+|A\d+|E\d+|G\d+|P\d+|M\d+)\s+(PASS|FAIL|待人工)", out, re.M)
     got = {i for i, _v in ids}
-    need = {"W1", "W2", "W3", "W4", "D1", "D2", "D3", "S1", "S2", "S3", "S4", "S5",
+    need = {"W1", "W2", "W3", "W4", "D1", "D2", "D3", "S1", "S2", "S3", "S4", "S5", "S6", "S7",
             "A1", "E1", "E2", "G1", "G2", "P1", "M1", "M2"}
     assert need.issubset(got), "预检报告缺条目：%s" % sorted(need - got)
     assert "PASS" in out and ("FAIL" in out or "待人工" in out), "报告没有分档结论"

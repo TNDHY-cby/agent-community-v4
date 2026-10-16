@@ -3,35 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#121316">
-<title>对接中心</title>
+<meta name="theme-color" content="#050506">
+<title>对接中心 · 前台</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="hub.css">
-<style>
-  .dock-form{display:flex;flex-direction:column;gap:5px;margin:8px 0;font-size:12px}
-  .dock-form input,.dock-form select{padding:4px;font-size:12px}
-  .dock-form-actions{display:flex;align-items:center;gap:8px;margin-top:2px}
-  .dock-msg{color:var(--dim);font-size:11px}
-  .dock-err{margin:8px 0;padding:6px 8px;border-left:3px solid #c62828;background:rgba(198,40,40,.08);font-size:12px}
-  .dock-ok{margin:8px 0;color:#2e7d32;font-weight:600;font-size:12px}
-  .dock-kv{margin:6px 0 6px 18px;font-size:12px}
-  .dock-kv code{color:var(--dim)}
-  #dockBody details,#dockRegisterWrap details{margin-top:6px;font-size:11px}
-  #dockBody pre,#dockRegisterWrap pre{white-space:pre-wrap;word-break:break-all;font-size:11px}
-  .dock-steps{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;font-size:11px}
-  .dock-step{display:inline-flex;align-items:center;gap:4px}
-  .dock-ok2{color:#2e7d32;font-size:11px}
-  .dock-warn2{color:#ef6c00;font-size:11px}
-  .dock-warn{margin:6px 0;padding:5px 8px;border-left:3px solid #ef6c00;background:rgba(239,108,0,.08);font-size:12px}
-  .dock-bridge{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;padding-top:6px;
-               border-top:1px dashed var(--dim);font-size:11px}
-  .dock-chat{white-space:pre-wrap;margin:6px 0;padding:6px 8px;border-left:3px solid var(--dim);
-             background:rgba(128,128,128,.06);font-size:12px}
-  #dockGuideWrap textarea{width:100%;font-size:12px;padding:4px;box-sizing:border-box}
-  #dockActivateWrap pre{white-space:pre-wrap;word-break:break-all;font-size:11px}
-</style>
+<link rel="stylesheet" href="docking.css">
 </head>
-<body>
+<body class="app-bg-dock">
 <a class="skip-link" href="#dockingMain">跳到主内容</a>
 <div class="app">
 
@@ -43,13 +21,13 @@
     <nav class="live-links">
       <a href="/" target="_blank" rel="noopener">◈ 实时大厅</a>
       <a href="/workshop.html" target="_blank" rel="noopener">💬 工作间</a>
-      <a href="/register.html" target="_blank" rel="noopener" title="旧页已下线为只读镜像：内容（接入模板/自测题/桥型速查）可回查，写操作已停用">📖 接入模板（只读镜像）</a>
+      <a href="/register.html" target="_blank" rel="noopener" title="旧页已下线为只读镜像：内容（接入模板/题库/桥型速查）可回查，写操作已停用">📖 接入模板（只读镜像）</a>
       <a href="/hub.html" target="_blank" rel="noopener">◈ 流程说明</a>
       <a href="/ops.html" target="_blank" rel="noopener">📡 看板</a>
     </nav>
   </header>
 
-  <div class="scope-banner" role="note" id="dockScopeBanner">◈ 正在读取对接总览…</div>
+  <div class="scope-banner" role="note" id="dockScopeBanner"><span class="pulse"></span>正在读取对接总览…</div>
 
   <div class="layout">
     <!-- ===== 左：范围与工作间 ===== -->
@@ -63,39 +41,80 @@
     <!-- ===== 右：主舞台 ===== -->
     <main class="stage" id="dockingMain" tabindex="-1">
       <div class="stage-head">
-        <div class="stage-no" id="dockNo">P1</div>
+        <div class="stage-no" id="dockNo">前</div>
         <div>
-          <h1 id="dockTitle">对接总览</h1>
-          <p id="dockUser" class="stage-user">—</p>
+          <h1 id="dockTitle">对接前台</h1>
+          <p id="dockUser" class="stage-user">你带着「要把这个 agent 接进来 / 叫起来」来，前台当场替你办</p>
         </div>
         <div class="stage-api" id="dockApi">GET /api/docking/overview</div>
       </div>
 
-      <section id="dockBody" class="stage-body"><!-- JS 渲染 --></section>
+      <!-- ★第一屏＝功能模块（老板裁定）：每块点进去当场办；脚本激活是核心（大格） -->
+      <section id="dockServices" class="stage-body">
+        <div class="dock-tiles-head"><b>我们能替你办哪些事</b> <span class="sub">点一块，当场办</span></div>
+        <div class="dock-tiles">
+          <div class="dock-tile core" data-dock-service="script_activate" role="button" tabindex="0" aria-label="脚本激活：填关键词，让平台找窗口，试投并存成激活脚本" onclick="dockGo('script_activate')" onkeydown="dockTileKey(event,'script_activate')">
+            <span class="tile-ico">⚡</span><span class="tile-name">脚本激活</span>
+            <span class="tile-sub">填关键词 → 平台去找那个窗口 → 试投 → 存成激活脚本</span>
+            <span class="tile-go">去办 →</span>
+          </div>
+          <div class="dock-tile" data-dock-service="register" role="button" tabindex="0" aria-label="登记一位新员工" onclick="dockGo('register')" onkeydown="dockTileKey(event,'register')">
+            <span class="tile-ico">📝</span><span class="tile-name">登记一位新员工</span>
+            <span class="tile-sub">你手头有什么给什么，平台自己探一次补齐</span>
+            <span class="tile-go">去办 →</span>
+          </div>
+          <div class="dock-tile" data-dock-service="archive" role="button" tabindex="0" aria-label="员工档案" onclick="dockGo('archive')" onkeydown="dockTileKey(event,'archive')">
+            <span class="tile-ico">🗂</span><span class="tile-name">员工档案</span>
+            <span class="tile-sub">框架 / 模型 / 桥 / 激活方式 —— 点「详情」可看可改</span>
+            <span class="tile-go">去办 →</span>
+          </div>
+          <div class="dock-tile" data-dock-service="session_bridge" role="button" tabindex="0" aria-label="建会话或送桥" onclick="dockGo('session_bridge')" onkeydown="dockTileKey(event,'session_bridge')">
+            <span class="tile-ico">🔗</span><span class="tile-name">建会话 / 送桥</span>
+            <span class="tile-sub">把岗位和它对上，会话名写进数据</span>
+            <span class="tile-go">去办 →</span>
+          </div>
+          <div class="dock-tile" data-dock-service="onboard_recover" role="button" tabindex="0" aria-label="批量对接或掉线抢救" onclick="dockGo('onboard_recover')" onkeydown="dockTileKey(event,'onboard_recover')">
+            <span class="tile-ico">🛟</span><span class="tile-name">批量对接 / 掉线抢救</span>
+            <span class="tile-sub">全员一次对接；掉线的扫描并抢救</span>
+            <span class="tile-go">去办 →</span>
+          </div>
+          <div class="dock-tile" data-dock-service="channel" role="button" tabindex="0" aria-label="通道停用或新建" onclick="dockGo('channel')" onkeydown="dockTileKey(event,'channel')">
+            <span class="tile-ico">🔁</span><span class="tile-name">通道停用 · 新建</span>
+            <span class="tile-sub">停用≠删除；先停用再新建</span>
+            <span class="tile-go">去办 →</span>
+          </div>
+          <div class="dock-tile" data-dock-service="bridge_helper" role="button" tabindex="0" aria-label="架桥辅助" onclick="dockGo('bridge_helper')" onkeydown="dockTileKey(event,'bridge_helper')">
+            <span class="tile-ico">🌉</span><span class="tile-name">架桥辅助</span>
+            <span class="tile-sub">桥路径 / 验证桥 / 自动连接（按员工作用）</span>
+            <span class="tile-go">去办 →</span>
+          </div>
+          <div class="dock-tile" data-dock-service="ask_frontdesk" role="button" tabindex="0" aria-label="问前台" onclick="dockGo('ask_frontdesk')" onkeydown="dockTileKey(event,'ask_frontdesk')">
+            <span class="tile-ico">💬</span><span class="tile-name">问前台</span>
+            <span class="tile-sub">说不清就直接问，平台助手用它自己的工具看现状</span>
+            <span class="tile-go">去办 →</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="dockBody" class="stage-body"><!-- 点名册（总览）JS 渲染 --></section>
 
       <!-- ★V34 §1：**注册是全局能力**（总控才有）—— 单间模式这一块由 JS 整块不渲染 -->
       <section id="dockRegisterWrap"></section>
 
-      <!-- ★V34 §5 第二步：教程/模板类**只读内容**已迁到本页。
-           口径不在这里重写一遍 —— 完整流程仍以「流程说明」为准（一处真相，规则 20）。 -->
-      <section id="dockGuideWrap">
-        <div class="card">
-          <h3>接入教程（三步骨架）</h3>
-          <p class="lead"><b>① 你手头有什么就给什么</b>：一句话命令 / 一个目录 / 一个地址
-            （<b>不知道就留空</b> —— 平台会自己探一次再补齐，不用你去猜它怎么被叫醒）。</p>
-          <p class="lead"><b>② 登记</b>：在上面那张登记卡里填标识 + 你有的线索 → 点「探测并登记」。</p>
-          <p class="lead"><b>③ 对上岗位</b>：去工作间，在成员卡上点「建会话 → 送桥」；
-            进不去时用本页单间范围的「挂起/抢救/停用通道/新建通道」和架桥辅助。</p>
-          <p class="sub" style="margin-top:6px"><b>怎么自己验证通了没</b>：① 总览里这个 harness 出现且<b>在线</b>；
-            ② 单间范围里对应成员<b>通道＝已接入</b>且会话名不为空；③ 成员卡上的步骤徽章是「✓ 已自证」——
-            出现「⚠ 人工模式 / 未核实」就<b>还没通</b>，按指引补。</p>
-          <p class="sub" style="margin-top:6px">完整流程与每一步的边界：<a href="/hub.html" target="_blank" rel="noopener">流程说明（只讲不做）→</a>
-            　·　隔间与桥：<a href="/booths.html" target="_blank" rel="noopener">隔间面板 →</a></p>
-        </div>
+      <!-- ★FE-26 §3：脚本激活工作台（四屏）—— JS 挂载 -->
+      <section id="dockScriptWrap"></section>
+
+      <!-- ★FE-26 §2b：员工档案（列表 + 详情四块，可看可改）—— JS 挂载 -->
+      <section id="dockArchiveWrap"></section>
+
+      <!-- ★V34 §2/§1：激活类端点是 `/{ws}/…` 的语义 ⇒ 这块**只在单间范围**由 JS 挂载；
+           总控给「选一个工作间」的引导（给动作，不给说明段落） -->
+      <section id="dockActivateWrap"></section>
+
+      <!-- 问前台（直聊，功能不是讲解） -->
+      <section id="dockAskWrap">
         <div class="card">
           <h3>平台 Agent 直聊 <span class="sub">（协助架桥 · 不懂就问）</span></h3>
-          <p class="lead">说不清"我的 agent 该怎么接"时，直接问平台助手 ——
-            它会用平台自己的工具去看现状（列 harness、试桥、探端口），而不是让你背文档。</p>
           <div class="dock-form">
             <textarea id="chatInput" rows="2" placeholder="例如：我有个桌面版 agent，只会盯一个目录，怎么接进来？"></textarea>
             <div class="dock-form-actions">
@@ -107,12 +126,9 @@
         </div>
       </section>
 
-      <!-- ★V34 §2/§1：激活类端点是 `/{ws}/…` 的语义 ⇒ 这块**只在单间范围**由 JS 挂载 -->
-      <section id="dockActivateWrap"></section>
-
       <template id="tpl-dock-register">
         <div class="card">
-          <h3>接入一个外部 Agent（登记）</h3>
+          <h3>登记一位新员工</h3>
           <p class="lead">平台会<b>自己先探一次</b>再补齐没填的字段 —— 你只给<b>你手头有的东西</b>：
             一句话命令 / 一个目录 / 一个地址（<b>有什么填什么，能留空就留空</b>）。</p>
           <div class="dock-form">
@@ -140,7 +156,7 @@
 
       <footer class="stage-foot">
         <span>本页只做<b>接入与激活</b>；<b>讨论与工作仍在工作间</b>（对接中心不做讨论 UI、不做开工按钮）。</span>
-        <span class="demo-note">依据 V34 对接中心设计 · 本版为 P2（只读总览）</span>
+        <span class="demo-note">依据 FE-26 对接中心前台设计 · 本版为 P2（功能模块 + 脚本激活）</span>
       </footer>
     </main>
   </div>

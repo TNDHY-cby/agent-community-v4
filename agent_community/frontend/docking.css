@@ -1,0 +1,220 @@
+/* docking.css —— 对接中心前台（仅本页加载；不修改 hub.css 文件，只在同特异性下覆盖本页表现）
+ * 方向：Linear 式暗色精密 —— 近黑画布 + 环境光、微边框、玻璃拟态、扫光、呼吸感。
+ * 主体单色；靛/紫只给高亮与交互。动效尊重 prefers-reduced-motion。
+ */
+:root{
+  --dk-ink:#EDEDEF;
+  --dk-dim:#A1A1AA;
+  --dk-dim2:#8A8F98;
+  --dk-line:rgba(255,255,255,.07);
+  --dk-line-hi:rgba(255,255,255,.14);
+  --dk-glow:#6366F1;
+  --dk-glow2:#A855F7;
+  --dk-ok:#34D399;
+  --dk-warn:#FBBF24;
+  --dk-bad:#F87171;
+  --dk-radius:12px;
+}
+
+/* ── 画布：近黑 + 环境光（永远不是单色平背景）────────────────────── */
+body.app-bg-dock{
+  background:
+    radial-gradient(1100px 500px at 12% -8%, rgba(99,102,241,.075), transparent 60%),
+    radial-gradient(900px 460px at 88% 108%, rgba(168,85,247,.055), transparent 62%),
+    linear-gradient(180deg, #060608, #050506 40%, #040405);
+  color:var(--dk-ink);
+  letter-spacing:-.011em;
+}
+
+/* ── 顶栏：玻璃拟态 ───────────────────────────────────────────── */
+body.app-bg-dock .topbar{
+  background:rgba(8,8,10,.55);
+  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border-bottom:1px solid var(--dk-line);
+}
+body.app-bg-dock .topbar .logo .logo-mark{filter:saturate(.9)}
+body.app-bg-dock .topbar .sub{color:var(--dk-dim)}
+body.app-bg-dock .live-links a{
+  color:var(--dk-dim);border:1px solid transparent;border-radius:8px;padding:3px 8px;
+  transition:color .16s,border-color .16s,background .16s}
+body.app-bg-dock .live-links a:hover{color:var(--dk-ink);border-color:var(--dk-line-hi);background:rgba(255,255,255,.04)}
+
+/* ── 总览横幅：呼吸微光点 ─────────────────────────────────────── */
+body.app-bg-dock .scope-banner{
+  border:1px solid var(--dk-line);border-radius:10px;background:rgba(255,255,255,.02)}
+body.app-bg-dock .scope-banner .pulse{display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--dk-glow);margin-right:7px;vertical-align:1px;animation:dk-breathe 2.6s ease-in-out infinite;
+  box-shadow:0 0 8px rgba(99,102,241,.55)}
+@keyframes dk-breathe{0%,100%{opacity:.4;transform:scale(.88)}50%{opacity:1;transform:scale(1.12)}}
+
+/* ── 左轨 ─────────────────────────────────────────────────────── */
+body.app-bg-dock .rail{border-right:1px solid var(--dk-line)}
+body.app-bg-dock .rail-item{
+  border:1px solid transparent;border-radius:8px;transition:border-color .16s,background .16s,color .16s}
+body.app-bg-dock .rail-item:hover{border-color:var(--dk-line-hi);background:rgba(255,255,255,.04);color:var(--dk-ink)}
+
+/* ── 主舞台与卡片 ─────────────────────────────────────────────── */
+body.app-bg-dock .stage-head h1{font-weight:680;letter-spacing:-.02em}
+body.app-bg-dock .card{
+  border:1px solid var(--dk-line);border-radius:var(--dk-radius);
+  background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(255,255,255,.014));
+  box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 10px 30px rgba(0,0,0,.28)}
+body.app-bg-dock .card h3{font-weight:650;letter-spacing:-.01em}
+body.app-bg-dock .lead{color:var(--dk-ink)}
+body.app-bg-dock .sub{color:var(--dk-dim)}
+body.app-bg-dock code{
+  background:rgba(255,255,255,.055);border:1px solid var(--dk-line);border-radius:5px;padding:0 4px}
+body.app-bg-dock pre{background:rgba(0,0,0,.35);border:1px solid var(--dk-line);border-radius:8px;padding:8px 10px}
+
+/* ── 主按钮：靛色高亮 + 微光（btn/btn.mini 本页覆盖）──────────────── */
+body.app-bg-dock .btn{
+  border-radius:9px;transition:transform .16s cubic-bezier(.2,.8,.2,1),box-shadow .16s,
+    border-color .16s,background .16s,color .16s}
+body.app-bg-dock .btn:focus-visible{outline:2px solid var(--dk-glow);outline-offset:2px}
+body.app-bg-dock .btn.mini{
+  color:var(--dk-ink);border:1px solid var(--dk-line-hi);background:rgba(255,255,255,.04)}
+body.app-bg-dock .btn.mini:hover{
+  border-color:rgba(99,102,241,.5);background:rgba(99,102,241,.10);
+  box-shadow:0 0 14px rgba(99,102,241,.18);transform:translateY(-1px)}
+body.app-bg-dock .btn.primary{
+  color:#fff;border:1px solid rgba(99,102,241,.55);
+  background:linear-gradient(180deg,rgba(99,102,241,.32),rgba(99,102,241,.20));
+  box-shadow:0 0 16px rgba(99,102,241,.22)}
+body.app-bg-dock .btn.primary:hover{
+  border-color:rgba(99,102,241,.8);box-shadow:0 0 22px rgba(99,102,241,.32);transform:translateY(-1px)}
+
+/* ── 第一屏：服务菜单（bento，核心模块占大格）────────────────────── */
+.dock-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0 18px}
+@media (max-width:1080px){.dock-tiles{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:620px){.dock-tiles{grid-template-columns:1fr}}
+.dock-tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;
+  text-align:left;cursor:pointer;overflow:hidden;padding:14px 14px 12px;border-radius:var(--dk-radius);
+  border:1px solid var(--dk-line);background:rgba(255,255,255,.022);
+  transition:border-color .18s cubic-bezier(.2,.8,.2,1),background .18s,
+    transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s}
+.dock-tile:hover,.dock-tile:focus-visible{border-color:var(--dk-line-hi);
+  background:rgba(255,255,255,.05);transform:translateY(-2px);
+  box-shadow:0 10px 26px rgba(0,0,0,.38),0 0 0 1px rgba(99,102,241,.10)}
+.dock-tile:active{transform:translateY(0)}
+.dock-tile:focus-visible{outline:2px solid var(--dk-glow);outline-offset:2px}
+.dock-tile::after{content:"";position:absolute;top:-60%;left:-60%;width:55%;height:230%;
+  background:linear-gradient(105deg,transparent,rgba(255,255,255,.05),transparent);
+  pointer-events:none;opacity:0;transform:translateX(-40%)}
+.dock-tile:hover::after{opacity:1;animation:dk-shimmer .7s cubic-bezier(.2,.8,.2,1) forwards}
+@keyframes dk-shimmer{to{transform:translateX(360%)}}
+.dock-tile .tile-ico{font-size:19px;line-height:1;filter:saturate(.85);transition:filter .18s}
+.dock-tile:hover .tile-ico{filter:saturate(1.05)}
+.dock-tile .tile-name{font-weight:650;font-size:13.5px;letter-spacing:-.01em;color:var(--dk-ink)}
+.dock-tile .tile-sub{color:var(--dk-dim);font-size:11px;line-height:1.55}
+.dock-tile .tile-go{margin-top:auto;padding-top:7px;color:var(--dk-dim2);font-size:11px;
+  transition:color .18s,transform .18s}
+.dock-tile:hover .tile-go{color:var(--dk-ink);transform:translateX(2px)}
+.dock-tile.core{grid-column:span 2;border-color:rgba(99,102,241,.30);
+  background:linear-gradient(155deg,rgba(99,102,241,.10),rgba(168,85,247,.055) 55%,rgba(255,255,255,.02));
+  box-shadow:0 0 28px rgba(99,102,241,.10) inset}
+.dock-tile.core:hover{border-color:rgba(99,102,241,.55);
+  box-shadow:0 12px 34px rgba(0,0,0,.42),0 0 26px rgba(99,102,241,.18)}
+@media (max-width:620px){.dock-tile.core{grid-column:span 1}}
+.dock-tile.core .tile-ico{
+  text-shadow:0 0 14px rgba(99,102,241,.6)}
+.dock-tiles-head{display:flex;align-items:baseline;gap:8px;margin:2px 0 0;font-size:13px;color:var(--dk-ink)}
+.dock-tiles-head .sub{font-size:11px}
+
+/* ── 屏号容器（四屏）──────────────────────────────────────────── */
+.dock-screen{border-left:2px solid var(--dk-line-hi);padding:2px 0 2px 12px;margin:12px 0}
+.dock-screen h4{margin:2px 0 7px;font-size:12px;letter-spacing:.02em;color:var(--dk-dim);font-weight:600}
+.dock-screen h4 .no{display:inline-block;min-width:18px;text-align:center;margin-right:7px;
+  padding:1px 6px;border-radius:6px;border:1px solid var(--dk-line-hi);
+  color:var(--dk-ink);font-size:10px;background:rgba(255,255,255,.03)}
+
+/* ── 表单 ─────────────────────────────────────────────────────── */
+.dock-form{display:flex;flex-direction:column;gap:5px;margin:8px 0;font-size:12px}
+.dock-form input,.dock-form select,.dock-form textarea{
+  padding:6px 9px;font-size:12px;color:var(--dk-ink);border-radius:8px;
+  border:1px solid var(--dk-line-hi);background:rgba(0,0,0,.28);
+  transition:border-color .15s,box-shadow .15s}
+.dock-form input::placeholder,.dock-form textarea::placeholder{color:var(--dk-dim2)}
+.dock-form input:focus,.dock-form select:focus,.dock-form textarea:focus{
+  outline:none;border-color:rgba(99,102,241,.55);box-shadow:0 0 0 2px rgba(99,102,241,.15)}
+.dock-form textarea{resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.dock-form-actions{display:flex;align-items:center;gap:8px;margin-top:2px;flex-wrap:wrap}
+.dock-msg{color:var(--dk-dim);font-size:11px}
+
+/* ── 结果条：三态如实（左侧细线 + 淡底 + 图标，不只靠颜色表意）────── */
+.dock-ok{margin:8px 0;color:var(--dk-ok);font-weight:600;font-size:12px}
+.dock-ok2{color:var(--dk-ok);font-size:11px}
+.dock-warn2{color:var(--dk-warn);font-size:11px}
+.dock-warn{margin:6px 0;padding:6px 10px;border-left:2px solid var(--dk-warn);
+  background:rgba(251,191,36,.06);border-radius:0 8px 8px 0;font-size:12px}
+.dock-err{margin:8px 0;padding:6px 10px;border-left:2px solid var(--dk-bad);
+  background:rgba(248,113,113,.06);border-radius:0 8px 8px 0;font-size:12px}
+.dock-kv{margin:6px 0 6px 18px;font-size:12px}
+.dock-kv code,.dock-drawer code{background:none;border:none;padding:0;color:var(--dk-dim)}
+.dock-steps{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;font-size:11px}
+.dock-step{display:inline-flex;align-items:center;gap:4px}
+.dock-bridge{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;
+  border-top:1px dashed var(--dk-line-hi);font-size:11px}
+.dock-chat{white-space:pre-wrap;margin:6px 0;padding:6px 10px;border-left:2px solid var(--dk-line-hi);
+  background:rgba(128,128,128,.06);border-radius:0 8px 8px 0;font-size:12px}
+
+/* ── 候选关键词（屏1：可点即填，每条带出处）────────────────────── */
+.dock-sug{display:flex;flex-direction:column;gap:4px;margin:6px 0}
+.dock-sug button{cursor:pointer;text-align:left;background:rgba(255,255,255,.02);
+  border:1px dashed var(--dk-line-hi);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--dk-ink);
+  transition:border-color .15s,background .15s,box-shadow .15s}
+.dock-sug button:hover,.dock-sug button:focus-visible{
+  border-color:rgba(99,102,241,.5);background:rgba(99,102,241,.07);box-shadow:0 0 10px rgba(99,102,241,.12)}
+.dock-sug button:focus-visible{outline:2px solid var(--dk-glow);outline-offset:1px}
+.dock-sug .sug-src{color:var(--dk-dim)}
+
+/* ── 定位候选（屏2/3：可点行；选中态描边+✓，不只靠颜色）──────────── */
+.dock-cand{border:1px solid var(--dk-line);border-radius:9px;padding:8px 11px;margin:5px 0;
+  cursor:pointer;font-size:11px;color:var(--dk-ink);background:rgba(255,255,255,.02);
+  transition:border-color .15s,background .15s,box-shadow .15s}
+.dock-cand:hover,.dock-cand:focus-visible{border-color:var(--dk-line-hi);background:rgba(255,255,255,.05)}
+.dock-cand:focus-visible{outline:2px solid var(--dk-glow);outline-offset:1px}
+.dock-cand.sel{border-color:rgba(52,211,153,.55);background:rgba(52,211,153,.07);
+  box-shadow:0 0 12px rgba(52,211,153,.12)}
+.dock-cand.sel .cand-pick{color:var(--dk-ok)}
+.cand-pick{color:var(--dk-dim);margin-right:7px}
+.dock-cand code{color:var(--dk-dim)}
+
+/* ── 档案详情抽屉（玻璃拟态）──────────────────────────────────── */
+.dock-drawer{border:1px solid var(--dk-line-hi);border-radius:var(--dk-radius);padding:13px;margin:8px 0;
+  background:rgba(10,10,13,.6);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  box-shadow:0 14px 36px rgba(0,0,0,.4)}
+.dock-drawer h3{margin:0 0 4px;font-size:13.5px;letter-spacing:-.01em}
+.dock-drawer details{margin-top:9px;font-size:11px;border-top:1px solid var(--dk-line);padding-top:7px}
+.dock-drawer summary{cursor:pointer;color:var(--dk-ink);font-weight:650;letter-spacing:.01em}
+.dock-drawer summary::marker{color:var(--dk-dim)}
+.dock-drawer summary:focus-visible{outline:2px solid var(--dk-glow);outline-offset:2px}
+.dock-drawer table{border-collapse:collapse;font-size:11px;margin:4px 0}
+.dock-drawer td{padding:2.5px 10px 2.5px 0;vertical-align:top}
+.dock-drawer td.k{color:var(--dk-dim)}
+.dock-drawer input,.dock-drawer select{padding:4px 7px;font-size:11px;color:var(--dk-ink);
+  border-radius:7px;border:1px solid var(--dk-line-hi);background:rgba(0,0,0,.28);
+  transition:border-color .15s}
+.dock-drawer input:focus,.dock-drawer select:focus{outline:none;border-color:rgba(99,102,241,.55)}
+.dock-drawer .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:3px 0}
+.dock-facts{margin:5px 0;padding:6px 10px;border-left:2px solid var(--dk-glow);
+  background:rgba(99,102,241,.06);border-radius:0 8px 8px 0;font-size:11px}
+
+/* ── 详情按钮（档案列表行内）──────────────────────────────────── */
+.dock-detail-btn{cursor:pointer;font-size:11px;padding:3px 10px;border-radius:7px;
+  color:var(--dk-ink);border:1px solid var(--dk-line-hi);background:rgba(255,255,255,.035);
+  transition:border-color .15s,background .15s,box-shadow .15s}
+.dock-detail-btn:hover,.dock-detail-btn:focus-visible{
+  border-color:rgba(99,102,241,.5);background:rgba(99,102,241,.10);box-shadow:0 0 10px rgba(99,102,241,.15)}
+.dock-detail-btn:focus-visible{outline:2px solid var(--dk-glow);outline-offset:1px}
+
+#dockBody details,#dockRegisterWrap details{margin-top:6px;font-size:11px}
+#dockBody pre,#dockRegisterWrap pre,#dockScriptWrap pre,#dockArchiveWrap pre{
+  white-space:pre-wrap;word-break:break-all;font-size:11px}
+#dockScriptWrap textarea{width:100%;box-sizing:border-box}
+
+/* ── 克制：系统尊重用户偏好 ───────────────────────────────────── */
+@media (prefers-reduced-motion:reduce){
+  body.app-bg-dock .scope-banner .pulse,
+  .dock-tile,.dock-tile::after,.dock-tile .tile-go,.dock-tile .tile-ico,
+  body.app-bg-dock .btn{animation:none!important;transition:none!important}
+}

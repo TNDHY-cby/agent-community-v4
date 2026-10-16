@@ -601,3 +601,210 @@ async def docking_harness_export_ps1(harness_id: str):
             "Cache-Control": "no-store",
         },
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# FE-26 §12（2026-10-16）：激活脚本的「**正文从哪来**」与「**一键跑**」
+#
+# 为什么补（前端**正在外包开发中**）：§3.2 屏 4 要「显示脚本正文（可见/可复制/可手改）」并
+# 「保存为该员工的激活方式 ⇒ 之后可一键脚本激活」，而 §5 只给了 候选/定位/试投/档案读写/导出。
+# **前端不能自己编一套正文** —— 那会与平台真实的激活路径不一致（同一个词两套含义，规则 20 禁止）。
+#
+# 边界（§3.3，不变）：**生成**＝平台可以自动做（确定性、不落盘）；
+# **试投 / 保存 / 一键跑**＝必须**用户点**（一次一按，结果如实回报）。
+# ══════════════════════════════════════════════════════════════════════════
+
+#: 档案里没记 `message` 时用的**默认激活话术**（一键激活/合成脚本都取它 —— 一处真相）
+DEFAULT_ACTIVATION_MESSAGE = ("【平台·视觉激活】这是一次会话激活：看到这行说明这条路是通的，"
+                              "可以开始本次协作；不用回复这条。")
+
+
+def _ps_quote(text: str) -> str:
+    """PowerShell **单引号字符串**字面量（里面的单引号要写成两个）。"""
+    return "'" + str(text or "").replace("'", "''") + "'"
+
+
+def default_activation_message() -> str:
+    return DEFAULT_ACTIVATION_MESSAGE
+
+
+def compose_activation_script(*, keywords, title: str = "", method: str = "", message: str = "",
+                              harness_id: str = "", verified=None, saved_at: str = "",
+                              default_port=None, generated_at: str = "") -> dict:
+    """**纯函数**：把"定位结果 + 档位"落成一份**可复现的 PowerShell 正文**（`FE-26` §12.1）。
+
+    正文做三件事（都写进注释，让人看得懂、改得动）：
+      ① 解析平台地址（`$env:AC_BASE_URL` → `$env:AC_PORT` → **平台默认端口**，不写死）；
+      ② 把标题/关键词与激活话术**按 UTF-8 字节**发给 `POST /api/docking/try-activate`
+         （⚠️ 不能拿 `Invoke-RestMethod` 直接送中文 —— PS 5.1 会把汉字换成字面 `?`，实测过）；
+      ③ **原样打印**平台回报的三态，`verified` 不是 `true` 时**非零退出**（脚本不许自己报成功）。
+
+    返回 `{text, method, keywords, title, message, verified, source, saved_at, harness_id}`。
+    **不落盘、不改状态** —— 保存是用户在屏 4 点的事。
+    """
+    kws = [str(k).strip() for k in (keywords or []) if str(k).strip()]
+    method = str(method or "").strip() or "clipboard"
+    msg = str(message or "").strip() or DEFAULT_ACTIVATION_MESSAGE
+    title = str(title or "").strip()
+    port = "" if default_port in (None, "") else str(default_port)
+    port_line = ("$port = $env:AC_PORT; if (-not $port) { $port = %s }" % _ps_quote(port)
+                 if port else "$port = $env:AC_PORT")
+    kw_literal = "@(" + ", ".join(_ps_quote(k) for k in kws) + ")"
+    state = ("✓ 已自证（上次试投读回一致）" if verified is True
+             else "⚠ 未核实（还没自证过 —— 别把这份正文当成已经验证过）")
+    lines = [
+        "# ===== 视觉激活脚本（对接中心生成 · FE-26 §12）=====",
+        "# 它做什么：把下面那段**激活话术**，通过平台送进标题匹配到的那个窗口，并把结果**如实**打印。",
+        "# 走哪一档：%s" % method,
+        "# 定位关键词：%s" % ("、".join(kws) if kws else "（没给关键词 —— 那它只能按标题匹配）"),
+        "# 目标窗口标题：%s" % (title or "（没给标题 —— 由关键词匹配）"),
+        "# 上次试投：%s" % state,
+        "# 生成时间：%s" % (generated_at or ""),
+        "# 依赖：平台在跑（地址取 $env:AC_BASE_URL；没设就看 $env:AC_PORT；再没有就用平台默认端口）。",
+        "# 纪律：verified 不是 true 时本脚本**非零退出** —— 它不会替你「报成功」。",
+        "",
+        "$ErrorActionPreference = 'Stop'",
+        "$base = $env:AC_BASE_URL",
+        "if (-not $base) {",
+        "    %s" % port_line,
+        '    $base = "http://127.0.0.1:$port"',
+        "}",
+        "$payload = @{",
+        "    title    = %s" % _ps_quote(title),
+        "    keywords = %s" % kw_literal,
+        "    text     = %s" % _ps_quote(msg),
+        "    method   = %s" % _ps_quote(method),
+        "} | ConvertTo-Json -Compress",
+        "# ⚠️ 中文必须走 UTF-8 字节（PS 5.1 的 Invoke-RestMethod 会把汉字变成字面 '?'）",
+        "$bytes = [System.Text.Encoding]::UTF8.GetBytes($payload)",
+        "$resp = Invoke-RestMethod -Uri \"$base/api/docking/try-activate\" -Method Post `",
+        "    -Body $bytes -ContentType 'application/json; charset=utf-8'",
+        '"ok       = $($resp.ok)"',
+        '"method   = $($resp.method)"',
+        '"verified = $($resp.verified)"',
+        '"detail   = $($resp.detail)"',
+        'if ($resp.next_step) { "next     = $($resp.next_step)" }',
+        "if ($resp.verified -ne $true) {",
+        '    Write-Error "未自证（verified=$($resp.verified)）：这不等于完成 —— 看 detail / next 里的下一步。"',
+        "    exit 3",
+        "}",
+        '"✓ 已自证：文本真的进了那个窗口。"',
+    ]
+    return {
+        "text": "\n".join(lines) + "\n",
+        "method": method,
+        "keywords": kws,
+        "title": title,
+        "message": msg,
+        "verified": verified if isinstance(verified, bool) else None,
+        "source": "对接中心生成",
+        "saved_at": saved_at or "",
+        "harness_id": str(harness_id or ""),
+    }
+
+
+def _pin_method(method: str) -> str:
+    """把档位**钉死成具体方法**（`auto` 一律翻译掉）。
+
+    ⚠️ 为什么必须钉：`auto` 在 wmpaste 失败后**自动退剪贴板**，而剪贴板**总是成功**
+    ⇒ 会把"这个窗口根本没找到"报成成功（2026-10-15 走查抓到的**假成功**，准则⑤）。
+    """
+    import os as _os
+    m = str(method or "").strip()
+    if m == "auto" or not m:
+        m = "wmpaste" if _os.name == "nt" else "clipboard"
+    return m
+
+
+@router.post("/api/docking/compose-script")
+async def docking_compose_script(request: Request):
+    """**只读**：生成激活脚本正文（`FE-26` §12.1）—— **确定性、可复现、不落盘**。
+
+    body: `{keywords:[…], title?, method?, text?, harness_id?}`
+    → `{ok, script:{text, method, keywords, title, message, verified, source, saved_at}, notes[], checked_at}`
+    """
+    from ..server import Utf8JSONResponse
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    keywords = [str(k).strip() for k in (body.get("keywords") or []) if str(k).strip()]
+    title = str(body.get("title") or "").strip()
+    if not keywords and not title:
+        return Utf8JSONResponse(
+            {"error": "得先给我**定位结果**：一个关键词或一个窗口标题（屏 2/3 点出来的那个）"},
+            status_code=400)
+    hid = str(body.get("harness_id") or "").strip()
+    verified, saved_at = None, ""
+    if hid:
+        sess = _find_harness(hid)
+        if sess is None:
+            return Utf8JSONResponse({"error": "没有这个 harness（可能已注销或 id 写错）"}, status_code=404)
+        old = dict(getattr(sess.info, "activation_script", None) or {})
+        verified, saved_at = old.get("verified"), str(old.get("saved_at") or "")
+
+    from ...platform_address import resolve_port
+    try:
+        port = resolve_port()
+    except Exception:  # noqa: BLE001
+        port = ""
+    script = compose_activation_script(
+        keywords=keywords, title=title, method=_pin_method(body.get("method")),
+        message=str(body.get("text") or ""), harness_id=hid, verified=verified, saved_at=saved_at,
+        default_port=port, generated_at=_now_iso())
+    notes = ["这段正文**没有落盘**：要它成为这位员工的激活方式，得让用户在屏 4 点「保存」。",
+             "正文里的中文按 UTF-8 字节发送 —— 直接拿 Invoke-RestMethod 送中文会被 PS 5.1 换成 '?'。",
+             "剪贴板兜底档**不等于**验证通过（它只把内容放进剪贴板，要人点一下窗口再粘贴）。"]
+    if _pin_method(body.get("method")) == "clipboard":
+        notes.append("当前钉的是剪贴板档：跑完仍需要人操作，`verified` 会是 null（未核实）。")
+    return {"ok": True, "script": script, "notes": notes, "checked_at": _now_iso()}
+
+
+@router.post("/api/docking/run-script")
+async def docking_run_script(request: Request):
+    """**一键脚本激活**（`FE-26` §12.2）：用**档案里已保存**的参数跑一次，结果**如实回报**。
+
+    body: `{harness_id}` → `visual_launch.launch()` 的原样三态 ＋ `used:{method, keywords, title}`。
+    **必须用户点**（与试投同一档纪律）；**钉住档案里记的方法**，不 auto 兜底（防假成功）。
+    档案里没有脚本 ⇒ 404 ＋ 中文下一步。
+    """
+    from ..server import Utf8JSONResponse
+    from .. import visual_launch
+    import asyncio
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    hid = str(body.get("harness_id") or "").strip()
+    if not hid:
+        return Utf8JSONResponse({"error": "得先说是**哪一位员工**（带 harness_id）"}, status_code=400)
+    sess = _find_harness(hid)
+    if sess is None:
+        return Utf8JSONResponse({"error": "没有这个 harness（可能已注销或 id 写错）"}, status_code=404)
+    script = dict(getattr(sess.info, "activation_script", None) or {})
+    if not str(script.get("text") or "").strip():
+        return Utf8JSONResponse(
+            {"error": "这位员工还没有存过激活脚本，没有可跑的东西 —— 先去「脚本激活」工作台做一份并保存"
+                      "（填关键词 → 让平台去找 → 确认试投 → 保存为它的激活方式）"},
+            status_code=404)
+    keywords = [str(k).strip() for k in (script.get("keywords") or []) if str(k).strip()]
+    title = str(script.get("title") or "").strip()
+    key = title or (keywords[0] if keywords else "")
+    if not key:
+        return Utf8JSONResponse(
+            {"error": "这份脚本里既没有窗口标题也没有关键词 —— 平台不知道该找哪个窗口，"
+                      "请回工作台补上再保存"}, status_code=400)
+    method = _pin_method(script.get("method"))
+    text = str(script.get("message") or "").strip() or DEFAULT_ACTIVATION_MESSAGE
+    res = await asyncio.to_thread(visual_launch.launch, None, text, method=method,
+                                  session_name=key, verify=True)
+    out = dict(res or {})
+    out["used"] = {"method": method, "keywords": keywords, "title": title, "key": key}
+    if out.get("ok") is not True:
+        out["next_step"] = (out.get("next_step") or "") + (
+            "　（一键激活走不通时，回「脚本激活」工作台重新定位/换一档；"
+            "剪贴板兜底档只是把内容放好，**不等于**验证通过。）")
+    out["checked_at"] = _now_iso()
+    return out
