@@ -2,6 +2,36 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+# 4.8.26
+
+## [4.8.26] - 2026-10-16
+
+**对接中心重做落地（FE-26 前台版）**：从"说明书"重做成"前台"——第一屏＝功能模块、脚本激活四屏、员工档案详情四块、Linear 式暗色精密界面
+
+### 这次改了什么
+
+**前端（`agent_community/frontend/`）**
+- `docking.html`：**第一屏＝8 块功能模块**（`data-dock-service` 锚点：register / script_activate / archive / session_bridge / onboard_recover / channel / bridge_helper / ask_frontdesk），每块点进去当场办；脚本激活是核心（大格）。教程式内容**撤出**（搬回 `hub.html`/`hub.js`，不是删掉）；`hub.html` 链接只留一条。
+- `docking.js`：完整重做——
+  - **写请求白名单 17→19 条**（加 `compose-script` / `run-script`，与 v4.8.25 的后端契约对齐），唯一写通道 `dockPost()`，白名单闸在它里面；
+  - **脚本激活四屏**：屏1 填关键词（候选由平台 `keyword-suggestions` 给，每条带出处、可点即填）→ 屏2 让平台去找（`locate`，命中/不命中都要有话说，找不到给"放宽关键词"的下一步）→ 屏3 确认试投（`try-activate`，三态如实：送出去≠送到了）→ 屏4 平台生成正文（`compose-script`，界面不自己编）＋保存进档案 ＋**一键脚本激活**（`run-script`）＋导出 `.ps1` 副本；
+  - **员工档案详情四块**（可看可改）：框架性能（平台算的档位事实只读）/ 适配模型 / 具体桥模板 / 激活方式（含脚本本体）；改完保存**回显平台重新判定的事实**；
+  - **三态如实**：`verified` 不是 true 一律「⚠ 未核实/待人工」，绝不显示成办完了；失败当场说清原因＋下一步（后端中文 `error` 原样显示）；
+  - 两个入口同一页面（`?ws=` 区分总控/单间）；单间不出现工作间选择器与注册入口；总控把"建会话/送桥/抢救/通道"引导到具体工作间。
+- `docking.css`（新增）：Linear 式暗色精密风格——近黑画布＋环境光、微边框、玻璃拟态顶栏/抽屉、扫光、呼吸点、focus ring；主体单色，靛/紫只给高亮；全部动效尊重 `prefers-reduced-motion`；不改 `hub.css` 的公共类（只在同特异性下覆盖本页表现）。
+- `hub.js`：对接中心撤出的讲解（接入怎么走/怎么验证通了没/脚本激活怎么走）**搬回本页**，新增「前台怎么接一个 agent」一节。
+
+**守卫同步**
+- `test_docking_ui_static.py`：白名单判据 10→19 条（FE-26 §5）；空白引导从"给三步解释"改成"给可点的动作"；新增 `docking.css` 挂载与功能模块锚点判据。
+
+### 验证（全部真跑）
+
+- 预检 `check_frontend_spec.py`：**PASS 20 / FAIL 0** / 待人工 2（M1/M2 人工走查）；`--selftest` 仪器自检 OK。
+- 守卫：`test_docking_ui_static.py` 17 条 + `test_frontend_handover.py` 6 条全绿。
+- 后端契约 64 条、全量回归 0 失败；`check_portability` fail=0；`check_productization` fail=0 warn=0；`gen_env_docs --check` OK；`walkthrough_docking` 24 步全绿。
+- 隔离实例真跑（换端口＋换数据目录）：页面三件 200；`locate` 命中/不命中两条路都有话说；`compose-script` 平台正文正常；`try-activate` 失败态带原因＋下一步（真实走查，非模拟）。
+- 备份：`docking.html.bak_20261016_restyle` / `docking.js.bak_20261016_restyle`（重做前旧版，回退点）。
+
 ## [4.8.25] - 2026-10-16
 
 **把前端马上会撞到的两个契约缺口补上**：脚本正文的「**从哪来**」与「**一键脚本激活**」

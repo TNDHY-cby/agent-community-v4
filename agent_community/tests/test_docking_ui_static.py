@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""对接中心界面（`V34` P2）的静态守卫：**按结构判，不看行号**。
+"""对接中心界面（`FE-26` 前台版）的静态守卫：**按结构判，不看行号**。
 
-P2 是"只读总览"这一步，守卫盯的是 V34 §1/§9 里那几条**最容易做错**的：
+FE-26 把对接中心从"只读总览"升级成"前台"（第一屏＝功能模块 ＋ 脚本激活四屏 ＋ 档案详情），
+守卫盯的是那几条**最容易做错**的：
   ① **两个入口、同一份实现**：`?ws=` 收窄到单间；**单间模式不许出现工作间选择器**（越权的口子）；
-  ② **本页零写请求**（P2 只读）—— 白名单是 P3/P4 才需要的东西，P2 连 POST 都不该有；
+  ② **写请求白名单**（FE-26 §5 的 19 条）—— 多一条是偷偷扩权，少一条按钮点不动；
   ③ **失败要说话**：后端中文 error 原样显示，**不许显示成"空列表"**；
   ④ **悬空引用要说**（成员引用了未登记的 harness 时不能装作没看见）；
   ⑤ **入口指向对**：大厅与工作间都指向对接中心；工作间的入口**必须带 `?ws=`**。
@@ -43,16 +44,19 @@ def _js_code(src: str) -> str:
     return src
 
 
-def test_page_and_script_exist_with_the_readonly_contract():
+def test_page_and_script_exist_with_the_frontdesk_contract():
     html = _read("docking.html")
     js = _read("docking.js")
     assert 'src="docking.js"' in html, "docking.html 没挂上 docking.js"
-    assert "/api/docking/overview" in js, "没有读那个唯一的只读总览端点"
+    assert "/api/docking/overview" in js, "没有读那个只读总览端点"
     assert "dockingMain" in html and "dockBody" in html, "页面骨架缺关键容器"
+    # ★FE-26：第一屏＝功能模块（锚点 + 前台样式文件都在）
+    assert "data-dock-service" in html, "页面没有功能模块锚点（FE-26 §2a）"
+    assert 'href="docking.css"' in html, "前台样式文件没挂上（docking.css）"
 
 
 def test_write_whitelist_matches_the_design_contract():
-    """★写请求白名单必须**正好**是 V34 §4.3 那一份（10 条）。
+    """★写请求白名单必须**正好**是 FE-26 §5 那一份（19 条）。
 
     对接中心能调的写端点是有明确清单的：多一条就是"偷偷扩大了权限面"，
     少一条就是"界面上的按钮会点不动"。
@@ -60,7 +64,7 @@ def test_write_whitelist_matches_the_design_contract():
     js = _read("docking.js")
     code = _js_code(js)
     m = re.search(r"DOCK_WRITE_WHITELIST\s*=\s*\[(.*?)\]", code, re.S)
-    assert m, "找不到写请求白名单（V34 §4.3 要求白名单外零 POST）"
+    assert m, "找不到写请求白名单（FE-26 §5 要求白名单外零写请求）"
     got = set(re.findall(r"['\"]([^'\"]+)['\"]", m.group(1)))
     expect = {
         "/api/harness/pre-register", "/api/harness/probe-register", "/api/harness/register",
@@ -74,8 +78,12 @@ def test_write_whitelist_matches_the_design_contract():
         "/api/harness/bridge-path", "/api/harness/bridge-verify", "/api/harness/auto-connect",
         # 平台 Agent 直聊（V34 §5 登记过：属"协助架桥"，进对接中心白名单）
         "/api/assistant/chat",
+        # 脚本激活工作台（FE-26 §5 + §12：定位/试投/生成正文/一键激活/档案读写）
+        "/api/docking/locate", "/api/docking/try-activate",
+        "/api/docking/compose-script", "/api/docking/run-script",
+        "/api/docking/harness/*",
     }
-    assert got == expect, "白名单与 V34 §4.3 不一致：多=%s 少=%s" % (sorted(got - expect), sorted(expect - got))
+    assert got == expect, "白名单与 FE-26 §5 不一致：多=%s 少=%s" % (sorted(got - expect), sorted(expect - got))
 
 
 def test_every_action_path_is_inside_the_whitelist():
@@ -226,10 +234,11 @@ def test_dangling_bindings_are_surfaced():
 
 
 def test_empty_state_guides_the_first_run():
-    """空白引导（V34 §10 第 5 条：装好就能用）。"""
+    """空状态给**动作**（点什么），不给一段解释（FE-26 §2：前台气质）。"""
     js = _read("docking.js")
     assert "还没有登记任何外部 Agent" in js, "缺空白引导"
-    assert "三步" in js, "空白引导没有给出可执行的三步"
+    assert re.search(r"dockGo\((?:\\'|'\")register(?:\\'|'\")\)", js), \
+        "空状态没有给可点的动作（登记入口）—— 前台要给动作，不给解释"
 
 
 # ── 入口接线（规则 20：一件事的对外表达只有一处真相，但入口要对）──────────────

@@ -8,6 +8,7 @@
 const CHAPTERS = [
   { no:'—', id:'overview', t:'这页是什么（定位）', s:'全流程说明书 · 只讲不做', api:'依据 V30（2026-10-10 实测口径）', render:chOverview },
   { no:'前', id:'start', t:'前置 · 起服务', s:'双击启动合作社 · 无开机自启', api:'/api/status = running', render:chStart },
+  { no:'台', id:'dockflow', t:'前台怎么接一个 agent（从对接中心搬来的讲解）', s:'对接中心＝前台 · 当场办', api:'登记 / 探测 / 激活 / 架桥', render:chDockFlow },
   { no:'0', id:'register', t:'0 · 注册 harness', s:'必填两项 · 报错可照做', api:'POST /api/harness/register', render:chRegister },
   { no:'1', id:'hall', t:'1 · 广播任务建工作间', s:'大厅发任务 · 平台自动建间', api:'POST /api/workshop', render:chHall },
   { no:'2', id:'d1', t:'2 · 一级讨论', s:'AI 主持定方向 · 规则兜底', api:'POST …/discuss', render:chD1 },
@@ -80,6 +81,25 @@ function chStart(){
   </div>`;
 }
 
+/** 从对接中心搬来的讲解（FE-26：对接中心只当场办事，讲解归本页）。 */
+function chDockFlow(){
+  return `
+  <div class="card">
+    <h3><span class="dot"></span>接入一位外部 Agent，怎么走</h3>
+    <p class="lead"><b>① 你手头有什么就给什么</b>：一句话命令 / 一个目录 / 一个地址
+      （<b>不知道就留空</b> —— 平台会自己探一次再补齐，不用你去猜它怎么被叫醒）。</p>
+    <p class="lead"><b>② 登记</b>：在对接中心的登记卡里填标识 + 你有的线索 → 点「探测并登记」。</p>
+    <p class="lead"><b>③ 对上岗位</b>：去工作间，在成员卡上点「建会话 → 送桥」；
+      进不去时用单间范围的「挂起/抢救/停用通道/新建通道」和架桥辅助。</p>
+    <p class="sub" style="margin-top:6px"><b>怎么自己验证通了没</b>：① 对接中心总览里这个 harness 出现且<b>在线</b>；
+      ② 单间范围里对应成员<b>通道＝已接入</b>且会话名不为空；③ 成员卡上的步骤徽章是「✓ 已自证」——
+      出现「⚠ 人工模式 / 未核实」就<b>还没通</b>，按指引补。</p>
+    <p class="sub" style="margin-top:6px"><b>脚本激活怎么走</b>：对接中心 →「脚本激活」：
+      填关键词 → 让平台去找 → 确认试投 → 保存成激活脚本；每一步边界见
+      ${link('/docking.html','对接中心 →')}（那里当场办，本页只讲）。</p>
+  </div>`;
+}
+
 function chRegister(){
   return `
   <div class="grid2">
@@ -89,7 +109,7 @@ function chRegister(){
         ★<b>实测</b>（2026-10-10 真打 400）：其余字段都有默认值，<b><code>harness_name</code> 不是必填</b>。</p>
       <p class="lead" style="margin-top:8px"><b>可选但决定"能不能自动"</b>：三个动作脚本 <code>new_session</code> / <code>rename_session</code> / <code>deliver</code>
         ＋每个动作的 <code>foreground</code>（会不会占用你的桌面）。<b>不配也能用</b>，走"人工模式"。</p>
-      <p class="sub" style="margin-top:8px">关联：<code>POST /api/harness/register</code>；真表单在 ${link('/docking.html','对接中心 →')}（登记卡 + 激活 + 架桥辅助 + 接入教程都在那里）。</p>
+      <p class="sub" style="margin-top:8px">关联：<code>POST /api/harness/register</code>；真表单在 ${link('/docking.html','对接中心 →')}（前台当场办：登记卡 + 探测 + 架桥辅助都在那里）。</p>
     </div>
     <div class="card">
       <h3><span class="dot"></span>报错是可照做的（示意）</h3>
