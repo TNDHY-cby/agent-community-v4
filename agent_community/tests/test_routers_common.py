@@ -20,6 +20,19 @@ import pytest
 from agent_community.platform.harness_adapter import harness_manager
 from agent_community.platform.protocol import HarnessAI, HarnessInfo, HarnessTool, WakeupMethod
 from agent_community.platform.workshop import Workshop, WorkshopMember
+import tempfile
+from pathlib import Path
+
+
+def _ws_dir(name: str) -> str:
+    """测试用的工作区路径 —— ★**不许写死盘符**（2026-10-16 真事故）。
+
+    `workspace_dir="D:\\ws\\…"` 在 Windows 上指向仓库外面，而在 **Linux** 上 `D:\ws\…` 是
+    **相对路径** ⇒ 直接在**仓库根**建目录；经 WSL 的 DrvFs 落到 Windows 侧就成了
+    `D<U+F03A>ws…` 这类非法名，`git add -A` 会连它一起提交/发布（差点发出去过）。
+    统一走系统临时目录：两平台都对，且不污染仓库。
+    """
+    return str(Path(tempfile.gettempdir()) / "ac_test_ws" / name)
 
 
 def run(coro):
@@ -36,7 +49,7 @@ class Headers(dict):
 
 
 def _ws(wid="w1"):
-    return Workshop(workshop_id=wid, name="测试间", workspace_dir=r"D:\ws\ws_w1",
+    return Workshop(workshop_id=wid, name="测试间", workspace_dir=_ws_dir("ws_w1"),
                     hall_content="把首页做出来")
 
 

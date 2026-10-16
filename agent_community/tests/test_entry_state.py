@@ -13,11 +13,24 @@ from __future__ import annotations
 
 import asyncio
 import json
+import tempfile
+from pathlib import Path
 
 import pytest
 
 from agent_community.platform import entry_state as es
 from agent_community.platform.workshop import Workshop, WorkshopMember
+
+
+def _ws_dir(name: str) -> str:
+    """测试用的工作区路径 —— ★**不许写死盘符**（2026-10-16 真事故）。
+
+    原来写 `workspace_dir="D:\\\\ws\\\\w1"`：Windows 上指向 `D:\\ws\\`（仓库外），
+    而 **Linux** 上那是**相对路径** ⇒ 在**仓库根**建出 `D:\\ws\\w1`，经 WSL DrvFs 变成
+    `D<U+F03A>ws…` 这类非法目录名，`git add -A` 会一起提交/发布。
+    统一走系统临时目录（两平台都对、不污染仓库）。
+    """
+    return str(Path(tempfile.gettempdir()) / "ac_test_ws" / name)
 
 
 # ── A. 四档最高可达 ──────────────────────────────────────────────
@@ -127,7 +140,7 @@ class TestWiring:
         bridge_procs._procs.clear()
         bridge_procs.record("h_dead", _DeadProc())
 
-        ws = Workshop(workshop_id="w1", name="t", workspace_dir="D:\\ws\\w1",
+        ws = Workshop(workshop_id="w1", name="t", workspace_dir=_ws_dir("w1"),
                       hall_content="hall")
         m = _mk_member()
         ws.members.append(m)
@@ -144,7 +157,7 @@ class TestWiring:
         bridge_procs._procs.clear()
         bridge_procs.record("h_alive", _AliveProc())
 
-        ws = Workshop(workshop_id="w2", name="t", workspace_dir="D:\\ws\\w2",
+        ws = Workshop(workshop_id="w2", name="t", workspace_dir=_ws_dir("w2"),
                       hall_content="hall")
         m = _mk_member(mid="m2", hids=("h_alive",))
         ws.members.append(m)
@@ -157,7 +170,7 @@ class TestWiring:
     def test_no_harness_blocked(self):
         """未指定 harness -> blocked + 原因。"""
         from agent_community.platform import server as srv
-        ws = Workshop(workshop_id="w3", name="t", workspace_dir="D:\\ws\\w3",
+        ws = Workshop(workshop_id="w3", name="t", workspace_dir=_ws_dir("w3"),
                       hall_content="hall")
         m = WorkshopMember(member_id="m3", role="员工", display_name="x", harness_ids=[])
         ws.members.append(m)
@@ -195,7 +208,7 @@ class TestReceiptAndApi:
         from agent_community.platform.routers import harness_register as hr
         from agent_community.platform.state import workshops as _ws
 
-        ws = Workshop(workshop_id="w_rx", name="t", workspace_dir="D:\\ws\\rx",
+        ws = Workshop(workshop_id="w_rx", name="t", workspace_dir=_ws_dir("rx"),
                       hall_content="hall")
         m = _mk_member(mid="m_rx")
         m.entry_state = es.ACKED
@@ -216,7 +229,7 @@ class TestReceiptAndApi:
         from agent_community.platform.routers import harness_register as hr
         from agent_community.platform.state import workshops as _ws
 
-        ws = Workshop(workshop_id="w_rb", name="t", workspace_dir="D:\\ws\\rb",
+        ws = Workshop(workshop_id="w_rb", name="t", workspace_dir=_ws_dir("rb"),
                       hall_content="hall")
         m = _mk_member(mid="m_rb")
         m.entry_state = es.DISPATCHED
@@ -237,7 +250,7 @@ class TestReceiptAndApi:
         from agent_community.platform.routers import workshops_lifecycle as wl
         from agent_community.platform.state import workshops as _ws
 
-        ws = Workshop(workshop_id="w_api", name="t", workspace_dir="D:\\ws\\api",
+        ws = Workshop(workshop_id="w_api", name="t", workspace_dir=_ws_dir("api"),
                       hall_content="hall")
         m = _mk_member(mid="m_api")
         m.entry_state = es.BLOCKED

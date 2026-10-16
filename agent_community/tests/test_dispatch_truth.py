@@ -16,10 +16,23 @@
 from __future__ import annotations
 
 import asyncio
+import tempfile
+from pathlib import Path
 
 import pytest
 
 from agent_community.platform import bridge_procs
+
+
+def _ws_dir(name: str) -> str:
+    """测试用的工作区路径 —— ★**不许写死盘符**（2026-10-16 真事故）。
+
+    这些用例原来写 `workspace_dir="D:\\\\ws\\\\w1"`：在 Windows 上它指向 `D:\\ws\\`（仓库外面），
+    而在 **Linux** 上 `D:\\ws\\w1` 是**相对路径** ⇒ 直接在**仓库根**建出 `D:\\ws\\w1` 目录；
+    经 WSL DrvFs 落到 Windows 侧就成了 `D<U+F03A>ws…` 这类非法名，`git add -A` 会连它一起提交。
+    ⇒ 统一走系统临时目录（两平台都对，且不污染仓库）。
+    """
+    return str(Path(tempfile.gettempdir()) / "ac_test_ws" / name)
 
 
 class FakeProc:
@@ -128,7 +141,7 @@ class TestCallersConsumeReturnValue:
         from agent_community.platform.workshop import Workshop, WorkshopMember
 
         Workshop, _ = self._mk_member()
-        ws = Workshop(workshop_id="w1", name="t", workspace_dir="D:\\ws\\w1",
+        ws = Workshop(workshop_id="w1", name="t", workspace_dir=_ws_dir("w1"),
                       hall_content="hall")
         m = WorkshopMember(member_id="m1", role="员工", display_name="测试",
                            harness_ids=["h_dead"])
@@ -145,7 +158,7 @@ class TestCallersConsumeReturnValue:
         from agent_community.platform.server import _activate_single
         from agent_community.platform.workshop import Workshop, WorkshopMember
 
-        ws = Workshop(workshop_id="w2", name="t", workspace_dir="D:\\ws\\w2",
+        ws = Workshop(workshop_id="w2", name="t", workspace_dir=_ws_dir("w2"),
                       hall_content="hall")
         m = WorkshopMember(member_id="m2", role="员工", display_name="测试",
                            harness_ids=["h_alive"])
@@ -160,7 +173,7 @@ class TestCallersConsumeReturnValue:
         from agent_community.platform import server as srv
         from agent_community.platform.workshop import Workshop, WorkshopMember
 
-        ws = Workshop(workshop_id="w3", name="t", workspace_dir="D:\\ws\\w3",
+        ws = Workshop(workshop_id="w3", name="t", workspace_dir=_ws_dir("w3"),
                       hall_content="hall")
         leader = WorkshopMember(member_id="m3", role="组长", display_name="组",
                                 harness_ids=["h_leader_dead"])

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -25,6 +27,17 @@ from agent_community.platform.session_registry import (
     ST_IDLE,
     SessionRegistry,
 )
+
+
+def _ws_dir(name: str) -> str:
+    """测试用的工作区路径 —— ★**不许写死盘符**（2026-10-16 真事故）。
+
+    原来这里写死的是"D 盘下的 ws 目录"：Windows 上指向仓库外面，而 **Linux** 上那是
+    **相对路径** ⇒ 直接在**仓库根**建目录；经 WSL 的 DrvFs 落到 Windows 侧就成了
+    `D<U+F03A>ws…` 这类非法名，`git add -A` 会连它一起提交/发布（差点发出去过）。
+    统一走系统临时目录：两平台都对，且不污染仓库。
+    """
+    return str(Path(tempfile.gettempdir()) / "ac_test_ws" / name)
 
 
 class FakeRequest:
@@ -48,7 +61,7 @@ def reg(tmp_path):
 
 def _mk(reg, **kw):
     base = dict(harness_id="h1", session_id="s1", workshop_id="w1",
-                member_id="m1", role="员工", workspace_dir=r"D:\ws\ws_a")
+                member_id="m1", role="员工", workspace_dir=_ws_dir("ws_a"))
     base.update(kw)
     return reg.register(**base)
 
@@ -66,11 +79,11 @@ class TestRegistryCore:
     def test_idempotent_update_no_duplicate(self, reg):
         """同 (harness, session) 再登记 = 更新，不产生重复行。"""
         _mk(reg, context_turns=1)
-        _mk(reg, context_turns=5, workspace_dir=r"D:\ws\ws_b")
+        _mk(reg, context_turns=5, workspace_dir=_ws_dir("ws_b"))
         assert len(reg.list()) == 1
         r = reg.get("h1", "s1")
         assert r["context_turns"] == 5, "更新应生效"
-        assert r["workspace_dir"] == r"D:\ws\ws_b"
+        assert r["workspace_dir"] == _ws_dir("ws_b"), "登记时必须回写工作区坐标（断言跟着夹具走，别再写死盘符）"
         assert r["created_at"] <= r["last_seen"], "created_at 不应被覆盖"
 
     def test_human_without_session_id_synthesizes(self, reg):

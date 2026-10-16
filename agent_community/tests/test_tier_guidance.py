@@ -16,6 +16,19 @@ import pytest
 
 from agent_community.platform import tier_guidance as tg
 from agent_community.platform.protocol import HarnessInfo, HarnessTool, WakeupMethod
+import tempfile
+from pathlib import Path
+
+
+def _ws_dir(name: str) -> str:
+    """测试用的工作区路径 —— ★**不许写死盘符**（2026-10-16 真事故）。
+
+    `workspace_dir=_ws_dir("…")` 在 Windows 上指向仓库外面，而在 **Linux** 上 `D:\ws\…` 是
+    **相对路径** ⇒ 直接在**仓库根**建目录；经 WSL 的 DrvFs 落到 Windows 侧就成了
+    `D<U+F03A>ws…` 这类非法名，`git add -A` 会连它一起提交/发布（差点发出去过）。
+    统一走系统临时目录：两平台都对，且不污染仓库。
+    """
+    return str(Path(tempfile.gettempdir()) / "ac_test_ws" / name)
 
 
 def _info(wm, **kw):
@@ -109,13 +122,13 @@ class TestCTierReceipt:
         info = _info(WakeupMethod.CLIPBOARD,
                      metadata={"plugin_marketplace": False})
         g = tg.guidance_at_artifact(
-            info, workspace_dir="D:\\ws\\ws_abc",
+            info, workspace_dir=_ws_dir("ws_abc"),
             workshop_id="ws_x", member_id="m1",
             platform_url="http://127.0.0.1:18920",
         )
         assert g["access_tier"] == tg.TIER_C
         r = g["c_receipt"]
-        assert "D:\\ws\\ws_abc" in r, "必须给工作区坐标"
+        assert _ws_dir("ws_abc") in r, "必须给工作区坐标（断言跟着夹具走，别再写死盘符）"
         assert "activation-result" in r, "必须给回报端点"
         assert "context_turns" in r, "回执契约字段（§6.4）"
         assert "needs_human" in r, "必须说清不回报的后果"
@@ -135,7 +148,7 @@ class TestArtifactGuidance:
         """脚本档：给启动命令 + 「桥必须常驻」提醒。"""
         g = tg.guidance_at_artifact(
             _info(WakeupMethod.ACP),
-            workspace_dir="D:\\ws\\a", artifact_path="D:\\ws\\a\\bridge.py",
+            workspace_dir=_ws_dir("a"), artifact_path="D:\\ws\\a\\bridge.py",
             artifact_kind="script", platform_url="http://127.0.0.1:18920")
         assert "startup_hint" in g and "bridge.py" in g["startup_hint"]
         assert "开机启动项" in g["reminder"], "桥不常驻等于收不到任务（注册页同款提醒）"
@@ -143,7 +156,7 @@ class TestArtifactGuidance:
     def test_contract_says_no_process(self):
         g = tg.guidance_at_artifact(
             _info(WakeupMethod.HTTP_API),
-            workspace_dir="D:\\ws\\b", artifact_path="D:\\ws\\b\\connect_contract.json",
+            workspace_dir=_ws_dir("b"), artifact_path="D:\\ws\\b\\connect_contract.json",
             artifact_kind="contract", platform_url="http://127.0.0.1:18920")
         assert "0 进程" in g["reminder"] or "无桥" in g["reminder"]
         assert "startup_hint" not in g, "无桥型不该给启动命令"
@@ -151,7 +164,7 @@ class TestArtifactGuidance:
     def test_prompt_says_manual_paste(self):
         g = tg.guidance_at_artifact(
             _info(WakeupMethod.CLIPBOARD),
-            workspace_dir="D:\\ws\\c", artifact_path="D:\\ws\\c\\activation_prompt.txt",
+            workspace_dir=_ws_dir("c"), artifact_path="D:\\ws\\c\\activation_prompt.txt",
             artifact_kind="prompt", platform_url="http://127.0.0.1:18920")
         assert "粘贴" in g["reminder"]
 
