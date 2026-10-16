@@ -78,8 +78,22 @@ python tests/scan_sensitive.py    # 扫描本地路径 / 密钥字段 / 真实�
 
 示例：`feat: 新增 pending_poll 桥模板的自动应答能力`
 
-## 6. 分支与 PR
+## 6. 分支与 PR（**主仓库在 Gitee**）
 
-- 从 `main` 切出功能分支：`feat/xxx`、`fix/xxx`
-- 一个 PR 聚焦一件事；描述中说明改动动机、影响范围与测试方式
-- 涉及协议变更时，同步更新 `design-docs/` 下对应文档
+> 2026-10-16 起，**Gitee 是唯一主仓库**：<https://gitee.com/TNDHY-cby/external-agents-community>
+> （GitHub 那份**已停止更新**，仅作历史归档 —— 别再从那儿拉/推，也别在那儿开 issue。）
+> 发行版与变更记录：<https://gitee.com/TNDHY-cby/external-agents-community/releases>
+
+- 从 `master` 切出功能分支：`feat/xxx`、`fix/xxx`
+- 一个 PR 聚焦一件事；描述里请**贴命令原文输出**（模板：`.gitee/PULL_REQUEST_TEMPLATE.md`）
+- 涉及协议变更时，同步更新 `design-docs/` 下对应文档（规则 20：**对外表达一次全改**）
+- 缺陷/建议用 Gitee 的 issue（模板在 `.gitee/ISSUE_TEMPLATE/`）：**带上版本号 + `server_stdout.log` 尾部**
+
+**提交前请跑**（判据只有一处真相：**本机双平台真跑替代 CI**）：
+
+```bash
+python tools/check_portability.py       # 必须 fail=0
+python tools/check_productization.py    # 必须 fail=0
+python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
+python tools/dual_platform_check.py     # 双平台真跑；退出码 2＝只跑成一侧＝不算通过
+```
