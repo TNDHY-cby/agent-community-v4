@@ -62,7 +62,9 @@ def test_every_pointer_resolves():
                                  "tools/", "tests/")):
                 continue                      # 只判"仓库内路径"，跳过命令片段/端点
             checked += 1
-            if not (_ROOT / p).exists():
+            # 允许写 pytest 的 node id（`路径::用例名`）—— 判存在时只看 `::` 前面那段文件路径
+            file_part = p.split("::", 1)[0]
+            if not (_ROOT / file_part).exists():
                 dead.append("%s → %s" % (md.name, p))
     assert checked >= 8, "只认出 %d 条路径引用 —— 解析坏了还是文档没写清？" % checked
     assert not dead, "这些指向的文件不存在（外包方点不开）：\n  " + "\n  ".join(dead)
