@@ -91,7 +91,7 @@ python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 | 副本 | 路径 | git | 说明 |
 |---|---|---|---|
 | **开发副本（这里）** | `<开发副本根目录>`（真实路径只写在 dev-only 的 HANDOVER.md 与项目技能手册里，**不进公开仓库**） | 有（本地，**无 remote**） | 实际开发在这里 |
-| **发布副本（开源）** | `<发布副本根目录>`（同上，真实路径 dev-only） | 有两个远端：**`gitee`＝主**（`https://gitee.com/TNDHY-cby/external-agents-community.git`，下载与协作看它）、`origin`＝GitHub 镜像 + CI。**以 `git ls-remote` 实测为准**，别信本文档里的旧 sha | 只由 `publish_acv4.ps1` 单向推入（默认推 Gitee；`-MirrorGithub` 才顺带镜像，**镜像不通只警告**） |
+| **发布副本（开源）** | `<发布副本根目录>`（同上，真实路径 dev-only） | **只有 `gitee` 一个有效远端**（`https://gitee.com/TNDHY-cby/external-agents-community.git`，下载与协作看它）。★**GitHub 已于 2026-10-16 停止更新**（仅历史归档，别再从那儿拉/推）。**以 `git ls-remote` 实测为准**，别信本文档里的旧 sha | 只由 `publish_acv4.ps1` 单向推入（默认推 Gitee）；`-MirrorGithub` 保留只为**应急**，正式流程不用（老板 2026-10-16：「GitHub 不用更新了」） |
 | ⚠️ 已退休副本 | `<退休副本根目录>`（同上，真实路径 dev-only） | 无 | 2026-10-02 退休，架构停在 V-9 拆包之前。**P0/P1/P2 成果已由 V-10 回收入主线**，此副本仅存档 |
 | 另一条线 | `<另一条线根目录>`（同上，真实路径 dev-only） | — | 独立项目线（**代码零回收价值**，dev 是超集；仅 2 份全盘唯一文档可捞），勿混 |
 

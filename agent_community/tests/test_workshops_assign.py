@@ -80,13 +80,22 @@ class FakeRequest:
 
 # ── 夹具 ─────────────────────────────────────────────────────────────
 @pytest.fixture()
-def env(monkeypatch):
-    """造一个隔离工作间放进 state.workshops，并把全部外呼打桩；结束时彻底清理。"""
+def env(monkeypatch, tmp_path):
+    """造一个隔离工作间放进 state.workshops，并把全部外呼打桩；结束时彻底清理。
+
+    ★2026-10-16 修（**真事故**）：这里原来写死 `workspace_dir="D:\\\\ws\\\\" + wid` ——
+      · 在 Windows 上它会往 `D:\\ws\\`（**仓库外面**）建目录；
+      · 在 **Linux** 上 `D:\\ws\\...` 是**相对路径** ⇒ 直接在当前工作目录（＝仓库根）里建出
+        名为 `D:\\ws\\ws_assign_xxx` 的目录 —— 经 WSL 的 DrvFs 落到 Windows 侧时，
+        `:` 与 `\\` 被编码成**私用区字符**，于是仓库里出现一堆 `D<U+F03A>ws<U+F01C>...` 的怪目录，
+        而且**会被 `git add -A` 一起提交/发布出去**（本轮就差点发出去）。
+      · 根子就是**硬编码本机路径**（反私人定制红线）。⇒ 改用 pytest 的 `tmp_path`（两平台都对、且随时清理）。
+    """
     wid = "ws_assign_" + uuid4().hex[:8]
     ws = Workshop(
         workshop_id=wid,
         name="编排单测工作间",
-        workspace_dir="D:\\ws\\" + wid,
+        workspace_dir=str(tmp_path / wid),
         hall_content="任务：给 FastAPI 项目补单元测试",
     )
     ws.members = [

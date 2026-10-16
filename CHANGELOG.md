@@ -4,6 +4,59 @@
 
 # 4.8.26
 
+## [4.8.27] - 2026-10-16
+
+**对外口径收口：GitHub 停止更新（只用 Gitee）＋ 前端交接沟通件**
+
+### 背景（老板 2026-10-16 晚两条指令）
+
+> 「**GitHub 不用更新了，转向码道**」（随后补充：「**就是 Gitee**」）
+> 「**用户级 PYTHONPATH 清掉**」「**前端外包，有要沟通的内容放到 `D:\Desktop\开发交流`**」
+
+### 变更：GitHub 停更，Gitee 是**唯一**远端
+
+- `README.md` / `AGENTS.md` / `design-docs/项目完整模型.md` / `docs/首次运行.md`（发布副本独有）
+  **一次全改**（规则 20）：GitHub 那份是**历史归档**，**不要再从 GitHub 拉代码**；
+  代码、发行版、下载一律看 <https://gitee.com/TNDHY-cby/external-agents-community>。
+- `publish_acv4.ps1`：`-MirrorGithub` 降级为**应急开关**（正式流程不推 GitHub）；
+  真要应急也必须走 `temp/github_mirror_push.py`（关凭据助手 + 令牌 + **进程级硬超时** ——
+  旧写法会被 GCM 挂死 20 分钟，2026-10-16 真事故）。
+- ⚠️ **如实说明的连带影响**：GitHub Actions **不再跟随新提交** ⇒ 双平台判据改由**本机真跑**承担：
+  Windows 侧全量 `pytest` ＋ Linux 侧 **WSL Ubuntu 真跑**（结果与平台都在继承书里标明）。
+  Gitee 侧暂无 CI（Gitee Go 不在免费范围）；这条口径**待老板确认**后再写进规则源。
+
+### 修复（**顺手抓到的真缺陷**）：测试里写死 `D:\ws\` 把仓库搞脏，还会被发布出去
+
+- **现象**：仓库根冒出几十个非法目录名（`D<U+F03A>ws<U+F01C>ws_assign_xxxxxx`、`spike_ws`、`workshop_minimal_ws`），
+  里面是 `bridge.py`／`inbox/task_*.json`／`activation_prompt.txt` 等运行产物。
+- **根因**（两者叠加）：
+  ① `agent_community/tests/test_workshops_assign.py` 的夹具**写死了**
+  `workspace_dir="D:\\ws\\" + wid` —— 这是**硬编码本机路径**（反私人定制红线）；
+  ② 在 **Linux** 上 `D:\ws\...` 是**相对路径** ⇒ 直接在当前目录（＝仓库根）建目录；
+  经 WSL 的 DrvFs 落到 Windows 侧时，`:` 与 `\` 被编码成**私用区字符**（U+F03A / U+F01C）⇒ 就变成那串怪名字。
+  在 Windows 上它则悄悄往 `D:\ws\`（仓库外面）写。
+- **危害**：`git add -A` 会把它们**一起提交并发布出去**（本轮我差点发出去；已 `reset` 回退那次提交）。
+- **修法**：夹具改用 pytest 的 **`tmp_path`**（两平台都对、且自动清理）；
+  两副本里遗留的怪目录**已全部删除**（删前核对绝对路径、确认从未被 git 跟踪）。
+- **验证（真跑，两个平台各一次）**：
+  Windows 侧全量 `pytest` **1624 passed / 0 failed** 且跑完 **仓库根脏目录 = 0**；
+  Linux 侧（WSL Ubuntu-24.04 / Python 3.12.3）只跑该测试文件 **30 passed**、**脏目录 = 0**。
+- 顺带记一笔：GitHub CI 停更后，Linux 侧判据由 `temp/run_linux.sh`（WSL 真跑）承担，
+  它**顺便检查仓库根有没有这类脏目录**。
+
+### 本机环境：用户级 `PYTHONPATH` 已清
+
+- 原值 `D:\anaconda3\Lib\site-packages`（指向读不到的目录）⇒ 已 `SetEnvironmentVariable(..., $null, 'User')`。
+- **判据（真跑）**：不清 `PYTHONPATH` 直接跑 —— 原先那条假红
+  `test_foundation_base.py::TestRequirementsSyntax` **4 条全过**，全量回归
+  **1624 passed / 0 failed / 0 skipped**。⇒ 以后不必再在命令前写 `$env:PYTHONPATH=""`。
+
+### 交接沟通件落盘（老板指定目录）
+
+`D:\Desktop\开发交流\` 新增两份**对外沟通件**（内部状态不放在那儿）：
+`给外包方的说明_20261016.md`（当前状态 + 我方独立验收结果 + 还要外包方做的两件事 + 契约变更提醒）、
+`本轮沟通要点_20261016.md`（平台变更口径 + 前端状态 + 下一轮可能要对外说的事）。
+
 ## [4.8.26] - 2026-10-16
 
 **对接中心重做落地（FE-26 前台版）**：从"说明书"重做成"前台"——第一屏＝功能模块、脚本激活四屏、员工档案详情四块、Linear 式暗色精密界面
