@@ -96,15 +96,49 @@ def test_checker_reports_every_item_with_a_reason():
 
 
 def test_area_is_actually_published():
-    """③ 同步漏检：**发布脚本必须同步这个目录**，否则外包方在仓库里看不到它。
+    """③ 同步漏检：这个目录**必须真的进得了公开仓库**，否则外包方看不到它。
 
     ⚠️ 这里查的是**发布脚本自己**（它就是要被验证的物件）—— 本项目已有两次同类事故：
     `requirements.txt` 与 `start.py` 都是"dev 有、公开仓库没有"，而脚本照旧打印"publish done"。
+
+    ★**两个面都要能判**（本守卫第一版踩了这个坑，被 CI run#45 当场抓红）：
+      · **开发副本**：`publish_acv4.ps1` 在（它是 dev-only 工具）⇒ 查它的同步段里有没有这个目录；
+      · **发布副本 / CI**：那个脚本**本来就不存在**（它从不随仓库发布）⇒ 改判**真结果**：
+        `git ls-files` 能列出交接区的文件 = 它确实进了这个仓库。
+      （第一版无条件要求脚本存在 ⇒ 在 CI 上"AssertionError: 发布脚本不见了" ——
+      守卫自己依赖了 dev-only 的东西，属于"只在我这台机器绿"。）
     """
-    assert PUBLISH.exists(), "发布脚本不见了：%s" % PUBLISH
-    src = PUBLISH.read_text(encoding="utf-8", errors="replace")
-    assert "外包交接_前端界面" in src, "发布脚本没有同步「外包交接_前端界面/」—— 外包方在仓库里看不到交接包"
-    assert "robocopy" in src and "ossOffload" in src, "交接区的同步段看起来没写全（robocopy 目标变量不在）"
+    if PUBLISH.exists():
+        src = PUBLISH.read_text(encoding="utf-8", errors="replace")
+        assert "外包交接_前端界面" in src, \
+            "发布脚本没有同步「外包交接_前端界面/」—— 外包方在仓库里看不到交接包"
+        assert "robocopy" in src and "ossOffload" in src, \
+            "交接区的同步段看起来没写全（robocopy 目标变量不在）"
+        return
+
+    tracked = _git_tracked()
+    if tracked is None:
+        import pytest
+        pytest.skip("既没有发布脚本（发布副本），也拿不到 git —— 这一面无法判定同步")
+    missing = [f for f in EXPECTED_FILES if ("外包交接_前端界面/" + f) not in tracked]
+    assert not missing, "交接区在公开仓库里**没有被跟踪**（＝没发布出去）：%s" % missing
+
+
+def _git_tracked():
+    """本仓库 `git ls-files` 的结果集合；拿不到 git / 不是仓库时返回 None。
+
+    ⚠️ **必须 `-c core.quotepath=false`**：git 默认把非 ASCII 路径按八进制转义输出
+    （`"\\345\\244\\226..."`）⇒ 拿它跟中文目录名比会**假红**（实测踩到，见下）。
+    """
+    try:
+        r = subprocess.run(["git", "-c", "core.quotepath=false", "ls-files"],
+                           cwd=str(_ROOT), capture_output=True,
+                           text=True, encoding="utf-8", errors="replace", timeout=120)
+    except Exception:  # noqa: BLE001
+        return None
+    if r.returncode != 0:
+        return None
+    return {ln.strip().replace("\\", "/") for ln in (r.stdout or "").splitlines() if ln.strip()}
 
 
 def test_handover_area_avoids_local_and_real_names():

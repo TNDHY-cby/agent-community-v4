@@ -2,6 +2,40 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.8.24] - 2026-10-16
+
+**修 CI 红：交接区守卫不许依赖 dev-only 的东西**（run #45 两个测试作业红的真因）
+
+### 背景（真因来自 CI 真日志，不猜）
+
+v4.8.23 把交接区守卫 `agent_community/tests/test_frontend_handover.py` 发了出去，
+但其中 `test_area_is_actually_published` **无条件要求 `publish_acv4.ps1` 存在** ——
+那个脚本是 **dev-only 工具，从不随仓库发布**（它含本机路径），
+⇒ 在公开副本 / CI 上直接：
+
+```text
+E  AssertionError: 发布脚本不见了：/home/runner/work/.../publish_acv4.ps1
+FAILED agent_community/tests/test_frontend_handover.py::test_area_is_actually_published
+```
+
+这正是本项目最反对的 **"只在我这台机器绿"** —— 而且它出现在一条**专门防"没同步"**的守卫里。
+
+### 修法（**两个面都要能判**，不许二选一）
+
+- **开发副本**（`publish_acv4.ps1` 在）：查它的同步段里有没有 `外包交接_前端界面/`（原判据保留）；
+- **发布副本 / CI**（那个脚本本来就不存在）：改判**真结果** —— `git ls-files` 能列出交接区的文件
+  ⇒ 它确实进了这个仓库；拿不到 git 时**如实 skip**（不假装通过）。
+
+### 顺带修掉一个坑：`git ls-files` 的中文转义
+
+git 默认按 **八进制转义**输出非 ASCII 路径（`"\345\244\226\345\214\205..."`），
+直接拿它跟中文目录名比会**假红**（实测踩到）⇒ 必须 `git -c core.quotepath=false ls-files`。
+
+### 验证（两个面各真跑一遍）
+
+- 开发副本：`test_frontend_handover.py` **6/6 通过**；
+- 发布副本（把守卫拷进去、那里**没有** `publish_acv4.ps1`）：**6/6 通过** —— 修之前这一面必红。
+
 ## [4.8.23] - 2026-10-16
 
 **前端外包交接区进仓库 + 主发布远端换成 Gitee** —— 让**看不到我们开发机**的外包方也能拿到全部所需。
