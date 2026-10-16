@@ -76,6 +76,13 @@ class WorkshopMember:
     #   verified/verified_at: 平台不采信声明（准则⑤），自证材料单独记
     bridge_ref: dict = field(default_factory=dict)
 
+    # ── V53 隔间「可被继任员工继承」（老板 2026-10-17 拍板「可以」）──────────────────
+    # 口径：员工换人时，把**旧隔间里的产物**复制给继任者，并在继任者隔间里写 `legacy.md`（继承文）。
+    # 这三项**必须落盘**（本项目反复吃过的亏：状态不落盘＝重启即丢＝"看起来没发生"）。
+    inherited_from: str = ""     # 继承来源的 member_id（空＝没有继承过）
+    inherited_at: float = 0.0    # 继承发生时间（unix 秒）
+    inherit_note: str = ""       # 一句话小结（如「搬 12 项 / 跳过 2 项 / 失败 0 项」）
+
 
 @dataclass
 class Workshop:
@@ -142,6 +149,10 @@ class Workshop:
                     "retired_channels": list(getattr(m, "retired_channels", []) or []),
                     # V36 §2.2：具体桥（一条桥 ↔ 一个具体会话）——不落盘则重启后"这条桥绑哪个会话"就丢了
                     "bridge_ref": dict(getattr(m, "bridge_ref", {}) or {}),
+                    # V53 隔间继承：不落盘的话重启后"这个成员是从谁那儿接手的"就丢了
+                    "inherited_from": getattr(m, "inherited_from", "") or "",
+                    "inherited_at": float(getattr(m, "inherited_at", 0) or 0),
+                    "inherit_note": getattr(m, "inherit_note", "") or "",
                 }
                 for m in self.members
             ],
@@ -176,6 +187,10 @@ class Workshop:
                 retired_channels=list(m.get("retired_channels") or []),
                 # V36 §2.2：具体桥引用（旧数据无此键 ⇒ 空 dict = "未架接"，界面据此明说不许空白）
                 bridge_ref=dict(m.get("bridge_ref") or {}),
+                # V53 隔间继承（旧数据无这三键 ⇒ 空值 = "没继承过"，向后兼容）
+                inherited_from=m.get("inherited_from", "") or "",
+                inherited_at=float(m.get("inherited_at", 0) or 0),
+                inherit_note=m.get("inherit_note", "") or "",
             )
             for m in d.get("members", [])
         ]

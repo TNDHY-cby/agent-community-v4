@@ -166,6 +166,11 @@ async def members_status(ws_id: str):
             "session_name": session_name_for(ws, m),      # 步骤7 的名字（未写入也可预览）
             "session_aliases": list(getattr(m, "session_aliases", []) or []),
             "session_ref": dict(getattr(m, "session_ref", {}) or {}),
+            # ★V53 隔间继承（2026-10-17）：成员卡要能显示「继承自 X」——**这是"交代"的一半**，
+            #   另一半在继任者隔间的 `legacy.md`（前端只是读，不许自己算"搬没搬"）。
+            "inherited_from": getattr(m, "inherited_from", "") or "",
+            "inherited_at": float(getattr(m, "inherited_at", 0) or 0),
+            "inherit_note": getattr(m, "inherit_note", "") or "",
             # V28 通道生命周期（前端据此显示"运行中/已停用"；停用后不得再投消息）
             "channel": {
                 "seq": int(getattr(m, "channel_seq", 1) or 1),

@@ -4,6 +4,56 @@
 
 # 4.8.26
 
+## [4.8.34] - 2026-10-17
+
+**V53 落地：隔间「可被继任员工继承」（老板拍板「可以」当天实现；20 条守卫 + 突变 3/3）**
+
+### 一句话
+
+员工换人时，把**旧隔间里的产物**复制给继任者的隔间，并在**继任者隔间里写 `legacy.md`（继承文）**，
+如实写明：从谁继承 / 搬了哪些 / **没搬哪些与原因** / 逐项核对结论。
+
+### 实现（内核 / 接线 / 数据 / 前端可见）
+
+| 件 | 落点 |
+|---|---|
+| 内核（找 → 搬 → 核对 → 写继承文） | `agent_community/platform/inherit.py`（`plan_inherit` 只读 / `perform_inherit` 真搬+核对 / `render_legacy`+`write_legacy`） |
+| 接线（两端点 + 落盘 + 审计） | `agent_community/platform/routers/workshops_inherit.py`（已注册进 `routers/workshops.py` 聚合器） |
+| 端点 | `POST /api/workshop/{ws_id}/member/{member_id}/inherit`（body：`from_member_id` + 上限）/ `GET` 同名（只读，回 `legacy_text`，>32 KiB 标 `legacy_truncated`） |
+| 成员字段落盘 | `WorkshopMember.inherited_from / inherited_at / inherit_note`（`to_dict`/`from_dict` 对称；旧数据向后兼容） |
+| 前端可见（规则 20） | `GET /api/workshop/{ws_id}/members-status` 新增同名字段 —— MiMo 的成员卡据此显示「继承自 X」 |
+
+### 五条口径都落成了可断言的代码
+
+**追加不接管**（旧隔间字节不变）／**来源留在继任者隔间里**（必写 `legacy.md`）／
+**搬完逐项核对**（存在 + sha256 一致才算 `verified=true`）／**跳过必须给原因**（不许静默丢）／
+**跨工作间拒绝**。
+
+### 实现期补记的两个"更保守"的决定（写进 V53 §7 实施记录）
+
+1. **明确不继承清单**：`inbox/`、`replies/`（邮箱＝**寻址**，搬过来等于伪造"继任者已收到"）、
+   `bridge.py` / `connect_contract.json` / `activation_prompt.txt`（**旧成员的桥与身份**，绑在它的会话上）、
+   `temp/`（草稿区）——每条都进"未搬运"表并写明原因。
+2. **绝不覆盖继任者自己的文件**：目标已存在且**内容不同** ⇒ 跳过并如实标注「内容不同（不覆盖）」；
+   内容一致 ⇒ 标「幂等跳过」（不重复堆叠）。
+
+### 判据（真跑）
+
+- 内核守卫 **11 条**（`tests/test_compartment_inherit.py`）＋ 接口守卫 **9 条**（`tests/test_inherit_endpoints.py`）
+  = **20 条全绿**（含"失败时目标隔间一个文件都不许被写"、"GET 前后隔间文件清单不变"这类真结果断言）。
+- **突变检验 3/3 KILLED**（`temp/mutation_check_inherit.py`）：
+  ① 去掉逐项核对（`verified` 恒真）② 跳过项静默忽略 ③ 去掉跨工作间拒绝 —— 三处都让守卫当场变红，还原后全绿。
+- 双平台真跑（CI 替代判据）：`python tools/dual_platform_check.py` —— Windows 与 Linux（WSL）两侧，
+  见发布记录；两副本模型文档同步为同一份（sha 一致）。
+
+### 文档同步（规则 20）
+
+`项目完整模型.md` 六处提到该概念的地方（§0 导读 / §1 概念表 / §2 落点表 / §3.4 正文 / §5 目录树 /
+§11 待办行 / §12 索引）一次全改成"**已实现**"并指向实现件；
+`design-docs/前端工作手册.md` 新增 **§7「V53 隔间继承：成员卡要显示什么（前端契约）」**（给 MiMo：
+读哪三个字段、替换成员时要给"从谁继承"的选择、三条不许）；
+`V53` 本稿状态改为「已拍板并落地」＋补 §7 实施记录。
+
 ## [4.8.33] - 2026-10-17
 
 **主线出稿：`V53` 隔间「可被继任员工继承」＝员工继任与移交（设计稿，等拍板）**
