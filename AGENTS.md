@@ -91,11 +91,16 @@ python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 | 副本 | 路径 | git | 说明 |
 |---|---|---|---|
 | **开发副本（这里）** | `<开发副本根目录>`（真实路径只写在 dev-only 的 HANDOVER.md 与项目技能手册里，**不进公开仓库**） | 有（本地，**无 remote**） | 实际开发在这里 |
-| **发布副本（开源）** | `<发布副本根目录>`（同上，真实路径 dev-only） | 有（`origin/master`，**以 `git rev-parse` 实测为准**，别信本文档里的旧 sha） | 只由 `publish_acv4.ps1` 单向推入 |
+| **发布副本（开源）** | `<发布副本根目录>`（同上，真实路径 dev-only） | 有两个远端：**`gitee`＝主**（`https://gitee.com/TNDHY-cby/external-agents-community.git`，下载与协作看它）、`origin`＝GitHub 镜像 + CI。**以 `git ls-remote` 实测为准**，别信本文档里的旧 sha | 只由 `publish_acv4.ps1` 单向推入（默认推 Gitee；`-MirrorGithub` 才顺带镜像，**镜像不通只警告**） |
 | ⚠️ 已退休副本 | `<退休副本根目录>`（同上，真实路径 dev-only） | 无 | 2026-10-02 退休，架构停在 V-9 拆包之前。**P0/P1/P2 成果已由 V-10 回收入主线**，此副本仅存档 |
 | 另一条线 | `<另一条线根目录>`（同上，真实路径 dev-only） | — | 独立项目线（**代码零回收价值**，dev 是超集；仅 2 份全盘唯一文档可捞），勿混 |
 
-- ⚠️ `publish_acv4.ps1` 同步面（2026-10-13 起）：`agent_community/` + 根文档（`README.md`/`AGENTS.md`/`.gitignore`/`pytest.ini`）+ `design-docs/` + 根 `tests/`（copy-only）；`HANDOVER.md`、协作书、`dsh-tooling/` 等 dev-only 件**不同步**。
+- ⚠️ `publish_acv4.ps1` 同步面（2026-10-16 起）：`agent_community/` + 根文档（`README.md`/`AGENTS.md`/`.gitignore`/`pytest.ini`/`requirements.txt`/`start.py`/`PORTABILITY.md`/`PRODUCTIZATION.md`/… ）+ `design-docs/` + **`外包交接_前端界面/`（对外交接件，`/MIR`）** + 根 `tests/`（copy-only）+ `tools/` + `.github/`；`HANDOVER.md`、协作书、`dsh-tooling/` 等 dev-only 件**不同步**。
+- ★**前端外包交接区**（2026-10-16 老板：「前端外包，外包者是看不到本地文件的，得上传到仓库」）：
+  `外包交接_前端界面/` —— 入口 `README.md`、`硬约束.md`、`验收清单.md`、`交付说明模板.md`、
+  可执行预检 `check_frontend_spec.py`（对着 `design-docs/FE-26…md` 逐条给 PASS/FAIL）。
+  **改这个区域就是改对外契约**，守卫 `agent_community/tests/test_frontend_handover.py` 盯三件事：
+  指向不许漂移、预检仪器自检必须过、**发布脚本必须同步它**（少一次同步＝外包方看不到）。
 - ⚠️ 发布脚本已带**反向分叉闸**（oss 独有代码文件 → 中止），防止 robocopy 静默摧毁 oss 上的独有成果。
 - ⚠️ 开发副本**曾有缺 `requirements.txt`** 的问题，已于 `7c99828` 补上；
   **2026-10-05 又修了一次**：原文件末尾被粘了 AIGC 尾注（无 `#`）且含中文，

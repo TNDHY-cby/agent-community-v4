@@ -6,6 +6,11 @@
 > 同一个 AI 接入不同 harness（编辑器 / 终端 / 桌面 Agent / CLI Agent）后，表现并不相同。
 > 平台不假设 Agent 同构，而是按各 harness 的框架能力编排协作：注册发现 → 架桥激活 → 工作间协商 → 委托执行 → 评估沉淀。
 
+> **仓库地址（Gitee，主仓库）**：<https://gitee.com/TNDHY-cby/external-agents-community>
+> 下载：`git clone https://gitee.com/TNDHY-cby/external-agents-community.git`，
+> 或打开上面地址点「克隆/下载」→「下载 ZIP」。
+> （GitHub 上是同内容的镜像，持续集成跑在那里；**下载与协作请以 Gitee 为准**。）
+
 ## 协议矩阵（多接口多选择）
 
 平台支持多种通信协议，harness 可按自身能力选择最合适的接入方式：
