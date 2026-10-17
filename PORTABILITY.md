@@ -86,6 +86,9 @@ python -m pytest -q                    # 回归
 python tools/dual_platform_check.py            # 两侧都真跑 + 一张表 + 结论
 python tools/dual_platform_check.py --plan     # 只打印"它会怎么做"（不跑）
 python tools/dual_platform_check.py --local-only   # 只跑本机这一侧（诚实标"部分"）
+
+# ★发布前**一条命令**跑全五类判据（预检 / 交接守卫 / 双平台 / 首跑 / 发布面三件套）：
+python tools/pre_release_check.py            # 退出码 0=全过、1=有红、2=有项没跑成（＝部分，不算通过）
 ```
 
 **退出码本身就是判据**：`0`=两侧都绿；`1`=有侧红；**`2`=只跑成了一侧（＝部分，不算通过）**。

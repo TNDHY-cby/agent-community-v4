@@ -29,6 +29,7 @@ python tools/check_portability.py        # 形态 1（fail=0 才合格）
 python tools/check_productization.py     # 形态 3、4（fail=0 才合格）
 python tools/first_run_check.py --src <发布副本>   # 形态 6（五步走查，见下）
 python tools/dual_platform_check.py      # 形态 5（两侧真跑；退出码 2＝只跑成一侧＝不算通过）
+python tools/pre_release_check.py     # ★发布前**一条命令**跑全五类判据（--fast 跳过双平台；退出码 2＝部分）   # 上面几条的合集，发布前跑这一条就够
 python -m pytest -q                      # 形态 2 以及全部回归
 ```
 

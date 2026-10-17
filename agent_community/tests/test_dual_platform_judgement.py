@@ -107,3 +107,24 @@ def test_gitee_templates_exist_and_are_published():
         return          # 发布副本里没有这个 dev-only 脚本（同 frontend_handover 守卫的处理）
     src = publish.read_text(encoding="utf-8", errors="replace")
     assert ".gitee" in src, "发布脚本没同步 `.gitee/` —— Gitee 侧模板不会出现在公开仓库里"
+
+
+def test_pre_release_single_command_exists():
+    """发布前判据必须有一条**单命令入口**（`tools/pre_release_check.py`），且规则源指向它。
+
+    起因（2026-10-17）：发布前要跑五类判据，散在五处，**靠人记就会漏**（我漏过"自己的工作树没提交"、
+    "CHANGELOG 写了真实路径"）。合成一条命令后，`--plan` 能自证它覆盖了什么。
+    """
+    tool = _ROOT / "tools" / "pre_release_check.py"
+    assert tool.exists(), "缺 tools/pre_release_check.py（发布前判据没有单命令入口）"
+    r = subprocess.run([sys.executable, str(tool), "--plan"], cwd=str(_ROOT),
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+    out = (r.stdout or "") + (r.stderr or "")
+    assert r.returncode == 0, "--plan 不该失败：\n%s" % out[-500:]
+    for kw in ("对外预检", "交接区守卫", "双平台", "首跑", "check_portability"):
+        assert kw in out, "--plan 里少了这一类判据：%s\n%s" % (kw, out)
+    assert "2=有项没跑成" in out or "2＝有项没跑成" in out or "部分" in out, \
+        "退出码语义要写清（2＝部分不算通过）"
+    for rel in ("PORTABILITY.md", "PRODUCTIZATION.md", "AGENTS.md"):
+        doc = (_ROOT / rel).read_text(encoding="utf-8", errors="replace")
+        assert "pre_release_check" in doc, "%s 没提到这条单命令入口（规则 20）" % rel

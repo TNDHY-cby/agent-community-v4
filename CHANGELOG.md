@@ -4,6 +4,38 @@
 
 # 4.8.26
 
+## [4.8.45] - 2026-10-17
+
+**发布前判据收成一条命令：`python tools/pre_release_check.py`**
+
+### 为什么
+
+发布前要跑五类判据，散在五处（`PORTABILITY.md` §4.1 / 交接区验收清单 / `PRODUCTIZATION.md` / `AGENTS.md` / 通道）——
+**靠人记就会漏**。今天我就漏过两次（"自己的工作树没提交"、"CHANGELOG 写了真实本机路径"），
+两次都是发布闸门替我兜住的。收成一条命令后，`--plan` 能自证它覆盖了什么。
+
+### 一条命令跑什么（都按真结果判）
+
+| # | 项 | 判据 |
+|---|---|---|
+| 1 | 对外预检 `外包交接_前端界面/check_frontend_spec.py` | **0 FAIL**（`待人工` 不参与退出码） |
+| 2 | 交接区守卫 `pytest test_frontend_handover.py` | 全过（含 LF / `.gitattributes` / 工具已发布） |
+| 3 | 双平台真跑 `tools/dual_platform_check.py` | 两侧都绿；**它自己的退出码 2（只跑成一侧）在这里如实算"部分"** |
+| 4 | 陌生人首跑 `tools/first_run_check.py --src <发布副本>` | 五步走完 + 仓库干净 |
+| 5 | 发布面三件套（在**发布副本**里跑） | `check_portability` / `check_productization` / `gen_env_docs --check` 各 fail=0 |
+
+**退出码**：`0`=全过；`1`=有红；`2`=**有项没跑成（＝部分，不算通过）**。用法：`--fast` 跳过双平台（约 1 分钟）、`--plan` 只打印计划。
+
+### 实测（真跑）
+
+`--fast` 全跑：**6 项全过**（预检 20/0/2、交接守卫 11 passed、首跑五步 OK、发布面三件套 fail=0），耗时约 35 秒，退出码 **0**。
+
+### 口径同步（规则 20）：四处都指向它
+
+`PORTABILITY.md` §4.1、`PRODUCTIZATION.md`（一次全跑）、`AGENTS.md`（命令块）、`外包交接_前端界面/验收清单.md` §4；
+并加守卫 `test_dual_platform_judgement.py::test_pre_release_single_command_exists` ——
+工具必须在、`--plan` 必须列出那五类、三份规则源必须提到它（否则"工具发了没人知道"）。
+
 ## [4.8.44] - 2026-10-17
 
 **根治行尾问题：`.gitattributes` 钉死「前端一律 LF」（MiMo 通道 137 号提的，采纳）**

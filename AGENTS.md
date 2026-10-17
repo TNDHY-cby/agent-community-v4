@@ -59,6 +59,7 @@ python tools/check_portability.py       # 硬编码坐标（端口/路径/凭据
 python tools/check_productization.py    # 平台专属命令冒充通用能力 / 开箱假数据
 python tools/first_run_check.py --src <发布副本>   # 陌生人首次运行五步走查
 python tools/dual_platform_check.py     # ★双平台真跑（Windows + WSL Linux）——2026-10-17 起的 CI 替代判据
+python tools/pre_release_check.py       # ★发布前一条命令跑全五类判据（--fast 跳过双平台）
 python -m pytest -q                     # 全部回归（含双平台守卫）
 python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 ```
