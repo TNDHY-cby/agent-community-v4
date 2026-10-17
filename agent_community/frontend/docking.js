@@ -77,18 +77,20 @@ function dockRender(d){
     '　·　' + esc(d.generated_at || '');
 
   // ── 左栏：工作间选择器**只在总控渲染**（单间模式整块不出现 —— V34 §1/§9.6）
+  // 2026-10-17：链接与状态合并为**一份**列表（此前同一批工作间列两遍 = 混乱感来源）
   const pick = document.getElementById('wsPickerWrap');
   const rail = document.getElementById('railList');
   if (DOCK_GLOBAL){
-    pick.innerHTML = '<span class="pick-label">按工作间收窄</span>' +
+    pick.innerHTML = '<span class="pick-label">工作间</span>' +
       '<div style="display:flex;flex-direction:column;gap:4px">' +
       wsRows.map(w => '<a class="rail-item" href="/docking.html?ws=' + encodeURIComponent(w.ws_id) + '">' +
-        esc(w.name || w.ws_id) + '（接入 ' + (w.docked||0) + '/' + (w.member_count||0) + '）</a>').join('') +
+        '<span class="ri-name">' + esc(w.name || w.ws_id) + '</span>' +
+        '<span class="ri-sub">' + esc(w.status || '') + ' · 接入 ' + (w.docked||0) + '/' + (w.member_count||0) +
+        ((w.pending||0) ? ' · 待接 ' + w.pending : '') +
+        ((w.offline||0) ? ' · <b class="ri-bad">掉线 ' + w.offline + '</b>' : '') +
+        '</span></a>').join('') +
       '</div>';
-    rail.innerHTML = wsRows.map(w =>
-      '<li>' + esc(w.name || w.ws_id) + '　<span class="rail-sub">' + esc(w.status||'') + '</span><br>' +
-      '<span class="rail-sub">接入 ' + (w.docked||0) + ' · 待接 ' + (w.pending||0) +
-      ' · 停用 ' + (w.retired||0) + ' · 掉线 ' + (w.offline||0) + '</span></li>').join('');
+    rail.innerHTML = '';               // 不再重复列一遍状态（合并进上面）
   } else {
     pick.innerHTML = '';               // 单间：**没有选择器**（不许越权操作别的间）
     const w = wsRows[0];
