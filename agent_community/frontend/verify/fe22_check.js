@@ -119,7 +119,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       if (!specTxt.includes(nm)) fail.push('② user 字段 ' + nm + ' 未渲染（应来自接口）');
     });
 
-    /* ③ wake 表单（POST 打桩） */
+    /* ③ wake 表单：原「写入成功流」随 2026-10-17 只读镜像裁定退役。
+       新判据不放宽：点击后必须**如实显示只读拒绝**；不许出现「已写入包装脚本」。 */
     const wakeSel = await page.evaluate(() => {
       const sel=document.getElementById('bkWakeHid');
       return sel ? { opts:[...sel.options].map(o=>o.value) } : null;
@@ -129,14 +130,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       await page.selectOption('#bkWakeHid', HID);
       await page.fill('#bkWakeCmd', '我的agent --wake');
       await page.click('#bkWakeBtn');
-      await page.waitForFunction(() => /已写入包装脚本/.test((document.getElementById('bkWakeRes')||{}).innerText||''),
+      await page.waitForFunction(() => /只读镜像/.test((document.getElementById('bkWakeRes')||{}).innerText||''),
         null, { timeout: 10000 }).catch(() => {});
       const wr = await page.evaluate(() => (document.getElementById('bkWakeRes') || {}).innerText || '');
-      await shot('02_wake写入.png');
-      step('③ wake POST', { head: wr.slice(0, 200) });
-      if (!/已写入包装脚本/.test(wr)) fail.push('③ wake 写入未成功显示');
-      if (!/wake_示例Harness-A\.cmd/.test(wr)) fail.push('③ 未显示返回的 wrapper_path');
-      if (!/去自检确认/.test(wr)) fail.push('③ 缺去自检回跳');
+      await shot('02_wake只读拒绝.png');
+      step('③ wake 只读拒绝', { head: wr.slice(0, 200) });
+      if (!/只读镜像/.test(wr)) fail.push('③ wake 未如实显示只读拒绝');
+      if (/已写入包装脚本/.test(wr)) fail.push('③ 只读拒绝态出现「已写入包装脚本」（不许假装成功）');
     }
 
     /* ④ 清单 wake 列（真 GET） */
@@ -147,17 +147,17 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     step('④ wake 列', { hit: /📣/.test(listTxt) });
     if (!/📣/.test(listTxt)) fail.push('④ 清单缺 wake 列');
 
-    /* ⑤ 自检 no_reply 回跳锚 */
+    /* ⑤ 自检写入口：成功流已退役；判只读拒绝如实 */
     await page.selectOption('#scWs', ws);
     await sleep(600);
     await page.selectOption('#scMember', 'm0');
     await page.click('#scBtn');
-    await page.waitForFunction(() => /去配叫醒命令/.test((document.getElementById('scResult')||{}).innerText||''),
-      null, { timeout: 20000 }).catch(() => {});
+    await page.waitForFunction(() => /只读镜像/.test((document.getElementById('scResult')||{}).innerText||''),
+      null, { timeout: 15000 }).catch(() => {});
     const scTxt = await page.evaluate(() => (document.getElementById('scResult') || {}).innerText || '');
-    await shot('04_自检回跳.png');
-    step('⑤ 自检回跳', { hit: /去配叫醒命令/.test(scTxt) });
-    if (!/去配叫醒命令/.test(scTxt)) fail.push('⑤ no_reply 缺回跳锚');
+    await shot('04_自检只读拒绝.png');
+    step('⑤ 自检只读拒绝', { hit: /只读镜像/.test(scTxt) });
+    if (!/只读镜像/.test(scTxt)) fail.push('⑤ 自检未如实显示只读拒绝');
 
     /* ⑤b 反向：不得出现拼好引号的带空格 --trigger 模式 */
     const bodyTxt = await page.evaluate(() => document.body.innerText);

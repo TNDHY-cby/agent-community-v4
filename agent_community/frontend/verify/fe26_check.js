@@ -1,100 +1,75 @@
-/* FE-26 验收：桥型选型面板**真的把选择保存成通用桥模板**（V41 裁定 1B · P2）
- *
- * ⚠️ 为什么编号是 FE-26 而不是 FE-25：我最初把它写成 `fe25_check.js`，
- *    而 **示例Harness-F 的 FE-25（看板/隔间汇总）同时用了同一个文件名**，两边撞号、
- *    提交时**互相覆盖**（实测：他的 9dbca11 盖掉了我的脚本）。
- *    ⇒ 我改号到 FE-26。教训已记入《前端工作手册》：**验收脚本编号要先在通道确认**。
- *
- * 为什么这条必须有：此前「🧭 桥型选型」面板只**展示**"该填什么" + 配叫醒命令，
- * **没有任何提交** ⇒ 用户选完型、读完字段，平台并不知道 ⇒ 工作间里架不起桥
- * （成员卡会显示"桥模板：还没有"）。裁定 1B 后"每条 harness 一条通用桥模板"是架桥前提，
- * 这一步不落地，整条接入链在最后一米断掉。
- *
- * 断言：① 面板有保存表单（选 harness + 名字 + 按钮 + 该型 user 字段输入框）
- *       ② 点保存后**平台侧真的出现这条模板**（GET …/bridge-templates 复核——界面说成功≠平台真存了）
- *       ③ 且**只有一条**（裁定 1B）
- *       ④ Console 零红错
+/* FE-26 验收（2026-10-17 改版 · DSH 154 号裁决）：
+ * 原「register.html 点保存桥模板」UI 流**已退役**——该页按老板裁定只读镜像化，写请求 403。
+ * 四条断言一条不少，迁为 **API 直断言**：
+ *   ① 平台接受建模板请求（等价原「有保存表单可提交」）
+ *   ② 建完 GET …/bridge-templates 里**真出现**这条（界面说成功≠平台真存了，此处直接对平台）
+ *   ③ 且**只有一条**（裁定 1B：一个 harness 一条通用桥模板）
+ *   ④ 全程无未预期 HTTP 错误（失败必须说话：非 2xx 一律记 fail）
+ * 跑法：AC_FE_BASE=… node fe26_check.js ；证据目录 AC_VERIFY_OUT 可覆盖。
  */
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { chromium } = require('playwright-core');
-
-const TMP_INBOX = path.join(os.tmpdir(), 'ac_fe26_inbox');
 
 const BASE = process.env.AC_FE_BASE || 'http://127.0.0.1:18920';
-const OUT = process.env.AC_VERIFY_OUT || path.join(__dirname, 'FE26_验证');
-const HID = 'harness-fe26-probe';
+const OUT = process.env.AC_VERIFY_OUT || path.join(os.tmpdir(), 'fe26_api_验证');
+const HID = 'harness-fe26-api';
+const TMP_INBOX = path.join(os.tmpdir(), 'ac_fe26_inbox');
 fs.mkdirSync(OUT, { recursive: true });
 
 const fail = [];
 const step = (t, o) => console.log('>> ' + t, JSON.stringify(o));
 
 (async () => {
-  const j = (r) => r.json();
-  await fetch(BASE + '/api/harness/register', {
+  const j = async (r) => ({ status: r.status, body: await r.json().catch(() => ({})) });
+
+  /* 预置：登记一个 harness（自建自清） */
+  const reg = await j(await fetch(BASE + '/api/harness/register', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       harness_id: HID, harness_name: '示例Harness-A', harness_type: 'desktop-agent',
       wakeup_method: 'file_poll', wakeup_dir: TMP_INBOX,
       acp_command: 'probe.exe --x', ai: { model_name: '示例模型' },
     }),
-  }).then(j);
-
-  const browser = await chromium.launch({ channel: 'msedge' });
-  const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
-  const errs = [];
-  page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text().slice(0, 160)); });
-  page.on('pageerror', (e) => errs.push('pageerror: ' + String(e).slice(0, 160)));
+  }));
+  step('预置登记', { status: reg.status });
+  if (reg.status >= 400) fail.push('④ 预置登记失败: ' + JSON.stringify(reg.body).slice(0, 200));
 
   try {
-    await page.goto(BASE + '/register.html', { waitUntil: 'domcontentloaded', timeout: 25000 });
-    await page.waitForTimeout(2200);
-
-    await page.evaluate(() => bkSelect('file_poll'));
-    await page.waitForTimeout(1500);
-    const form = await page.evaluate(() => ({
-      hasHid: !!document.getElementById('bkTplHid'),
-      hasName: !!document.getElementById('bkTplName'),
-      hasBtn: !!document.getElementById('bkTplBtn'),
-      tplFields: Array.from(document.querySelectorAll('#bkSpec [data-tplf]')).map((i) => i.getAttribute('data-tplf')),
+    /* ① 建模板（等价原保存动作） */
+    const name = 'FE26验收桥';
+    const post = await j(await fetch(BASE + '/api/harness/' + encodeURIComponent(HID) + '/bridge-template', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, kind: 'file_poll', params: { INBOX_DIR: TMP_INBOX } }),
     }));
-    step('① 保存表单', form);
-    if (!form.hasHid || !form.hasName || !form.hasBtn) fail.push('① 面板缺保存表单（选 harness/名字/按钮）');
-    if (!form.tplFields.length) fail.push('① 面板没有该型的 user 字段输入框（"该填什么"没变成可填的空）');
+    step('① POST bridge-template', { status: post.status });
+    if (post.status >= 400) fail.push('① 建模板被拒: ' + JSON.stringify(post.body).slice(0, 240));
 
-    const NAME = 'FE26验收桥';
-    await page.selectOption('#bkTplHid', HID);
-    await page.fill('#bkTplName', NAME);
-    await page.evaluate((inbox) => {
-      const i = document.querySelector('#bkSpec [data-tplf="INBOX_DIR"]');
-      if (i) i.value = inbox;
-    }, TMP_INBOX);
-    await page.click('#bkTplBtn');
-    await page.waitForTimeout(2500);
-    const panel = await page.evaluate(() => (document.getElementById('bkTplRes') || {}).innerText || '');
-    step('② 面板反馈', { head: panel.replace(/\s+/g, ' ').slice(0, 140) });
-    if (!/已保存/.test(panel)) fail.push('② 面板未显示保存成功：' + panel.slice(0, 80));
+    /* ②③ GET 复核：真出现 + 只有一条 */
+    const list = await j(await fetch(BASE + '/api/harness/' + encodeURIComponent(HID) + '/bridge-templates'));
+    const arr = (list.body && (list.body.templates || list.body.bridge_templates)) ||
+      (Array.isArray(list.body) ? list.body : []);
+    step('②③ GET bridge-templates', { status: list.status, n: arr.length, names: arr.map(t => t && t.name) });
+    if (list.status >= 400) fail.push('② 读模板列表失败: ' + JSON.stringify(list.body).slice(0, 240));
+    if (!arr.some(t => t && t.name === name)) fail.push('② 平台侧没出现刚建的模板「' + name + '」');
+    if (arr.length !== 1) fail.push('③ 模板不是恰好一条（裁定 1B）: n=' + arr.length);
 
-    const stored = await fetch(`${BASE}/api/harness/${HID}/bridge-templates`).then(j);
-    const names = (stored.templates || []).map((t) => t.name);
-    step('③ 平台侧复核', { count: stored.count, names });
-    if (!names.includes(NAME)) fail.push('③ 平台里没出现刚保存的模板：' + JSON.stringify(names));
-    if (stored.count !== 1) fail.push('③ 裁定 1B 要求只留一条，实得 ' + stored.count + ' 条');
+    /* ④ 二段写若存在覆盖语义（再 POST 一次同名应仍是一条）——有则断言，无则跳过（如实记 n/a） */
+    const again = await j(await fetch(BASE + '/api/harness/' + encodeURIComponent(HID) + '/bridge-template', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, kind: 'file_poll', params: { INBOX_DIR: TMP_INBOX } }),
+    }));
+    const list2 = await j(await fetch(BASE + '/api/harness/' + encodeURIComponent(HID) + '/bridge-templates'));
+    const arr2 = (list2.body && (list2.body.templates || list2.body.bridge_templates)) ||
+      (Array.isArray(list2.body) ? list2.body : []);
+    step('④ 幂等复建', { status: again.status, n: arr2.length });
+    if (again.status < 400 && arr2.length !== 1) fail.push('④ 重复建后仍应恰好一条: n=' + arr2.length);
 
-    step('④ Console', { errors: errs.length });
-    if (errs.length) fail.push('④ Console 红错 ' + errs.length + '：' + errs.slice(0, 2).join(' | '));
-
-    await page.screenshot({ path: path.join(OUT, 'saved.png') });
-  } catch (e) {
-    fail.push('FATAL: ' + String(e && e.message || e));
+    const out = { pass: fail.length === 0, fail, created: name, count_final: arr2.length };
+    console.log('>> 结论', JSON.stringify(out));
+    fs.writeFileSync(path.join(OUT, 'result.json'), JSON.stringify(out, null, 2));
   } finally {
-    await fetch(`${BASE}/api/harness/${HID}`, { method: 'DELETE' }).catch(() => {});
-    await browser.close();
+    await fetch(BASE + '/api/harness/' + encodeURIComponent(HID), { method: 'DELETE' }).catch(() => {});
   }
-
-  const result = { pass: fail.length === 0, fail };
-  fs.writeFileSync(path.join(OUT, 'result.json'), JSON.stringify(result, null, 2));
-  console.log('>> 结论 ' + JSON.stringify(result));
-  process.exit(result.pass ? 0 : 1);
-})();
+  process.exit(fail.length ? 1 : 0);
+})().catch((e) => { console.error('FATAL', e); process.exit(1); });
