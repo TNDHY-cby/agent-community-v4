@@ -4,6 +4,54 @@
 
 # 4.8.26
 
+## [4.8.47] - 2026-10-17
+
+**V55 落地：信息搜索者与「防信息污染」——搜索由 agent 做，平台只做校验/收敛/限量分发**
+
+老板口径（2026-10-17）：先否掉"把 UI 绑进 DSH 网页版"，然后「**依旧是 agent 去搜索吧**」，
+再以「**最优解**」拍板本稿三点（要这层卡 / 自评+平台压上限 / 卡片进现有资源列表）。
+
+### 做法：信息卡＝资源库的 `kind="evidence"`（**不新造表**，复用 `ws.resources`）
+
+| 件 | 落点 |
+|---|---|
+| 内核（纯函数） | `agent_community/platform/evidence.py`：`validate` / `grade_sources` / `effective_confidence` / `merge_duplicates` / `render_summary` / `summary_has_quotes` / `search_instruction` |
+| 端点 | `routers/workshops_evidence.py`：`POST …/search-request`（委派检索）、`POST …/evidence`（交卡）、`GET …/evidence`（默认只给摘要） |
+| 聚合 | `routers/workshops.py` 追加一个 `routes.extend`（保持自省可见） |
+| 守卫 | `tests/test_evidence.py` **23 条**；端到端 `temp/smoke_evidence_http.py` |
+
+### 硬约束（防污染第一道闸，超了**拒收并说清怎么改**）
+
+`sources` ≥1 且每条必须 `url`+`quote`；`quote ≤200` 字；整卡 `≤1200` 字；标题 `≤60`、结论 `≤120`；
+`as_of`（时效）与 `limits`（没覆盖什么）**必填**。不合规 ⇒ **422 + `problems` 逐条列出**（不是默默裁剪）。
+
+### 四条标注（只标，不改写内容）
+
+1. **去重归并**：同 host+同标题（或摘录高相似）⇒ 一个来源组，卡上写「N 家转载同一稿」；
+2. **冲突标记**：`contradicts:[rid]` ⇒ 两卡都 `disputed=true` **互链**（平台不判谁对）；
+3. **质量分档**：`primary/secondary/marketing/anon`；只有营销/无署名时 `confidence` **压到 low 并说明原因**；
+4. **限量再分发**：广播只发摘要（断言+来源组+置信+rid），**绝不含摘录原文**——谁要原文谁去 `GET …?full=1`。
+
+### 委派（平台不搜）
+
+`POST …/search-request` ⇒ 平台拼**给 agent 看的话术**（`evidence.search_instruction`，一处真相，纯文本无 markdown）：
+要答什么、必须覆盖什么、时限、**回报格式**（`POST /api/harness/task-result` 的 `result` 里那张卡的字段）、
+以及四条纪律（没来源的结论不许写 / 摘录只摘关键句 / 转载不算多证据 / 冲突要留着）。
+未绑 harness ⇒ **400 并说清**"没法委派"。
+
+### 判据（真跑）
+
+- 守卫 **23 passed**（含三条污染样例：转载归并 / 冲突互链 / 营销稿压档，以及"摘要里漏原文"检测）；
+- 端到端（独立实例 + 真 HTTP，端口 11147 / 临时数据目录）**7/7 全过**：
+  合规卡 200 且广播无原文 / 不合规 422 带 problems / 3 家转载 `source_groups=1` / 冲突互链 /
+  营销稿 high→low 带原因 / GET 默认无摘录、`full=1` 有 / 委派未绑 400、已绑 200 且话术含回报格式；
+- 双平台真跑见发布记录。
+
+### 实施期发现的一条真口径
+
+`POST /api/workshop` 会把成员 id 生成成 **`m0/m1…`**（传入的 `member_id` 被忽略）⇒ 委派要用返回后的真实 id。
+已写进 V55 §9，避免下次又踩。
+
 ## [4.8.46] - 2026-10-17
 
 **口径更正：步骤 9「更新视觉脚本」**已闭环**（V51 早已落地，模型文档的"部分/未做"是过期口径）**
