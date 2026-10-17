@@ -230,3 +230,17 @@ def test_frontend_files_use_lf_endings():
         if b"\r\n" in raw:
             bad.append("%s（CRLF %d 处）" % (name, raw.count(b"\r\n")))
     assert not bad, "这些前端文件不是 LF 行尾：%s" % bad
+
+
+def test_gitattributes_pins_frontend_lf():
+    """`.gitattributes` 必须钉 `agent_community/frontend/** text eol=lf`。
+
+    为什么（MiMo 通道 137 号）：LF 守卫只能证明"**现在盘上**是 LF"；
+    但任何 Windows 克隆（`core.autocrlf=true`）**检出就是 CRLF** ⇒ 守卫在其开发机上永远红，
+    只能人肉转。钉进 `.gitattributes` 才是根治：提交里存 LF、检出也是 LF，与 Linux 行为一致。
+    """
+    ga = _ROOT / ".gitattributes"
+    assert ga.exists(), ".gitattributes 不见了"
+    text = ga.read_text(encoding="utf-8", errors="replace")
+    assert "agent_community/frontend/** text eol=lf" in text, \
+        ".gitattributes 没钉前端 LF（Windows 克隆会检出 CRLF，LF 守卫在开发机上永远红）"

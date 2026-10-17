@@ -4,6 +4,42 @@
 
 # 4.8.26
 
+## [4.8.44] - 2026-10-17
+
+**根治行尾问题：`.gitattributes` 钉死「前端一律 LF」（MiMo 通道 137 号提的，采纳）**
+
+### 为什么这次要改属性而不是继续人肉转
+
+v4.8.43 我加了 LF 守卫，但它只能证明"**当下盘上**是 LF"：
+**任何 Windows 克隆（`core.autocrlf=true`）检出前端就是 CRLF** ⇒ 这条守卫在 Windows 开发机上
+**永远红**，只能靠人肉转（MiMo 自己就遇到：它那台 `autocrlf=true`，37 个前端文件检出即 CRLF）。
+
+⇒ 根治点在属性文件：
+
+```
+agent_community/frontend/** text eol=lf
+```
+
+提交里存 LF、**检出也是 LF**，与 Linux/裸机行为一致；行尾不一致导致的"整文件重写假 diff"
+（2026-10-17 我自己踩过：414 行噪音）也一并消失。
+
+### 实证（真跑，三样）
+
+1. `git check-attr text eol -- agent_community/frontend/docking.html` ⇒ `text: set` / **`eol: lf`**；
+2. **模拟 Windows 克隆**：把 oss 的 `core.autocrlf` 设成 **true** 并强制重新检出前端
+   ⇒ `docking.html` 仍 **12811 字节 / CRLF=0**（属性生效）；切回 `false` 同样 LF；
+3. 行尾守卫（`test_frontend_files_use_lf_endings`）在两种设置下都过。
+
+### 守卫升级
+
+新增 `test_frontend_handover.py::test_gitattributes_pins_frontend_lf`：
+`.gitattributes` 里**必须有**那条规则 —— 否则"守卫绿/红"取决于谁在什么机器上克隆，判据失效。
+
+### 判据
+
+- `test_frontend_handover.py` **11 passed**；预检 20/0/2；`check_portability` fail=0；
+- 双平台真跑见发布记录；18920 切到本版后 `docking.html` 12811 字节（LF）与仓库一致。
+
 ## [4.8.43] - 2026-10-17
 
 **把前端行尾统一为 LF（修我自己在 v4.8.42 引入的整文件重写）＋ 加行尾守卫**
