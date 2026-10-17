@@ -531,6 +531,36 @@ async def register_harness(request: Request):
         "action_scripts": _action_status,
     }
 
+@router.get("/api/harness/register-prompt")
+async def harness_register_prompt(request: Request):
+    """**登记前**的话术：把这段话贴给你的外端 AI，它自己注册（V54，老板 2026-10-17 拍板）。
+
+    ★口径：**不同协议 → 不同模板**（`acp` / `file_poll` / `http_api` / `http` / `clipboard` / `mcp`），
+    步数/桥型/边界全部取自 `platform/interface_guidance`（唯一真相），本端点只做拼装。
+    不传 `wakeup_method` ⇒ 返回"先自测四项"的通用版（含六种对照），**平台不替你猜**。
+
+    query：`wakeup_method`（可省）/ `harness_id`（可省，仅用于示例里的占位）/ `format=text|json`
+    """
+    from ..register_prompt import build
+    from ..server import Utf8JSONResponse
+    from .workshops_common import _platform_base_url_safe
+    try:
+        base = _platform_base_url_safe()
+    except Exception:  # noqa: BLE001
+        base = ""
+    wake = request.query_params.get("wakeup_method", "")
+    hid = request.query_params.get("harness_id", "")
+    fmt = (request.query_params.get("format") or "text").strip().lower()
+    out = build(wake, platform_url=base, harness_id=hid, fmt=fmt)
+    if fmt == "json":
+        return out
+    return Utf8JSONResponse({"prompt": out["prompt"], "wakeup_method": out["wakeup_method"],
+                             "known_protocol": out["known_protocol"],
+                             "platform_url": out["platform_url"],
+                             "supported_protocols": out["supported_protocols"],
+                             "note": out["note"]})
+
+
 @router.get("/api/harness/{harness_id}/action-scripts")
 async def harness_action_scripts(harness_id: str):
     """**给界面用**：这个 harness 的哪些流程步骤**能自动**、哪些**只能人工**（V26 §5 第 3 条）。
