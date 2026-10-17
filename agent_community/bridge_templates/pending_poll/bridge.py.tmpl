@@ -15,6 +15,13 @@
 5. 回报文件格式：
    激活回报: {"type":"activation","workshop_id":"...","member_id":"...","status":"entered"}
    任务回报: {"type":"task","workshop_id":"...","member_id":"...","ok":true,"result":"我完成了..."}
+   ★可选（V52 辩论模式：**只在该工作间开了辩论模式时才需要**，默认关；不带这些键也完全正常）：
+   任务回报里**再加三个顶层键**即可让这条回报自动进辩论池（本桥**原样透传**，不解析、不改写）：
+     "claim":       "一句话结论"          （只有带了这个键，平台才当这是一条陈述）
+     "evidence":    [{"kind":"file","ref":"…","verified":true}, …]   （可省 ⇒ 权重 0，但发言不丢）
+     "reasoning":   "这些证据为什么支持这个结论"                      （可省）
+   证据项里的 kind 是自由文本（url/doc/tool/file/commit…）；`ref` 要能当**来源身份**用。
+   完整契约见平台 `GET /api/protocol-brief` → `how_to_behave.debate_statements`（含可照抄的示例）。
 
 用法:
     python bridge.py --url <平台地址，如 http://127.0.0.1:你的端口>
