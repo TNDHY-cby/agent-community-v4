@@ -80,7 +80,7 @@ function dockRender(d){
   const pick = document.getElementById('wsPickerWrap');
   const rail = document.getElementById('railList');
   if (DOCK_GLOBAL){
-    pick.innerHTML = '<div style="font-size:11px;color:var(--dk-dim);margin-bottom:4px">按工作间收窄</div>' +
+    pick.innerHTML = '<span class="pick-label">按工作间收窄</span>' +
       '<div style="display:flex;flex-direction:column;gap:4px">' +
       wsRows.map(w => '<a class="rail-item" href="/docking.html?ws=' + encodeURIComponent(w.ws_id) + '">' +
         esc(w.name || w.ws_id) + '（接入 ' + (w.docked||0) + '/' + (w.member_count||0) + '）</a>').join('') +
@@ -111,6 +111,8 @@ function dockRender(d){
   }
 
   let html = '';
+  html += '<div class="dock-section-head">已登记员工 <span class="n">' + hs.length + '</span>' +
+    (dang.length ? ' · ⚠ 悬空 ' + dang.length : '') + '</div>';
   if (dang.length){
     html += '<div class="card"><h3>⚠ 悬空引用（成员指向了未登记的员工）</h3>' +
       '<p class="lead">这些 harness_id 被工作间成员引用了，但**已不在登记表里**（注销 / 改名 / 手改数据都可能造成）。' +

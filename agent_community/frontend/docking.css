@@ -24,6 +24,29 @@ body.app-bg-dock{
   letter-spacing:-.011em;
 }
 
+/* ── 版面中心：主舞台收窄居中，满屏块变成有重心的版面 ─────────────── */
+body.app-bg-dock .stage{max-width:1180px;margin:0 auto;width:100%}
+
+/* ── 左轨：工作间链接与状态列表的正式样式（此前是浏览器默认蓝链）──── */
+body.app-bg-dock #wsPickerWrap{padding:10px 12px 6px}
+body.app-bg-dock #wsPickerWrap .pick-label{display:block;font-size:10px;font-weight:800;
+  letter-spacing:.14em;color:var(--dk-dim);margin-bottom:6px}
+body.app-bg-dock #wsPickerWrap a.rail-item{display:block;padding:8px 10px;border:1px solid var(--dk-line);
+  background:#FFFFFF;color:var(--dk-ink);text-decoration:none;font-size:12px;font-weight:600;margin-bottom:4px;
+  transition:border-color .15s,background .15s}
+body.app-bg-dock #wsPickerWrap a.rail-item:hover{border-color:var(--dk-glow);background:rgba(211,47,47,.05)}
+body.app-bg-dock .rail-list{margin-top:10px;border-top:1px solid var(--dk-line);padding-top:6px}
+body.app-bg-dock .rail-list li{padding:6px 2px;border-bottom:1px solid var(--dk-line);
+  font-size:12px;color:var(--dk-ink);font-weight:600;line-height:1.45}
+body.app-bg-dock .rail-list li:last-child{border-bottom:0}
+body.app-bg-dock .rail-list .rail-sub{display:block;font-size:10px;color:var(--dk-dim);font-weight:400}
+
+/* ── 分节标题：功能菜单与点名册之间立起层级 ─────────────────────── */
+.dock-section-head{display:flex;align-items:center;gap:10px;margin:18px 0 10px;
+  font-size:11px;font-weight:900;letter-spacing:.16em;color:var(--dk-dim)}
+.dock-section-head .n{color:var(--dk-glow);font-family:ui-monospace,Consolas,monospace}
+.dock-section-head:after{content:"";flex:1;height:1px;background:var(--dk-line)}
+
 /* ── 顶栏：米白 + 黑发丝线 ─────────────────────────────────────── */
 body.app-bg-dock .topbar{
   background:#F4F3F0;
@@ -74,7 +97,7 @@ body.app-bg-dock .btn.primary:hover{
   border-color:#B71C1C;background:#B71C1C}
 
 /* ── 第一屏：服务菜单（bento，核心模块占大格）────────────────────── */
-.dock-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0 18px}
+.dock-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0 8px}
 @media (max-width:1080px){.dock-tiles{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:620px){.dock-tiles{grid-template-columns:1fr}}
 .dock-tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;
@@ -96,7 +119,8 @@ body.app-bg-dock .btn.primary:hover{
   border-left:4px solid #D32F2F}
 .dock-tile.core:hover{border-color:#D32F2F;border-left-color:#B71C1C}
 @media (max-width:620px){.dock-tile.core{grid-column:span 1}}
-.dock-tiles-head{display:flex;align-items:baseline;gap:8px;margin:2px 0 0;font-size:13px;color:var(--dk-ink)}
+.dock-tiles-head{display:flex;align-items:baseline;gap:8px;margin:6px 0 0;font-size:15px;color:var(--dk-ink)}
+.dock-tiles-head b{font-weight:900;letter-spacing:.01em}
 .dock-tiles-head .sub{font-size:11px}
 
 /* ── 屏号容器（四屏）：红号牌 ─────────────────────────────────── */
