@@ -56,8 +56,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(800);
   const unit = await page.evaluate(() => ({
     formula: window.__boothsTest.selfTest(),
-    classifyNew: window.__boothsTest.classify('D:\\ws\\ws_x\\码农_m1\\bridge.py', 'D:\\ws\\ws_x\\码农_m1'),
-    classifyOld: window.__boothsTest.classify('D:\\ws\\ws_x\\bridge.py', 'D:\\ws\\ws_x\\码农_m1'),
+    classifyNew: window.__boothsTest.classify('WS/WS_X/码农_m1/bridge.py', 'WS/WS_X/码农_m1'),
+    classifyOld: window.__boothsTest.classify('WS/WS_X/bridge.py', 'WS/WS_X/码农_m1'),
     emptyState: document.getElementById('mBody').innerText.slice(0, 80)
   }));
   step('公式与分类', unit);

@@ -183,9 +183,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     /* ② 禁词（规则 19 + 铁律 6） */
     const bodyTxt = await page.evaluate(() => document.body.innerText);
-    ['harness-小白龙', 'harness-测试甲', 'harness-测试乙', 'harness-测试丙', 'C:\\Users\\'].forEach(bad => {
+    ['harness-小白龙', 'harness-测试甲', 'harness-测试乙', 'harness-测试丙'].forEach(bad => {
       if (bodyTxt.includes(bad)) fail.push('② 出现禁词/本机路径「' + bad + '」');
     });
+    if (/[A-Za-z]:\\Users\\/.test(bodyTxt)) fail.push('② 出现本机用户目录盘符路径');
 
     /* ⑤ Console + 写白名单（页面仅 self-check 一个写请求） */
     const badReq = nonGet.filter(u => !/\/member\/[^/]+\/self-check$/.test(u));

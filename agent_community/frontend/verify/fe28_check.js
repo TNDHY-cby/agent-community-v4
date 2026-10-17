@@ -1,9 +1,11 @@
 // FE-28: assert the copy experience is now ONE segment, and segments 2/3 are collapsed
 // reference (and still copyable while collapsed — textContent works on hidden nodes).
 const {chromium}=require('playwright-core');
+const path=require('path');
+const os=require('os');
 const BASE=process.env.AC_FE_BASE||'http://127.0.0.1:18933';
 const fs=require('fs');
-const OUT=process.env.AC_VERIFY_OUT||'D:\\Temp\\ac_fe28';
+const OUT=process.env.AC_VERIFY_OUT||path.join(os.tmpdir(),'ac_fe28');
 fs.mkdirSync(OUT,{recursive:true});
 
 (async()=>{

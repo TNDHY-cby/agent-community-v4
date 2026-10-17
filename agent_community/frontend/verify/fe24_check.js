@@ -195,9 +195,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     /* ⑥ 禁词 + 白名单 + Console */
     const bodyTxt = await page.evaluate(() => document.body.innerText);
-    ['harness-小白龙', 'harness-测试甲', 'C:\\Users\\'].forEach(bad => {
+    ['harness-小白龙', 'harness-测试甲'].forEach(bad => {
       if (bodyTxt.includes(bad)) fail.push('⑥ 禁词「' + bad + '」');
     });
+    if (/[A-Za-z]:\\Users\\/.test(bodyTxt)) fail.push('⑥ 出现本机用户目录盘符路径');
     const badReq = nonGet.filter(u =>
       !/\/harness\/[^/]+\/wake$/.test(u) &&
       !/\/api\/harness\/(pre-register|probe-register|auto-connect)$/.test(u));

@@ -164,9 +164,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     if (/--trigger\s+"/.test(bodyTxt)) fail.push('⑤b 出现拼好引号的 --trigger "…" 模式（105 §四-1 禁止）');
 
     /* ⑥ 禁词 + 白名单 + Console */
-    ['harness-小白龙', 'harness-测试甲', 'harness-测试乙', 'harness-测试丙', 'C:\\Users\\'].forEach(bad => {
+    ['harness-小白龙', 'harness-测试甲', 'harness-测试乙', 'harness-测试丙'].forEach(bad => {
       if (bodyTxt.includes(bad)) fail.push('⑥ 出现禁词/本机路径「' + bad + '」');
     });
+    if (/[A-Za-z]:\\Users\\/.test(bodyTxt)) fail.push('⑥ 出现本机用户目录盘符路径');
     const badReq = nonGet.filter(u =>
       !/\/member\/[^/]+\/self-check$/.test(u) && !/\/harness\/[^/]+\/wake$/.test(u));
     if (badReq.length) fail.push('非白名单写请求: ' + badReq.join(','));

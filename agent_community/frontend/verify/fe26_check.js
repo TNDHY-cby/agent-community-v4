@@ -17,7 +17,10 @@
  */
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { chromium } = require('playwright-core');
+
+const TMP_INBOX = path.join(os.tmpdir(), 'ac_fe26_inbox');
 
 const BASE = process.env.AC_FE_BASE || 'http://127.0.0.1:18920';
 const OUT = process.env.AC_VERIFY_OUT || path.join(__dirname, 'FE26_验证');
@@ -33,7 +36,7 @@ const step = (t, o) => console.log('>> ' + t, JSON.stringify(o));
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       harness_id: HID, harness_name: '示例Harness-A', harness_type: 'desktop-agent',
-      wakeup_method: 'file_poll', wakeup_dir: 'D:\\Temp\\ac_fe26_inbox',
+      wakeup_method: 'file_poll', wakeup_dir: TMP_INBOX,
       acp_command: 'probe.exe --x', ai: { model_name: '示例模型' },
     }),
   }).then(j);
@@ -63,10 +66,10 @@ const step = (t, o) => console.log('>> ' + t, JSON.stringify(o));
     const NAME = 'FE26验收桥';
     await page.selectOption('#bkTplHid', HID);
     await page.fill('#bkTplName', NAME);
-    await page.evaluate(() => {
+    await page.evaluate((inbox) => {
       const i = document.querySelector('#bkSpec [data-tplf="INBOX_DIR"]');
-      if (i) i.value = 'D:\\Temp\\ac_fe26_inbox';
-    });
+      if (i) i.value = inbox;
+    }, TMP_INBOX);
     await page.click('#bkTplBtn');
     await page.waitForTimeout(2500);
     const panel = await page.evaluate(() => (document.getElementById('bkTplRes') || {}).innerText || '');

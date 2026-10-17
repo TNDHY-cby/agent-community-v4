@@ -183,9 +183,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       if (!vp[name]) fail.push(name + ' 横向破版');
     }
     const bodyTxt = await page.evaluate(() => document.body.innerText);
-    ['harness-小白龙', 'harness-测试甲', 'C:\\Users\\'].forEach(bad => {
+    ['harness-小白龙', 'harness-测试甲'].forEach(bad => {
       if (bodyTxt.includes(bad)) fail.push('禁词「' + bad + '」');
     });
+    if (/[A-Za-z]:\\Users\\/.test(bodyTxt)) fail.push('出现本机用户目录盘符路径');
     const badReq = nonGet.filter(u =>
       !/\/api\/workshop\/[^/]+\/(members|discuss|select-members|confirm-members)$/.test(u));
     if (badReq.length) fail.push('非白名单写请求: ' + badReq.join(','));
