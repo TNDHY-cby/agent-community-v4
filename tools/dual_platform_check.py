@@ -36,6 +36,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -112,6 +113,51 @@ def to_wsl_path(p: Path) -> str:
     s = str(p).replace("\\", "/")
     m = re.match(r"^([A-Za-z]):/(.*)$", s)
     return "/mnt/%s/%s" % (m.group(1).lower(), m.group(2)) if m else s
+
+
+def _log_dir() -> Path:
+    """判据日志落盘目录（**不进仓库**：默认系统临时目录，可用 `AC_GATE_LOGS` 覆盖）。"""
+    d = Path(os.environ.get("AC_GATE_LOGS") or (Path(tempfile.gettempdir()) / "ac_gate_logs"))
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _save_log(name: str, text: str) -> Path:
+    p = _log_dir() / name
+    try:
+        p.write_text(text or "", encoding="utf-8")
+    except OSError:
+        pass
+    return p
+
+
+def failed_cases(text: str, limit: int = 12) -> list:
+    """从 pytest 输出里抓失败的**用例名**（红的时候要能一眼看到是哪条，别只留"有侧红"）。"""
+    out = []
+    for ln in (text or "").splitlines():
+        s = ln.strip()
+        if s.startswith("FAILED ") or s.startswith("ERROR "):
+            out.append(s[:160])
+        elif s.startswith("E   ") and len(out) < limit and out and not out[-1].startswith("E "):
+            out[-1] = (out[-1] + "  ← " + s[4:].strip()[:120])[:240]
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _report(name: str, rc: int, out: str) -> None:
+    """落盘 + 红时打印失败用例名（不看源码文本，只看真跑输出）。"""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    p = _save_log("%s-%s.log" % (name, stamp), out)
+    print("           日志：%s" % p)
+    if rc != 0:
+        bad = failed_cases(out)
+        if bad:
+            print("           失败用例（%d 条，最多列 12）：" % len(bad))
+            for b in bad:
+                print("             %s" % b)
+        else:
+            print("           ⚠️ 输出里没抓到 FAILED/ERROR 行 —— 可能是收集期错误或环境问题（看日志）")
 
 
 def run_local(junit: Path, targets=None) -> tuple:
@@ -260,6 +306,7 @@ def main() -> int:
     polluted = _pollution_diff(poll_before, poll_after)
     c_local = counts_from_junit(local_junit) or counts(out_local)
     print("[本机侧 %s] exit=%s %s" % (host, rc_local, c_local or out_local.strip()[-200:]))
+    _report("windows", rc_local, out_local)      # 落盘 + 红时打印失败用例名（2026-10-17 加）
     if polluted:
         print("[仓库污染] ★跑用例往仓库里写了运行数据（%d 处）：" % len(polluted))
         for p in polluted[:6]:
@@ -293,6 +340,7 @@ def main() -> int:
     rc_linux, out_linux = run_linux(distro, linux_python, linux_junit.name)
     c_linux = counts(out_linux)
     print("[另一侧 Linux/WSL:%s] exit=%s %s" % (distro, rc_linux, c_linux or out_linux.strip()[-300:]))
+    _report("linux", rc_linux, out_linux)        # 落盘 + 红时打印失败用例名
     for line in out_linux.splitlines():
         if "缺依赖" in line or "'D:*'" in line or "D:\\" in line:
             print("   " + line.strip())
@@ -300,6 +348,7 @@ def main() -> int:
     print("-" * 74)
     if rc_local != 0 or rc_linux != 0:
         print("结论：**有侧红** ⇒ 不算通过（先修红的那侧）")
+        print("　　　　排查：日志在 %s（红的时候上面已列失败用例名）" % _log_dir())
         print("=" * 74)
         return 1
     print("结论：**两侧都真跑且全绿** ⇒ 通过（Windows %s / Linux %s）"
