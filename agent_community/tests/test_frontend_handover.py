@@ -97,6 +97,23 @@ def test_checker_reports_every_item_with_a_reason():
     assert "PASS" in out and ("FAIL" in out or "待人工" in out), "报告没有分档结论"
 
 
+def test_walkthrough_tool_is_published():
+    """★前端手感走查工具必须在**发布面**（`tools/`），不能只在开发机的 `temp/`。
+
+    2026-10-17 实事故（MiMo 在通道 114 号如实报的）：7 条手感项走查工具
+    `temp/p6_acceptance.py` **只存在于开发机** ⇒ 拿到仓库的人根本跑不了，
+    正是「只在我这台机器成立」那类缺陷（老板最恨的私人定制）。
+    """
+    tool = _ROOT / "tools" / "p6_acceptance.py"
+    assert tool.exists(), "走查工具不在发布面：tools/p6_acceptance.py 缺失"
+    text = tool.read_text(encoding="utf-8")
+    assert "M1" in text and "M7" in text, "工具里要真有那 7 条（M1~M7）"
+    assert "temp/_p6_run" not in text, "运行数据不许写进仓库（应用系统临时目录）"
+    for rel in ("design-docs/前端工作手册.md", "外包交接_前端界面/验收清单.md"):
+        doc = (_ROOT / rel).read_text(encoding="utf-8", errors="replace")
+        assert "temp/p6_acceptance.py" not in doc, "%s 里还指着 temp/（应是 tools/）" % rel
+
+
 def test_live_page_meets_the_contract():
     """★★**从这一版起，对外预检就是 CI 里的硬判据**（前端已落地 v4.8.26，判据不再只是"给外包方看的"）。
 
