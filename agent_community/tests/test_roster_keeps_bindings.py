@@ -29,7 +29,7 @@ import json
 import pytest
 
 
-def _mk_ws(hid: str = "h1", status: str = "running"):
+def _mk_ws(hid: str = "h1", status: str = "running", ws_dir: str = ""):
     from agent_community.platform.workshop import Workshop, WorkshopMember
 
     m = WorkshopMember(member_id="m0", role="码农", display_name="老张", harness_ids=[hid])
@@ -45,7 +45,10 @@ def _mk_ws(hid: str = "h1", status: str = "running"):
     m.channel_seq = 3
     m.channel_state = "open"
     m.session = "ws-项目-码农-m0"
-    ws = Workshop(workshop_id="ws1", name="测试间", workspace_dir="", hall_content="",
+    # ⚠️ `workspace_dir` 必须给**真目录**（测试里给 tmp_path）：留空/相对路径时，
+    #   平台会把共享资料库写到**仓库根 `library/`**（2026-10-12 与 2026-10-17 各踩一次；
+    #   `dual_platform_check` 现在会拿"跑用例前后的运行数据快照"抓这件事）。
+    ws = Workshop(workshop_id="ws1", name="测试间", workspace_dir=ws_dir, hall_content="",
                   members=[m])
     ws.status = status
     return ws, m
@@ -61,12 +64,12 @@ class _Req:
         return self._body
 
 
-def test_editing_roster_keeps_bridge_and_session_bindings(monkeypatch):
+def test_editing_roster_keeps_bridge_and_session_bindings(monkeypatch, tmp_path):
     """★核心：同一个 harness、只改了角色的成员，必须**保住桥/会话绑定**。"""
     from agent_community.platform import state as st
     from agent_community.platform.routers import workshops_assign as wa
 
-    ws, old_m = _mk_ws("h1")
+    ws, old_m = _mk_ws("h1", ws_dir=str(tmp_path / "ws1"))
     st.workshops["ws1"] = ws
     monkeypatch.setattr(wa, "save_state", lambda: None, raising=False)
     # 别真的去激活/清扫
@@ -91,12 +94,12 @@ def test_editing_roster_keeps_bridge_and_session_bindings(monkeypatch):
     assert m.member_id == "m0", "同一成员的 member_id 不该被重排"
 
 
-def test_new_member_still_gets_activated(monkeypatch):
+def test_new_member_still_gets_activated(monkeypatch, tmp_path):
     """反向：**新增**成员这条路不能被改坏（仍要激活）。"""
     from agent_community.platform import state as st
     from agent_community.platform.routers import workshops_assign as wa
 
-    ws, _ = _mk_ws("h1")
+    ws, _ = _mk_ws("h1", ws_dir=str(tmp_path / "ws1"))
     st.workshops["ws1"] = ws
     monkeypatch.setattr(wa, "save_state", lambda: None, raising=False)
     # ⚠️ _activate_single 是在函数体内 rom ..server import ... 进来的

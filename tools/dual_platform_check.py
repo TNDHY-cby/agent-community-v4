@@ -155,6 +155,37 @@ def run_linux(distro: str, linux_python: str, junit_name: str) -> tuple:
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 
+def _snapshot_repo_runtime() -> dict:
+    """给"**运行数据目录**"拍快照：仓库根的 `library/` / `data/` / `agent_community/data/`。
+
+    这几处是平台运行期会写的（工作间共享资料库、状态与日志）。它们被 `.gitignore` 排除，
+    所以 `git status` 看不出污染 —— **必须自己拍快照**才抓得到"测试往仓库里写东西"。
+    """
+    snap = {}
+    for rel in ("library", "data", Path("agent_community") / "data", "runtime_logs"):
+        base = ROOT / rel
+        if not base.exists():
+            continue
+        for p in base.rglob("*"):
+            try:
+                st = p.stat()
+                snap[str(p.relative_to(ROOT))] = (st.st_mtime_ns, st.st_size)
+            except OSError:
+                continue
+    return snap
+
+
+def _pollution_diff(before: dict, after: dict) -> list:
+    """跑完用例后新增/改动的运行数据（按真文件判，不查源码文本）。"""
+    out = []
+    for path, sig in after.items():
+        if path not in before:
+            out.append("%s（新增）" % path)
+        elif before[path] != sig:
+            out.append("%s（被改写）" % path)
+    return out
+
+
 def counts(text: str) -> dict:
     """从**文本**里抓计数（Linux 侧运行器会打这一行）。"""
     m = re.search(r"tests=(\d+) failures=(\d+) errors=(\d+) skipped=(\d+)", text)
@@ -219,9 +250,22 @@ def main() -> int:
 
     print("=" * 74)
     print("双平台真跑（CI 替代口径）—— 本机 %s" % host)
+    # ★2026-10-17 新增：**跑用例前后给"仓库里的运行数据"拍快照**
+    #   起因：`test_roster_keeps_bindings` 用 `workspace_dir=""`，于是平台把共享资料库写到
+    #   **仓库根 `library/`**（`.gitignore` 里 2026-10-12 就记过一次，是同一个坑）。
+    #   `.gitignore` 只是不让它进库；**"测试往仓库里写运行数据"本身要被抓出来**。
+    poll_before = _snapshot_repo_runtime()
     rc_local, out_local = run_local(local_junit, targets)
+    poll_after = _snapshot_repo_runtime()
+    polluted = _pollution_diff(poll_before, poll_after)
     c_local = counts_from_junit(local_junit) or counts(out_local)
     print("[本机侧 %s] exit=%s %s" % (host, rc_local, c_local or out_local.strip()[-200:]))
+    if polluted:
+        print("[仓库污染] ★跑用例往仓库里写了运行数据（%d 处）：" % len(polluted))
+        for p in polluted[:6]:
+            print("            %s" % p)
+        print("            ⇒ 判据红：测试必须把工作区放到 tmp（`workspace_dir` 别留空/相对路径）")
+        rc_local = 1
 
     if a.local_only:
         print("（--local-only：另一侧没跑 ⇒ 结论＝**部分**，不算通过）")
