@@ -2,15 +2,15 @@
    风格锚点：航天任务控制台 × 产品暗色工作台
    色板：产品 DNA（三级灰 + 赤陶）+ 纸感米白（文档/凭据专用锚点） */
 :root{
-  --bg:#F4F3F0; --bg2:#FAFAF8; --bg3:#FFFFFF; --bg4:#E8E7E3; --bg5:#D6D5D0;
-  --ink:#141414; --muted:#5A5A58; --dim:#8C8C8A; --rule:#CFCFCA;
-  --accent:#D32F2F; --accent-soft:rgba(211,47,47,.08); --accent-strong:#B71C1C;
-  --green:#2E6B4F; --green-soft:rgba(46,107,79,.09);
-  --yellow:#8A6A1F; --yellow-soft:rgba(138,106,31,.10);
-  --red:#D32F2F; --red-soft:rgba(211,47,47,.08);
-  --blue:#2A5A8C; --blue-soft:rgba(42,90,140,.10);
-  --cyan:#2A6B6B; --cyan-soft:rgba(42,107,107,.10);
-  --purple:#5E4A7A; --purple-soft:rgba(94,74,122,.10);
+  --bg:#0F0E0C; --bg2:#161513; --bg3:#1C1A18; --bg4:#242220; --bg5:#2F2C29;
+  --ink:#E8E4DB; --muted:#B3AEA5; --dim:#7E7971; --rule:#2E2B27;
+  --accent:#FF3527; --accent-soft:rgba(255,53,39,.08); --accent-strong:#FF6A5C;
+  --green:#86B394; --green-soft:rgba(134,179,148,.09);
+  --yellow:#D9AB53; --yellow-soft:rgba(217,171,83,.10);
+  --red:#FF3527; --red-soft:rgba(255,53,39,.08);
+  --blue:#2A5A8C; --blue-soft:rgba(123,163,201,.10);
+  --cyan:#2A6B6B; --cyan-soft:rgba(100,181,180,.10);
+  --purple:#5E4A7A; --purple-soft:rgba(160,140,192,.10);
   --paper:#ece5d8; --paper-ink:#2b2519;
   --mono:"JetBrains Mono","Cascadia Code",Consolas,monospace;
 }
@@ -118,8 +118,8 @@ code{background:var(--bg3);border:1px solid var(--rule);border-radius:6px;paddin
 /* ===== verified 色带演示 ===== */
 .band{display:flex;gap:0;border-radius:10px;overflow:hidden;border:1px solid var(--rule)}
 .band > div{flex:1;padding:12px 14px;font-size:12px;line-height:1.6}
-.band .b-ok{background:rgba(46,107,79,.09);border-right:1px solid var(--rule)}
-.band .b-no{background:rgba(138,106,31,.10);border-right:1px solid var(--rule)}
+.band .b-ok{background:rgba(134,179,148,.09);border-right:1px solid var(--rule)}
+.band .b-no{background:rgba(217,171,83,.10);border-right:1px solid var(--rule)}
 .band .b-idle{background:var(--bg3)}
 .band b{display:block;font-size:12.5px;margin-bottom:3px}
 .band .b-ok b{color:var(--green)} .band .b-no b{color:var(--yellow)} .band .b-idle b{color:var(--muted)}
@@ -175,7 +175,7 @@ code{background:var(--bg3);border:1px solid var(--rule);border-radius:6px;paddin
 
 
 /* ===== quality floor（web-design-guidelines 合规补丁） ===== */
-html{color-scheme:light;-webkit-tap-highlight-color:rgba(217,119,87,.25)}
+html{color-scheme:dark;-webkit-tap-highlight-color:rgba(217,119,87,.25)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .btn,.rail-btn,.rail-any,.mini,.live-links a,.rail-btn{touch-action:manipulation}
 .stage-head h1{text-wrap:balance}

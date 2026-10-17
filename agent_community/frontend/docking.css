@@ -1,25 +1,25 @@
 /* docking.css —— 对接中心前台（仅本页加载；不修改 hub.css 文件，只在同特异性下覆盖本页表现）
- * 方向：瑞士国际主义（Swiss International）—— 米白画布、纯黑字、瑞士红点缀、
- * 直角、发丝线、无玻璃拟态/无渐变/无霓虹。与 hub.css 的新 token（#F4F3F0/#141414/#D32F2F）同源。
- * 动效尊重 prefers-reduced-motion（仅保留短位移/描边过渡）。
+ * 方向：暗黑机甲（2026-10-17 老板拍板回退）—— 近黑画布 + 骨白字 + 鲜红点缀 +
+ * 直角 + 装甲角标 + 危险条纹 + UNIT 编号；结构保留瑞士期的弹窗/顺序/左轨合并。
+ * 动效尊重 prefers-reduced-motion（仅短位移/描边）。
  */
 :root{
-  --dk-ink:#141414;
-  --dk-dim:#5A5A58;
-  --dk-dim2:#8C8C8A;
-  --dk-line:rgba(20,20,20,.16);
-  --dk-line-hi:rgba(20,20,20,.42);
-  --dk-glow:#D32F2F;
-  --dk-glow2:#B71C1C;
-  --dk-ok:#2E6B4F;
-  --dk-warn:#8A6A1F;
-  --dk-bad:#D32F2F;
+  --dk-ink:#E8E4DB;
+  --dk-dim:#B3AEA5;
+  --dk-dim2:#7E7971;
+  --dk-line:rgba(232,228,219,.14);
+  --dk-line-hi:rgba(232,228,219,.34);
+  --dk-glow:#FF3527;
+  --dk-glow2:#FF483B;
+  --dk-ok:#86B394;
+  --dk-warn:#D9AB53;
+  --dk-bad:#FF3527;
   --dk-radius:0px;
 }
 
-/* ── 画布：米白平底（瑞士风不做环境光）──────────────────────────── */
+/* ── 画布：暖近黑 ───────────────────────────────────────────────── */
 body.app-bg-dock{
-  background:#F4F3F0;
+  background:#0F0E0C;
   color:var(--dk-ink);
   letter-spacing:-.011em;
 }
@@ -28,150 +28,149 @@ body.app-bg-dock{
 body.app-bg-dock .stage{max-width:1180px;margin:0 auto;width:100%}
 body.app-bg-dock .stage-body{padding:12px 44px 18px;gap:14px}
 
-/* ── 左轨：工作间链接与状态列表的正式样式（此前是浏览器默认蓝链）──── */
+/* ── 左轨：工作间合并列表（名称+状态一张卡行）────────────────────── */
 body.app-bg-dock #wsPickerWrap{padding:10px 12px 6px}
 body.app-bg-dock #wsPickerWrap .pick-label{display:block;font-size:10px;font-weight:800;
-  letter-spacing:.14em;color:var(--dk-dim);margin-bottom:6px}
+  letter-spacing:.14em;color:var(--dk-dim2);margin-bottom:6px}
 body.app-bg-dock #wsPickerWrap a.rail-item{display:block;padding:8px 10px;border:1px solid var(--dk-line);
-  background:#FFFFFF;color:var(--dk-ink);text-decoration:none;font-size:12px;font-weight:600;margin-bottom:4px;
+  background:#1C1A18;color:var(--dk-ink);text-decoration:none;font-size:12px;font-weight:600;margin-bottom:4px;
   transition:border-color .15s,background .15s}
-body.app-bg-dock #wsPickerWrap a.rail-item:hover{border-color:var(--dk-glow);background:rgba(211,47,47,.05)}
+body.app-bg-dock #wsPickerWrap a.rail-item:hover{border-color:var(--dk-glow);background:rgba(255,53,39,.08)}
 body.app-bg-dock #wsPickerWrap .ri-name{display:block;font-size:12.5px;font-weight:700;color:var(--dk-ink);
   line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-body.app-bg-dock #wsPickerWrap .ri-sub{display:block;font-size:10.5px;font-weight:400;color:var(--dk-dim);
+body.app-bg-dock #wsPickerWrap .ri-sub{display:block;font-size:10.5px;font-weight:400;color:var(--dk-dim2);
   font-family:ui-monospace,Consolas,monospace;margin-top:2px}
 body.app-bg-dock #wsPickerWrap .ri-bad{color:var(--dk-bad);font-weight:700}
 body.app-bg-dock .rail-list{margin-top:10px;border-top:1px solid var(--dk-line);padding-top:6px}
 body.app-bg-dock .rail-list li{padding:6px 2px;border-bottom:1px solid var(--dk-line);
   font-size:12px;color:var(--dk-ink);font-weight:600;line-height:1.45}
 body.app-bg-dock .rail-list li:last-child{border-bottom:0}
-body.app-bg-dock .rail-list .rail-sub{display:block;font-size:10px;color:var(--dk-dim);font-weight:400}
+body.app-bg-dock .rail-list .rail-sub{display:block;font-size:10px;color:var(--dk-dim2);font-weight:400}
 
-/* ── 分节标题：黑字重 + 红方点（黑量加码）────────────────────────── */
+/* ── 分节标题：骨白字 + 红方点 + 红粗线 ─────────────────────────── */
 .dock-section-head{display:flex;align-items:center;gap:10px;margin:12px 0 8px;
   font-size:11px;font-weight:900;letter-spacing:.16em;color:var(--dk-ink)}
-.dock-section-head:before{content:"";width:8px;height:8px;background:var(--dk-ink);flex:none}
+.dock-section-head:before{content:"";width:8px;height:8px;background:var(--dk-glow);flex:none}
 .dock-section-head .n{color:var(--dk-glow);font-family:ui-monospace,Consolas,monospace}
-.dock-section-head:after{content:"";flex:1;height:2px;background:var(--dk-ink)}
+.dock-section-head:after{content:"";flex:1;height:2px;background:var(--dk-line-hi)}
 
-/* ── 顶栏：纯黑横带（海报的黑块语言）────────────────────────────── */
+/* ── 顶栏：黑带（比画布更深）+ 红方标 ───────────────────────────── */
 body.app-bg-dock .topbar{
-  background:#141414;
-  border-bottom:0;
-  color:#F4F3F0;
+  background:#0A0908;
+  border-bottom:1px solid var(--dk-line);
+  color:var(--dk-ink);
 }
-body.app-bg-dock .topbar .logo{color:#F4F3F0}
-body.app-bg-dock .topbar .sub{color:#A8A49C}
-body.app-bg-dock .live-links{border-left-color:#3A3A38}
+body.app-bg-dock .topbar .logo{color:var(--dk-ink)}
+body.app-bg-dock .topbar .sub{color:var(--dk-dim2)}
+body.app-bg-dock .live-links{border-left-color:var(--dk-line)}
 body.app-bg-dock .live-links a{
-  color:#C9C5BC;border-right-color:#3A3A38;border-radius:0;padding:3px 8px;
+  color:var(--dk-dim);border-right-color:var(--dk-line);border-radius:0;padding:3px 8px;
   transition:color .16s,border-color .16s,background .16s}
-body.app-bg-dock .live-links a:hover{color:#FFFFFF;border-color:transparent;background:rgba(211,47,47,.35)}
+body.app-bg-dock .live-links a:hover{color:var(--dk-ink);border-color:transparent;background:rgba(255,53,39,.22)}
 
-/* ── 总览横幅：发丝线框 + 红点（不做呼吸光）────────────────────── */
+/* ── 总览横幅 ──────────────────────────────────────────────────── */
 body.app-bg-dock .scope-banner{
-  border:1px solid var(--dk-line-hi);border-radius:0;background:transparent}
+  border:1px solid var(--dk-line-hi);border-radius:0;background:#161513}
 body.app-bg-dock .scope-banner .pulse{display:inline-block;width:6px;height:6px;border-radius:0;
   background:var(--dk-glow);margin-right:7px;vertical-align:1px}
 
-/* ── 左轨 ─────────────────────────────────────────────────────── */
-body.app-bg-dock .rail{border-right:1px solid var(--dk-line)}
+/* ── 左轨通用 ──────────────────────────────────────────────────── */
+body.app-bg-dock .rail{border-right:1px solid var(--dk-line);background:#0A0908}
 body.app-bg-dock .rail-item{
   border:1px solid transparent;border-radius:0;transition:border-color .16s,background .16s,color .16s}
-body.app-bg-dock .rail-item:hover{border-color:var(--dk-line-hi);background:rgba(20,20,20,.04);color:var(--dk-ink)}
+body.app-bg-dock .rail-item:hover{border-color:var(--dk-line-hi);background:rgba(232,228,219,.05);color:var(--dk-ink)}
 
-/* ── 主舞台与卡片：白面 + 发丝线 + 硬位移立体（印刷深度，非柔影）── */
-body.app-bg-dock .stage-head{position:relative;padding:18px 44px 12px;
-  background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 360 150'><polygon points='20,140 20,60 90,38 90,118' fill='%23E0DDD6' stroke='%23141414' stroke-width='1.5'/><polygon points='20,60 60,45 130,58 90,38' fill='%23F4F3F0' stroke='%23141414' stroke-width='1.5'/><polygon points='90,38 130,58 130,132 90,118' fill='%23C9C5BC' stroke='%23141414' stroke-width='1.5'/><line x1='96' y1='52' x2='96' y2='116' stroke='%23141414' stroke-width='1' opacity='.18'/><line x1='104' y1='55' x2='104' y2='120' stroke='%23141414' stroke-width='1' opacity='.18'/><line x1='112' y1='59' x2='112' y2='124' stroke='%23141414' stroke-width='1' opacity='.18'/><polygon points='150,140 150,80 210,62 210,122' fill='%23E0DDD6' stroke='%23141414' stroke-width='1.5'/><polygon points='150,80 185,68 245,78 210,62' fill='%23F4F3F0' stroke='%23141414' stroke-width='1.5'/><polygon points='210,62 245,78 245,134 210,122' fill='%23C9C5BC' stroke='%23141414' stroke-width='1.5'/><rect x='262' y='36' width='48' height='48' fill='%23D32F2F'/><line x1='14' y1='140' x2='346' y2='140' stroke='%23141414' stroke-width='2'/></svg>") no-repeat right 28px bottom 6px / 320px auto}
+/* ── 主舞台与卡片：面板 #1C1A18 + 硬位移黑影（立体）─────────────── */
+body.app-bg-dock .stage-head{position:relative;padding:18px 44px 12px}
 body.app-bg-dock .stage-head h1{font-weight:900;letter-spacing:-.02em}
 body.app-bg-dock .card{
   border:1px solid var(--dk-line);border-radius:var(--dk-radius);
-  background:#FFFFFF}
-body.app-bg-dock #dockBody .card{box-shadow:4px 4px 0 rgba(20,20,20,.88)}
+  background:#1C1A18;position:relative}
+body.app-bg-dock #dockBody .card{box-shadow:4px 4px 0 rgba(0,0,0,.72)}
 body.app-bg-dock .card h3{font-weight:800;letter-spacing:.02em}
 body.app-bg-dock .lead{color:var(--dk-ink)}
-body.app-bg-dock .sub{color:var(--dk-dim)}
+body.app-bg-dock .sub{color:var(--dk-dim2)}
 body.app-bg-dock code{
-  background:#E8E7E3;border:1px solid var(--dk-line);border-radius:0;padding:0 4px;color:var(--dk-ink)}
-body.app-bg-dock pre{background:#E8E7E3;border:1px solid var(--dk-line);border-radius:0;padding:8px 10px;color:var(--dk-ink)}
+  background:#242220;border:1px solid var(--dk-line);border-radius:0;padding:0 4px;color:#DDD7CC}
+body.app-bg-dock pre{background:#242220;border:1px solid var(--dk-line);border-radius:0;padding:8px 10px;color:#DDD7CC}
 
-/* ── 主按钮：红实心 / 发丝线次按钮（直角）───────────────────────── */
+/* ── 主按钮 ────────────────────────────────────────────────────── */
 body.app-bg-dock .btn{
   border-radius:0;transition:border-color .16s,background .16s,color .16s}
 body.app-bg-dock .btn:focus-visible{outline:2px solid var(--dk-glow);outline-offset:2px}
 body.app-bg-dock .btn.mini{
   color:var(--dk-ink);border:1px solid var(--dk-line-hi);background:transparent}
 body.app-bg-dock .btn.mini:hover{
-  border-color:var(--dk-glow);background:rgba(211,47,47,.08)}
+  border-color:var(--dk-glow);background:rgba(255,53,39,.12)}
 body.app-bg-dock .btn.primary{
-  color:#F4F3F0;border:1px solid #D32F2F;
-  background:#D32F2F}
+  color:#F9F7F3;border:1px solid #E52E20;
+  background:#E52E20}
 body.app-bg-dock .btn.primary:hover{
-  border-color:#B71C1C;background:#B71C1C}
+  border-color:#FF483B;background:#FF483B}
 
-/* ── 第一屏：服务菜单 —— 黑标签条 + 硬阴影立体瓦片 ──────────────── */
+/* ── 第一屏：服务菜单 —— 黑标签条 + 硬阴影瓦片 ──────────────────── */
 .dock-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:10px 0 4px;counter-reset:tile-unit}
 body.app-bg-dock .dock-tiles-head{display:inline-flex;align-items:baseline;gap:10px;margin:2px 0 0;
-  padding:6px 12px;background:#141414;color:#F4F3F0;font-size:13.5px}
+  padding:6px 12px;background:#0A0908;border-left:4px solid var(--dk-glow);color:var(--dk-ink);font-size:13.5px}
 body.app-bg-dock .dock-tiles-head b{font-weight:900;letter-spacing:.02em}
-body.app-bg-dock .dock-tiles-head .sub{color:#A8A49C;font-size:11px}
-@media (max-width:1080px){.dock-tiles{grid-template-columns:repeat(2,1fr)}}
-@media (max-width:620px){.dock-tiles{grid-template-columns:1fr}}
+body.app-bg-dock .dock-tiles-head .sub{color:var(--dk-dim2);font-size:11px}
 .dock-tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;
   text-align:left;cursor:pointer;overflow:hidden;padding:13px 13px 11px;border-radius:0;
-  border:1px solid var(--dk-line-hi);background:#FFFFFF;min-height:124px;
-  box-shadow:4px 4px 0 #141414;
+  border:1px solid var(--dk-line-hi);background:#1C1A18;min-height:124px;
+  box-shadow:4px 4px 0 rgba(0,0,0,.72);
   transition:border-color .18s,background .18s,transform .15s,box-shadow .15s}
 .dock-tile:hover,.dock-tile:focus-visible{border-color:var(--dk-glow);
-  background:#FFFFFF;transform:translate(-2px,-2px);box-shadow:6px 6px 0 #141414}
+  background:#1C1A18;transform:translate(-2px,-2px);box-shadow:6px 6px 0 rgba(255,53,39,.35)}
 .dock-tile:active{transform:translateY(0)}
 .dock-tile:focus-visible{outline:2px solid var(--dk-glow);outline-offset:2px}
 .dock-tile .tile-ico{font-size:19px;line-height:1}
 .dock-tile .tile-name{font-weight:800;font-size:13.5px;letter-spacing:-.01em;color:var(--dk-ink)}
-.dock-tile .tile-sub{color:var(--dk-dim);font-size:11px;line-height:1.55}
+.dock-tile .tile-sub{color:var(--dk-dim2);font-size:11px;line-height:1.55}
 .dock-tile .tile-go{margin-top:auto;padding-top:7px;color:var(--dk-dim2);font-size:11px;
   transition:color .18s}
 .dock-tile:hover .tile-go{color:var(--dk-glow)}
-/* 高达机体编号：每块瓦片右下角 UNIT 编码（装饰层，不承载信息） */
+/* 高达机体编号 */
 .dock-tile:after{content:"UNIT-" counter(tile-unit,decimal-leading-zero);
   counter-increment:tile-unit;position:absolute;right:8px;bottom:6px;
   font-family:ui-monospace,Consolas,monospace;font-size:9px;letter-spacing:.14em;
   color:var(--dk-dim2);pointer-events:none}
-/* 核心业务（脚本激活）：红色左边条 + CORE 铭牌（等块，不再占双格） */
+/* 核心（脚本激活）：红边 + CORE 铭牌 */
 .dock-tile.hot{border-color:var(--dk-glow);border-left:4px solid var(--dk-glow)}
 .dock-tile.hot:hover{border-left-color:var(--dk-glow2)}
 .dock-tile.hot:before{content:"CORE";position:absolute;top:8px;right:8px;
   font-family:ui-monospace,Consolas,monospace;font-size:9px;font-weight:800;letter-spacing:.2em;
   color:var(--dk-glow);border:1px solid var(--dk-glow);padding:1px 5px;pointer-events:none}
+@media (max-width:1080px){.dock-tiles{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:620px){.dock-tiles{grid-template-columns:1fr}}
 
-/* ── 屏号容器（四屏）：红号牌 ─────────────────────────────────── */
+/* ── 屏号容器 ──────────────────────────────────────────────────── */
 .dock-screen{border-left:2px solid var(--dk-line-hi);padding:2px 0 2px 12px;margin:12px 0}
 .dock-screen h4{margin:2px 0 7px;font-size:12px;letter-spacing:.02em;color:var(--dk-dim);font-weight:700}
 .dock-screen h4 .no{display:inline-block;min-width:18px;text-align:center;margin-right:7px;
-  padding:1px 6px;border-radius:0;border:1px solid #D32F2F;
-  color:#D32F2F;font-size:10px;background:transparent}
+  padding:1px 6px;border-radius:0;border:1px solid var(--dk-glow);
+  color:var(--dk-glow);font-size:10px;background:transparent}
 
-/* ── 表单 ─────────────────────────────────────────────────────── */
+/* ── 表单 ──────────────────────────────────────────────────────── */
 .dock-form{display:flex;flex-direction:column;gap:5px;margin:8px 0;font-size:12px}
 .dock-form input,.dock-form select,.dock-form textarea{
   padding:6px 9px;font-size:12px;color:var(--dk-ink);border-radius:0;
-  border:1px solid var(--dk-line-hi);background:#FFFFFF;
+  border:1px solid var(--dk-line-hi);background:#0F0E0C;
   transition:border-color .15s}
 .dock-form input::placeholder,.dock-form textarea::placeholder{color:var(--dk-dim2)}
 .dock-form input:focus,.dock-form select:focus,.dock-form textarea:focus{
-  outline:none;border-color:var(--dk-glow);box-shadow:0 0 0 2px rgba(211,47,47,.15)}
+  outline:none;border-color:var(--dk-glow);box-shadow:0 0 0 2px rgba(255,53,39,.18)}
 .dock-form textarea{resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
 .dock-form-actions{display:flex;align-items:center;gap:8px;margin-top:2px;flex-wrap:wrap}
 .dock-msg{color:var(--dk-dim);font-size:11px}
 
-/* ── 结果条：三态如实（左侧细线 + 淡底 + 图标，不只靠颜色表意）────── */
+/* ── 结果条：三态如实 ──────────────────────────────────────────── */
 .dock-ok{margin:8px 0;color:var(--dk-ok);font-weight:700;font-size:12px}
 .dock-ok2{color:var(--dk-ok);font-size:11px}
 .dock-warn2{color:var(--dk-warn);font-size:11px}
 .dock-warn{margin:6px 0;padding:6px 10px;border-left:2px solid var(--dk-warn);
-  background:rgba(138,106,31,.08);border-radius:0;font-size:12px}
+  background:rgba(217,171,83,.1);border-radius:0;font-size:12px}
 .dock-err{margin:8px 0;padding:6px 10px;border-left:2px solid var(--dk-bad);
-  background:rgba(211,47,47,.06);border-radius:0;font-size:12px}
+  background:rgba(255,53,39,.1);border-radius:0;font-size:12px}
 .dock-kv{margin:6px 0 6px 18px;font-size:12px}
 .dock-kv code,.dock-drawer code{background:none;border:none;padding:0;color:var(--dk-dim)}
 .dock-steps{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;font-size:11px}
@@ -179,55 +178,55 @@ body.app-bg-dock .dock-tiles-head .sub{color:#A8A49C;font-size:11px}
 .dock-bridge{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;
   border-top:1px dashed var(--dk-line-hi);font-size:11px}
 .dock-chat{white-space:pre-wrap;margin:6px 0;padding:6px 10px;border-left:2px solid var(--dk-line-hi);
-  background:rgba(20,20,20,.04);border-radius:0;font-size:12px}
+  background:rgba(232,228,219,.05);border-radius:0;font-size:12px}
 
-/* ── 候选关键词（屏1：可点即填，每条带出处）────────────────────── */
+/* ── 候选关键词 ────────────────────────────────────────────────── */
 .dock-sug{display:flex;flex-direction:column;gap:4px;margin:6px 0}
 .dock-sug button{cursor:pointer;text-align:left;background:transparent;
   border:1px dashed var(--dk-line-hi);border-radius:0;padding:5px 10px;font-size:11px;color:var(--dk-ink);
   transition:border-color .15s,background .15s}
 .dock-sug button:hover,.dock-sug button:focus-visible{
-  border-color:var(--dk-glow);background:rgba(211,47,47,.06)}
+  border-color:var(--dk-glow);background:rgba(255,53,39,.1)}
 .dock-sug button:focus-visible{outline:2px solid var(--dk-glow);outline-offset:1px}
-.dock-sug .sug-src{color:var(--dk-dim)}
+.dock-sug .sug-src{color:var(--dk-dim2)}
 
-/* ── 定位候选（屏2/3：可点行；选中态描边+✓，不只靠颜色）──────────── */
+/* ── 定位候选 ──────────────────────────────────────────────────── */
 .dock-cand{border:1px solid var(--dk-line-hi);border-radius:0;padding:8px 11px;margin:5px 0;
-  cursor:pointer;font-size:11px;color:var(--dk-ink);background:#FFFFFF;
+  cursor:pointer;font-size:11px;color:var(--dk-ink);background:#1C1A18;
   transition:border-color .15s,background .15s}
-.dock-cand:hover,.dock-cand:focus-visible{border-color:var(--dk-glow);background:#FFFFFF}
+.dock-cand:hover,.dock-cand:focus-visible{border-color:var(--dk-glow);background:#1C1A18}
 .dock-cand:focus-visible{outline:2px solid var(--dk-glow);outline-offset:1px}
-.dock-cand.sel{border-color:var(--dk-ok);background:rgba(46,107,79,.07);
+.dock-cand.sel{border-color:var(--dk-ok);background:rgba(134,179,148,.1);
   border-left:3px solid var(--dk-ok)}
 .dock-cand.sel .cand-pick{color:var(--dk-ok)}
-.cand-pick{color:var(--dk-dim);margin-right:7px}
+.cand-pick{color:var(--dk-dim2);margin-right:7px}
 .dock-cand code{color:var(--dk-dim)}
 
-/* ── 档案详情抽屉：白面发丝线（不做玻璃拟态）──────────────────── */
+/* ── 档案详情抽屉 ──────────────────────────────────────────────── */
 .dock-drawer{border:1px solid var(--dk-line-hi);border-radius:0;padding:13px;margin:8px 0;
-  background:#FFFFFF}
+  background:#1C1A18}
 .dock-drawer h3{margin:0 0 4px;font-size:13.5px;letter-spacing:-.01em;font-weight:800}
 .dock-drawer details{margin-top:9px;font-size:11px;border-top:1px solid var(--dk-line);padding-top:7px}
 .dock-drawer summary{cursor:pointer;color:var(--dk-ink);font-weight:700;letter-spacing:.01em}
-.dock-drawer summary::marker{color:var(--dk-dim)}
+.dock-drawer summary::marker{color:var(--dk-dim2)}
 .dock-drawer summary:focus-visible{outline:2px solid var(--dk-glow);outline-offset:2px}
 .dock-drawer table{border-collapse:collapse;font-size:11px;margin:4px 0}
 .dock-drawer td{padding:2.5px 10px 2.5px 0;vertical-align:top}
-.dock-drawer td.k{color:var(--dk-dim)}
+.dock-drawer td.k{color:var(--dk-dim2)}
 .dock-drawer input,.dock-drawer select{padding:4px 7px;font-size:11px;color:var(--dk-ink);
-  border-radius:0;border:1px solid var(--dk-line-hi);background:#FFFFFF;
+  border-radius:0;border:1px solid var(--dk-line-hi);background:#0F0E0C;
   transition:border-color .15s}
 .dock-drawer input:focus,.dock-drawer select:focus{outline:none;border-color:var(--dk-glow)}
 .dock-drawer .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:3px 0}
 .dock-facts{margin:5px 0;padding:6px 10px;border-left:2px solid var(--dk-glow);
-  background:rgba(211,47,47,.06);border-radius:0;font-size:11px}
+  background:rgba(255,53,39,.1);border-radius:0;font-size:11px}
 
-/* ── 详情按钮（档案列表行内）──────────────────────────────────── */
+/* ── 详情按钮 ──────────────────────────────────────────────────── */
 .dock-detail-btn{cursor:pointer;font-size:11px;padding:3px 10px;border-radius:0;
   color:var(--dk-ink);border:1px solid var(--dk-line-hi);background:transparent;
   transition:border-color .15s,background .15s}
 .dock-detail-btn:hover,.dock-detail-btn:focus-visible{
-  border-color:var(--dk-glow);background:rgba(211,47,47,.08)}
+  border-color:var(--dk-glow);background:rgba(255,53,39,.12)}
 .dock-detail-btn:focus-visible{outline:2px solid var(--dk-glow);outline-offset:1px}
 
 #dockBody details,#dockRegisterWrap details{margin-top:6px;font-size:11px}
@@ -235,24 +234,23 @@ body.app-bg-dock .dock-tiles-head .sub{color:#A8A49C;font-size:11px}
   white-space:pre-wrap;word-break:break-all;font-size:11px}
 #dockScriptWrap textarea{width:100%;box-sizing:border-box}
 
-/* ── 机甲装甲角标：卡片对角 L 形括线（复古机甲风点缀，2px 级）────────── */
-body.app-bg-dock .card{position:relative}
+/* ── 机甲装甲角标：卡片对角 L 括线 ─────────────────────────────── */
 body.app-bg-dock .card:before{content:"";position:absolute;top:7px;right:7px;width:10px;height:10px;
   border-top:1px solid var(--dk-line-hi);border-right:1px solid var(--dk-line-hi);pointer-events:none}
 body.app-bg-dock .card:after{content:"";position:absolute;bottom:7px;left:7px;width:10px;height:10px;
   border-bottom:1px solid var(--dk-line-hi);border-left:1px solid var(--dk-line-hi);pointer-events:none}
 
-/* ── 功能弹窗：点瓦片弹出，不再长文定位 ───────────────────────────── */
-.dock-modal-overlay{position:fixed;inset:0;background:rgba(20,20,20,.42);z-index:700;
+/* ── 功能弹窗 ──────────────────────────────────────────────────── */
+.dock-modal-overlay{position:fixed;inset:0;background:rgba(5,5,6,.72);z-index:700;
   display:none;align-items:center;justify-content:center;padding:24px}
 .dock-modal-overlay.show{display:flex}
-.dock-modal{background:#F4F3F0;border:1px solid var(--dk-line-hi);width:880px;max-width:100%;
-  max-height:88vh;display:flex;flex-direction:column}
+.dock-modal{background:#121110;border:1px solid var(--dk-line-hi);width:880px;max-width:100%;
+  max-height:88vh;display:flex;flex-direction:column;box-shadow:8px 8px 0 rgba(0,0,0,.8)}
 .dock-modal-head{position:relative;display:flex;align-items:center;gap:12px;padding:13px 16px;
-  border-bottom:1px solid var(--dk-line-hi);background:#FFFFFF;flex:none}
-/* 危险条纹：弹窗头顶部 3px 红黑 45°（机甲警示语言） */
+  border-bottom:1px solid var(--dk-line-hi);background:#1C1A18;flex:none}
+/* 危险条纹：弹窗头顶部 3px 红黑 45° */
 .dock-modal-head:before{content:"";position:absolute;left:0;right:0;top:0;height:3px;
-  background:repeating-linear-gradient(45deg,#D32F2F 0 5px,#FFFFFF 5px 10px);opacity:.9}
+  background:repeating-linear-gradient(45deg,#FF3527 0 5px,#0A0908 5px 10px);opacity:.95}
 .dock-modal-title{font-weight:900;font-size:14.5px;color:var(--dk-ink);flex:1;letter-spacing:.01em}
 .dock-modal-close{width:32px;height:32px;border:1px solid var(--dk-line-hi);background:transparent;
   color:var(--dk-ink);font-weight:900;cursor:pointer;border-radius:0;flex:none;
