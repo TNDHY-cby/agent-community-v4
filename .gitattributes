@@ -26,6 +26,15 @@ docker-compose*.yml  text eol=lf
 *.cfg                text eol=lf
 .env.example         text eol=lf
 
+# ── 2026-10-17 扩充（前端一律 LF；MiMo 在通道 137 号提的，DSH 采纳）─────────────
+# 起因：发布面已经把前端统一成 LF，并加了守卫 `test_frontend_files_use_lf_endings`；
+#   但**任何 Windows 克隆**（`core.autocrlf=true`）检出前端就是 CRLF ⇒ 这条守卫在
+#   Windows 开发机上**永远红**，只能靠人肉转。钉在这里才是根治：
+#   · 提交里存 LF、检出也是 LF ⇒ 与 Linux/裸机行为一致；
+#   · 前端（html/css/js）不依赖 CRLF，浏览器不在乎；而**行尾不一致**会导致
+#     "整文件重写"的假 diff（2026-10-17 我自己就踩过一次，414 行噪音）。
+agent_community/frontend/** text eol=lf
+
 # 必须 CRLF（Windows 专属；PS 5.1 与 cmd 对纯 LF 的容忍度差）
 *.ps1                text eol=crlf
 *.psm1               text eol=crlf
