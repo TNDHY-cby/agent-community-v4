@@ -211,3 +211,22 @@ def test_fe29_script_is_published_and_portable():
     # 验收清单必须引用它（否则脚本发了也没人跑）
     doc = (_ROOT / "外包交接_前端界面" / "验收清单.md").read_text(encoding="utf-8", errors="replace")
     assert "fe29_check.js" in doc, "验收清单没引用 FE-29 脚本"
+
+
+def test_frontend_files_use_lf_endings():
+    """前端这几支必须 **LF** 行尾（2026-10-17 事故：我复制 MiMo 的工作树文件，把 CRLF 带进发布面，
+    结果发布提交里 `docking.html` 整文件重写 414 行 —— 历史噪音大，且与"oss 的 autocrlf 已校准为 LF"相悖）。
+
+    正确取法：用 `git cat-file blob <它的提交>:<path>` 取**提交里的字节**（LF），不要复制对方工作树。
+    """
+    files = ["docking.html", "docking.js", "docking.css", "hub.html", "hub.js",
+             "index.html", "register.html", "workshop.html"]
+    bad = []
+    for name in files:
+        f = _ROOT / "agent_community" / "frontend" / name
+        if not f.exists():
+            continue
+        raw = f.read_bytes()
+        if b"\r\n" in raw:
+            bad.append("%s（CRLF %d 处）" % (name, raw.count(b"\r\n")))
+    assert not bad, "这些前端文件不是 LF 行尾：%s" % bad
