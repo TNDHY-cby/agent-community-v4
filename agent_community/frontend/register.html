@@ -20,7 +20,7 @@
 
   --rule:rgba(255,255,255,.07); --rule-strong:rgba(255,255,255,.14);
 
-  --accent:#d97757; --accent-hi:#ec8f6b; --accent-soft:rgba(217,119,87,.14);
+  --accent:#D32F2F; --accent-hi:#E53935; --accent-soft:rgba(211,47,47,.08);
 
   --amber:#e0a04a; --amber-soft:rgba(224,160,74,.14);
 
@@ -157,7 +157,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:ra
 
 .acm-input{width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--rule);border-radius:8px;padding:9px 12px;color:var(--ink);font-size:12.5px;font-family:var(--mono,monospace);outline:none;transition:border-color .15s,box-shadow .15s;resize:vertical;min-height:64px}
 
-.acm-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(217,119,87,.22)}
+.acm-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(211,47,47,.22)}
 
 .acm-foot{display:flex;justify-content:flex-end;gap:10px;padding:12px 18px;border-top:1px solid var(--rule)}
 
@@ -847,7 +847,7 @@ python -m agent_community.a2a_server --port 9104      # 启动 A2A 服务端</pr
     </div>
 
     <div style="margin-top:14px;border-top:1px dashed var(--border,#2a3444);padding-top:12px;">
-      <h3 style="margin:0 0 8px;font-size:13px;color:var(--accent,#d97757);font-weight:800;">🔁 平台 Agent ↔ 外端对象 传讯（复制粘贴中转）</h3>
+      <h3 style="margin:0 0 8px;font-size:13px;color:var(--accent,#D32F2F);font-weight:800;">🔁 平台 Agent ↔ 外端对象 传讯（复制粘贴中转）</h3>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
         <span style="font-size:12px;color:var(--muted);">对话对象:</span>
         <select id="relayTarget" style="flex:1;background:var(--panel-bg,#151a22);color:var(--text,#e5e9f0);border:1px solid var(--border,#2a3444);border-radius:8px;padding:6px 8px;font-size:13px;"></select>
@@ -1688,7 +1688,7 @@ bkLoad();
     var d = document.createElement('div');
     d.style.cssText = 'margin-bottom:8px;padding:7px 10px;border-radius:8px;font-size:14px;line-height:1.5;word-break:break-word;white-space:pre-wrap;';
     if(role === 'user'){
-      d.style.cssText += 'background:var(--accent,#d97757);color:#fff;text-align:right;margin-left:40px;';
+      d.style.cssText += 'background:var(--accent,#D32F2F);color:#fff;text-align:right;margin-left:40px;';
       d.textContent = '🙋 ' + text;
     } else if(role === 'system'){
       d.style.cssText += 'background:rgba(255,255,255,0.06);color:var(--yellow,#e6b450);text-align:center;font-size:13px;';
