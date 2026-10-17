@@ -16,7 +16,7 @@ FE = Path(__file__).resolve().parent.parent / "agent_community" / "frontend"
 #: ★验收脚本要不要一起算"不合格"：现在**先只报不拦**（它们是开发工具，不跑在产品路径上）；
 #: MiMo 按 fe29 模式收严、`verify` 侧归零后，把这里改成 True —— **守卫会自动要求你改**
 #: （`tests/test_frontend_localization.py` 里有一条"归零了却没打开严格档就红"）。
-STRICT_VERIFY = False
+STRICT_VERIFY = True
 
 #: 盘符路径：**前面不能紧跟字母**（否则 `http://`、`https://` 里的 `p:`/`s:` 会被误当盘符）；
 #: ⚠️ JS 源码里反斜杠是转义的（`C:\\\\Users\\\\`），所以分隔符要允许**连续多个** `\`
