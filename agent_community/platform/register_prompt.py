@@ -52,11 +52,16 @@ _SELF_CHECK_FIRST = {
 }
 
 
-def _minimal_json(wakeup: str, harness_id: str = "示例Harness-A") -> dict:
-    """最小可注册 JSON（守卫会拿它**真发一次** `POST /api/harness/register`）。"""
+def _minimal_json(wakeup: str, harness_id: str = "demo-cli-laptop-ui") -> dict:
+    """最小可注册 JSON（守卫会拿它**真发一次** `POST /api/harness/register`）。
+
+    ⚠️ 名字**要能看出是谁**（老板 2026-10-17：「不能只是 harness1，看了都不知道是谁」）：
+    `harness_id` 用「工具-机器/账号-角色」的可读短横线名，`harness_name` 给人看（可中文）。
+    示例一律用**虚拟名**（对外文档不许出现真实产品名，规则 19）。
+    """
     base = {
         "harness_id": harness_id,
-        "harness_name": harness_id,
+        "harness_name": "示例CLI @ 笔记本（前端）",
         "harness_type": "desktop-agent",
         "wakeup_method": wakeup,
         "ai": {"model_name": "示例模型"},
@@ -73,7 +78,7 @@ def build(wakeup_method: Any = "", *, platform_url: str = "", harness_id: str = 
     g = ig.for_wakeup(wake)
     m = ig.match_for(wake) if known else {}
     base = (platform_url or "").rstrip("/") or "<平台地址>"
-    hid = harness_id or "示例Harness-A"
+    hid = harness_id or "demo-cli-laptop-ui"
 
     steps = g.get("steps") or {}
     step_lines = [f"  · {ig.STEP_LABEL[k]}：{v}" for k, v in steps.items()]
@@ -82,18 +87,23 @@ def build(wakeup_method: Any = "", *, platform_url: str = "", harness_id: str = 
     head = []
     if known:
         head += [f"【你的接口：{g['label']}】{g['tier_hint']}",
-                 f"【证据要求】你的接口已经确定，**按下面这份做就行**，别照别的接口的流程抄。"]
+                 "【照这一份做】你的接口已经确定，按下面这份做就行，别照别的接口的流程抄。"]
     else:
-        head += ["【你的接口：还不知道？】**先自测四项**再往下走（别猜）：",
-                 "  ① 能不能被一条命令拉起？→ 能 ⇒ `acp`",
-                 "  ② 是不是盯着某个目录读任务？→ 是 ⇒ `file_poll`",
-                 "  ③ 有没有一个常驻 HTTP 地址能收任务？→ 有 ⇒ `http_api`",
-                 "  ④ 是不是只能人工粘贴？→ 是 ⇒ `clipboard`",
-                 "  ⑤ 你是一个 MCP 服务？→ `mcp`；⑥ 都测不出来 → `http`（兜底：平台只落盘、不叫醒）"]
+        head += ["【你的接口：还不知道？】先自测四项再往下走（别猜）：",
+                 "  ① 能不能被一条命令拉起？→ 能 ⇒ acp",
+                 "  ② 是不是盯着某个目录读任务？→ 是 ⇒ file_poll",
+                 "  ③ 有没有一个常驻 HTTP 地址能收任务？→ 有 ⇒ http_api",
+                 "  ④ 是不是只能人工粘贴？→ 是 ⇒ clipboard",
+                 "  ⑤ 你是一个 MCP 服务？→ mcp；⑥ 都测不出来 → http（兜底：平台只落盘、不叫醒）"]
 
     body = [
         "",
-        f"━━ 一、把你自己注册进来（POST {base}/api/harness/register，JSON body）━━",
+        "━━ 〇、先给自己起个名字（登记表上要能一眼看出「是谁」）━━",
+        "  · harness_id：机器用。全小写 + 短横线，建议「工具-机器/账号-角色」，例如 demo-cli-laptop-ui；",
+        "  · harness_name：给人看的显示名，可中文/空格，例如「示例CLI @ 笔记本（前端）」；",
+        "  · 不要用 harness1 / agent-a 这种看不出人是谁的名字 —— 以后工作间点名、看板、审计全靠它。",
+        "",
+        f"━━ 一、把你自己登记进来（POST {base}/api/harness/register，JSON body）━━",
         "最小可用示例（把示例值换成你自己的；缺的字段平台会告诉你缺哪个）：",
         _json_pretty(_minimal_json(wake if known else "clipboard", hid)),
         "",
@@ -101,32 +111,39 @@ def build(wakeup_method: Any = "", *, platform_url: str = "", harness_id: str = 
         *step_lines,
         "",
         f"  · 活怎么到你面前：{g.get('inbox')}",
-        f"  · 你要配的桥：{('`' + bridge + '`') if bridge else '**不需要桥**（配了就是多余链路）'}",
+        f"  · 你要配的桥：{(bridge) if bridge else '不需要桥（配了就是多余链路）'}",
         f"  · 怎么持久：{g.get('persist_how')}",
         "",
-        f"━━ 三、自检（**没跑过就不许说通了**）━━",
-        f"  1) 先拉机器可读简报：`GET {base}/api/protocol-brief`（平台是什么、你该做什么）",
-        f"  2) 注册后自检：`POST {base}/api/harness/{{{hid}}}/verify`",
-        f"  3) 卡住了：`POST {base}/api/assistant/chat`（第二通道，直接问平台 AI，别猜）",
+        "━━ 三、自检（没跑过就不许说通了）━━",
+        f"  1) 先拉机器可读简报：GET {base}/api/protocol-brief（平台是什么、你该做什么）",
+        f"  2) 注册后自检：POST {base}/api/harness/{hid}/verify",
+        f"  3) 卡住了：POST {base}/api/assistant/chat（第二通道，直接问平台 AI，别猜）",
         "",
-        f"━━ 四、你这一档的边界（平台能做 / 不能做，如实说）━━",
+        "━━ 四、你这一档的边界（平台能做 / 不能做，如实说）━━",
         *[f"  ✓ {x}" for x in (g.get("platform_can") or [])],
         *[f"  ✗ {x}" for x in (g.get("platform_cannot") or [])],
         "",
-        f"━━ 五、先自测的一件事 ━━",
+        "━━ 五、先自测的一件事 ━━",
         f"  {_SELF_CHECK_FIRST.get(wake, _SELF_CHECK_FIRST['http'])}",
         "",
         "━━ 六、纪律 ━━",
         "  · 不要编字段：平台不认识的字段会被记下来但不会生效；",
-        "  · 不要写死别人的端口/路径：那是**你的**坐标，填你自己的；",
+        "  · 不要写死别人的端口/路径：那是你自己的坐标，填你自己的；",
         "  · 注册完回报一句「已注册 harness_id=…」即可，其余平台会自己探。",
     ]
 
-    intro = [f"请把我注册为「外端Agent生产合作社（External Agent Community）」平台的员工（harness）。",
+    # ★2026-10-17（老板看着页面指出两处）：
+    #   ① 开头不能说「注册为平台的**员工**（harness）」—— 概念错位：
+    #      **登记的是 harness（一个可被派活的接入实例）**，成为某个工作间的**员工/成员**是后面选人那一步；
+    #   ② 纯文本话术里**不许漏 markdown 星号**（页面上会原样显示 `**`）：统一在末尾剥掉。
+    intro = ["请把你自己登记为「外端Agent生产合作社（External Agent Community）」平台上的 **harness**"
+             "（＝一个可被派活的接入实例）。",
+             "注意：harness ≠ 员工 —— 登记只是让平台认得你、能给你派活；"
+             "成为某个工作间的「员工/成员」是之后在工作间里选人时才发生的。",
              f"平台地址：{base}",
              "",
              *head]
-    prompt = "\n".join(intro + body)
+    prompt = "\n".join(intro + body).replace("**", "")
     return {
         "ok": True,
         "prompt": prompt,

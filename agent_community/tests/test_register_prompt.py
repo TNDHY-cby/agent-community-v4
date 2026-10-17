@@ -137,6 +137,36 @@ def test_unknown_protocol_is_honest_and_gives_self_test():
         assert kw in d["prompt"], "通用版要把六种选择都摆出来（%s 缺）" % kw
 
 
+# ── ⑥ 老板 2026-10-17 看着页面提的两处（概念 + 命名）＋ 一处漏格式 ───────────
+def test_prompt_does_not_call_the_agent_an_employee():
+    """登记的是 **harness**，不是"平台的员工" —— 员工/成员是工作间里选人那一步。"""
+    p = rp.build("acp", platform_url=BASE)["prompt"]
+    assert "平台的员工（harness）" not in p, "开头不许再写成「注册为平台的员工（harness）」"
+    assert "harness ≠ 员工" in p or "harness != 员工" in p, "必须明说 harness 与员工不是一回事"
+    assert "可被派活的接入实例" in p
+
+
+def test_prompt_teaches_a_readable_name():
+    """老板原话：「不能只是 harness1 之类的，看了都不知道是谁」。"""
+    d = rp.build("file_poll", platform_url=BASE)
+    p = d["prompt"]
+    assert "先给自己起个名字" in p, "要有命名那一段"
+    assert "harness_name" in p and "显示名" in p, "要讲清 harness_name 是给人看的显示名"
+    assert "harness1" in p, "要点名反例（harness1 / agent-a 这种看不出是谁）"
+    # 示例本身也得是可读名，不是机器序号
+    assert d["minimal_json"]["harness_id"] != "harness1"
+    assert "-" in d["minimal_json"]["harness_id"], "示例 id 应是「工具-机器-角色」这种可读形式"
+    assert d["minimal_json"]["harness_name"] != d["minimal_json"]["harness_id"], \
+        "显示名不应等于机器 id（否则卡片上还是看不出是谁）"
+
+
+def test_prompt_has_no_markdown_asterisks():
+    """话术是**纯文本**（贴进任何 AI 的输入框）⇒ 不许漏出 markdown 的 `**`。"""
+    for w in ("",) + rp.SUPPORTED:
+        p = rp.build(w, platform_url=BASE)["prompt"]
+        assert "**" not in p, "%s 的话术里漏出了 markdown 星号" % (w or "通用")
+
+
 def test_json_format_returns_structured_fields():
     code, out = _resp(asyncio.run(hr.harness_register_prompt(
         _Req(query={"wakeup_method": "file_poll", "format": "json"}))))

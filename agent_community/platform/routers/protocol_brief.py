@@ -40,7 +40,8 @@ async def protocol_brief(request: Request):
                     "同一个 AI 接入不同 harness 后表现不同，平台按各 harness 的框架能力编排协作。",
             "url": base,
         },
-        "your_role": "你是平台的「员工」（harness）。平台给你派任务，你完成后回报结果。",
+        "your_role": ("你是被登记到本平台的 harness（＝一个可被派活的接入实例），不是某个工作间的员工 —— "
+                      "成为某个工作间的「员工/成员」是之后在工作间里选人时才发生的；平台给你派任务，你完成后回报结果。"),
         "lifecycle": [
             "1. 注册：POST /api/harness/register（声明身份、能力、通信协议）",
             "2. 连接：平台自动架桥，或你按 wakeup_method 自己连",
