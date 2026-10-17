@@ -80,6 +80,7 @@ def checks(fast: bool) -> list:
     items.append(("陌生人首跑五步", [py(), str(ROOT / "tools" / "first_run_check.py"),
                                 "--src", str(OSS)]))
     items += [
+        ("前端本机坐标体检（产品侧零违规）", [py(), str(ROOT / "tools" / "check_frontend_localization.py")]),
         ("发布面 check_portability", [py(), "tools/check_portability.py"], OSS),
         ("发布面 check_productization", [py(), "tools/check_productization.py"], OSS),
         ("发布面 env_docs --check", [py(), "tools/gen_env_docs.py", "--check"], OSS),
