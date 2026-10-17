@@ -192,3 +192,22 @@ def test_handover_area_avoids_local_and_real_names():
             if re.search(pat, text):
                 bad.append("%s：%s" % (f.name, why))
     assert not bad, "交接区的代码文件里出现了本机私有坐标：%s" % bad
+
+
+def test_fe29_script_is_published_and_portable():
+    """FE-29（瓦片顺序/弹窗/机甲点缀）脚本必须在**发布面**，且不许只在我这台机器成立。
+
+    2026-10-17：MiMo 把脚本放在它 clone 的 `temp/` 里（通道 135 号请我纳进发布面）。
+    纳进来的同时收严三处：`AC_FE_BASE`/`AC_PORT` 驱动（不写死端口）、浏览器可降级、
+    证据目录可用 `AC_VERIFY_OUT` 覆盖。
+    """
+    f = _ROOT / "agent_community" / "frontend" / "verify" / "fe29_check.js"
+    assert f.exists(), "FE-29 验收脚本不在发布面：frontend/verify/fe29_check.js"
+    src = f.read_text(encoding="utf-8")
+    assert "AC_FE_BASE" in src and "AC_PORT" in src, "必须由环境变量驱动（换端口不用改代码）"
+    assert "18925" not in src, "不许写死 18925（那是某台机器上的隔离实例）"
+    assert "AC_VERIFY_OUT" in src, "证据目录要可覆盖（别把仓库当默认写盘位置）"
+    assert "msedge" in src and "bundled-chromium" in src, "浏览器要能降级，并打印用的哪个"
+    # 验收清单必须引用它（否则脚本发了也没人跑）
+    doc = (_ROOT / "外包交接_前端界面" / "验收清单.md").read_text(encoding="utf-8", errors="replace")
+    assert "fe29_check.js" in doc, "验收清单没引用 FE-29 脚本"

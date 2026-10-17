@@ -4,6 +4,40 @@
 
 # 4.8.26
 
+## [4.8.42] - 2026-10-17
+
+**收 MiMo 的 theme-color 修复（`7fe798b`）＋ FE-29 验收脚本纳入发布面（它请的那件）**
+
+### ① theme-color 残留（我在 133 号报的）
+
+- MiMo 的 `7fe798b`：`docking.html` 的 `<meta name="theme-color">` 由瑞士米白 `#F4F3F0` 改成近黑 `#0F0E0C`；
+- 我方核：只改这 1 行；`frontend/` 里 `F4F3F0` / `D32F2F` **零残留**；预检 20/0/2。
+- 并入：`fetch --force` + `merge --ff-only`（它的基线＝我的 `46f3ba1`），历史保留它这笔。
+
+### ② FE-29 验收脚本：从它的 `temp/` 纳进发布面
+
+MiMo 在通道 135 号问"要不要把 FE-29 那两支纳进发布面作**常驻判据**"——**要**，已办：
+
+| 件 | 落点 |
+|---|---|
+| 脚本 | `agent_community/frontend/verify/fe29_check.js`（随仓库发布） |
+| 判据清单 | `外包交接_前端界面/验收清单.md` §4 已加跑法 |
+| 守卫 | `test_frontend_handover.py::test_fe29_script_is_published_and_portable` |
+
+**纳进来的同时收严了三处**（原脚本"只在我那台机器上成立"）：
+
+1. **不写死端口**：`AC_FE_BASE` 优先，否则按 `AC_PORT`（默认 18920）拼 ⇒ 换端口跑不用改代码；
+2. **浏览器可降级**：先试 `msedge` 通道，没有再退 playwright 自带 chromium，并**打印用的是哪个**；
+3. **证据目录可覆盖**：`AC_VERIFY_OUT` 优先，默认 `temp/验收证据截图/FE29_弹窗`（`temp/` 已 gitignore，不入库）。
+
+> 定位如实说：它需要 **node + playwright-core + 浏览器**，所以它**不是 CI 判据**，属"发布前/改动后人工跑"；
+> 常驻的是它的**存在性与可移植性**（守卫），不是它的运行结果。
+
+### ③ 判据
+
+- 预检 20/0/2；`test_frontend_handover.py` **9 passed**；`check_portability` fail=0；
+- 双平台真跑见发布记录；18920 切到本版后 `docking.html` 与仓库逐字节一致。
+
 ## [4.8.41] - 2026-10-17
 
 **修老板看着页面指出的三处：话术概念（harness ≠ 员工）、agent 命名要能看出是谁、纯文本里漏出 markdown 星号**
