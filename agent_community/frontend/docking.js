@@ -314,6 +314,61 @@ function dockMountRegister(){
   const tpl = document.getElementById('tpl-dock-register');
   wrap.appendChild(tpl.content.cloneNode(true));
   wrap.dataset.mounted = '1';
+  dockPromptLoad();   // 首选栏默认就给出「我还不确定」的话术（来自端点，不自己拼）
+}
+
+/* ══ 登记前话术（V54 · 通道 121 号）═══════════════════════════════
+ * 三条不许：① 话术只来自 GET /api/harness/register-prompt（前端不拼）；
+ *          ② 复制成功 ≠ 注册成功（反馈里写明）；
+ *          ③ 不写死端口/本机路径（地址由端点 platform_url 给）。
+ */
+let _dockPromptText = '';
+async function dockPromptLoad(){
+  const sel = document.getElementById('regPromptProto');
+  const pre = document.getElementById('regPromptPre');
+  const msg = document.getElementById('regPromptMsg');
+  const copyBtn = document.getElementById('regPromptCopy');
+  if (!sel || !pre) return;
+  _dockPromptText = '';
+  if (copyBtn) copyBtn.disabled = true;
+  const proto = sel.value;
+  if (msg) msg.textContent = '正在取平台话术…';
+  try {
+    const u = '/api/harness/register-prompt' + (proto ? ('?wakeup_method=' + encodeURIComponent(proto)) : '');
+    const r = await fetch(u);
+    const d = await r.json().catch(() => ({ error: '响应不可解析' }));
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    pre.textContent = d.prompt || '';
+    _dockPromptText = d.prompt || '';
+    if (copyBtn && _dockPromptText) copyBtn.disabled = false;
+    if (msg) {
+      msg.textContent = (d.known_protocol === false)
+        ? '已按「我还不确定」给通用话术（先跑通基础四项）'
+        : ('协议模板：' + (d.wakeup_method || ''));
+    }
+  } catch (e) {
+    pre.textContent = '';
+    if (msg) msg.innerHTML = '<span class="dock-err">✗ 话术取不到：' + esc(e.message || e) +
+      '（后端 /api/harness/register-prompt 不可用；可改用下方「或者你自己填」）</span>';
+  }
+}
+function dockPromptCopy(){
+  const msg = document.getElementById('regPromptMsg');
+  if (!_dockPromptText) { if (msg) msg.textContent = '还没有话术 —— 上面没取到，先看错误提示。'; return; }
+  const done = ok => {
+    if (msg) msg.innerHTML = ok
+      ? '<span class="dock-ok2">✓ 已复制（复制成功 ≠ 注册成功 —— 发给你的 AI，它注册完再回来刷新）</span>'
+      : '<span class="dock-err">✗ 复制失败 —— 请手动选中上面文字复制</span>';
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(_dockPromptText).then(() => done(true)).catch(() => done(false));
+  } else {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = _dockPromptText; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove(); done(true);
+    } catch (e) { done(false); }
+  }
 }
 
 /* ══ 总控下的工作间引导（建会话/送桥/抢救/通道/架桥在一个间里办）════════ */

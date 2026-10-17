@@ -129,8 +129,29 @@
       <template id="tpl-dock-register">
         <div class="card">
           <h3>登记一位新员工</h3>
-          <p class="lead">平台会<b>自己先探一次</b>再补齐没填的字段 —— 你只给<b>你手头有的东西</b>：
-            一句话命令 / 一个目录 / 一个地址（<b>有什么填什么，能留空就留空</b>）。</p>
+          <!-- 首选：把话术发给你的 AI（V54 · 121 号）—— 话术必须来自端点，前端不拼 -->
+          <p class="lead"><b>首选：把这段话发给你的 AI</b> —— 它自己探测、自己调接口完成注册；
+            注册完你回来刷新本页看结果。</p>
+          <div class="dock-form">
+            <select id="regPromptProto" onchange="dockPromptLoad()" title="选你的 agent 能被怎么叫醒；不确定就选最后一项">
+              <option value="http_api">http_api · 自带 HTTP 接口</option>
+              <option value="mcp">mcp · MCP 服务器</option>
+              <option value="acp">acp · 一条命令拉起</option>
+              <option value="file_poll">file_poll · 盯一个目录</option>
+              <option value="clipboard">clipboard · 只能人工中转</option>
+              <option value="http">http · 兜底轮询（仍要配叫醒命令）</option>
+              <option value="">我还不确定（先跑通基础四项）</option>
+            </select>
+            <pre id="regPromptPre" style="max-height:260px;overflow:auto">（正在取平台话术…）</pre>
+            <div class="dock-form-actions">
+              <button class="btn mini" id="regPromptCopy" onclick="dockPromptCopy()" disabled>复制话术</button>
+              <span class="dock-msg" id="regPromptMsg"></span>
+            </div>
+            <p class="sub">复制成功 ≠ 注册成功 ≠ 已验证：发给你的 AI → 它跑完注册 → 你回来刷新看到它，才算登记成功。</p>
+          </div>
+          <!-- 次选：平台侧探测表单（V54 保持不动） -->
+          <p class="lead" style="margin-top:14px"><b>或者你自己填</b> —— 平台会<b>自己先探一次</b>再补齐没填的字段：
+            你只给<b>你手头有的东西</b>：一句话命令 / 一个目录 / 一个地址（<b>有什么填什么，能留空就留空</b>）。</p>
           <div class="dock-form">
             <input id="regId" placeholder="给它起的标识（字母数字短横线，如 my-agent-1）">
             <input id="regCmd" placeholder="① 一句话命令：能把它拉起来的那条（可留空）">
