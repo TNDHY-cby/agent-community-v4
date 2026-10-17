@@ -249,21 +249,48 @@ function dockRenderResult(box, res){
     '<p class="sub">接着去<b>工作间</b>的成员卡上点「建会话 → 送桥」，把它对上岗位（对接中心不管讨论与工作）。</p>';
 }
 
-/* ══ 服务菜单导航（第一屏 → 当场办）══════════════════════════════════ */
+/* ══ 服务菜单导航：点瓦片 → 弹窗当场办（2026-10-17 老板裁定：不要长文定位）══ */
 function _dockScrollTo(id){
   const el = document.getElementById(id);
   if (el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'start'});
 }
+const DOCK_SVC = {
+  register:        { sec:'dockRegisterWrap', title:'登记一位新员工', mount(){ dockMountRegister(); } },
+  script_activate: { sec:'dockScriptWrap',   title:'脚本激活工作台', mount(){ dockMountScript(); } },
+  archive:         { sec:'dockArchiveWrap',  title:'员工档案',       mount(){ dockLoadArchive(); } },
+  ask_frontdesk:   { sec:'dockAskWrap',      title:'问前台',         mount(){} },
+  ws_ops:          { sec:'dockActivateWrap', title:'工作间操作（建会话 / 送桥 / 抢救 / 通道 / 架桥）', mount(){ dockMountWsGuide(); } }
+};
+const DOCK_WS_TILES = ['session_bridge', 'onboard_recover', 'channel', 'bridge_helper'];
 
-function dockGo(svc){
-  if (svc === 'register'){ dockMountRegister(); _dockScrollTo('dockRegisterWrap'); return; }
-  if (svc === 'script_activate'){ dockMountScript(); _dockScrollTo('dockScriptWrap'); return; }
-  if (svc === 'archive'){ dockLoadArchive(); _dockScrollTo('dockArchiveWrap'); return; }
-  if (svc === 'ask_frontdesk'){ _dockScrollTo('dockAskWrap'); return; }
-  // session_bridge / onboard_recover / channel / bridge_helper：这些在一个工作间里办
-  dockMountWsGuide();
-  _dockScrollTo('dockActivateWrap');
+function dockOpenModal(svc){
+  const meta = DOCK_SVC[svc] || (DOCK_WS_TILES.indexOf(svc) >= 0 ? DOCK_SVC.ws_ops : null);
+  if (!meta) return;
+  try { meta.mount(); } catch (e) { /* 挂载失败时下面仍把区块放进弹窗，错误在区块内说话 */ }
+  const sec = document.getElementById(meta.sec);
+  const ov = document.getElementById('dockModalOverlay');
+  const body = document.getElementById('dockModalBody');
+  const title = document.getElementById('dockModalTitle');
+  if (!sec || !ov || !body) { _dockScrollTo(meta.sec); return; }   // 弹窗容器缺失时退回旧行为
+  body.appendChild(sec);
+  if (title) title.textContent = meta.title;
+  ov.classList.add('show');
+  document.body.style.overflow = 'hidden';
 }
+function dockCloseModal(){
+  const ov = document.getElementById('dockModalOverlay');
+  const body = document.getElementById('dockModalBody');
+  const home = document.getElementById('dockModalHome');
+  if (!ov || !body || !home) return;
+  while (body.firstChild) home.appendChild(body.firstChild);
+  ov.classList.remove('show');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') dockCloseModal();
+});
+
+function dockGo(svc){ dockOpenModal(svc); }
 
 function dockTileKey(e, svc){
   if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); dockGo(svc); }
@@ -920,7 +947,7 @@ function dockDrawerHtml(d){
     '</select></div>' + wm +
     '<div class="row"><span class="k sub">视觉激活脚本</span>' +
     '<button class="dock-detail-btn" onclick="dockScriptPick(\'' + esc(d.harness_id) +
-    '\');dockMountScript();_dockScrollTo(\'dockScriptWrap\')">去脚本激活工作台改</button>' +
+    '\');dockGo(\'script_activate\')">去脚本激活工作台改</button>' +
     '<button class="dock-detail-btn" onclick="dockExportPs1From(\'' + esc(d.harness_id) + '\')">导出 .ps1 副本</button></div>' +
     (sc.text ? ('<pre>' + esc(sc.text) + '</pre><p class="sub">上次试投：' +
       (sc.verified === true ? '✓ 已自证' : '⚠ 未核实（别当成已验证）') +

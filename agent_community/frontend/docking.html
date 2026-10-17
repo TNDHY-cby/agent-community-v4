@@ -49,18 +49,18 @@
         <div class="stage-api" id="dockApi">GET /api/docking/overview</div>
       </div>
 
-      <!-- ★第一屏＝功能模块（老板裁定）：每块点进去当场办；脚本激活是核心（大格） -->
+      <!-- ★第一屏＝功能模块（老板裁定）：按办事顺序排（FE-26 §2a），点一块弹窗当场办 -->
       <section id="dockServices" class="stage-body">
-        <div class="dock-tiles-head"><b>我们能替你办哪些事</b> <span class="sub">点一块，当场办</span></div>
+        <div class="dock-tiles-head"><b>我们能替你办哪些事</b> <span class="sub">点一块，弹窗里当场办</span></div>
         <div class="dock-tiles">
-          <div class="dock-tile core" data-dock-service="script_activate" role="button" tabindex="0" aria-label="脚本激活：填关键词，让平台找窗口，试投并存成激活脚本" onclick="dockGo('script_activate')" onkeydown="dockTileKey(event,'script_activate')">
-            <span class="tile-ico">⚡</span><span class="tile-name">脚本激活</span>
-            <span class="tile-sub">填关键词 → 平台去找那个窗口 → 试投 → 存成激活脚本</span>
-            <span class="tile-go">去办 →</span>
-          </div>
           <div class="dock-tile" data-dock-service="register" role="button" tabindex="0" aria-label="登记一位新员工" onclick="dockGo('register')" onkeydown="dockTileKey(event,'register')">
             <span class="tile-ico">📝</span><span class="tile-name">登记一位新员工</span>
             <span class="tile-sub">你手头有什么给什么，平台自己探一次补齐</span>
+            <span class="tile-go">去办 →</span>
+          </div>
+          <div class="dock-tile hot" data-dock-service="script_activate" role="button" tabindex="0" aria-label="脚本激活：填关键词，让平台找窗口，试投并存成激活脚本" onclick="dockGo('script_activate')" onkeydown="dockTileKey(event,'script_activate')">
+            <span class="tile-ico">⚡</span><span class="tile-name">脚本激活</span>
+            <span class="tile-sub">填关键词 → 平台去找那个窗口 → 试投 → 存成激活脚本</span>
             <span class="tile-go">去办 →</span>
           </div>
           <div class="dock-tile" data-dock-service="archive" role="button" tabindex="0" aria-label="员工档案" onclick="dockGo('archive')" onkeydown="dockTileKey(event,'archive')">
@@ -98,33 +98,42 @@
 
       <section id="dockBody" class="stage-body"><!-- 点名册（总览）JS 渲染 --></section>
 
-      <!-- ★V34 §1：**注册是全局能力**（总控才有）—— 单间模式这一块由 JS 整块不渲染 -->
-      <section id="dockRegisterWrap"></section>
-
-      <!-- ★FE-26 §3：脚本激活工作台（四屏）—— JS 挂载 -->
-      <section id="dockScriptWrap"></section>
-
-      <!-- ★FE-26 §2b：员工档案（列表 + 详情四块，可看可改）—— JS 挂载 -->
-      <section id="dockArchiveWrap"></section>
-
-      <!-- ★V34 §2/§1：激活类端点是 `/{ws}/…` 的语义 ⇒ 这块**只在单间范围**由 JS 挂载；
-           总控给「选一个工作间」的引导（给动作，不给说明段落） -->
-      <section id="dockActivateWrap"></section>
-
-      <!-- 问前台（直聊，功能不是讲解） -->
-      <section id="dockAskWrap">
-        <div class="card">
-          <h3>平台 Agent 直聊 <span class="sub">（协助架桥 · 不懂就问）</span></h3>
-          <div class="dock-form">
-            <textarea id="chatInput" rows="2" placeholder="例如：我有个桌面版 agent，只会盯一个目录，怎么接进来？"></textarea>
-            <div class="dock-form-actions">
-              <button class="btn mini" id="chatSend" onclick="dockChat()">发送</button>
-              <span class="dock-msg" id="chatMsg"></span>
+      <!-- 功能面板默认不占页面：点瓦片后移入弹窗（hidden 家目录） -->
+      <div id="dockModalHome" hidden>
+        <!-- ★V34 §1：注册是全局能力（总控才有）—— 单间模式 JS 整块清空 -->
+        <section id="dockRegisterWrap"></section>
+        <!-- ★FE-26 §3：脚本激活工作台（四屏） -->
+        <section id="dockScriptWrap"></section>
+        <!-- ★FE-26 §2b：员工档案（列表 + 详情四块） -->
+        <section id="dockArchiveWrap"></section>
+        <!-- ★V34：激活类端点是单间语义；总控显示「选一个工作间」引导 -->
+        <section id="dockActivateWrap"></section>
+        <!-- 问前台（直聊，功能不是讲解） -->
+        <section id="dockAskWrap">
+          <div class="card">
+            <h3>平台 Agent 直聊 <span class="sub">（协助架桥 · 不懂就问）</span></h3>
+            <div class="dock-form">
+              <textarea id="chatInput" rows="2" placeholder="例如：我有个桌面版 agent，只会盯一个目录，怎么接进来？"></textarea>
+              <div class="dock-form-actions">
+                <button class="btn mini" id="chatSend" onclick="dockChat()">发送</button>
+                <span class="dock-msg" id="chatMsg"></span>
+              </div>
             </div>
+            <div id="chatReply"></div>
           </div>
-          <div id="chatReply"></div>
+        </section>
+      </div>
+
+      <!-- 功能弹窗（点瓦片打开；Esc / 点遮罩 / ✕ 关闭） -->
+      <div class="dock-modal-overlay" id="dockModalOverlay" onclick="if(event.target===this)dockCloseModal()">
+        <div class="dock-modal" role="dialog" aria-modal="true" aria-labelledby="dockModalTitle">
+          <div class="dock-modal-head">
+            <span class="dock-modal-title" id="dockModalTitle">—</span>
+            <button class="dock-modal-close" type="button" onclick="dockCloseModal()" aria-label="关闭">✕</button>
+          </div>
+          <div class="dock-modal-body" id="dockModalBody"></div>
         </div>
-      </section>
+      </div>
 
       <template id="tpl-dock-register">
         <div class="card">

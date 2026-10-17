@@ -107,7 +107,7 @@ body.app-bg-dock .btn.primary:hover{
 @media (max-width:620px){.dock-tiles{grid-template-columns:1fr}}
 .dock-tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;
   text-align:left;cursor:pointer;overflow:hidden;padding:14px 14px 12px;border-radius:0;
-  border:1px solid var(--dk-line-hi);background:#FFFFFF;
+  border:1px solid var(--dk-line-hi);background:#FFFFFF;min-height:128px;
   transition:border-color .18s,background .18s}
 .dock-tile:hover,.dock-tile:focus-visible{border-color:var(--dk-glow);
   background:#FFFFFF}
@@ -119,11 +119,18 @@ body.app-bg-dock .btn.primary:hover{
 .dock-tile .tile-go{margin-top:auto;padding-top:7px;color:var(--dk-dim2);font-size:11px;
   transition:color .18s}
 .dock-tile:hover .tile-go{color:var(--dk-glow)}
-.dock-tile.core{grid-column:span 2;border-color:#D32F2F;
-  background:#FFFFFF;
-  border-left:4px solid #D32F2F}
-.dock-tile.core:hover{border-color:#D32F2F;border-left-color:#B71C1C}
-@media (max-width:620px){.dock-tile.core{grid-column:span 1}}
+/* 高达机体编号：每块瓦片右下角 UNIT 编码（装饰层，不承载信息） */
+.dock-tile:after{content:"UNIT-" counter(tile-unit,decimal-leading-zero);
+  counter-increment:tile-unit;position:absolute;right:8px;bottom:6px;
+  font-family:ui-monospace,Consolas,monospace;font-size:9px;letter-spacing:.14em;
+  color:var(--dk-dim2);pointer-events:none}
+.dock-tiles{counter-reset:tile-unit}
+/* 核心业务（脚本激活）：红色左边条 + CORE 铭牌（等块，不再占双格） */
+.dock-tile.hot{border-color:var(--dk-glow);border-left:4px solid var(--dk-glow)}
+.dock-tile.hot:hover{border-left-color:var(--dk-glow2)}
+.dock-tile.hot:before{content:"CORE";position:absolute;top:8px;right:8px;
+  font-family:ui-monospace,Consolas,monospace;font-size:9px;font-weight:800;letter-spacing:.2em;
+  color:var(--dk-glow);border:1px solid var(--dk-glow);padding:1px 5px;pointer-events:none}
 .dock-tiles-head{display:flex;align-items:baseline;gap:8px;margin:6px 0 0;font-size:15px;color:var(--dk-ink)}
 .dock-tiles-head b{font-weight:900;letter-spacing:.01em}
 .dock-tiles-head .sub{font-size:11px}
@@ -218,6 +225,32 @@ body.app-bg-dock .btn.primary:hover{
 #dockBody pre,#dockRegisterWrap pre,#dockScriptWrap pre,#dockArchiveWrap pre{
   white-space:pre-wrap;word-break:break-all;font-size:11px}
 #dockScriptWrap textarea{width:100%;box-sizing:border-box}
+
+/* ── 机甲装甲角标：卡片对角 L 形括线（复古机甲风点缀，2px 级）────────── */
+body.app-bg-dock .card{position:relative}
+body.app-bg-dock .card:before{content:"";position:absolute;top:7px;right:7px;width:10px;height:10px;
+  border-top:1px solid var(--dk-line-hi);border-right:1px solid var(--dk-line-hi);pointer-events:none}
+body.app-bg-dock .card:after{content:"";position:absolute;bottom:7px;left:7px;width:10px;height:10px;
+  border-bottom:1px solid var(--dk-line-hi);border-left:1px solid var(--dk-line-hi);pointer-events:none}
+
+/* ── 功能弹窗：点瓦片弹出，不再长文定位 ───────────────────────────── */
+.dock-modal-overlay{position:fixed;inset:0;background:rgba(20,20,20,.42);z-index:700;
+  display:none;align-items:center;justify-content:center;padding:24px}
+.dock-modal-overlay.show{display:flex}
+.dock-modal{background:#F4F3F0;border:1px solid var(--dk-line-hi);width:880px;max-width:100%;
+  max-height:88vh;display:flex;flex-direction:column}
+.dock-modal-head{position:relative;display:flex;align-items:center;gap:12px;padding:13px 16px;
+  border-bottom:1px solid var(--dk-line-hi);background:#FFFFFF;flex:none}
+/* 危险条纹：弹窗头顶部 3px 红黑 45°（机甲警示语言） */
+.dock-modal-head:before{content:"";position:absolute;left:0;right:0;top:0;height:3px;
+  background:repeating-linear-gradient(45deg,#D32F2F 0 5px,#FFFFFF 5px 10px);opacity:.9}
+.dock-modal-title{font-weight:900;font-size:14.5px;color:var(--dk-ink);flex:1;letter-spacing:.01em}
+.dock-modal-close{width:32px;height:32px;border:1px solid var(--dk-line-hi);background:transparent;
+  color:var(--dk-ink);font-weight:900;cursor:pointer;border-radius:0;flex:none;
+  transition:border-color .15s,color .15s}
+.dock-modal-close:hover{border-color:var(--dk-glow);color:var(--dk-glow)}
+.dock-modal-body{overflow-y:auto;padding:16px 18px 22px}
+.dock-modal-body .card{margin-bottom:12px}
 
 /* ── 克制：系统尊重用户偏好 ───────────────────────────────────── */
 @media (prefers-reduced-motion:reduce){
