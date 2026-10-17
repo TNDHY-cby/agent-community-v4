@@ -11,6 +11,7 @@
     workshops_recover.py     员工掉线抢救（老板口述②，2026-10-08 新增）
     workshops_inherit.py     隔间「可被继任员工继承」（V53，2026-10-17 新增）
     workshops_evidence.py    信息搜索者与防信息污染（V55，2026-10-17 新增）
+    workshops_patrol.py      巡逻员：派人到现场看/修/复验（V56，2026-10-17 新增）
 
 拆分依据：拆分前实测「无跨组调用」——10 处跨组引用全部指向 common。
 本文件只负责聚合，server.py 的 `from .routers.workshops import router` 保持不变。
@@ -26,10 +27,11 @@ from .workshops_session import router as _session_router
 from .workshops_recover import router as _recover_router
 from .workshops_inherit import router as _inherit_router
 from .workshops_evidence import router as _evidence_router
+from .workshops_patrol import router as _patrol_router
 
 router = APIRouter()
 # 扁平展开而非 include_router：保持 router.routes / app.routes 自省可见
 for _sub in (_lifecycle_router, _discuss_router, _assign_router, _task_router,
              _common_router, _session_router, _recover_router, _inherit_router,
-             _evidence_router):
+             _evidence_router, _patrol_router):
     router.routes.extend(_sub.routes)

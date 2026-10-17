@@ -4,6 +4,48 @@
 
 # 4.8.26
 
+## [4.8.48] - 2026-10-17
+
+**V56 落地：巡逻员——派人到现场看、只许三类动作、修完必须复验**
+
+老板 2026-10-17「**按你的来**」＝按 V56 稿里我建议的三点定稿（巡逻员是**角色**不是自动兜底 / 平台自己试过一次仍不行才派 / 修不了给一句人话+可展开原因）。
+
+### 补的是哪一环
+
+原链条：① 通知组长 → ② 平台尝试调起 → ④ 到上限通知用户。
+缺中间那步——**它为什么起不来**（窗口没开／进程卡死／桥配置错／磁盘满／权限没了），
+**只有能看本机事实的 agent 答得出**，平台自己只会"再试一次调起"。
+
+### 落地
+
+| 件 | 落点 |
+|---|---|
+| 内核（纯逻辑） | `platform/patrol.py`：`pick_patrol_member` / `symptom_of` / `instruction` / `dispatch_payload` / `validate_report` / `verdict` / `human_line` |
+| 端点 | `routers/workshops_patrol.py`：`POST …/patrol`、`POST …/patrol/{id}/result`、`GET …/patrols` |
+| **链条插入** | `member_offline.handle_offline` 新增**第 2.5 步**（平台调起没成才派、**只派一次**）＋ `PATROL_GRACE_SECONDS=180`：派出后宽限期内 `action="awaiting_patrol"`，**先别叫用户**，等它带回"为什么"；`workshops_recover._run_one` 注入 `dispatch_patrol` |
+| 守卫 | `tests/test_patrol.py` **24 条** |
+| 端到端 | `temp/smoke_patrol_http.py`（独立实例真 HTTP）**5/5 全过** |
+
+### 四条硬口径
+
+1. **只许三类动作**：`relaunch_window` / `restart_bridge` / `reactivate`；别的动议（改代码/删数据）**拒收**并说明；
+2. **三态如实**：`fixed`＝true / false / **null（没自证，必须写 `why_no_proof`）**；`false` 必须写 `still_broken_reason`；
+   `need_human` 必须写 `user_action`；
+3. **"它说修好了"不算修好**：平台拿**自己的掉线判据**复核，不过就记 `claimed_but_not_verified` 并照样升级
+   （实测：真 HTTP 上它报 `fixed=true`，复核结果 `claimed_but_not_verified`，**没被放过**）；
+4. **没有巡逻员就如实跳过**（`patrol.skipped=true` + 原因；端点 409 附 `how_to_fix`），绝不假装派了人。
+
+### 判据（真跑）
+
+- 守卫 **24 passed**（挑选/硬约束/三态/复核/指令/链条顺序与只派一次/宽限期/无巡逻员/五个端点）；
+- 端到端：派发 200 带 5 项检查单 / 不合规回报 422 / 合规回报 200 但复核 `claimed_but_not_verified` / 无巡逻员 409 / 历史 200；
+- 双平台真跑见发布记录。
+
+### 口径同步（规则 20）
+
+模型文档里「巡逻员」有 **4 处**提到，其中 **3 处**写着"未实现"——**一次全改成已实现**（含 §2 角色表、正文、§11 行），
+改完复核"剩余『巡逻员…未实现』行数 = 0"；两份模型文档仍逐字节一致。
+
 ## [4.8.47] - 2026-10-17
 
 **V55 落地：信息搜索者与「防信息污染」——搜索由 agent 做，平台只做校验/收敛/限量分发**

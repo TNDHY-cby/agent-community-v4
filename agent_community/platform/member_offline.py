@@ -26,6 +26,8 @@ from typing import Any, Callable, Optional
 
 MAX_ATTEMPTS = 3          # 老板说的"多次"；到这就上报人，不再耗着
 COOLDOWN_SECONDS = 60.0   # 两次尝试之间的冷却，避免 20s 循环每轮都猛调
+#: V56：巡逻员派出去之后**先别急着叫用户**，等它带回"为什么"（这段时间内 action=awaiting_patrol）
+PATROL_GRACE_SECONDS = 180.0
 
 
 def _hid_of(member: Any) -> str:
@@ -207,11 +209,18 @@ def handle_offline(ws: Any, member: Any, *, notify_leader: Callable[[str], Any],
                    attempt_revive: Callable[[], dict], notify_user: Callable[[str], Any],
                    heartbeat_status=None, bridge_alive=None,
                    pending_work: Optional[Callable[[Any, Any], tuple]] = None,
-                   now: Optional[float] = None) -> dict:
+                   now: Optional[float] = None,
+                   dispatch_patrol: Optional[Callable[[dict], dict]] = None) -> dict:
     """对**一个**成员执行一轮抢救链。返回这一轮做了什么（供 API/日志）。
 
     ⭐ **先问"该不该救"**：没有在进行的工作 ⇒ `action="idle"`，**直接不救、不叫人**
     （老板 2026-10-08：「这个不够智能，有时候对方并没有工作需要进行」）。
+
+    ⭐ **V56（2026-10-17 老板「按你的来」拍板）新增第 2.5 步：派巡逻员到现场**。
+    触发：平台自己调起**一次没成**才派（别一掉线就派人）；派过就不再重复派。
+    派出去之后、还没回报之前（`PATROL_GRACE_SECONDS` 内）**先别急着叫用户**——
+    等它带回"为什么"，用户一上来就知道发生了什么（`action="awaiting_patrol"`）。
+    `dispatch_patrol` 为 `None`（工作间里没有可用巡逻员）⇒ 照旧走原链条，**并在结果里如实说明**。
 
     返回 `action` 取值：
       · `idle`       —— **没有在进行的活**（空闲是正常态）：不救、不通知任何人；
@@ -220,6 +229,7 @@ def handle_offline(ws: Any, member: Any, *, notify_leader: Callable[[str], Any],
       · `escalated`  —— 已上报人，不再自动重试；
       · `revived`    —— **调起成功且已自证**，清零计数；
       · `retry`      —— 本轮尝试失败/未核实，还会再试（未到上限）；
+      · `awaiting_patrol` —— 已派巡逻员、还在等它回报（**暂不叫用户**）；
       · `gave_up`    —— 到上限：置 `needs_human` 并**通知用户**。
     """
     now = now or time.time()
@@ -269,8 +279,27 @@ def handle_offline(ws: Any, member: Any, *, notify_leader: Callable[[str], Any],
         return {"action": "revived", "reasons": reasons, "attempts": 0,
                 "notified_leader": notified_leader, "revive": res}
 
+    # ── 第 2.5 步（V56）：平台自己没调起来 ⇒ 派巡逻员到现场看（只派一次）──
+    patrol = None
+    patrol_at = float(getattr(member, "patrol_dispatched_at", 0) or 0)
+    if dispatch_patrol is None:
+        patrol = {"dispatched": False, "skipped": True,
+                  "why": "这个工作间没有可用巡逻员（角色含「巡逻」且绑了 harness）⇒ 走原链条"}
+    elif not patrol_at:
+        try:
+            patrol = dispatch_patrol({"reasons": reasons, "revive": res}) or {}
+        except Exception as e:  # noqa: BLE001
+            patrol = {"dispatched": False, "why": f"派巡逻员异常：{type(e).__name__}: {e}"}
+        if patrol.get("dispatched"):
+            member.patrol_dispatched_at = now
+
     # ── 第 3 步：到上限 → 上报人（老板：多次仍调不起才通知用户）────────
     if attempts >= MAX_ATTEMPTS:
+        # 巡逻员还在外面看：先别叫用户（V56；等它带回"为什么"）
+        if patrol_at and (now - patrol_at) < PATROL_GRACE_SECONDS:
+            return {"action": "awaiting_patrol", "reasons": reasons, "attempts": attempts,
+                    "notified_leader": notified_leader, "revive": res, "patrol": patrol,
+                    "patrol_left": int(PATROL_GRACE_SECONDS - (now - patrol_at))}
         member.entry_state = "needs_human"
         member.entry_reason = (f"掉线 {attempts} 次调起仍未成功（{'；'.join(reasons)}）"
                                f"—— 最后一次：{res.get('detail', '')}")
@@ -283,7 +312,7 @@ def handle_offline(ws: Any, member: Any, *, notify_leader: Callable[[str], Any],
         except Exception as e:  # noqa: BLE001
             print(f"[offline] 通知用户失败: {e}", flush=True)
         return {"action": "gave_up", "reasons": reasons, "attempts": attempts,
-                "notified_leader": notified_leader, "revive": res}
+                "notified_leader": notified_leader, "revive": res, "patrol": patrol}
 
     return {"action": "retry", "reasons": reasons, "attempts": attempts,
-            "notified_leader": notified_leader, "revive": res}
+            "notified_leader": notified_leader, "revive": res, "patrol": patrol}

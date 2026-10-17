@@ -18,6 +18,8 @@ import asyncio
 
 import time
 
+from uuid import uuid4
+
 from fastapi import APIRouter, Request
 
 from ..audit import audit_log as _audit_log
@@ -140,7 +142,48 @@ def _attempt_revive(ws, member):
             "detail": "；".join(detail) + ("" if verified else f"；仍未恢复（{'；'.join(left)}）")}
 
 
-def _run_one(ws, member, *, now=None) -> dict:
+def _dispatch_patrol(ws, member, symptom: dict, *, req_base: str = "") -> dict:
+    """V56：**派巡逻员到现场**（平台试调起没成之后的那一步）。
+
+    没有可用巡逻员 ⇒ 返回 `{"dispatched": False, "skipped": True, "why": …}`（**如实跳过**，不假装派了人）。
+    巡逻员的挑选、payload、话术全在 `platform/patrol.py`（一处真相）。
+    """
+    from .. import patrol as _pt
+    from ..server import _append_msg, _dispatch_to_harness, now_iso
+    try:
+        patrol_member = _pt.pick_patrol_member(ws, exclude=[member.member_id])
+        if patrol_member is None:
+            return {"dispatched": False, "skipped": True,
+                    "why": "这个工作间没有可用巡逻员（角色含「巡逻」且绑了 harness）⇒ 走原链条"}
+        pid = uuid4().hex[:8]
+        payload = _pt.dispatch_payload(ws, patrol_member, member, symptom=symptom,
+                                       base_url=req_base, patrol_id=pid)
+        ok, note = _dispatch_to_harness(patrol_member.harness_ids[0], payload, kind="task")
+        log = getattr(ws, "patrols", None)
+        if log is None:
+            log = []
+            try:
+                ws.patrols = log
+            except Exception:                   # noqa: BLE001
+                pass
+        log.append({"patrol_id": pid, "target_member_id": member.member_id,
+                    "patrol_member_id": patrol_member.member_id,
+                    "dispatched": bool(ok), "dispatch_note": str(note or "")[:200],
+                    "symptom": symptom, "at": now_iso(),
+                    "status": "dispatched" if ok else "dispatch_failed",
+                    "report": None, "verdict": None, "auto": True})
+        _append_msg(ws, "leader",
+                    "【巡逻】平台自己没把它调起来 ⇒ 已派 %s（%s）到现场看%s"
+                    % (patrol_member.role, patrol_member.display_name,
+                       "" if ok else "（派发失败：" + str(note or "")[:80] + "）"),
+                    zone=2, display_name="组长")
+        return {"dispatched": bool(ok), "patrol_id": pid,
+                "patrol_member_id": patrol_member.member_id, "note": note}
+    except Exception as e:                     # noqa: BLE001
+        return {"dispatched": False, "why": f"派巡逻员异常：{type(e).__name__}: {e}"}
+
+
+def _run_one(ws, member, *, now=None, req_base: str = "") -> dict:
     from ..member_offline import handle_offline
     out = handle_offline(
         ws, member,
@@ -148,6 +191,7 @@ def _run_one(ws, member, *, now=None) -> dict:
         attempt_revive=lambda: _attempt_revive(ws, member),
         notify_user=lambda text: _notify_user(ws, member, text),
         heartbeat_status=_hb_status, bridge_alive=_bridge_alive, now=now,
+        dispatch_patrol=lambda sym: _dispatch_patrol(ws, member, sym, req_base=req_base),
     )
     try:
         _audit_log.record("workshop.member_recover", actor="system", target=ws.workshop_id,
@@ -155,7 +199,7 @@ def _run_one(ws, member, *, now=None) -> dict:
                                  f"attempts={out.get('attempts')}",
                           extra={"member_id": member.member_id, "action": out.get("action"),
                                  "attempts": out.get("attempts"), "reasons": out.get("reasons"),
-                                 "revive": out.get("revive")})
+                                 "revive": out.get("revive"), "patrol": out.get("patrol")})
     except Exception:  # noqa: BLE001
         pass
     return out
