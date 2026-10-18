@@ -47,9 +47,12 @@ def test_snapshot_covers_runtime_dirs_and_ignores_missing_ones():
     snap = dpc._snapshot_repo_runtime()
     assert isinstance(snap, dict)
     # 快照里只该出现"运行数据"这几类路径（不许把整个仓库抓进来）
+    # ⚠️ 2026-10-18：`agent_community/bridges/` 也纳入了快照（**生成的桥脚本**是运行期产物），
+    #   所以这里要放行它 —— 这不是"抓多了"，是那条运行数据目录清单又多了正确的一项。
     bad = [k for k in snap
            if Path(k).parts[0] not in ("library", "data", "runtime_logs")
-           and Path(k).parts[:2] != ("agent_community", "data")]
+           and Path(k).parts[:2] not in (("agent_community", "data"),
+                                         ("agent_community", "bridges"))]
     assert not bad, "快照抓到了不该看的路径：%s" % bad[:5]
 
 

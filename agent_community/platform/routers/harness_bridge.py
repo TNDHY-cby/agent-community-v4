@@ -766,6 +766,26 @@ async def harness_bridge_generate(harness_id: str, request: Request):
         template, template_source = picked, why
     if template not in available:
         return Utf8JSONResponse({"error": f"模板不存在: {template}，可用: {sorted(available)}"}, status_code=400)
+
+    # ★2026-10-18（核心矩阵体检抓到）：**协议本身不需要桥**时要说清"不需要"，
+    #   而不是报一句跟它无关的「未配置 wakeup_dir」。
+    #   `http_api` / `mcp` 是平台**直推/直连**（`interface_guidance.match_for().primary_bridge is None`），
+    #   给它们架 file_poll/pending_poll 桥没有任何意义。
+    try:
+        from .. import interface_guidance as _ig
+        _match = _ig.match_for(getattr(info, "wakeup_method", "") or "") or {}
+        _need_bridge = _match.get("primary_bridge")
+    except Exception:                                        # noqa: BLE001
+        _need_bridge = None
+    if not _need_bridge:
+        return Utf8JSONResponse({
+            "error": ("这个 harness 的接口类型（%s）**不需要架桥** —— 平台直推/直连，架桥只是多一条没用链路"
+                      % (getattr(info, "wakeup_method", "") or "未知")),
+            "bridge_needed": False,
+            "hint": ("① 它现在能不能被派活，用 `POST /api/harness/%s/verify` 自检；"
+                     "② 若你确实要给它架 %s 桥（比如它另有文件邮箱），先把它的 wakeup_method "
+                     "改成对应类型再注册。" % (harness_id, template)),
+        }, status_code=400)
     # 平台自址：桥用同一地址回连
     try:
         platform_url = str(request.base_url).rstrip("/")
@@ -827,15 +847,34 @@ async def harness_bridge_generate(harness_id: str, request: Request):
     params["AGENT_TOKEN"] = str(((getattr(info, "metadata", None) or {}) or {}).get("agent_token") or "")
     bridges_root = BRIDGES_ROOT          # 模块级常量，测试可 monkeypatch（见文件头说明）
     if out_dir:
-        # V-6 修复：out_dir 必须位于平台 bridges 根目录内，防任意文件写入
+        # V-6 修复：out_dir 必须位于允许的根目录内，防任意文件写入。
+        # ★2026-10-18 扩充（核心矩阵体检）：允许**两个**根 ——
+        #   ① 平台 `bridges/`（默认，产品自用）；
+        #   ② `AC_DATA_DIR` 下的任意子目录（测试 / CI / 想把产物放到数据盘的部署）。
+        #   原来只允许 ①，于是"换数据目录 + 跑测试"时桥产物被写进**安装目录**（矩阵为此报红）；
+        #   放宽到 ② 后，判据「换目录+换数据目录不改一行代码能走通」才对桥产物也成立。
         p = Path(out_dir)
         if not p.is_absolute():
             p = bridges_root / p
+        allowed_roots = [bridges_root]
         try:
-            p.resolve().relative_to(bridges_root.resolve())
-        except (ValueError, OSError):
+            from ..env_spec import data_dir as _data_dir          # 一处真相：数据目录怎么解析
+            allowed_roots.append(_data_dir())
+        except Exception:                                        # noqa: BLE001
+            pass
+        ok_root = False
+        for root in allowed_roots:
+            try:
+                p.resolve().relative_to(Path(root).resolve())
+                ok_root = True
+                break
+            except (ValueError, OSError):
+                continue
+        if not ok_root:
             return Utf8JSONResponse(
-                {"error": f"out_dir 必须位于平台 bridges 目录内: {bridges_root}"},
+                {"error": ("out_dir 必须位于平台 bridges 目录内，或位于 AC_DATA_DIR 之下：%s"
+                           % " / ".join(str(r) for r in allowed_roots)),
+                 "hint": "省略 out_dir 即落到平台默认位置；测试/CI 请指向 AC_DATA_DIR 下的子目录"},
                 status_code=400,
             )
         target = p

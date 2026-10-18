@@ -4,6 +4,59 @@
 
 # 4.8.26
 
+## [4.8.56] - 2026-10-18
+
+**核心三块做实：六种协议 × 桥 × 唤醒脚本——矩阵体检 + 修掉三个真缺陷**
+
+老板 2026-10-18：「先把核心做好：各种协议、桥、唤醒脚本」。
+这三块模块不少（桥相关 20+ 模块、20+ 端点、六种协议档位），但**从来没人一次把六种协议整条链跑通给人看**。
+⇒ 新工具 `tools/protocol_matrix.py`：独立实例（换端口+换数据目录）上，每种协议跑**同一套五步**：
+
+> ①登记 → ②叫醒脚本（并检查落点是否在**数据目录**）→ ③具体桥模板（含"故意错的 kind 必须 400+提示"）
+> → ④生成桥 + 自检 → ⑤投递
+
+**第一跑就红了 18 格**，逐格查下来是 **3 个真缺陷 + 我的测试写错两处**：
+
+### 真缺陷①：话术里的"最小 JSON"照抄会 400（V54 的洞）
+
+`register_prompt._EXTRA` 给 `acp`/`http` 的 `acp_command` 是 `<你自测出来的那条…命令>`，
+而 `acp_command` 校验**禁 shell 元字符**（含 `<` `>`）⇒ agent 把示例**原样**发出去直接 400，
+而话术还写着"照这份做"。`http_api`/`mcp` 的示例同理（`<你自己的地址>` 根本不是 URL）。
+
+**修**：示例换成**能过校验的安全值**（`demo-cli --new-instance --no-gui`、`http://127.0.0.1:8801/agent`、
+`http://127.0.0.1:8802/mcp`），并新增守卫 `test_register_examples_postable.py`：
+**把示例原样 POST 必须 200**（`file_poll` 除外——它的 `wakeup_dir` 平台真校验必须绝对路径，世上没有通用值，
+守卫对这条做替换后验证）。原守卫之所以一直是绿的，是因为它发之前**替换掉了占位符**，把洞盖住了。
+
+### 真缺陷②：协议不需要桥时，平台报了一句跟它无关的错
+
+`POST /api/harness/{hid}/bridge/generate` 对 `http_api`/`mcp`（**平台直推/直连，不需要桥**）
+原来报「未配置 wakeup_dir（inbox），无法生成 file_poll 桥」——用户根本不知道发生了什么。
+
+**修**：先查 `interface_guidance.match_for().primary_bridge`；为 `None` 就**如实说**
+「这个 harness 的接口类型（http_api）不需要架桥 —— 平台直推/直连」＋ `bridge_needed: false` ＋ 下一步提示。
+
+### 真缺陷③：桥产物只能落在**安装目录**里（换数据目录就不成立）
+
+`bridge/generate` 的 `out_dir` 原来只允许平台 `bridges/` 目录内；测试/CI/把数据放数据盘的部署
+只能往安装目录里写（矩阵为此报红）。
+
+**修**：允许**两个**根 —— 平台 `bridges/` **或** `AC_DATA_DIR` 之下（经 `env_spec.data_dir()`，一处真相）。
+判据「换目录 + 换数据目录、不改一行代码就能走通」从此对**桥产物**也成立。
+
+### 我自己写错的两处（也如实记）
+
+- 矩阵里给 `http_api` 塞了 `wakeup_url`（端点没这字段，而且它走**严格 SSRF 校验**、连 127.0.0.1 都禁）；
+  正确字段是 `api_base_url`（走 `validate_harness_api_url`，本机回环合法——本机桌面 Agent 的常态）；
+- 路径比较用了"把 `/` 换成 `\\`"的土办法 ⇒ **Linux 侧全红**（10 格假失败）。改用 `Path.resolve().relative_to()` 跨平台判法。
+
+### 判据（真跑）
+
+- `tools/protocol_matrix.py`：**Windows 六协议五步全绿 / Linux 六协议五步全绿**（同一条命令，两侧都跑）；
+- 新增守卫：`test_core_matrix.py`（2 条，跑真矩阵）+ `test_register_examples_postable.py`（3 条，示例原样可注册）；
+- 双平台快照多了 `agent_community/bridges/`（生成的桥脚本＝运行期产物，同样不许污染仓库）；
+- 发布面 `check_portability` fail=0（新示例 URL 已按 `# portability: allow(话术示例值…)` 显式登记）。
+
 ## [4.8.55] - 2026-10-18
 
 **把"无状态行"的设计稿补齐（31 份），索引改成「文档状态 + 我核」两列**

@@ -202,13 +202,15 @@ def run_linux(distro: str, linux_python: str, junit_name: str) -> tuple:
 
 
 def _snapshot_repo_runtime() -> dict:
-    """给"**运行数据目录**"拍快照：仓库根的 `library/` / `data/` / `agent_community/data/`。
+    """给"**运行数据目录**"拍快照：仓库根的 `library/` / `data/` / `agent_community/data/` /
+    `runtime_logs/` / `agent_community/bridges/`。
 
-    这几处是平台运行期会写的（工作间共享资料库、状态与日志）。它们被 `.gitignore` 排除，
+    这几处是平台运行期会写的（工作间共享资料库、状态与日志、生成的桥脚本）。它们被 `.gitignore` 排除，
     所以 `git status` 看不出污染 —— **必须自己拍快照**才抓得到"测试往仓库里写东西"。
     """
     snap = {}
-    for rel in ("library", "data", Path("agent_community") / "data", "runtime_logs"):
+    for rel in ("library", "data", Path("agent_community") / "data", "runtime_logs",
+                Path("agent_community") / "bridges"):
         base = ROOT / rel
         if not base.exists():
             continue

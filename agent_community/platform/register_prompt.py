@@ -28,16 +28,24 @@ from . import interface_guidance as ig
 SUPPORTED = ("http_api", "mcp", "acp", "file_poll", "clipboard", "http")
 
 #: 每种协议的最小注册 JSON 里**除公共字段外**要补的那一项（没有就 None）
+#: ★2026-10-18 修（核心矩阵体检抓到的**真缺陷**）：示例值**本身必须能过平台校验**。
+#:   原来 acp/http 给的是 `<你自测出来的那条…命令>`，而 `acp_command` 校验**禁 shell 元字符**（含 `<` `>`）
+#:   ⇒ agent 把示例**原样**发出去直接 400（"包含禁止的 shell 元字符: <"），而话术写着"照这份做"。
+#:   现在改成**安全的假命令**：明显是示例，又能原样提交成功（守卫会照原样发一遍）。
 _EXTRA = {
-    "acp": {"acp_command": "<你自测出来的那条能拉起新实例的命令>"},
-    "file_poll": {"wakeup_dir": "<你真正在盯的那个目录（绝对路径）>"},
-    "http_api": {"api_base_url": "<你自己的 HTTP 地址，如 http://127.0.0.1:PORT/agent>"},
+    "acp": {"acp_command": "demo-cli --new-instance --no-gui"},
+    # `wakeup_dir` **必须绝对路径**（平台真校验），世上没有"通用可用"的绝对路径 ⇒ 保留占位符并在话术里
+    # 明说要换；守卫生成时会替换成临时目录再验证。
+    "file_poll": {"wakeup_dir": "<换成你自己的绝对路径，例如 /home/me/agent-inbox>"},
+    # ⚠️ 下面两个 127.0.0.1 是**话术里的示例值**（agent 照抄能注册成功），不是平台自身的地址/端口；
+    #   平台自址一律走 `platform_address` 解析。扫描器已按例外登记。
+    "http_api": {"api_base_url": "http://127.0.0.1:8801/agent"},  # portability: allow(话术示例值：agent 的 HTTP 接口示例地址，端口是文档占位)
     # ⚠️ `http`（E 档兜底）注册时**仍要求 acp_command** —— 这是端点既有的口径
     #   （`harness_register.py` 的 `_need_acp`：非 api 的 http 唤醒，桥走兜底轮询，仍要一条叫醒命令）。
     #   话术里必须如实带上，否则 agent 会卡在 400。
-    "http": {"acp_command": "<你自测出来的那条能拉起新实例的命令>"},
+    "http": {"acp_command": "demo-cli --new-instance --no-gui"},
     "clipboard": {},
-    "mcp": {"mcp_server": "<你的 MCP 服务地址或启动命令>"},
+    "mcp": {"mcp_server": "http://127.0.0.1:8802/mcp"},  # portability: allow(话术示例值：MCP 服务示例地址，端口是文档占位)
 }
 
 #: 注册前**必须让 agent 自己确认**的一件事（各协议不同；这是"别问用户技术细节"的落点）
