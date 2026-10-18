@@ -18,6 +18,8 @@
 """
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -105,6 +107,71 @@ async def api_version():
             "keep_data_dir": True,
             "restart_required": True,
             "restart_endpoint": None,       # 受控重启端点尚未提供（设计稿 V57 待拍板）
+            "restart_howto": "python tools/update.py --apply --restart（或手工重启；前台进程需自行拉起）",
+            "apply_howto": "python tools/update.py --apply",
+            "rollback_howto": "python tools/update.py --rollback",
         },
         "notes": notes,
     }
+
+
+# ── 给前端的"查最新版"（只读、带超时与缓存、失败如实）────────────────
+_LATEST_CACHE = {"at": 0.0, "value": None}
+
+
+@router.get("/api/version/latest")
+async def api_version_latest():
+    """**只读**地查一次远端最新版，供「检查更新」按钮使用。
+
+    为什么由平台代查而不是前端自己去请求 Gitee：
+      ① 前端直连会撞 CORS / 代理 / 网络策略（自部署环境五花八门）；
+      ② 平台可以用**超时 + 60 秒缓存**兜住，失败时如实返回 `error`，不把界面卡死；
+      ③ 这条端点**只读**（不下载、不替换、不重启）—— 真正的更新动作仍是命令行
+         `tools/update.py`（受控重启端点 `POST /api/admin/restart` 尚待拍板）。
+    """
+    import time as _time
+    import urllib.error
+    import urllib.request
+
+    current = _platform_version()
+    now = _time.time()
+    if _LATEST_CACHE["value"] is not None and now - _LATEST_CACHE["at"] < 60:
+        body = dict(_LATEST_CACHE["value"])
+        body["cached"] = True
+        return body
+
+    api = CHANNEL["releases_api"]
+    latest, error, source = None, "", "Gitee Releases API"
+    try:
+        with urllib.request.urlopen(api, timeout=10) as resp:      # noqa: S310 - 固定 https 域名
+            data = json.loads(resp.read().decode("utf-8", "replace"))
+        tag = str(data.get("tag_name") or "").lstrip("v")
+        latest = tag or None
+        if not tag:
+            error = "远端返回里没有 tag_name（如实说，不猜）"
+    except urllib.error.HTTPError as e:
+        error = "HTTP %s（可能是限流或未发布版本）" % e.code
+    except Exception as e:                                          # noqa: BLE001
+        error = "%s: %s" % (type(e).__name__, str(e)[:120])
+
+    def _tup(v: str) -> tuple:
+        return tuple(int(x) for x in re.findall(r"\d+", v or "")[:3]) or (0,)
+
+    body = {
+        "current": current or None,
+        "latest": latest,
+        "update_available": (None if not latest or not current
+                             else _tup(latest) > _tup(current)),
+        "source": source,
+        "error": error or None,
+        "checked_at": _time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "cached": False,
+        "howto": {
+            "apply": "python tools/update.py --apply",
+            "apply_and_restart": "python tools/update.py --apply --restart",
+            "rollback": "python tools/update.py --rollback",
+        },
+    }
+    if latest:
+        _LATEST_CACHE.update({"at": now, "value": body})
+    return body

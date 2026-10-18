@@ -70,7 +70,45 @@ def test_data_dir_risk_flags_nested_and_equal_dirs(tmp_path):
     assert data_dir_risk("", str(outside)) != "", "读不到安装目录时必须如实说不确定"
 
 
-def test_version_update_safety_declares_keep_data(client):
+def test_version_latest_endpoint_is_readonly_and_honest(client, monkeypatch):
+    """"查最新版"端点：**只读**、有缓存、失败如实（不联网的机器上也不能编一个版本号）。"""
+    import agent_community.platform.routers.version as v
+
+    # ① 成功路径：伪造一次 Releases API 应答
+    class FakeResp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b'{"tag_name": "v9.9.9"}'
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: FakeResp())
+    v._LATEST_CACHE.update({"at": 0.0, "value": None})
+    d = client.get("/api/version/latest").json()
+    assert d["latest"] == "9.9.9", d
+    assert d["update_available"] is True
+    assert d["error"] is None
+    assert d["howto"]["apply"].endswith("--apply")
+
+    # ② 失败路径：如实给 error，latest 为 null（不许编）
+    def boom(*a, **k):
+        raise OSError("network down")
+
+    monkeypatch.setattr("urllib.request.urlopen", boom)
+    v._LATEST_CACHE.update({"at": 0.0, "value": None})
+    d2 = client.get("/api/version/latest").json()
+    assert d2["latest"] is None and d2["error"], d2
+    assert d2["update_available"] is None
+
+
+def test_version_latest_endpoint_does_not_write_anything(client, monkeypatch):
+    """**只读**：绝不能因为点了"检查更新"就动文件/下载/重启（这条端点只在内存里算）。"""
+    src = (_ROOT / "agent_community" / "platform" / "routers" / "version.py").read_text(encoding="utf-8")
+    for forbidden in ("Popen", "subprocess", "git ", "shutil", "unlink", "rmtree"):
+        assert forbidden not in src, "查版本端点里出现了会动系统的动作：%r" % forbidden
     safety = client.get("/api/version").json()["update_safety"]
     assert safety["replace_install_dir_only"] is True
     assert safety["keep_data_dir"] is True, "更新不许动数据目录"

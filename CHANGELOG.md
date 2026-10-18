@@ -4,6 +4,48 @@
 
 # 4.8.26
 
+## [4.8.68] - 2026-10-18
+
+**给前端的「检查更新」补一个只读接口；后端三件齐了（老板交办：让 MiMo 接前端）**
+
+老板问「一键更新的后端做好了？谁做的」——**后端是 DSH 做的，三件都已就绪**：
+
+| 件 | 位置 | 起点 |
+|---|---|---|
+| 版本事实（只读、不联网猜） | `GET /api/version` | v4.8.62 |
+| **查最新版（只读、60s 缓存、失败如实）** | `GET /api/version/latest` | **本版新增** |
+| 执行侧（更新 / 回滚 / 重启） | `python tools/update.py --apply/--rollback/--restart` | v4.8.67 |
+
+### 为什么加 `/api/version/latest`
+
+前端要显示"有没有新版"，自己跨域去请求 Gitee 会撞 CORS/代理/网络策略（自部署环境各不相同）。
+由平台代查可以**统一超时（10s）+ 缓存（60s）**，失败时把 `error` 原样交给界面 ——
+**绝不把"查不到"显示成"已是最新"**。
+
+```json
+{"current":"4.8.67","latest":"4.8.68","update_available":true,
+ "source":"Gitee Releases API","error":null,"checked_at":"...","cached":false,
+ "howto":{"apply":"python tools/update.py --apply",
+          "apply_and_restart":"python tools/update.py --apply --restart",
+          "rollback":"python tools/update.py --rollback"}}
+```
+
+### 为什么"更新动作"仍然不是 HTTP 端点
+
+本地自部署平台给自己打补丁是高危动作：必须由用户在自己机器上**主动执行**（可回滚、可查看）。
+前端只做**展示 + 一条可复制的命令**；受控重启端点 `POST /api/admin/restart` 仍待老板拍板。
+
+### 判据
+
+- 端点真打通过：`current=4.8.67 / latest=4.8.67 / error=null`（缓存与失败路径都有守卫）；
+- 新增守卫 2 条：**成功/失败两条路径都如实**（失败时 `latest=null` 且 `error` 非空）、
+  **查版本端点里不许出现任何会动系统的动作**（`Popen`/`git`/`unlink` 等一律禁止）；
+  `test_version_endpoint.py` 共 **6 条**；
+- 前端契约已发通道 `166`（含三态文案与"不许说自动升级完成"这条硬要求）。
+
+> 过程中该端点第一次被真打时**如实报错** `NameError: name 'json' is not defined`（少了 import）——
+> 这正是"失败要说话"的价值：它没有返回一个看起来成功的空结果。
+
 ## [4.8.67] - 2026-10-18
 
 **一键更新：执行侧做出来了（`tools/update.py`），并用端到端判据证明"能更新 / 能回滚 / 该拒绝时拒绝"**
