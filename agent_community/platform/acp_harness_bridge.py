@@ -80,10 +80,18 @@ class AcpHarnessBridge:
             raise RuntimeError("未配置 ACP 启动命令：请通过 HarnessInfo.acp_command 或环境变量 AC_ACP_COMMAND 提供")
         env = dict(os.environ)
         env["DEEPSEEK_API_KEY"] = api_key or load_api_key()
+        # ★2026-10-18 修（acp 档核心体检抓到的**真缺陷**）：**强制子进程说 UTF-8**。
+        #   病灶：Windows 上 Python 子进程按 locale（cp936/GBK）往 stdout 打中文，
+        #   而本类按 `encoding="utf-8"` 读 ⇒ `UnicodeDecodeError: 'utf-8' codec can't decode byte 0xca`
+        #   ⇒ **读线程直接崩**，`prompt()` 永远 `stop=None / text=''`，界面上表现成"agent 不吭声"。
+        #   做法：① 给子进程设 PYTHONIOENCODING/PYTHONUTF8（合规的 Python agent 一定输出 UTF-8）；
+        #        ② 读取端加 `errors="replace"`（不合规的输出也不许把线程打死——失败要说话，不要静默死）。
+        env.setdefault("PYTHONIOENCODING", "utf-8")
+        env.setdefault("PYTHONUTF8", "1")
         self.proc = subprocess.Popen(
             self.cmd, cwd=self.repo or None, env=env,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, bufsize=1, encoding="utf-8",
+            text=True, bufsize=1, encoding="utf-8", errors="replace",
         )
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()

@@ -4,6 +4,43 @@
 
 # 4.8.26
 
+## [4.8.58] - 2026-10-18
+
+**acp 档做实：平台能用一条命令真把 agent 拉起来，并走通一轮 ACP 对话（并修掉一个真缺陷）**
+
+老板 2026-10-18「继续落实推进」。前六步验的是 file_poll 那条链，**acp 档**（六种协议里唯一
+"平台主动拉起进程"的一档）一直只是"登记能过、桥模板能建"，**从没验过"命令真被执行、对话真走通"**。
+
+### 新工具：`tools/acp_core_check.py`（假 agent 对端，两段真跑）
+
+| 段 | 做法 | 结果 |
+|---|---|---|
+| ⑦a **客户端真拉起** | 用平台自己的 `AcpHarnessBridge(cmd=[python, 假agent])`：`start → initialize → session/new → session/prompt` | **OK**：`stop=end_turn`、回文 `收到，已进入工作状态。`、假 agent 的启动标记为真（**进程真被这条命令拉起**） |
+| ⑦b **生成的 cli_acp 桥带着这条命令** | 用 `bridge_factory.generate("cli_acp", …)` 生成桥再跑 | **OK**：桥里注入了命令、日志里有 ACP 拉起痕迹（防"桥领得到件、却永远拉不起 agent"复发） |
+
+假 agent 在 `agent_community/tests/_fake_acp_agent.py`（**测试助手**，随 tests 发布）——
+协议口径照抄 `acp_harness_bridge.py` 的客户端（`initialize` / `session/new` / `session/prompt` /
+`session/update:agent_message_chunk`），不另立一套。
+
+### 修掉的真缺陷：**Windows 上 ACP 读线程被 GBK 打死**
+
+第一次跑 ⑦a 就红：`stop=None text=''`，日志里 `UnicodeDecodeError: 'utf-8' codec can't decode byte 0xca`。
+
+- **病灶**：Windows 上 Python 子进程按 locale（cp936/GBK）往 stdout 打中文，而客户端按 `encoding="utf-8"` 读
+  ⇒ **读线程直接崩** ⇒ `prompt()` 永远空回复 ⇒ 界面上就是"agent 一直不吭声"。
+- **修**（`platform/acp_harness_bridge.py::start`）：
+  ① 拉起子进程时强制 `PYTHONIOENCODING=utf-8` / `PYTHONUTF8=1`（合规 Python agent 一定输出 UTF-8）；
+  ② 读取端加 `errors="replace"`（**不合规输出也不许把线程静默打死** —— 失败要说话）。
+
+> 这条正好对应此前记过的"桥编码坑"（`test_bridge_encoding_guard.py`）：**桥侧守住了，ACP 客户端侧漏了**——
+> 同族要一起改（规则 20）。
+
+### 判据
+
+- `tools/acp_core_check.py`：**acp 档两段全绿**（Windows 真跑；Linux 同命令可跑）；
+- 新增守卫 `tests/test_acp_core.py`（**3 条**）：真跑体检器、假 agent 在发布面、**客户端必须强制 UTF-8 + 容错解码**；
+- 双平台真跑见发布记录。
+
 ## [4.8.57] - 2026-10-18
 
 **核心矩阵补上第 ⑥ 步：闭环消费（"送到了"之后那半段）——六协议五步 + 闭环四段全绿**
