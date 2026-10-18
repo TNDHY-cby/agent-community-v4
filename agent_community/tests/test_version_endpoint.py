@@ -51,6 +51,25 @@ def test_version_channel_points_to_gitee(client):
     assert chan["tags_ref"].startswith("refs/tags/")
 
 
+def test_data_dir_risk_flags_nested_and_equal_dirs(tmp_path):
+    """★更新安全的核心判据（2026-10-18 本机实测就踩到）：数据目录在安装目录**之内**时必须警告。
+
+    ⚠️ 我第一版只比了"相等"，而本机默认数据目录是 `<安装>/agent_community/data`（**包含**而非相等）
+    ⇒ 插件替换安装目录会静默删掉用户数据，端点的 `notes` 却还是空的。
+    """
+    from agent_community.platform.routers.version import data_dir_risk
+    install = tmp_path / "install"
+    (install / "agent_community" / "data").mkdir(parents=True)
+    outside = tmp_path / "acdata"
+    outside.mkdir()
+
+    assert data_dir_risk(str(install), str(install)) != "", "相等必须警告"
+    nested = data_dir_risk(str(install), str(install / "agent_community" / "data"))
+    assert nested and "之内" in nested, "数据目录在安装目录之内必须警告：%r" % nested
+    assert data_dir_risk(str(install), str(outside)) == "", "数据目录在安装目录之外＝安全形态，不该警告"
+    assert data_dir_risk("", str(outside)) != "", "读不到安装目录时必须如实说不确定"
+
+
 def test_version_update_safety_declares_keep_data(client):
     safety = client.get("/api/version").json()["update_safety"]
     assert safety["replace_install_dir_only"] is True

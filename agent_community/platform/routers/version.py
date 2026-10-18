@@ -55,6 +55,30 @@ def _install_dir() -> str:
     return str(Path(__file__).resolve().parents[3])
 
 
+def data_dir_risk(install: str, data: str) -> str:
+    """数据目录与安装目录的关系 —— 返回""（安全）/ 一句警告。
+
+    ★2026-10-18（实测本机就是这个坑）：默认 `AC_DATA_DIR` 落在**安装目录之内**
+    （`<安装目录>/agent_community/data`）⇒ 插件"替换安装目录"会把用户的
+    harness 注册、工作间、桥脚本、日志**一起删掉**。这必须明说，不能等出事。
+    """
+    if not install or not data:
+        return "读不到目录，无法判断更新是否安全（插件应提示用户手工确认）"
+    try:
+        i = Path(install).resolve()
+        d = Path(data).resolve()
+    except OSError:
+        return "目录路径解析失败，无法判断更新是否安全"
+    if i == d:
+        return "数据目录与安装目录**相同** ⇒ 更新安装目录会直接毁掉数据，必须先分离（设 AC_DATA_DIR 到别处）"
+    try:
+        d.relative_to(i)
+    except ValueError:
+        return ""                                     # 数据在安装目录之外 —— 安全形态
+    return ("数据目录在**安装目录之内**（%s）⇒ 整体替换安装目录会连带删掉数据；"
+            "插件必须先备份或提示用户把 AC_DATA_DIR 指到安装目录之外" % d)
+
+
 @router.get("/api/version")
 async def api_version():
     """版本事实（给外部更新工具；只读、不联网、缺什么就如实说 null）。"""
@@ -64,10 +88,11 @@ async def api_version():
         notes.append("读不到 `agent_community.__version__`（安装可能不完整）")
     install = _install_dir()
     data = _data_dir()
+    risk = data_dir_risk(install, data)
+    if risk:
+        notes.append(risk)
     if not data:
         notes.append("读不到数据目录（AC_DATA_DIR 未设置且默认路径不可用）")
-    elif data and install and Path(data).resolve() == Path(install).resolve():
-        notes.append("数据目录与安装目录相同 —— 更新安装目录会连带影响数据，插件应提示用户先分离")
     return {
         "current": current or None,
         "latest": None,                     # ★不猜：远端最新版由调用方按 channel 自行查询
