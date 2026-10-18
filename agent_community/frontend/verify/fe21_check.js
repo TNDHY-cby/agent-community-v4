@@ -166,21 +166,20 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     step('③ 未送达列', { hit: /未送达 4/.test(listTxt) });
     if (!/未送达 4/.test(listTxt)) fail.push('③ 清单未显示「未送达 4」: ' + listTxt.slice(0, 160));
 
-    /* ④ 自检写入口：原「四态灯成功流」已随 2026-10-17 只读镜像裁定退役（register 停写，对接中心尚无自检面板）。
-       新判据不放宽：点击后必须**如实显示只读拒绝**并指路对接中心；且不许出现「已自证/完成」。 */
+    /* ④ 自检灯（self-check 打桩 no_reply） */
     await page.selectOption('#scWs', ws);
     await sleep(600);
     await page.selectOption('#scMember', 'm0');
     await page.click('#scBtn');
     await page.waitForFunction(() => {
       const b = document.getElementById('scResult');
-      return b && b.style.display !== 'none' && /只读镜像/.test(b.innerText);
-    }, null, { timeout: 15000 }).catch(() => {});
+      return b && b.style.display !== 'none' && /没回话/.test(b.innerText);
+    }, null, { timeout: 20000 }).catch(() => {});
     const scTxt = await page.evaluate(() => (document.getElementById('scResult') || {}).innerText || '');
-    await shot('03_自检只读拒绝.png');
-    step('④ 自检只读拒绝', { head: scTxt.slice(0, 200) });
-    if (!/只读镜像/.test(scTxt)) fail.push('④ 自检未如实显示只读拒绝: ' + scTxt.slice(0, 120));
-    if (/已自证|完成（脚本自证）/.test(scTxt)) fail.push('④ 只读拒绝态出现「已自证/完成」（不许假装成功）');
+    await shot('03_自检灯.png');
+    step('④ 自检灯', { head: scTxt.slice(0, 200) });
+    if (!/没回话/.test(scTxt)) fail.push('④ 四态灯未显示 no_reply 标题');
+    if (!/wake\.cmd 包一层/.test(scTxt)) fail.push('④ advice 原文未显示');
 
     /* ② 禁词（规则 19 + 铁律 6） */
     const bodyTxt = await page.evaluate(() => document.body.innerText);

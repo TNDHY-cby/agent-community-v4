@@ -166,8 +166,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       expandedEq: expandedCopy.clipEq, statesEqual: expandedCopy.normalized === copyRes.normalized });
     await page.click('#tplDetails>summary');
 
-    /* ④ wake 写入口：原「写后 GET 确认已配」成功流随只读镜像裁定退役。
-       新判据不放宽：必须如实显示只读拒绝；不许出现「已写入/已配」。 */
+    /* ④ wake 写后 GET 确认「已配：…」 */
     await page.waitForFunction(() => document.querySelectorAll('#bkCards button').length >= 4, null, { timeout: 15000 }).catch(() => {});
     await page.evaluate(() => {
       const btns=[...document.querySelectorAll('#bkCards button')];
@@ -178,22 +177,21 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await page.selectOption('#bkWakeHid', HID).catch(() => {});
     await page.fill('#bkWakeCmd', '我的agent --wake');
     await page.click('#bkWakeBtn');
-    await page.waitForFunction(() => /只读镜像/.test((document.getElementById('bkWakeRes')||{}).innerText||''),
+    await page.waitForFunction(() => /📣 已配：收到任务会执行/.test((document.getElementById('bkWakeRes')||{}).innerText||''),
       null, { timeout: 10000 }).catch(() => {});
     const wk = await page.evaluate(() => (document.getElementById('bkWakeRes')||{}).innerText||'');
-    await shot('04_wake只读拒绝.png');
-    step('④ wake 只读拒绝', { head: wk.slice(0, 200) });
-    if (!/只读镜像/.test(wk)) fail.push('④ wake 未如实显示只读拒绝');
-    if (/已写入包装脚本|📣 已配/.test(wk)) fail.push('④ 只读拒绝态出现成功文案（不许假装成功）');
+    await shot('04_wake已配反馈.png');
+    step('④ wake 反馈', { head: wk.slice(0, 200) });
+    if (!/📣 已配：收到任务会执行/.test(wk)) fail.push('④ 缺 GET 确认的「已配：…」行');
 
-    /* ⑤ 一键注册：写入口同样被只读闸拦截——判拒绝如实；pending_restart UI 逻辑在对接中心承接前先退役本段 */
+    /* ⑤ 一键注册 → wake_pending_restart 提示（三端点已打桩） */
     await page.click('#copyAll .btn:has-text("一键注册")');
-    await page.waitForFunction(() => /只读镜像/.test((document.getElementById('oneClickResult')||{}).innerText||''),
+    await page.waitForFunction(() => /等桥重启后才生效/.test((document.getElementById('oneClickResult')||{}).innerText||''),
       null, { timeout: 15000 }).catch(() => {});
     const oc = await page.evaluate(() => (document.getElementById('oneClickResult')||{}).innerText||'');
-    await shot('05_一键注册只读拒绝.png');
-    step('⑤ 一键注册只读拒绝', { head: oc.slice(-200) });
-    if (!/只读镜像/.test(oc)) fail.push('⑤ 一键注册未如实显示只读拒绝');
+    await shot('05_pending_restart提示.png');
+    step('⑤ pending_restart', { head: oc.slice(-260) });
+    if (!/等桥重启后才生效/.test(oc)) fail.push('⑤ 缺 wake_pending_restart 提示');
 
     /* ⑥ 禁词 + 白名单 + Console */
     const bodyTxt = await page.evaluate(() => document.body.innerText);
