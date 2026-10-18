@@ -165,6 +165,119 @@ def safety() -> tuple:
     return (not problems), problems
 
 
+def _clean_env(**over) -> dict:
+    """给自检子进程构造环境：**白名单**，不继承外头的 `AC_*`。
+
+    ★2026-10-18 真事故（Linux 侧判据红）：`post_check` 原样继承 `os.environ` ⇒ 在 pytest 里
+    跑时（外层有 `AC_ENV` 之类的残留）子进程按"生产模式缺 Token"起不来 ⇒ **好版本被误判成坏版本并回滚**。
+    与 `tools/protocol_matrix.py` 里同一个教训：工具起子进程要**白名单**。
+    """
+    keep = ("PATH", "PYTHON", "SYSTEM", "WINDIR", "TEMP", "TMP", "HOME", "USER",
+            "APPDATA", "LOCALAPPDATA", "COMSPEC", "PATHEXT", "LANG", "LC_", "LD_LIBRARY")
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith("AC_") and k.upper().startswith(keep)}
+    env["PYTHONPATH"] = str(ROOT)
+    env.update({k: str(v) for k, v in over.items()})
+    return env
+
+
+def post_check(expect_version: str, timeout: float = 0.0) -> tuple:
+    """**更新后自检**：新版本能不能真的起来？返回 (ok, [(步骤, 结果, 细节)...])。
+
+    做法：隔离实例（空闲端口 + 临时数据目录）起一次新代码，等 `/api/status` 回来，
+    并核对 `/api/version` 的 `current` 等于目标版本。**全程不碰用户正在跑的实例。**
+
+    ⚠️ 超时**可配**（`AC_POSTCHECK_TIMEOUT`，默认 45s）：在慢盘（网络盘 / `/mnt/d` 这种 9p 挂载）
+    上启动会明显变慢，写死 30s 会把**好版本**误判成坏版本（Linux 侧真发生过）。
+    """
+    import socket
+    import tempfile
+
+    if timeout <= 0:
+        try:
+            timeout = float(os.environ.get("AC_POSTCHECK_TIMEOUT") or 45)
+        except ValueError:
+            timeout = 45.0
+
+    steps: list = []
+
+    def mark(name: str, ok: bool, detail: str = "") -> bool:
+        steps.append((name, "OK" if ok else "失败", detail))
+        return ok
+
+    # ① 编译面：新代码至少得能编过
+    rc, out = subprocess.run([sys.executable, "-m", "compileall", "-q",
+                              str(ROOT / "agent_community"), str(ROOT / "tools")],
+                             capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=180).returncode, ""
+    if not mark("compileall", rc == 0, ""):
+        return False, steps
+
+    # ② 进程面：隔离实例真起一次
+    s = socket.socket()
+    try:
+        s.bind(("127.0.0.1", 0))
+        port = int(s.getsockname()[1])
+    finally:
+        s.close()
+    # ★2026-10-19 真事故（WSL 侧）：ff 到新版本后，子进程报的**还是旧版本号** —— 因为
+    #   `/mnt/d` 这类 9p 挂载的 **mtime 粒度是秒级**，`__pycache__` 里的旧 .pyc 判定"没过期"被复用。
+    #   ⇒ 自检前**清掉 __pycache__**，并让子进程用 `-B`（不写字节码）。
+    import shutil as _sh
+    for cache in list(ROOT.rglob("__pycache__")):
+        _sh.rmtree(cache, ignore_errors=True)
+
+    data = Path(tempfile.mkdtemp(prefix="ac_postcheck_"))
+    env = _clean_env(AC_PORT=port, AC_DATA_DIR=data)       # ★白名单：不继承外层 AC_*（见 _clean_env）
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    child_log = data / "child.log"
+    logf = open(child_log, "w", encoding="utf-8", errors="replace")
+    proc = subprocess.Popen([sys.executable, "-B", "-m", "agent_community.platform.server"],
+                            cwd=str(ROOT), env=env, stdout=logf, stderr=subprocess.STDOUT)
+    deadline = time.time() + timeout
+    status = None
+    try:
+        while time.time() < deadline:
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:%d/api/status" % port,
+                                            timeout=3) as resp:
+                    if resp.status == 200:
+                        status = json.loads(resp.read().decode("utf-8", "replace"))
+                        break
+            except Exception:                                # noqa: BLE001
+                pass
+            # ★子进程已经退出就别傻等满超时（坏版本通常 1~2s 就炸）——否则判据会被拖到超时
+            if proc.poll() is not None:
+                break
+            time.sleep(0.5)
+        if status is None:
+            # ★失败要说话：把子进程自己说的话带出来（否则只会说"30s 内没起来"，没法查）
+            try:
+                logf.flush()
+                tail = child_log.read_text(encoding="utf-8", errors="replace").splitlines()[-8:]
+            except OSError:
+                tail = []
+            mark("实例能起来", False,
+                 "%.0fs 内 /api/status 未返回 200；子进程输出：" % timeout + " ⏎ ".join(tail)[-400:])
+            return False, steps
+        got = str((status or {}).get("version") or "")
+        mark("/api/status 版本对得上", _ver_tuple(got) == _ver_tuple(expect_version),
+             "报的是 %s，期望 %s" % (got or "?", expect_version))
+        return _ver_tuple(got) == _ver_tuple(expect_version), steps
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except Exception:                                    # noqa: BLE001
+            proc.kill()
+        try:
+            logf.close()
+        except Exception:                                    # noqa: BLE001
+            pass
+        import shutil
+        shutil.rmtree(data, ignore_errors=True)
+
+
 def _git(*args) -> tuple:
     r = subprocess.run(["git", *args], cwd=str(ROOT), capture_output=True, text=True,
                        encoding="utf-8", errors="replace", timeout=300)
@@ -206,10 +319,11 @@ def cmd_check(as_json: bool) -> int:
     return 0
 
 
-def cmd_apply(dry_run: bool, restart: bool, as_json: bool) -> int:
+def cmd_apply(dry_run: bool, restart: bool, as_json: bool, verify: bool = True) -> int:
     cur = current_version()
     ok, problems = safety()
     result = {"action": "apply", "from": cur or None, "to": None, "safety_ok": ok,
+              "post_check": None,
               "problems": problems, "applied": False, "rolled_back": False,
               "backup_head": None, "restarted": False, "dry_run": dry_run, "steps": []}
     human: list = []
@@ -293,6 +407,28 @@ def cmd_apply(dry_run: bool, restart: bool, as_json: bool) -> int:
     result.update({"applied": True, "new_version": new_ver, "error": None})
     result["steps"].append("verify")
 
+    if verify:
+        say("④b 自检：起一个隔离实例跑新代码（最多 30s）——**版本对得上不代表能用**")
+        try:
+            pc_ok, pc_steps = post_check(tag)
+        except Exception as e:                               # noqa: BLE001
+            pc_ok, pc_steps = False, [("自检异常", "失败", "%s: %s" % (type(e).__name__, e))]
+        result["post_check"] = [{"step": a, "result": b, "detail": c} for a, b, c in pc_steps]
+        for a, b, c in pc_steps:
+            say("   · %-22s %s %s" % (a, b, c))
+        if not pc_ok:
+            say("④c 自检不过 ⇒ **新版本不可用，自动回滚**")
+            rc, out = _git("reset", "--hard", head)
+            say("   回滚：%s %s" % ("OK" if rc == 0 else "失败", out[:160]))
+            result.update({"error": "post-check-failed", "rolled_back": rc == 0,
+                           "applied": False})
+            _emit(result, [], as_json)
+            return 1
+        say("④c 自检通过：新版本真能起来")
+        result["steps"].append("post-check")
+    else:
+        say("④b 跳过自检（--no-verify）—— 你自己承担「新版本可能起不来」的风险")
+
     if restart:
         say("⑤ 重启服务：杀掉监听进程，交给看门狗拉回来")
         try:
@@ -348,13 +484,15 @@ def main() -> int:
     g.add_argument("--rollback", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--restart", action="store_true")
+    ap.add_argument("--no-verify", action="store_true", dest="no_verify",
+                    help="跳过更新后的自检（默认会起一个隔离实例验新版本能不能用）")
     ap.add_argument("--json", action="store_true", dest="as_json",
                     help="机器可读输出（插件/前端解析用；退出码语义不变）")
     a = ap.parse_args()
     if a.check:
         return cmd_check(a.as_json)
     if a.apply:
-        return cmd_apply(a.dry_run, a.restart, a.as_json)
+        return cmd_apply(a.dry_run, a.restart, a.as_json, verify=not a.no_verify)
     return cmd_rollback(a.as_json)
 
 
