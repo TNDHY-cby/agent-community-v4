@@ -4,6 +4,62 @@
 
 # 4.8.26
 
+## [4.8.67] - 2026-10-18
+
+**一键更新：执行侧做出来了（`tools/update.py`），并用端到端判据证明"能更新 / 能回滚 / 该拒绝时拒绝"**
+
+老板 2026-10-18 拿着 Marvis 的回答问：「一键更新没办法进行开发？」
+
+**能开发。** 顺带纠正一句：Marvis 说"全仓库检索 update/upgrade/git pull 无任何版本更新逻辑"，
+它检索的是 `agent-community-v4`（**GitHub 镜像，2026-10-16 已停更**）；唯一有效远端是 Gitee，
+而那边 v4.8.62 就已有 `GET /api/version` 与设计稿 V57。**看旧镜像会得出"不存在"的结论。**
+
+### 这一版补的是"执行侧"
+
+| 命令 | 作用 |
+|---|---|
+| `python tools/update.py --check` | 现在哪版、最新哪版（来源 git ls-remote / Gitee Releases API；查不到就**如实说**） |
+| `python tools/update.py --apply` | 备份点 → `git fetch --tags` → **fast-forward** 到目标 tag → 校验版本（不符**自动回滚**） |
+| `python tools/update.py --apply --restart` | 更新后杀掉监听进程，交给看门狗拉回 |
+| `python tools/update.py --rollback` | 回到本次更新前的提交 |
+
+**安全铁律**（每条背后都有真事）：
+1. **数据目录一律不动**：本机默认 `AC_DATA_DIR` 就在安装目录**之内** ⇒ 整体替换会删掉用户数据，
+   所以检测到这种布局**直接拒绝**并告诉用户怎么分离；
+2. **只走能回滚的路**：优先 git fast-forward（有备份提交号），不是 git 检出就**如实拒绝**；
+3. **工作树必须干净**才许更新；
+4. **更新后必须验版本**，不符自动 `git reset --hard` 回滚。
+
+### 判据：`python tools/check_update.py`（端到端，真造两个仓库）
+
+现场造 `upstream`（9.9.9，打 tag）与 `install`（clone 后回退到 9.9.8），跑完整循环：
+
+```
+① 拒绝脏工作树        OK   · 工作树有未提交改动（1 项）⇒ 请先提交或还原再更新：local_edit.txt
+② 拒绝数据在安装目录内  OK   · 数据目录在**安装目录之内**（…/install/agent_community/data）⇒ 更新会连带删掉数据
+③ 真的更新到 9.9.9    OK   已快进到 9.9.9 / 校验通过 / （不重启则明说"跑的还是旧代码"）
+③b 写了备份点（可回滚） OK   update_state.json
+④ 回滚回 9.9.8       OK
+结论：**一键更新可用（能更新 / 能回滚 / 该拒绝时拒绝）**
+```
+
+已接进核心体检（现在 **5 项**：矩阵 / acp / 看门狗 / **一键更新** / 产物落点）。
+
+### 过程中被自己的判据抓到的三个真缺陷（都修了）
+
+1. **工具生成的 `__pycache__` 让自己变成"脏树"** ⇒ 第二次更新会被自己拦住。改为忽略
+   `__pycache__/`、`*.pyc`、`data/` 等运行期产物；
+2. **拿"去掉 v 的版本号"去做 git 操作** ⇒ `merge: 9.9.9 - not something we can merge`。
+   `latest_tag()` 现在同时返回「版本号」与「git tag 真名」；
+3. **更新后读版本号读的是进程内模块缓存** ⇒ 刚更新成功却被判失败并**自动回滚**。
+   改成**从磁盘读** `agent_community/__init__.py`。
+
+### 剩下的
+
+- **图形 UI（一键更新的按钮）** 归 MiMo，插件归宋 —— 契约（`design-docs/V57`）已把字段与流程写清；
+- **受控重启 HTTP 端点** `POST /api/admin/restart` 仍待老板拍板（安全面）；当前用
+  `--apply --restart`（杀进程 → 看门狗拉起）替代，判据见 `tools/check_watchdog.py`。
+
 ## [4.8.66] - 2026-10-18
 
 **陌生人首跑走查加第 ⑥ 关：**包里自带的自愈真能用吗**（对着全新 clone 真跑）**

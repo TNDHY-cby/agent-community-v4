@@ -1,0 +1,50 @@
+# -*- coding: utf-8 -*-
+"""守卫：**一键更新真的能用**（跑 `tools/check_update.py` 的端到端判据）。
+
+老板 2026-10-19 问「一键更新没办法进行开发？」——能，而且必须**可验证**：
+造一对"旧装 / 新发布"的真 git 仓库，验四格（拒绝脏树 / 拒绝数据嵌套 / 真更新 / 能回滚）。
+本文件把那次判据钉进回归，防止以后"改着改着就不能更新了"。
+
+⚠️ 它会起若干个 git 子进程（约 10–20s），但**这条值得慢**：更新的每一步都不可逆。
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[2]
+TOOL = _ROOT / "tools" / "check_update.py"
+
+
+def test_update_judgement_is_green():
+    assert TOOL.exists(), "缺 tools/check_update.py（一键更新的端到端判据）"
+    env = {**os.environ}
+    env.pop("PYTHONPATH", None)
+    r = subprocess.run([sys.executable, str(TOOL)], cwd=str(_ROOT), capture_output=True,
+                       text=True, encoding="utf-8", errors="replace", timeout=600, env=env)
+    out = (r.stdout or "") + (r.stderr or "")
+    assert r.returncode == 0, "一键更新判据有格失败：\n%s" % out[-1500:]
+    for kw in ("① 拒绝脏工作树", "② 拒绝数据在安装目录内", "③ 真的更新到", "④ 回滚回",
+               "一键更新可用"):
+        assert kw in out, "判据输出缺 '%s'：\n%s" % (kw, out[-800:])
+
+
+def test_update_tool_refuses_to_touch_data_dir_and_reads_version_from_disk():
+    """两条**真事故**的回归：① 数据目录在安装目录内必须拒绝；② 更新后必须读**磁盘**版本号。
+
+    第 ② 条曾经害得工具"刚更新成功却判失败并自动回滚"——因为进程里 `agent_community` 是旧模块。
+    """
+    src = (_ROOT / "tools" / "update.py").read_text(encoding="utf-8", errors="replace")
+    assert "数据目录在**安装目录之内**" in src, "缺少「数据目录嵌套」的安全拒绝"
+    assert "git status" in src or '"status"' in src, "缺少工作树干净检查"
+    assert 'read_text(encoding="utf-8"' in src and "__version__" in src, \
+        "更新后必须从**文件**读版本号（不能信进程内的模块缓存）"
+    assert "--rollback" in src, "缺少回滚入口"
+    assert "merge" in src and "--ff-only" in src, "更新应走 fast-forward（可回滚），不做覆盖式替换"
+
+
+def test_update_tools_are_in_published_face():
+    for rel in ("tools/update.py", "tools/check_update.py"):
+        assert (_ROOT / rel).exists(), "发布面缺 %s（陌生人就没法一键更新）" % rel

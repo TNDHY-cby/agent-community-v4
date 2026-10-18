@@ -74,6 +74,7 @@ def main() -> int:
         ("六协议矩阵（含闭环消费）", [py, str(ROOT / "tools" / "protocol_matrix.py")]),
         ("acp 真拉起 + ACP 一轮对话", [py, str(ROOT / "tools" / "acp_core_check.py")]),
         ("看门狗真能救活服务", [py, str(ROOT / "tools" / "check_watchdog.py")]),
+        ("一键更新可用（更新/回滚/拒绝）", [py, str(ROOT / "tools" / "check_update.py")]),
     ]
     if a.plan:
         print("核心体检会跑 %d 项：" % (len(items) + 1))
