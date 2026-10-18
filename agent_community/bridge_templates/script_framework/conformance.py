@@ -48,7 +48,9 @@ def _call(script: str, payload: dict | None, timeout: float, extra_args: list[st
         args += ["--input", tmp]
     t0 = time.time()
     try:
-        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+        # 显式 UTF-8（中文 Windows 上默认 GBK ⇒ 会话名/中文提示全乱码，见 _common.run_command 的说明）
+        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout,
+                           encoding="utf-8", errors="replace")
         return p.returncode, (p.stdout or ""), (p.stderr or ""), time.time() - t0
     except subprocess.TimeoutExpired:
         return -9, "", "TIMEOUT", time.time() - t0

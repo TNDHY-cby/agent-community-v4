@@ -4,6 +4,46 @@
 
 # 4.8.26
 
+## [4.8.73] - 2026-10-19
+
+**新核心判据：「建立会话」整条链路（真跑用户命令 + 自证 + 平台命名）——并抓出一个会让中文会话永远失败的真缺陷**
+
+### 为什么补这一条
+
+老板最初骂的是「**唤不醒**」。协议/桥/唤醒脚本已有矩阵判据；但**平台侧"把 agent 的会话建立起来"**
+（`POST /api/workshop/{ws}/member/{mid}/establish-session`，流程步骤 4/7/8/9）**一直没有端到端判据** ——
+单元测试用的是假对象，走不到"用户给一条命令 → 平台真去跑 → 会话建立并自证"。
+
+### 新判据：`tools/session_core_check.py`（五格，约 3 秒）
+
+| 格 | 判据 |
+|---|---|
+| ① | `POST /api/harness/register` 接受 `scripts`（动作脚本配置） |
+| ② | 建工作间 + 成员绑到该 harness |
+| ③ | `establish-session` 返回 `success=true`、**`all_verified=true`**、`4_new_session.verified=true` 且带 `evidence.session` |
+| ④ | **我们给的命令真的被执行了**（我方留痕：建会话 + 重命名各一次） |
+| ⑤ | 名字由平台给出且**含项目名**：`<ws>-<项目>-<职位>-<成员id>` |
+
+结论：**「建立会话」核心链路全绿（真跑命令 + 自证 + 平台命名）**。已接进核心体检（现 **6 项**）。
+
+### 它抓出的真缺陷（**每台中文 Windows 都会中**）
+
+第一次跑第 ③ 格就红：`8_rename_session=False`，错误是
+`回报的名字(508b82f9-鏍稿績璧版煡浠诲姟-鐮佸啘-m0)与要求(...)不一致` —— 会话名**乱码**了。
+
+- **病灶**：`bridge_templates/script_framework/_common.py::run_command` 用
+  `subprocess.run(cmd, shell=True, text=True)`，**没给 `encoding`** ⇒ 中文 Windows 上按 **GBK** 解码，
+  而子进程（Python）打的是 **UTF-8** ⇒ 名字变乱码 ⇒ rename 模板判"回报不一致" ⇒ **永远「未核实」**。
+- **影响面**：平台给的会话名**一定含中文项目名** ⇒ 这一步在中文环境里从来就没真正成功过（只是没人验）。
+- **修**：`encoding="utf-8", errors="replace"` + 给子进程 `PYTHONIOENCODING=utf-8`；
+  同族 `conformance.py` 一起改（规则 20：**同族要一起改** —— 这个坑在 ACP 桥那边也踩过）。
+
+### 判据
+
+- `python tools/session_core_check.py` ⇒ 五格全绿；
+- `python tools/core_check.py` ⇒ **六项全绿**（矩阵 73s / 建立会话 3s / acp 7s / 看门狗 15s / 一键更新 8s / 产物落点）；
+- 新增守卫 `tests/test_session_core.py`（3 条）：判据真绿 + **动作框架必须显式 UTF-8** + 判据必须端到端（含我方留痕）。
+
 ## [4.8.72] - 2026-10-18
 
 **一键更新补上最后一段：更新后**自检**——「版本号对 ≠ 新版本能用」，起不来自动回滚**

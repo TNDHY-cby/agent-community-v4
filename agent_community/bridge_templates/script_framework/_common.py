@@ -156,10 +156,21 @@ def run_command(cmd: str, timeout: float = 25.0) -> tuple[bool, str]:
 
     **失败不抛**：由调用方按自己的语义决定是 Failed 还是 Unverified
     （例如"命令跑起来了但读不回结果"应当算 Unverified，而不是成功）。
+
+    ★2026-10-19 修（**真缺陷**，`tools/session_core_check.py` 抓出来的）：
+      原来 `subprocess.run(cmd, shell=True, text=True)` **没给 encoding** ⇒ 中文 Windows 上按
+      **GBK** 解码子进程输出，而子进程（Python）打的是 **UTF-8** ⇒ 会话名（一定含中文项目名）
+      变成乱码（`508b82f9-鏍稿績璧版煡浠诲姟-…`）⇒ rename 步骤"回报的名字与要求不一致"⇒
+      永远被判「未核实」。**同一个坑在 ACP 桥那边也踩过**（规则 20：同族要一起改）。
+      现在：显式 `encoding="utf-8", errors="replace"` + 给子进程 `PYTHONIOENCODING=utf-8`。
     """
+    import os
     import subprocess
+    env = dict(os.environ)
+    env.setdefault("PYTHONIOENCODING", "utf-8")
     try:
-        p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout,
+                           encoding="utf-8", errors="replace", env=env)
     except subprocess.TimeoutExpired:
         return False, f"命令超时（{timeout}s）"
     except Exception as e:  # noqa: BLE001
