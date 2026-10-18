@@ -33,7 +33,22 @@ from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 ROOT = Path(__file__).resolve().parent.parent
-PORT = int(os.environ.get("AC_MATRIX_PORT") or 11153)
+
+
+def _free_port() -> int:
+    """拿一个**空闲端口**（避免固定端口在整套回归里和别的用例撞车——矩阵在套件里假红过一次）。"""
+    import socket
+    s = socket.socket()
+    try:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+    finally:
+        s.close()
+
+
+PORT = int(os.environ.get("AC_MATRIX_PORT") or 0) or _free_port()
+#: 本次运行的数据目录（main() 里赋值；`minimal_for` / 闭环都从这里派生 inbox）
+DATA_DIR = Path(tempfile.gettempdir()) / "ac_matrix_data"
 
 
 def _base() -> str:
@@ -81,7 +96,7 @@ def minimal_for(method: str, hid: str) -> dict:
     from agent_community.platform import register_prompt as rp
     card = rp._minimal_json(method, hid)
     if method == "file_poll":
-        out = Path(tempfile.gettempdir()) / "ac_matrix_inbox"
+        out = DATA_DIR / "file_poll_inbox"      # ★放数据目录下（别和别的用例共用 /tmp 固定目录）
         out.mkdir(parents=True, exist_ok=True)
         card["wakeup_dir"] = str(out)
     return card
@@ -162,8 +177,116 @@ def run_one(p: dict, data_dir: Path) -> dict:
     return row
 
 
+def closure_file_poll(data_dir: Path, hid: str = "mx-file-poll", inbox: Path | None = None) -> dict:
+    """**第 ⑥ 步：闭环消费**（只对 file_poll 做——它是唯一能在本机"真跑起来"的桥）。
+
+    这一段验的是"**送到 ≠ 通了**"之后的那半段：
+      ⑥a 平台派活 ⇒ inbox 里出现 `task_*.json`（真落盘）
+      ⑥b **真起桥**（子进程）⇒ 任务被搬进 `delivered/`（桥真的消费了，不是"我发出去了"）
+      ⑥c agent 侧写一份 `replies/reply_*.json` ⇒ 桥转发到 `/api/harness/task-result` ⇒ 平台真收到（回 200）
+      ⑥d 再起第二只桥 ⇒ **被单实例锁拒绝**（exit 2 + 明确说明，防"两只桥抢件"）
+
+    ⚠️ 唯一被"模拟"的是 **agent 自己写回执文件**那一下 —— 那是外部 agent 的活，平台替代不了；
+    其余四段（派活/落盘/搬件/转发/入库）都是平台与桥真跑。
+    """
+    res = {"cells": {}, "notes": []}
+    # ★必须用**该 harness 注册时那个 inbox**（平台把任务写到 `wakeup_dir`）——
+    #   我第一版另起了一个 closure_inbox，于是"派活写左边、桥盯右边"⇒ ⑥a/⑥b 全红（自己的锅）。
+    root = data_dir / "file_poll_inbox"
+    inbox = inbox or root
+    # 清干净再跑：否则上一轮的任务文件会混进来（我第一次跑就看到 31 个 task_*.json）
+    if inbox.exists():
+        for f in list(inbox.glob("task_*.json")):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+    bridge = data_dir / "bridges" / hid / "bridge.py"
+    replies = inbox / "replies"
+    delivered = inbox / "delivered"
+    replies.mkdir(parents=True, exist_ok=True)
+    log_path = data_dir / "bridge_closure.log"
+
+    # ⑥a 派活
+    code, body = req("/api/harness/bridge-test", {"harness_id": hid})
+    tasks = sorted(inbox.glob("task_*.json"))
+    res["cells"]["⑥a 派活落盘"] = (code == 200 and bool(tasks),
+                                "HTTP %s ｜ inbox 里 task_*.json = %d" % (code, len(tasks)))
+
+    # ⑥b 起桥真消费
+    env = {**os.environ, "PYTHONPATH": str(ROOT)}
+    logf = open(log_path, "w", encoding="utf-8", errors="replace")
+    proc = subprocess.Popen([sys.executable, "-u", str(bridge), "--url", _base(),
+                             "--inbox", str(inbox), "--interval", "0.3"],
+                            cwd=str(ROOT), env=env, stdout=logf,
+                            stderr=subprocess.STDOUT)
+    try:
+        deadline = time.time() + 40
+        consumed = False
+        while time.time() < deadline:
+            if delivered.exists() and list(delivered.glob("*task_*.json")):
+                consumed = True
+                break
+            if proc.poll() is not None:
+                break
+            time.sleep(0.4)
+        out_so_far = ""
+        res["cells"]["⑥b 桥真消费"] = (consumed,
+                                   "delivered/ 里收到搬走的任务 = %s" % consumed)
+
+        # ⑥c agent 写回执 ⇒ 桥转发 ⇒ 平台收到
+        reply = replies / "reply_matrix_1.json"
+        reply.write_text(json.dumps({
+            "type": "task", "harness_id": hid, "ok": True,
+            "result": "矩阵闭环测试：agent 已处理", "from": "matrix",
+        }, ensure_ascii=False), encoding="utf-8")
+        forwarded = False
+        deadline = time.time() + 40
+        while time.time() < deadline:
+            sent_dir = replies / "sent"
+            failed_dir = replies / "failed"
+            if ((sent_dir.exists() and list(sent_dir.glob("*reply_matrix_1.json")))
+                    or (failed_dir.exists() and list(failed_dir.glob("*reply_matrix_1.json")))):
+                forwarded = bool(sent_dir.exists() and list(sent_dir.glob("*reply_matrix_1.json")))
+                break
+            if proc.poll() is not None:
+                break
+            time.sleep(0.4)
+        res["cells"]["⑥c 回报转发"] = (forwarded, "replies/sent/ 里出现已转发回执 = %s" % forwarded)
+        if not forwarded:
+            res["notes"].append("桥日志：%s" % log_path)
+
+        # ⑥d 单实例锁
+        second = subprocess.run([sys.executable, "-u", str(bridge), "--url", _base(),
+                                 "--inbox", str(inbox), "--interval", "0.3"],
+                                cwd=str(ROOT), env=env, capture_output=True, text=True,
+                                encoding="utf-8", errors="replace", timeout=40)
+        refused = second.returncode == 2 and "拒绝重复启动" in (second.stdout + second.stderr)
+        res["cells"]["⑥d 单实例锁"] = (refused, "第二只桥 exit=%s（应 2）并说明" % second.returncode)
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except Exception:                                   # noqa: BLE001
+            proc.kill()
+        try:
+            logf.close()
+        except Exception:                                   # noqa: BLE001
+            pass
+    if not res["cells"].get("⑥c 回报转发", (False,))[0]:
+        try:
+            tail = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-12:]
+            res["notes"].append("桥日志尾：\n      " + "\n      ".join(tail))
+        except OSError:
+            pass
+    return res
+
+
 def main() -> int:
-    data_dir = Path(tempfile.gettempdir()) / "ac_matrix_data"
+    global DATA_DIR
+    # 每次跑一个**独立数据目录**（别复用上一轮：残留的桥锁/inbox 会让闭环假红）
+    data_dir = Path(tempfile.mkdtemp(prefix="ac_matrix_data_"))
+    DATA_DIR = data_dir
     data_dir.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "AC_PORT": str(PORT), "AC_DATA_DIR": str(data_dir),
            "PYTHONPATH": str(ROOT)}
@@ -200,8 +323,22 @@ def main() -> int:
                     print("  ★ %-10s %-14s %s" % (r["protocol"], c, detail))
             for n in r["notes"]:
                 print("  · %-10s %s" % (r["protocol"], n))
+
+        # ⑥ 闭环消费（只对 file_poll：本机唯一能"真跑起来"的桥）
+        print("-" * 96)
+        print("⑥ 闭环消费（file_poll 真起桥）：派活 → 搬件 → agent 回执 → 桥转发 → 单实例锁")
+        clo = closure_file_poll(data_dir)
+        clo_fails = 0
+        for name, (ok, detail) in clo["cells"].items():
+            print("   %-14s %-6s %s" % (name, "OK" if ok else "★FAIL", detail))
+            clo_fails += 0 if ok else 1
+        fails += clo_fails
+
         print("=" * 96)
-        print("结论：%s" % ("**六种协议五步全绿**" if not fails else "**有 %d 格失败**（见上）" % fails))
+        if fails:
+            print("结论：**有 %d 格失败**（见上）" % fails)
+        else:
+            print("结论：**六种协议五步全绿 + 闭环消费四段全绿**")
         return 0 if not fails else 1
     finally:
         proc.terminate()

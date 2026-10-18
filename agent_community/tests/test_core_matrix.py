@@ -31,7 +31,9 @@ def test_six_protocols_matrix_is_green():
                        encoding="utf-8", errors="replace", timeout=600, env=env)
     out = (r.stdout or "") + (r.stderr or "")
     assert r.returncode == 0, "核心矩阵有格失败（详见输出）：\n%s" % out[-1500:]
-    for kw in ("六种协议五步全绿", "①登记", "②叫醒脚本", "③桥模板", "④生成桥+自检", "⑤投递"):
+    for kw in ("六种协议五步全绿", "闭环消费四段全绿",
+               "①登记", "②叫醒脚本", "③桥模板", "④生成桥+自检", "⑤投递",
+               "⑥a 派活落盘", "⑥b 桥真消费", "⑥c 回报转发", "⑥d 单实例锁"):
         assert kw in out, "矩阵输出里缺 '%s'：\n%s" % (kw, out[-800:])
 
 
