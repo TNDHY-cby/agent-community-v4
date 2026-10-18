@@ -64,6 +64,8 @@ async def workshop_leader_assign(ws_id: str, request: Request):
     disp_ok, disp_note = _dispatch_to_harness(hid, payload, kind="task")
     ws.assignments.setdefault(member_id, []).append({
         "kind": "assign",
+        # ★2026-10-19（判据抓到）：记下这次派活的 task_id —— 回报才能**对账**到具体哪一次派活
+        "task_id": str((payload or {}).get("task_id") or ""),
         "instruction": instruction,
         "note": note,
         "at": now_iso(),

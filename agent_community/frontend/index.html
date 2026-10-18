@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>多 Agent 社区 · 工作大厅</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="boot.css">
 <style>
 :root{--bg:#0F0E0C;--bg2:#161513;--bg3:#1C1A18;--bg4:#242220;--bg5:#2F2C29;--ink:#E8E4DB;--muted:#B3AEA5;--dim:#7E7971;--rule:#2E2B27;--accent:#FF3527;--accent-soft:rgba(255,53,39,.08);--accent-strong:#FF6A5C;--green:#86B394;--green-soft:rgba(134,179,148,.09);--yellow:#D9AB53;--yellow-soft:rgba(217,171,83,.10);--red:#FF3527;--red-soft:rgba(255,53,39,.08);--blue:#2A5A8C;--blue-soft:rgba(123,163,201,.10);--cyan:#2A6B6B;--cyan-soft:rgba(100,181,180,.10);--purple:#5E4A7A;--purple-soft:rgba(160,140,192,.10);--shadow-1:0 1px 2px rgba(0,0,0,.35),0 3px 10px rgba(0,0,0,.18);--shadow-2:0 8px 24px rgba(0,0,0,.38);--radius-lg:0px;--radius-md:0px;--radius-sm:0px;--focus-ring:0 0 0 3px rgba(255,53,39,.25);--font-mono:"JetBrains Mono","Cascadia Code",Consolas,"Courier New",monospace}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -1145,5 +1146,6 @@ window.acModal={show:show,hide:hide};
 window.acToast=function(msg,err){var t=document.querySelector('.acm-toast');if(!t){t=document.createElement('div');t.className='acm-toast';document.body.appendChild(t)}t.textContent=msg;t.classList.toggle('err',!!err);t.classList.add('show');clearTimeout(timer);timer=setTimeout(function(){t.classList.remove('show')},2600)};
 })();
 </script>
+<script src="boot.js"></script>
 </body>
 </html>

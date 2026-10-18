@@ -259,6 +259,7 @@ const DOCK_SVC = {
   script_activate: { sec:'dockScriptWrap',   title:'脚本激活工作台', mount(){ dockMountScript(); } },
   archive:         { sec:'dockArchiveWrap',  title:'员工档案',       mount(){ dockLoadArchive(); } },
   ask_frontdesk:   { sec:'dockAskWrap',      title:'问前台',         mount(){} },
+  update:          { sec:'dockUpdateWrap',   title:'检查更新',       mount(){ dockLoadUpdate(); } },
   ws_ops:          { sec:'dockActivateWrap', title:'工作间操作（建会话 / 送桥 / 抢救 / 通道 / 架桥）', mount(){ dockMountWsGuide(); } }
 };
 const DOCK_WS_TILES = ['session_bridge', 'onboard_recover', 'channel', 'bridge_helper'];
@@ -1058,6 +1059,92 @@ async function dockChat(){
     (steps.length ? ('<details><summary>它用了哪些工具（' + steps.length + ' 步）</summary><pre>' +
                      esc(JSON.stringify(steps, null, 2)) + '</pre></details>') : '');
   if (box) box.value = '';
+}
+
+/* ══ 检查更新（166-2130 契约：只读两接口 + 三态 + 复制命令；不代跑升级）══ */
+function dockLoadUpdate(){
+  const wrap = document.getElementById('dockUpdateWrap');
+  if (!wrap) return;
+  wrap.innerHTML =
+    '<div class="card"><h3>检查更新</h3>' +
+    '<div class="dock-form">' +
+    '<div class="dock-form-actions">' +
+    '<button class="btn mini" id="verCheckBtn" onclick="dockVerCheck()">检查更新</button>' +
+    '<span class="dock-msg" id="verMsg"></span></div>' +
+    '<div id="verResult"></div></div>' +
+    '<p class="sub">本平台提供的是<b>可回滚的手工升级</b>：查询只读；升级命令在<b>你自己的终端</b>执行，平台不替你改自己机器上的文件。</p>' +
+    '</div>';
+  /* 页面侧事实（不联网）：当前版本 + 危险提示 notes */
+  fetch('/api/version').then(function(r){ return r.json(); }).then(function(d){
+    const box = document.getElementById('verResult');
+    if (!box) return;
+    let html = '<div class="dock-kv">当前版本 <code>' + esc(d.current || '?') + '</code></div>';
+    const notes = d.notes || [];
+    if (notes.length){
+      html += '<div class="dock-err">⚠ 升级前请注意：' + notes.map(esc).join('；') +
+        '。此状态下不建议执行升级。</div>';
+    }
+    box.insertAdjacentHTML('afterbegin', html);
+  }).catch(function(){ /* 版本事实拿不到不拦检查按钮 */ });
+}
+async function dockVerCheck(){
+  const btn = document.getElementById('verCheckBtn');
+  const msg = document.getElementById('verMsg');
+  const box = document.getElementById('verResult');
+  if (!box) return;
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = '正在查询最新版本…';
+  try {
+    const r = await fetch('/api/version/latest');
+    const d = await r.json();
+    if (msg) msg.textContent = '';
+    /* 先清掉旧的检查结果区，保留版本事实行 */
+    const old = box.querySelector('.ver-state');
+    if (old) old.remove();
+    let html = '<div class="ver-state" style="margin-top:8px">';
+    if (d.error){
+      /* 三态③：查不到 —— 原样显示 error，绝不写「已是最新」 */
+      html += '<div class="dock-err">检查失败：' + esc(d.error) + '</div>';
+    } else if (d.update_available === false){
+      html += '<div class="dock-ok">当前 ' + esc(d.current || '?') + '，已是最新。</div>';
+    } else if (d.update_available === true){
+      const cmd = (d.howto && d.howto.apply_and_restart) || 'python tools/update.py --apply --restart';
+      html += '<div class="dock-warn">当前 ' + esc(d.current || '?') + ' → 最新 ' + esc(d.latest || '?') + '</div>' +
+        '<div class="dock-kv" style="margin-left:0"><code id="verCmd" style="user-select:all">' + esc(cmd) + '</code></div>' +
+        '<div class="dock-form-actions">' +
+        '<button class="btn mini" onclick="dockVerCopy()">复制升级命令</button>' +
+        '<span class="dock-msg" id="verCopyMsg"></span></div>' +
+        '<p class="sub">在你自己的机器上执行（平台不替用户改自己的文件）。</p>';
+    } else {
+      html += '<div class="dock-warn2">查不到最新版本信息（未给出结论，不等于已是最新）。可稍后再试。</div>';
+    }
+    html += '<div class="dock-kv" style="font-size:10.5px">来源 ' + esc(d.source || '—') +
+      ' · 查询于 ' + esc(d.checked_at || '') + (d.cached ? '（缓存）' : '') + '</div></div>';
+    box.insertAdjacentHTML('beforeend', html);
+  } catch (e){
+    if (msg) msg.textContent = '';
+    const old = box.querySelector('.ver-state');
+    if (old) old.remove();
+    box.insertAdjacentHTML('beforeend',
+      '<div class="ver-state"><div class="dock-err">检查失败：' + esc(e.message || e) + '</div></div>');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+function dockVerCopy(){
+  const cmd = (document.getElementById('verCmd') || {}).textContent || '';
+  const msg = document.getElementById('verCopyMsg');
+  const done = ok => { if (msg) msg.textContent = ok ? '✓ 已复制（去你自己的终端执行）' : '✗ 复制失败，请手动选中命令复制'; };
+  if (!cmd) return;
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(cmd).then(function(){ done(true); }).catch(function(){ done(false); });
+  } else {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = cmd; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove(); done(true);
+    } catch (e){ done(false); }
+  }
 }
 
 /* ── 启动 ─────────────────────────────────────────────────────── */
