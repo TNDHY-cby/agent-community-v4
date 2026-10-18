@@ -77,6 +77,8 @@ def checks(fast: bool) -> list:
     ]
     if not fast:
         items.append(("双平台真跑（Windows + WSL）", [py(), str(ROOT / "tools" / "dual_platform_check.py")]))
+        # ★2026-10-18：核心体检（六协议矩阵 + 闭环 + acp 真拉起 + 桥产物落点）—— 只有全量模式跑（约 90s）
+        items.append(("核心体检（协议/桥/唤醒脚本）", [py(), str(ROOT / "tools" / "core_check.py")]))
     items.append(("陌生人首跑五步", [py(), str(ROOT / "tools" / "first_run_check.py"),
                                 "--src", str(OSS)]))
     items += [
