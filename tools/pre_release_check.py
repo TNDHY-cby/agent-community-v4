@@ -81,6 +81,7 @@ def checks(fast: bool) -> list:
                                 "--src", str(OSS)]))
     items += [
         ("前端本机坐标体检（产品侧零违规）", [py(), str(ROOT / "tools" / "check_frontend_localization.py")]),
+        ("设计稿索引未漂移（design-docs/索引.md）", [py(), str(ROOT / "tools" / "gen_design_index.py"), "--check"]),
         ("发布面 check_portability", [py(), "tools/check_portability.py"], OSS),
         ("发布面 check_productization", [py(), "tools/check_productization.py"], OSS),
         ("发布面 env_docs --check", [py(), "tools/gen_env_docs.py", "--check"], OSS),
