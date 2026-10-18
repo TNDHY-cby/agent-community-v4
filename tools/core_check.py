@@ -16,7 +16,8 @@ python tools/core_check.py --plan     # 只打印会跑什么
 | 1 | 六协议矩阵（登记→叫醒脚本→桥模板→生成桥+自检→投递） | `tools/protocol_matrix.py` |
 | 2 | 闭环消费（派活→桥搬件→agent 回执→桥转发→单实例锁） | 同上，第 ⑥ 段 |
 | 3 | acp 真拉起 + ACP 一轮对话 | `tools/acp_core_check.py` |
-| 4 | **桥产物落点**：跑完这些检查后，仓库 `agent_community/bridges/` 不许多出目录 | 本文件快照对比 |
+| 4 | **看门狗真能救活服务**（能起 + 崩了能再起 + 有日志） | `tools/check_watchdog.py` |
+| 5 | **桥产物落点**：跑完这些检查后，仓库 `agent_community/bridges/` 不许多出目录 | 本文件快照对比 |
 """
 from __future__ import annotations
 
@@ -72,6 +73,7 @@ def main() -> int:
     items = [
         ("六协议矩阵（含闭环消费）", [py, str(ROOT / "tools" / "protocol_matrix.py")]),
         ("acp 真拉起 + ACP 一轮对话", [py, str(ROOT / "tools" / "acp_core_check.py")]),
+        ("看门狗真能救活服务", [py, str(ROOT / "tools" / "check_watchdog.py")]),
     ]
     if a.plan:
         print("核心体检会跑 %d 项：" % (len(items) + 1))

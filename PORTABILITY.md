@@ -90,8 +90,14 @@ python tools/dual_platform_check.py --local-only   # 只跑本机这一侧（诚
 # ★发布前**一条命令**跑全五类判据（预检 / 交接守卫 / 双平台 / 首跑 / 发布面三件套）：
 python tools/pre_release_check.py            # 退出码 0=全过、1=有红、2=有项没跑成（＝部分，不算通过）
 
-# ★**核心体检**一条命令（协议 / 桥 / 唤醒脚本 这三块，约 90s）：
-python tools/core_check.py                   # 六协议矩阵+闭环、acp 真拉起、桥产物落点（仓库不许新增）
+# ★**核心体检**一条命令（协议 / 桥 / 唤醒脚本 / 看门狗，约 2 分钟）：
+python tools/core_check.py                   # 六协议矩阵+闭环、acp 真拉起、看门狗救活、桥产物落点（仓库不许新增）
+
+# ★**活着 / 自愈**（发布面自带，零第三方依赖）：
+python tools/watchdog.py --check             # 服务活没活（exit 0=活 / 1=挂，并说清为什么）
+python tools/watchdog.py --daemon            # 常驻守护：挂了就拉起来（窗口内重启次数超限会停下并说明）
+python tools/check_watchdog.py               # 判据：看门狗**真能**救活服务（能起 + 崩了能再起 + 有日志）
+python tools/autostart.py enable            # 随登录自启（Windows 启动文件夹 / Linux systemd user unit）
 ```
 
 **退出码本身就是判据**：`0`=两侧都绿；`1`=有侧红；**`2`=只跑成了一侧（＝部分，不算通过）**。

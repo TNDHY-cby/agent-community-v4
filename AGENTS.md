@@ -60,7 +60,10 @@ python tools/check_productization.py    # 平台专属命令冒充通用能力 /
 python tools/first_run_check.py --src <发布副本>   # 陌生人首次运行五步走查
 python tools/dual_platform_check.py     # ★双平台真跑（Windows + WSL Linux）——2026-10-17 起的 CI 替代判据
 python tools/pre_release_check.py       # ★发布前一条命令跑全五类判据（--fast 跳过双平台）
-python tools/core_check.py              # ★核心体检一条命令：六协议矩阵+闭环、acp 真拉起、桥产物落点（约 90s）
+python tools/core_check.py              # ★核心体检一条命令：六协议矩阵+闭环、acp 真拉起、看门狗救活、桥产物落点（约 2 分钟）
+python tools/watchdog.py --check        # 服务活没活（exit 0=活 / 1=挂）；--daemon 常驻守护（零第三方依赖）
+python tools/autostart.py enable        # 让平台随登录自启（Windows 启动文件夹 / Linux systemd user unit）
+python tools/check_watchdog.py          # 判据：看门狗真能救活服务（能起 + 崩了能再起 + 有日志）
 python -m pytest -q                     # 全部回归（含双平台守卫）
 python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 ```
