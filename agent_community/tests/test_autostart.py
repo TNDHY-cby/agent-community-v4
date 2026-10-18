@@ -51,10 +51,22 @@ def test_status_json_is_parseable_and_honest():
 def test_dry_run_writes_nothing():
     data = tempfile.mkdtemp(prefix="ac_as_data_")
     startup = tempfile.mkdtemp(prefix="ac_as_start_")
-    r = _run("enable", "--dry-run", "--startup", startup, env_extra={"AC_DATA_DIR": data})
+    r = _run("enable", "--mode", "startup", "--dry-run", "--startup", startup,
+             env_extra={"AC_DATA_DIR": data})
     assert r.returncode == 0, r.stdout + r.stderr
     assert "什么都没写" in r.stdout
     assert list(Path(startup).iterdir()) == [], "dry-run 竟然往启动目录写了东西"
+    assert list(Path(data).iterdir()) == [], "dry-run 竟然往数据目录写了东西"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="计划任务（schtasks）只有 Windows 有")
+def test_task_mode_dry_run_only_prints_the_scheduled_task_command():
+    """`--mode task --dry-run` 只该**打印** schtasks 命令，绝不许真去建任务（建任务要管理员权限）。"""
+    data = tempfile.mkdtemp(prefix="ac_as_data3_")
+    r = _run("enable", "--mode", "task", "--dry-run", env_extra={"AC_DATA_DIR": data})
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "schtasks" in r.stdout, "没打印计划任务命令：%s" % r.stdout[-300:]
+    assert "什么都没写" in r.stdout
     assert list(Path(data).iterdir()) == [], "dry-run 竟然往数据目录写了东西"
 
 
@@ -62,7 +74,9 @@ def test_dry_run_writes_nothing():
 def test_enable_then_disable_is_clean():
     data = tempfile.mkdtemp(prefix="ac_as_data2_")
     startup = tempfile.mkdtemp(prefix="ac_as_start2_")
-    r = _run("enable", "--startup", startup, "--unit-dir", startup,
+    # ⚠️ 必须显式 `--mode startup`：默认 `both` 会去建**计划任务**，而建"登录时运行"的计划任务
+    #    需要管理员权限（本会话没提升 ⇒ Access is denied）。**测试不许去动真机器的计划任务。**
+    r = _run("enable", "--mode", "startup", "--startup", startup, "--unit-dir", startup,
              env_extra={"AC_DATA_DIR": data})
     assert r.returncode == 0, "enable 失败：%s%s" % (r.stdout, r.stderr)
 

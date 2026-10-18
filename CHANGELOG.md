@@ -4,6 +4,64 @@
 
 # 4.8.26
 
+## [4.8.62] - 2026-10-18
+
+**给「一键更新插件」立契约：`GET /api/version` + 设计稿 V57（待拍板）；启动器改用 `.ps1`（中文路径实测）**
+
+老板 2026-10-18：「我让宋去做一个**一键更新**的插件出来，到时候别人就可以一键更新了，不用跑到仓库来部署」
+⇒ 我这边先把**平台该回答的事**做出来，免得插件靠猜。
+
+### 一、`GET /api/version`（只读、不联网、缺项如实 null）
+
+```json
+{
+  "current": "4.8.62",
+  "latest": null,                 // ★平台不猜远端：要最新版由插件按 channel 自己查
+  "update_available": null,
+  "channel": {"repo": "...gitee...", "releases_api": "...", "release_tarball_tpl": "...{tag}.tar.gz", "tags_ref": "refs/tags/vX.Y.Z"},
+  "install_dir": "…",             // 更新只该动这里
+  "data_dir": "…",                // 一律不动
+  "update_safety": {"replace_install_dir_only": true, "keep_data_dir": true, "restart_required": true, "restart_endpoint": null},
+  "notes": []
+}
+```
+
+- **`current` 是唯一版本真相**（`agent_community.__version__`；与 CHANGELOG 由守卫锁定一致）；
+- `latest=null` **不许**被当成"已是最新"（契约里写死这条）；
+- `install_dir == data_dir` 时 `notes` 会明确提示"更新前先分离，否则升级＝删数据"。
+
+### 二、设计稿 `design-docs/V57_一键更新插件契约.md`（**待老板拍板**）
+
+写清了职责切分（平台只**如实回答**、插件负责**下载/替换/重启/校验**）、插件的最小流程、
+以及**平台侧还缺的一件事**：受控重启端点 `POST /api/admin/restart`（本地 + Token 双条件）。
+这条属于安全面变更 + 与部署形态相关，**等拍板再写码**；现状替代＝`POST /api/system/shutdown` + 启动器/看门狗拉起。
+
+### 三、启动器改为 PowerShell `.ps1`（真事故）
+
+装自启后实测：**启动器跑起来一声不响**，连日志第一行都没写。四组对照定位到根因：
+
+| 用例 | 结果 |
+|---|---|
+| `echo hi >> "%TEMP%\\t1.log"`（ASCII） | 写了 |
+| `echo hi >> "<中文路径>\\t2.log"` | **静默不写**（`.cmd` 里 UTF-8 中文按 cp936 解释 ⇒ 重定向目标变乱码） |
+| `cd /d "<中文路径>"` 后 echo | 写了 |
+| `python -c "print(123)" > "%TEMP%\\t4.log"` | 写了 |
+
+⇒ Windows 侧启动器改成 **`.ps1`（UTF-8 BOM）+ 快捷方式指向 `powershell -File`**；
+并把子进程输出用 `Out-File -Encoding utf8` 归档（否则 PowerShell 写成 UTF-16，日志看着像乱码）。
+**实测**：启动器写日志 → 看门狗 pid 起 → `18920 / 9104 / 9105` 全部 LISTENING。
+
+另：`--mode task`（登录时运行的计划任务）**需要管理员权限**，被拒时工具会明说原因与替代方案；
+默认 `--mode both`、`--mode startup` 不需要管理员。
+
+### 四、判据（真跑）
+
+- `python tools/check_update_contract.py`：**五项全绿**（字段齐全 / `current==__version__` /
+  `latest` 如实 null / channel 指 Gitee / 更新只动安装目录）；
+- 新增守卫 `tests/test_version_endpoint.py`（4 条）、`tests/test_autostart.py` 增至 5 条
+  （新增：`--mode task --dry-run` 只打印、绝不去建计划任务）；
+- 双平台真跑见发布记录。
+
 ## [4.8.61] - 2026-10-18
 
 **补记 v4.8.60 的一处"看起来成功"：版本号没写进去（并加两道闸防止再犯）**

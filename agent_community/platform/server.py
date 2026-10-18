@@ -212,6 +212,8 @@ from .routers.handover import router as _handover_router
 app.include_router(_handover_router)  # V-23 交接体系：证据栏 + 送达回执（无证据不回执）
 from .routers.system import router as _system_router
 app.include_router(_system_router)  # V-27 平台生命周期：GET /api/system/lifecycle、POST /api/system/shutdown（退出并关闭）
+from .routers.version import router as _version_router
+app.include_router(_version_router)  # V57 一键更新契约：GET /api/version（给外部更新插件；只读、不联网、缺项如实 null）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1", "http://localhost"],
