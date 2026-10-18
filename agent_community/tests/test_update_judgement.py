@@ -45,6 +45,26 @@ def test_update_tool_refuses_to_touch_data_dir_and_reads_version_from_disk():
     assert "merge" in src and "--ff-only" in src, "更新应走 fast-forward（可回滚），不做覆盖式替换"
 
 
+def test_update_json_mode_is_machine_readable():
+    """`--json` 必须给**一行可解析 JSON**（插件/前端照它写，不要解析中文）。
+
+    这条是给「宋的一键更新插件」的接口：三个动作各一个 `action` 值。
+    """
+    import json
+    env = {**os.environ}
+    env.pop("PYTHONPATH", None)
+    r = subprocess.run([sys.executable, str(_ROOT / "tools" / "update.py"), "--check", "--json"],
+                       cwd=str(_ROOT), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=300, env=env)
+    out = (r.stdout or "").strip()
+    line = [ln for ln in out.splitlines() if ln.strip().startswith("{")][-1]
+    d = json.loads(line)
+    for k in ("action", "current", "latest", "update_available", "error", "safe", "problems"):
+        assert k in d, "JSON 缺字段 %s：%s" % (k, sorted(d))
+    assert d["action"] == "check"
+    assert r.returncode in (0, 1, 2), "退出码语义：0=正常 1=不行 2=查不到"
+
+
 def test_update_tools_are_in_published_face():
     for rel in ("tools/update.py", "tools/check_update.py"):
         assert (_ROOT / rel).exists(), "发布面缺 %s（陌生人就没法一键更新）" % rel

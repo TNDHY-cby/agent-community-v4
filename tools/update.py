@@ -172,74 +172,129 @@ def _git(*args) -> tuple:
 
 
 # ── 主流程 ─────────────────────────────────────────────────────
-def cmd_check() -> int:
+def _emit(result: dict, human: list, as_json: bool) -> None:
+    """统一出口：`--json` 给机器（插件/前端解析），否则给人看。"""
+    if as_json:
+        print(json.dumps(result, ensure_ascii=False))
+        return
+    for line in human:
+        print(line)
+
+
+def cmd_check(as_json: bool) -> int:
     cur = current_version()
     tag, _ref, how = latest_tag()
-    print("现在：%s" % (cur or "读不到版本号"))
-    print("最新：%s（来源：%s）" % (tag or "查不到", how))
+    newer = (_ver_tuple(tag) > _ver_tuple(cur)) if tag else None
+    result = {
+        "action": "check",
+        "current": cur or None,
+        "latest": tag or None,
+        "source": how,
+        "update_available": newer,
+        "error": None if tag else "查不到最新版（网络/限流/未发布）",
+        "safe": safety()[0],
+        "problems": safety()[1],
+    }
+    human = ["现在：%s" % (cur or "读不到版本号"),
+             "最新：%s（来源：%s）" % (tag or "查不到", how)]
     if not tag:
-        print("⇒ 查不到最新版：如实说，不做任何猜测（可稍后重试或检查网络）")
+        human.append("⇒ 查不到最新版：如实说，不做任何猜测（可稍后重试或检查网络）")
+        _emit(result, human, as_json)
         return 2
-    newer = _ver_tuple(tag) > _ver_tuple(cur)
-    print("⇒ %s" % ("**有新版可更新**：%s → %s" % (cur, tag) if newer else "已是最新（或本地更新）"))
-    return 0 if not newer else 0
+    human.append("⇒ %s" % ("**有新版可更新**：%s → %s" % (cur, tag) if newer else "已是最新（或本地更新）"))
+    _emit(result, human, as_json)
+    return 0
 
 
-def cmd_apply(dry_run: bool, restart: bool) -> int:
+def cmd_apply(dry_run: bool, restart: bool, as_json: bool) -> int:
     cur = current_version()
     ok, problems = safety()
+    result = {"action": "apply", "from": cur or None, "to": None, "safety_ok": ok,
+              "problems": problems, "applied": False, "rolled_back": False,
+              "backup_head": None, "restarted": False, "dry_run": dry_run, "steps": []}
+    human: list = []
+
+    def say(line: str) -> None:
+        human.append(line)
+        if not as_json:
+            print(line)
+
     if not ok:
-        print("⛔ 不能更新：")
+        say("⛔ 不能更新：")
         for p in problems:
-            print("   · %s" % p)
+            say("   · %s" % p)
+        result["error"] = "safety"
+        _emit(result, [], as_json)
         return 1
     tag, tagref, how = latest_tag()
+    result["to"] = tag or None
+    result["source"] = how
     if not tag:
-        print("⛔ 查不到最新版 ⇒ 不更新（不做没有目标的动作）")
+        say("⛔ 查不到最新版 ⇒ 不更新（不做没有目标的动作）")
+        result["error"] = "no-latest"
+        _emit(result, [], as_json)
         return 1
     if _ver_tuple(tag) <= _ver_tuple(cur):
-        print("已是最新：%s（远端 %s）" % (cur, tag))
+        say("已是最新：%s（远端 %s）" % (cur, tag))
+        result["error"] = None
+        _emit(result, [], as_json)
         return 0
 
-    print("准备：%s → %s（来源：%s）" % (cur, tag, how))
-    print("步骤：① 记录备份提交号 ② git fetch --tags ③ 快进到 %s ④ 校验版本 ⑤ %s"
-          % (tag, "重启服务" if restart else "（不重启，按提示自行重启）"))
+    say("准备：%s → %s（来源：%s）" % (cur, tag, how))
+    say("步骤：① 记录备份提交号 ② git fetch --tags ③ 快进到 %s ④ 校验版本 ⑤ %s"
+        % (tag, "重启服务" if restart else "（不重启，按提示自行重启）"))
     if dry_run:
-        print("（--dry-run：什么都没做）")
+        say("（--dry-run：什么都没做）")
+        _emit(result, [], as_json)
         return 0
 
     rc, head = _git("rev-parse", "HEAD")
     if rc != 0:
-        print("⛔ 拿不到当前提交号 ⇒ 不更新：%s" % head[:160])
+        say("⛔ 拿不到当前提交号 ⇒ 不更新：%s" % head[:160])
+        result["error"] = "no-head"
+        _emit(result, [], as_json)
         return 1
+    result["backup_head"] = head
     STATE.parent.mkdir(parents=True, exist_ok=True)
     STATE.write_text(json.dumps({"backup_head": head, "from": cur, "to": tag,
                                  "at": time.strftime("%Y-%m-%dT%H:%M:%S")},
                                 ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("① 备份点已记录：%s（写在 %s）" % (head[:10], STATE))
+    say("① 备份点已记录：%s（写在 %s）" % (head[:10], STATE))
+    result["steps"].append("backup")
 
     rc, out = _git("fetch", "--tags", "--force")
-    print("② git fetch --tags：%s" % ("OK" if rc == 0 else "失败 " + out[:160]))
+    say("② git fetch --tags：%s" % ("OK" if rc == 0 else "失败 " + out[:160]))
     if rc != 0:
+        result["error"] = "fetch"
+        _emit(result, [], as_json)
         return 1
+    result["steps"].append("fetch")
 
     rc, out = _git("merge", "--ff-only", tagref or tag)
     if rc != 0:
-        print("③ 快进失败（本地有分叉？）：%s" % out[:200])
-        print("   ⇒ 已保持原状；如需强更可手工 `git reset --hard %s`（会丢本地提交，先想清楚）" % tag)
+        say("③ 快进失败（本地有分叉？）：%s" % out[:200])
+        say("   ⇒ 已保持原状；如需强更可手工 `git reset --hard %s`（会丢本地提交，先想清楚）" % tag)
+        result["error"] = "ff-only-failed"
+        _emit(result, [], as_json)
         return 1
-    print("③ 已快进到 %s" % tag)
+    say("③ 已快进到 %s" % tag)
+    result["steps"].append("ff")
 
     new_ver = current_version()
     if _ver_tuple(new_ver) != _ver_tuple(tag):
-        print("④ 校验失败：更新后版本是 %s，不是 %s ⇒ **自动回滚**" % (new_ver, tag))
+        say("④ 校验失败：更新后版本是 %s，不是 %s ⇒ **自动回滚**" % (new_ver, tag))
         rc, out = _git("reset", "--hard", head)
-        print("   回滚：%s %s" % ("OK" if rc == 0 else "失败", out[:160]))
+        say("   回滚：%s %s" % ("OK" if rc == 0 else "失败", out[:160]))
+        result.update({"error": "verify-failed", "rolled_back": rc == 0,
+                       "new_version": new_ver})
+        _emit(result, [], as_json)
         return 1
-    print("④ 校验通过：现在版本 = %s" % new_ver)
+    say("④ 校验通过：现在版本 = %s" % new_ver)
+    result.update({"applied": True, "new_version": new_ver, "error": None})
+    result["steps"].append("verify")
 
     if restart:
-        print("⑤ 重启服务：杀掉监听进程，交给看门狗拉回来")
+        say("⑤ 重启服务：杀掉监听进程，交给看门狗拉回来")
         try:
             sys.path.insert(0, str(ROOT))
             from agent_community.platform import procprobe
@@ -249,43 +304,58 @@ def cmd_apply(dry_run: bool, restart: bool) -> int:
             for pid in pids:
                 if pid != os.getpid():
                     procprobe.kill_pid(pid)
-            print("   已停 %d 个进程；等看门狗拉起（约 30s 内）" % len(pids))
-            print("   没装看门狗的话：python tools/watchdog.py --daemon  或  python -m agent_community.cli start")
+            say("   已停 %d 个进程；等看门狗拉起（约 30s 内）" % len(pids))
+            say("   没装看门狗的话：python tools/watchdog.py --daemon  或  python -m agent_community.cli start")
+            result["restarted"] = bool(pids)
         except Exception as e:                               # noqa: BLE001
-            print("   重启失败（%s: %s）—— 请手工重启服务" % (type(e).__name__, e))
+            say("   重启失败（%s: %s）—— 请手工重启服务" % (type(e).__name__, e))
+            result["restart_error"] = "%s: %s" % (type(e).__name__, e)
     else:
-        print("⑤ 没重启：**现在跑的还是旧代码**，请手工重启（python -m agent_community.cli start）")
+        say("⑤ 没重启：**现在跑的还是旧代码**，请手工重启（python -m agent_community.cli start）")
+        result["restart_required"] = True
+    _emit(result, [], as_json)
     return 0
 
 
-def cmd_rollback() -> int:
+def cmd_rollback(as_json: bool) -> int:
+    result = {"action": "rollback", "ok": False, "target": None, "error": None}
+    human: list = []
     if not STATE.exists():
-        print("没有更新记录（%s 不存在）⇒ 无可回滚" % STATE)
+        human.append("没有更新记录（%s 不存在）⇒ 无可回滚" % STATE)
+        result["error"] = "no-state"
+        _emit(result, human, as_json)
         return 1
     st = json.loads(STATE.read_text(encoding="utf-8"))
     head = st.get("backup_head") or ""
+    result["target"] = head or None
     if not head:
-        print("记录里没有备份提交号 ⇒ 无法回滚")
+        human.append("记录里没有备份提交号 ⇒ 无法回滚")
+        result["error"] = "no-backup-head"
+        _emit(result, human, as_json)
         return 1
     rc, out = _git("reset", "--hard", head)
-    print("回滚到 %s：%s %s" % (head[:10], "OK" if rc == 0 else "失败", out[:160]))
+    human.append("回滚到 %s：%s %s" % (head[:10], "OK" if rc == 0 else "失败", out[:160]))
+    result.update({"ok": rc == 0, "error": None if rc == 0 else out[:200]})
+    _emit(result, human, as_json)
     return 0 if rc == 0 else 1
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="一键更新（命令行后端）")
+    ap = argparse.ArgumentParser(description="一键更新（命令行后端；给插件/前端用 --json）")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--check", action="store_true")
     g.add_argument("--apply", action="store_true")
     g.add_argument("--rollback", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--restart", action="store_true")
+    ap.add_argument("--json", action="store_true", dest="as_json",
+                    help="机器可读输出（插件/前端解析用；退出码语义不变）")
     a = ap.parse_args()
     if a.check:
-        return cmd_check()
+        return cmd_check(a.as_json)
     if a.apply:
-        return cmd_apply(a.dry_run, a.restart)
-    return cmd_rollback()
+        return cmd_apply(a.dry_run, a.restart, a.as_json)
+    return cmd_rollback(a.as_json)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,55 @@
 
 # 4.8.26
 
+## [4.8.70] - 2026-10-18
+
+**一键更新的做法公开 + 加 `--json`（给「宋的插件」直接解析，不必读中文）**
+
+老板问「DSH 的一键更新怎么做的？能不能借鉴」——**能借用，而且我把接口做成了插件友好的形态。**
+
+### 做法（四步，动作在命令行、不在平台内部）
+
+```
+① 查版本    git ls-remote --tags（拿 tag 真名）或 Gitee Releases API
+            ↓ 比大小（9.9.8 vs 9.9.9）；查不到就如实说，不猜
+② 记备份点   git rev-parse HEAD → 写 <数据目录>/update_state.json
+③ 快进      git fetch --tags --force → git merge --ff-only vX.Y.Z
+            ↓ 不是 fast-forward 就**保持原状**并说清"要强更得你自己决定"
+④ 验版本    从**磁盘**读 agent_community/__init__.py；不等于目标 tag ⇒ git reset --hard 回备份点
+⑤ 重启（可选） 杀监听进程 → 看门狗 20~30s 内拉回；没装看门狗则明说"现在跑的还是旧代码"
+```
+
+**为什么动作不放在 HTTP 端点里**：本地自部署平台给自己打补丁是高危动作，必须**用户在自己机器上主动执行**
+（可回滚、可查看）。平台只负责如实回答版本事实（`GET /api/version`、`GET /api/version/latest`）。
+
+### 五条可借鉴的不变量（每条都有真事垫底）
+
+| 不变量 | 为什么 |
+|---|---|
+| **先备份点，再动手** | 没有备份点就没有回滚，"失败了怎么办"只能靠重装 |
+| **只走能回滚的路** | 不用"下载压缩包覆盖安装目录"——那种没法回滚。只接受 git fast-forward |
+| **数据目录一律不动** | 本机默认数据目录**在安装目录之内**，覆盖式更新＝删用户数据（真发生过隐患） |
+| **更新后必须验版本，不符自动回滚** | 否则"以为更新了其实没有"是最坏的假成功（本工具自己踩过：读进程内模块缓存 ⇒ 刚成功却被判失败） |
+| **工作树脏就不更新** | 用户的改动会被卷进冲突；宁可拒绝并说清怎么处理 |
+
+### 本版新增：`--json`（插件直接解析）
+
+```bash
+python tools/update.py --check --json     # {"action":"check","current":"4.8.69","latest":"4.8.69",
+                                          #  "update_available":false,"error":null,"safe":false,
+                                          #  "problems":["数据目录在**安装目录之内**…"]}
+python tools/update.py --apply --json     # 同样的字典 + applied/rolled_back/backup_head/restarted/steps[]
+python tools/update.py --rollback --json
+```
+
+退出码语义不变：**0＝做了/正常，1＝不行（安全闸或失败），2＝查不到最新版**。
+
+### 判据
+
+- `test_update_judgement.py` 增至 **4 条**（新增 `--json` 必须是可解析 JSON 且字段齐全）；
+- 端到端判据仍四格全绿（`--json` 改动没伤主流程）；
+- 备份文件 `tools/update.py.bak_20261018_json`（改前留`.
+
 ## [4.8.69] - 2026-10-18
 
 **更新《项目完整模型》到 v4.8.68 状态（老板交办：更新一份新的项目建模到 Gitee）**
