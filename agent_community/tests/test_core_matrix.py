@@ -37,6 +37,27 @@ def test_six_protocols_matrix_is_green():
         assert kw in out, "矩阵输出里缺 '%s'：\n%s" % (kw, out[-800:])
 
 
+def test_child_env_drops_outer_ac_vars(monkeypatch):
+    """矩阵给子进程**只带白名单环境**：外头的 `AC_*` 一个都不许漏进去。
+
+    真事故（2026-10-18）：矩阵单跑全绿，进了整套回归就红「★实例没起来」——
+    因为 Pytest 里有些老用例直接改 `os.environ`（如 `AC_ENV=production`）没还原，
+    而矩阵是**子进程**、全盘继承 ⇒ 平台服务按"生产模式缺 Token"启动失败。
+    """
+    import importlib.util
+    monkeypatch.setenv("AC_ENV", "production")
+    monkeypatch.setenv("AC_SERVER_TOKEN", "leaked-from-test")
+    spec = importlib.util.spec_from_file_location("pm2", Path(_ROOT) / "tools" / "protocol_matrix.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    env = mod.child_env()
+    assert "AC_ENV" not in env, "外头的 AC_ENV 漏进了子进程环境"
+    assert "AC_SERVER_TOKEN" not in env, "外头的 AC_SERVER_TOKEN 漏进了子进程环境"
+    for k in ("AC_PORT", "AC_DATA_DIR", "PYTHONPATH"):
+        assert env.get(k), "白名单里必须有 %s" % k
+    assert any(k.upper() == "PATH" for k in env), "系统必需项 PATH 被白名单误删了"
+
+
 def test_matrix_declares_all_six_protocols():
     """矩阵必须覆盖 `register_prompt.SUPPORTED` 的全部协议（少一个就是漏测）。"""
     import importlib.util

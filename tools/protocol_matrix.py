@@ -214,7 +214,7 @@ def closure_file_poll(data_dir: Path, hid: str = "mx-file-poll", inbox: Path | N
                                 "HTTP %s ｜ inbox 里 task_*.json = %d" % (code, len(tasks)))
 
     # ⑥b 起桥真消费
-    env = {**os.environ, "PYTHONPATH": str(ROOT)}
+    env = child_env()                 # 白名单（桥也要连同一个实例，别被外头的 AC_* 带偏）
     logf = open(log_path, "w", encoding="utf-8", errors="replace")
     proc = subprocess.Popen([sys.executable, "-u", str(bridge), "--url", _base(),
                              "--inbox", str(inbox), "--interval", "0.3"],
@@ -282,14 +282,30 @@ def closure_file_poll(data_dir: Path, hid: str = "mx-file-poll", inbox: Path | N
     return res
 
 
+def child_env(**over) -> dict:
+    """给子进程构造环境：**白名单**，不继承外头的 `AC_*`。
+
+    ★2026-10-18 修（在整套回归里假红过一次）：矩阵单跑全绿、进了 pytest 就"★实例没起来"。
+    病灶：Pytest 里有些老用例直接改 `os.environ`（`AC_ENV=production` / `AC_TOKEN*` 之类）没有还原，
+    我这个工具是**子进程**，全盘继承 ⇒ 平台服务按"生产模式缺 Token"直接启动失败。
+    ⇒ 现在只带系统必需项 + 本工具自己那三个，其余 `AC_*` 一律丢掉。
+    """
+    keep_prefix = ("PATH", "PYTHON", "SYSTEM", "WINDIR", "TEMP", "TMP", "HOME", "USER",
+                   "APPDATA", "LOCALAPPDATA", "COMSPEC", "OS", "PATHEXT", "LANG", "LC_")
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith("AC_") and (k.upper().startswith(keep_prefix) or k in ("LD_LIBRARY_PATH",))}
+    env.update({"AC_PORT": str(PORT), "AC_DATA_DIR": str(DATA_DIR), "PYTHONPATH": str(ROOT)})
+    env.update({k: str(v) for k, v in over.items()})
+    return env
+
+
 def main() -> int:
     global DATA_DIR
     # 每次跑一个**独立数据目录**（别复用上一轮：残留的桥锁/inbox 会让闭环假红）
     data_dir = Path(tempfile.mkdtemp(prefix="ac_matrix_data_"))
     DATA_DIR = data_dir
     data_dir.mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, "AC_PORT": str(PORT), "AC_DATA_DIR": str(data_dir),
-           "PYTHONPATH": str(ROOT)}
+    env = child_env()                 # 白名单（见 child_env 注释：不继承外头的 AC_*）
     proc = subprocess.Popen([sys.executable, "-m", "agent_community.platform.server"],
                             cwd=str(ROOT), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:

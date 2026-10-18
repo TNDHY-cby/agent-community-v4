@@ -4,6 +4,73 @@
 
 # 4.8.26
 
+## [4.8.60] - 2026-10-18
+
+**开机自启（`tools/autostart.py`）＋ 修看门狗的**真缺陷**：带空格路径被拆坏，被守护的服务永远起不来**
+
+### 一、起因：断电重启后 18920 打不开
+
+项目里明明有看门狗（`deploy/watchdog_all.py --daemon`），但**没有任何"随机器启动"的机制**
+（启动文件夹空、无计划任务）⇒ 每个人重启后都得手工拉一次。这违反「装好就能用」。
+
+**`tools/autostart.py`**（通用、可关、可查）：
+
+```bash
+python tools/autostart.py status      # 装没装（人类可读 / --json 机器可读）
+python tools/autostart.py enable      # 装（Windows: 启动文件夹快捷方式；Linux: systemd user unit）
+python tools/autostart.py enable --dry-run   # 只打印会做什么
+python tools/autostart.py disable     # 卸（只删我们自己建的那一个）
+```
+
+- **生成物落在数据目录**（`<AC_DATA_DIR>/autostart/ac_watchdog.cmd`），**源码里没有任何本机坐标**；
+- Windows 用**用户级**启动文件夹（不需要管理员）；Linux 生成 systemd user unit 并**打印**启用命令；
+  其它平台 `status` 报 `supported=false`、`enable` 明确拒绝（**不假装成功**）。
+- 本机已安装并验证：`status` 能**读回快捷方式真实目标**。
+
+### 二、装完立刻抓到看门狗的真缺陷（这才是关键）
+
+用启动器跑起看门狗后，日志里出现：
+
+```
+[watchdog] restarted target (argv=['D:\\Program', 'Files\\Tencent\\...', '-m'] ...)
+```
+
+**`AC4_PYTHON` 是带空格的路径（`D:\\Program Files\\...`），被 `py.split()` 拆成两截** ⇒
+CreateProcess 找不到可执行文件 ⇒ **被守护的 9104/9105 一整天 DOWN，日志只有一行 FAILED，没人知道为什么**。
+
+**修法**：
+1. `_split_cmd()`：**先看整串是不是一个真实存在的文件**（带空格但不加引号也能救回来）；否则 Windows 用
+   `shlex.split(posix=False)` 保引号再剥引号、POSIX 用普通 shlex；
+2. `spawn()`：**先验解释器存在**，不存在就打印人能照着改的一句（"路径带空格请用引号包起来"），
+   不再静默 `Popen` 失败。
+
+**实证（三只看守目标全部恢复）**：`18920 LISTENING` / `9104 LISTENING`（走 Tailscale IP `100.68.55.71`）/
+`9105 LISTENING` —— 修 9104/9105 之前都是 down。
+
+### 三、判据（真跑）
+
+- 新增守卫 `tests/test_autostart.py`（**4 条**）：`status --json` 可解析且如实、**`--dry-run` 一个文件都不写**、
+  用 `--startup <临时目录>` 真装再卸（**不碰真机器**）、**代码里不许有本机坐标**（AST 扫字符串常量，跳过 docstring）；
+- 新增守卫 `tests/test_watchdog_cmd_split.py`（**5 条**）：带引号/不带引号的带空格路径都要认成**一个** argv[0]、
+  POSIX 正常拆分、解释器不存在时必须**说清怎么改**；
+- 新增守卫 `test_core_matrix.py::test_child_env_drops_outer_ac_vars`（矩阵子进程只带白名单环境）；
+- 双平台真跑见发布记录。
+
+### 三点五、顺带修掉矩阵"进整套回归就假红"
+
+整套回归里 `test_core_matrix` 红过一次（单跑全绿），报「★实例没起来」。
+根因：**矩阵是子进程、全盘继承 `os.environ`**，而 Pytest 里有些老用例直接改 `os.environ`
+（如 `AC_ENV=production`）没还原 ⇒ 平台服务按"生产模式缺 Token"**启动失败**。
+⇒ 现在只给子进程**白名单环境**（系统必需项 + 它自己那三个 `AC_*`）；
+实测：**故意把外层设成 `AC_ENV=production` 再跑矩阵，仍然全绿**。
+
+### 四、如实记一条欠账（下一轮补）
+
+`deploy/` **不在发布面** ⇒ 陌生人拿到的包里**没有看门狗**，`autostart` 指向的 `tools/watchdog.py` 目前还不存在
+（本工具已优先找 `tools/watchdog.py`、dev 侧兜底 `deploy/watchdog_all.py`）。
+**下一步**：把看门狗portable 化进 `tools/watchdog.py`（读 `AC_*` 环境变量、不写死端口），
+让"装好就能用 + 自启"在**发布面**也成立。
+
 ## [4.8.59] - 2026-10-18
 
 **核心体检收成一条命令：`python tools/core_check.py`（并接进发布前判据）**
