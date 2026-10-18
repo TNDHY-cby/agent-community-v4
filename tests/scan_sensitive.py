@@ -73,8 +73,10 @@ RULES = [
     ("疑似真实密钥", re.compile(r"sk-[A-Za-z0-9]{16,}"), "secret"),
     # ★2026-10-08 补：**平台 token 这类"非 sk- 形态"的密钥以前完全扫不到**。
     #   实测：`start_18920_v26.ps1`（入库文件）里躺着明文
-    #   `--token "W2SYUha8Hk3gN9J4jsEomDI7KtOR6dQP"`，而 `--secrets-only` 发布闸门仍返回 0
+    #   `--token "<32 位平台令牌>"`，而 `--secrets-only` 发布闸门仍返回 0
     #   （"无真实凭据"）—— 仓库绑 0.0.0.0 时 token 就是唯一的锁，漏掉它等于没有闸门。
+    #   ⚠️ 2026-10-18：这段注释**曾经把那串真值原样贴在这里**（等于把平台令牌发布出去了）。
+    #      已替换为占位，并在同一天**轮换了该令牌**（旧值已失效）。教训：**注释里也不许贴真凭据**。
     #   1) 命令行字面量：`--token "长串"`
     #   2) 键值形：token/api_key/secret/password = "长度 ≥ 24 的随机串"
     #   （白名单里放行 `<占位>` / `$env:` / `${...}` / `xxx` / `your-key` 这类写法）
@@ -107,6 +109,17 @@ def allowed(line: str) -> bool:
     return any(a.search(line) for a in ALLOW)
 
 
+def _is_rule_definition(line: str) -> bool:
+    """本文件里"定义规则"的那些行（正则字面量 / 白名单字面量）—— 扫自己时放行。
+
+    只放行**定义处**；注释、说明、示例里的真凭据仍然要被抓到。
+    """
+    s = line.strip()
+    return (s.startswith("re.compile(") or s.startswith("(") or s.startswith('"')
+            or "re.compile(" in s or s.startswith("]") or s.startswith("ALLOW")
+            or s.startswith("RULES") or s.startswith("SKIP_DIRS") or s.startswith("TEXT_EXT"))
+
+
 def main() -> int:
     hits: list[tuple[str, str, int, str, str]] = []
     scanned = 0
@@ -117,9 +130,6 @@ def main() -> int:
             if ext not in TEXT_EXT and fn not in {".gitignore", "LICENSE"}:
                 continue
             p = Path(dirpath) / fn
-            # 跳过自身：本文件源码里就写着这些正则字面量，否则必然自我命中
-            if p.resolve() == SELF:
-                continue
             scanned += 1
             try:
                 lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -127,6 +137,13 @@ def main() -> int:
                 continue
             for i, line in enumerate(lines, 1):
                 if allowed(line):
+                    continue
+                # ★2026-10-18 修（**真事故**）：原来这里 `if p.resolve() == SELF: continue` —— 整个跳过本文件，
+                #   理由是"本文件源码里写着这些正则字面量，否则必然自我命中"。
+                #   代价：**写在 `scan_sensitive.py` 自己注释里的真凭据永远扫不到**。
+                #   实际发生过：一行注释里贴了平台令牌真值（`--token "<32位>"`），发布出去了，
+                #   而 `--secrets-only` 一直返回 0。⇒ 改成"扫自己，但跳过定义规则的那几行"。
+                if p.resolve() == SELF and _is_rule_definition(line):
                     continue
                 for label, rx, severity in RULES:
                     if rx.search(line):
