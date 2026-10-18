@@ -159,6 +159,27 @@ def main() -> int:
         step("⑤b 数据落在 AC_DATA_DIR 下（不在仓库里）",
              data.is_dir() and any(data.iterdir()) if data.is_dir() else False,
              "（%s）" % (sorted(p.name for p in data.iterdir())[:6] if data.is_dir() else "目录不存在"))
+
+        # ⑥ **自愈**（2026-10-18 新增）：陌生人拿到包里"服务崩了能自己回来"吗？
+        #    为什么必须在这一层验：`tools/watchdog.py` 是**发布面**的东西 —— 只有对着**全新 clone** 跑，
+        #    才能证明"别人下载到的那个包"真的有自愈能力（在 dev 里验等于只验了我这台机器）。
+        wd = clone / "tools" / "watchdog.py"
+        cell_theirs = clone / "tools" / "check_watchdog.py"
+        if not wd.exists():
+            step("⑥ 包里自带看门狗（tools/watchdog.py）", False, "发布面缺这个文件 ⇒ 陌生人没有自愈能力")
+        else:
+            step("⑥ 包里自带看门狗（tools/watchdog.py）", True, "")
+            if cell_theirs.exists():
+                r6 = subprocess.run([sys.executable, str(cell_theirs)], cwd=str(clone), env=env,
+                                    capture_output=True, text=True, encoding="utf-8",
+                                    errors="replace", timeout=300)
+                out6 = ((r6.stdout or "") + (r6.stderr or "")).strip()
+                verdict = ([ln.strip() for ln in out6.splitlines() if "结论" in ln]
+                           or out6.splitlines()[-1:])
+                step("⑥b 在全新 clone 里跑自愈判据（能起 + 崩了能再起）", r6.returncode == 0,
+                     " ".join(verdict)[:200])
+            else:
+                step("⑥b 在全新 clone 里跑自愈判据", False, "发布面缺 tools/check_watchdog.py")
     finally:
         if srv is not None:
             try:
