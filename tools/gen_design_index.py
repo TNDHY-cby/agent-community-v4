@@ -40,33 +40,85 @@ ENTRY = [
 ]
 
 #: 状态归一（按优先级匹配；同一份文档取**第一个**命中）
-#: ⚠️ 「已拍板」与「已拍板并落地」要分开：V55/V56 的状态行是
-#:    `已拍板（老板…）并已落地 v4.8.47` —— 中间隔着括号，靠"近距离匹配"会漏。
+#: ⚠️ 2026-10-18 补：把「实施中 / 已实测通过 / 暂缓 / 已完成 / 设计阶段」也认了 ——
+#:   这些是文档自己的原话，**不该被归一掉**（第一版只认"已实施"，于是 20 份被误判成"无状态行"）。
 STATUS_RULES = [
     (r"已拍板.*(落地|实施|实现)", "已拍板并落地"),
-    (r"已拍板", "已拍板"),
+    (r"已实测通过", "已实测通过"),
+    (r"实施中", "实施中"),
+    (r"暂缓|⛔", "暂缓"),
+    (r"拍板「|已拍板", "已拍板"),
     (r"已实施|已落地|已实现", "已实施"),
-    (r"待老板拍板|待拍板", "待拍板"),
+    (r"明确授权|明示界面方向|落档", "已授权（落档）"),
+    (r"待.{0,24}拍板", "待拍板"),
+    (r"存档|归档", "存档"),
+    (r"现行", "现行"),
     (r"规划", "规划"),
     (r"设计稿", "设计稿"),
+    (r"设计阶段", "设计阶段"),
+    (r"已完成", "已完成"),
     (r"定稿", "定稿"),
     (r"契约已定", "契约已定"),
 ]
 
 V_RE = re.compile(r"^V(\d+)")
 FE_RE = re.compile(r"^FE-(\d+)")
+_VERIFY_DIR = ROOT / "agent_community" / "frontend" / "verify"
+
+
+#: 少数 FE 分册没有同名验收脚本，但**代码里确实有对应实现** —— 依据写死在这里（可复核），不猜
+FE_EVIDENCE = {
+    "FE-05_推进提示设计.md": "代码在（`action_source`／`action_notice_check.js`）",
+    "FE-06_共享资料库可见化设计.md": "代码在（`booths.html` 资料库面板）",
+    "FE-11_对接操作台设计.md": "代码在（`docking.js` 操作台）",
+}
+
+#: V 系列里"文档自己还写着待拍板、但代码里已经落地"的那几份 —— 依据同样写死在案（2026-10-18 实核）
+#: ⚠️ 这里**只写证据、不改文档状态**：两列并排，读者自己看到"文档说没做、代码里有"这个缺口本身。
+V_EVIDENCE = {
+    "V25_唤醒与寻址设计.md": "代码在（`/api/wakeup` 一族 + `visual_launch`）",
+    "V26_通用脚本框架设计.md": "代码在（`/api/docking/run-script` + `tools/inject_window.ps1`）",
+    "V29_项目建模设计.md": "代码在（`library/plan.md`、`framework.md` 由平台生成）",
+    "V37_接入功能产品化设计.md": "已由 V54/对接中心承接（`/api/harness/register-prompt`、预检与首跑判据）",
+    "V38_陌生人自服务架桥设计.md": "已由 V54/对接中心承接（六种协议话术 + 桥模板端点）",
+    "取长补短成果回收设计.md": "代码在（`identity.py`、`mcp_server.py`、`a2a_server.py` 均在包里）",
+    "多协议接入与前端落地设计.md": "代码在（`mcp_server.py` / `a2a_server.py` / `grpc_gateway.py`）",
+    "FE-01_审计时间线与在线看板设计.md": "代码在（`ops.html` + `/api/audit`）",
+    "FE-02_交付回执台设计.md": "代码在（`handover.html`）",
+}
+
+
+def _evidence(rec: dict) -> str:
+    """**我核到的证据**（与"文档自己的状态"分两列，互不替代）。
+
+    FE 系列：同名验收脚本 `verify/feNN_check.js` 在 ⇒ 「验收脚本 ✓」；
+            没有脚本的少数几支，用 `FE_EVIDENCE` 里写明的代码依据；
+    V 系列：`V_EVIDENCE` 里写明"文档说没做但代码里有"的那几份；
+    其它：不瞎猜，返回「—」。
+    """
+    if rec["file"] in FE_EVIDENCE:
+        return FE_EVIDENCE[rec["file"]]
+    if rec["file"] in V_EVIDENCE:
+        return V_EVIDENCE[rec["file"]]
+    m = FE_RE.match(rec["file"])
+    if m:
+        script = _VERIFY_DIR / ("fe%02d_check.js" % int(m.group(1)))
+        return "验收脚本 ✓" if script.exists() else "—"
+    return "—"
 
 
 def _status_of(text: str) -> str:
     """从**文档自己的状态行**解析状态；没有状态行就如实写「无状态行」。
 
-    ⚠️ 我第一版扫的是"前 1500 字里出现 `待拍板`" ⇒ 把**正文提到"拍板后再写码"**的老设计稿
-    也标成了"待拍板"（V13/V14/V15 被误标）。现在只认**头部带「状态」二字的那一行**（最多看前 25 行），
-    找不到就承认没有 —— **状态是文档自己写的，我不替它推断**。
+    ⚠️ 两个坑（都踩过，都进了用例）：
+      ① 第一版扫"前 1500 字里出现 `待拍板`" ⇒ 把正文写了"拍板后再写码"的老稿也标成待拍板；
+      ② 只认"已实施"这一种写法 ⇒ 20 份写着「实施中 / 已实测通过 / 暂缓」的被误判成"无状态行"。
+    现在：**只看带「状态」二字的那一行**（跳过 `#` 标题行 —— `# …状态依赖注入` 里的"状态"不是状态行），
+    并认全常见写法；认不出来就承认没有（**不替它推断**）。
     """
     head = text.splitlines()[:25]
     for idx, ln in enumerate(head):
-        if "状态" not in ln:
+        if ln.lstrip().startswith("#") or "状态" not in ln:
             continue
         seg = ln
         if idx + 1 < len(head):          # 状态值可能写在下一行
@@ -74,7 +126,7 @@ def _status_of(text: str) -> str:
         for pat, label in STATUS_RULES:
             if re.search(pat, seg):
                 return label
-        return "无状态行"                 # 有"状态"字样但没匹配到已知取值 ⇒ 如实说没有可归一的状态
+        return "其它（见原文）"          # 有状态字样但措辞未归一 ⇒ 如实说"看原文"
     return "无状态行"
 
 
@@ -136,17 +188,19 @@ def render(items: dict) -> str:
     L.append("")
     L.append("## ② V 系列（按编号；编号就是当时的推进顺序）")
     L.append("")
-    L.append("| # | 标题 | 状态 | 文件 |")
-    L.append("|---|---|---|---|")
+    L.append("| # | 标题 | 文档状态 | 我核 | 文件 |")
+    L.append("|---|---|---|---|---|")
     for r in items["V"]:
-        L.append("| V%d | %s | %s | [`%s`](%s) |" % (r["no"], r["title"][:60], r["status"], r["file"], r["file"]))
+        L.append("| V%d | %s | %s | %s | [`%s`](%s) |"
+                 % (r["no"], r["title"][:60], r["status"], _evidence(r), r["file"], r["file"]))
     L.append("")
     L.append("## ③ FE 系列（前端界面分册）")
     L.append("")
-    L.append("| # | 标题 | 状态 | 文件 |")
-    L.append("|---|---|---|---|")
+    L.append("| # | 标题 | 文档状态 | 我核 | 文件 |")
+    L.append("|---|---|---|---|---|")
     for r in items["FE"]:
-        L.append("| FE-%d | %s | %s | [`%s`](%s) |" % (r["no"], r["title"][:60], r["status"], r["file"], r["file"]))
+        L.append("| FE-%d | %s | %s | %s | [`%s`](%s) |"
+                 % (r["no"], r["title"][:60], r["status"], _evidence(r), r["file"], r["file"]))
     L.append("")
     L.append("## ④ 其它（RUNBOOK / 契约 / 清单 / 说明）")
     L.append("")
@@ -161,8 +215,12 @@ def render(items: dict) -> str:
     L.append("")
     L.append("1. **想知道「现在到底有什么」** ⇒ 读 ① 的 [`项目完整模型.md`](项目完整模型.md)（含 §11 欠账表）；")
     L.append("2. **想找某个功能的来龙去脉** ⇒ 在 ② 里按编号找（V55＝信息搜索者/防信息污染、V56＝巡逻员…）；")
-    L.append("3. **想知道还有多少没拍板** ⇒ 看每行的「状态」列，`待拍板` 就是排队等老板的；")
-    L.append("4. **状态行怎么来的** ⇒ 从文档自己头部的「状态：…」解析；写着「无状态行」的，是我还没给它标状态（该补）。")
+    L.append("3. **想知道还有多少没拍板** ⇒ 看「文档状态」列，`待拍板` 就是排队等老板的；")
+    L.append("4. **两列别混**：**文档状态**是**文档自己写的**（我不替它改口径）；**我核**是我这边查到的证据")
+    L.append("   （验收脚本 / 代码在 / 已由哪份承接）——**两列打架就是缺口**，例如「文档说待拍板、我核写着代码在」")
+    L.append("   ⇒ 说明那份文档的状态行过时了，该补；")
+    L.append("5. **状态行怎么来的** ⇒ 从文档头部带「状态」二字的那一行解析（跳过 `#` 标题行）；写着「无状态行」的，")
+    L.append("   是我还没给它标状态（该补）。")
     L.append("")
     return "\n".join(L)
 

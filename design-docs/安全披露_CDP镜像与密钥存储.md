@@ -1,5 +1,7 @@
 # 安全披露：CDP 镜像与密钥存储（2026-09-27）
 
+> 状态：**现行**（2026-10-18 核：安全披露文档，长期有效）
+
 ## 1. CDP 代码级窗口映射（_mirror_by_cdp）
 
 **功能**：`GET /api/harness/{harness_id}/mirror` 优先通过 CDP（Chrome DevTools Protocol）连接宿主浏览器/Electron 的调试端口，提取页面实时状态（title / url / body 文本流）。实现位于 `platform/server.py::_mirror_by_cdp`。

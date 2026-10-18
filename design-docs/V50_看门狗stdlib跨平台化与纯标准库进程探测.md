@@ -1,5 +1,7 @@
 # V50 · 看门狗 stdlib 跨平台化 + 纯标准库进程探测（procprobe）
 
+> 状态：**已实施**（2026-10-18 核：`platform/procprobe.py` 与 `sysprobe.py` 均在用）
+
 > **性质**：**欠账清偿稿**（不是新功能）。欠账出处＝[`PRODUCTIZATION.md`](../PRODUCTIZATION.md) 欠账表第 1 行、
 > [`PORTABILITY.md`](../PORTABILITY.md) §5.2「仍是 Windows 专属」表第 3 行、
 > 以及继承书 `上下文继承书_20261015.md` §4 欠账第 1 条。
