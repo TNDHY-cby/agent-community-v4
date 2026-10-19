@@ -4,6 +4,50 @@
 
 # 4.8.26
 
+## [4.8.93] - 2026-10-20
+
+**修老板真机报的两个故障：「扫描到的窗口名全是乱码」与「激活不了窗口、也没调到最上层」**
+
+### ① 窗口标题乱码（截图里一片 `◆`）
+
+- **真因**：`inject_window.ps1` 往 stdout 写中文标题时用的是 Windows PowerShell 5.1 的**默认 OEM/ANSI 编码**
+  （中文机上是 GBK），而 Python 侧是按 **UTF-8** 读的 ⇒ 中文全变方块/替换字符。
+- **修法（一处真相）**：脚本开头钉死输出编码
+  `[Console]::OutputEncoding = UTF8` + `$OutputEncoding = UTF8`——**别让调用方去猜**。
+- **实测**：修前 `-List` 的中文标题是方块；修后 `title=ZCode - 文件资源管理器` 正常显示。
+
+### ② 激活不了 / 没调到最上层
+
+- **现象**：点「就是这个窗口，试一次」⇒ `[FAIL] -Method wmpaste needs a text-control child; none found.`
+  ⇒ 界面只显示「未核实」，内容没落到人眼前。
+- **两个独立原因，分别修**：
+  1. **方法选错档**：`WM_PASTE` 需要目标窗口里有**文本框子窗口**；Chrome / Electron 类窗口（老板的 `TRAE CN` 就是）
+     **天生没有** ⇒ 这条路对它永远不通。
+     **修法**：`rc==3 且是「没有文本框」这一种** ⇒ 平台**自动改用「剪贴板 + Ctrl+V」**（脚本的全自动档），
+     并加第三层兜底：万一自动档也没送进去，再把内容放进剪贴板让人一键贴，且**说清为什么**。
+  2. **抢前台被挡**：只调 `SetForegroundWindow` 会被 Windows 的前台锁顶回来。
+     **修法**：`Focus-Window` 加兜底组合 —— `AttachThreadInput`（临时把本线程输入附到前台线程）
+     → `SetForegroundWindow` 重试 → `SetWindowPos(HWND_TOP + SWP_SHOWWINDOW)` 抬到最上层。
+- **实测（真机，用标题可控的控制台窗口当靶子）**：
+  `[focus] SetForegroundWindow=True is_foreground=True`、`[inject] clipboard + Ctrl+V (14 chars)` + 回车，
+  `exit=0`；同一窗口再试 `wmpaste` ⇒ `exit=3`（确认没有文本框子窗），兜底逻辑正是为它准备的。
+
+### ③ 顺带守住的两件事
+
+- **两种 `exit=3` 不许混**：`没有文本框`（该换方法）与 **`没找到窗口`**（必须如实失败）。
+  混在一起会造出"窗口根本不存在却返回成功"的假成功 —— 既有守卫当场抓到我这版回归，已分开，
+  并新增守卫钉死。
+- **脚本带中文就必须带 UTF-8 BOM**（PS 5.1 否则按 ANSI 读、报一堆看不出真因的语法错）——
+  我加中文注释时漏了，被仓库自带的守卫抓到，已补。
+
+### 判据
+
+`agent_community/tests/test_visual_launch_fallback.py`（3 条）：
+① **真跑 `-List`** 断言中文标题不含替换字符（仅 Windows 真跑，其它平台如实跳过）；
+② 「没有文本框」⇒ 自动改用剪贴板档并写明原因、读回通过时 `verified=True`；
+③ **没找到窗口 ⇒ `ok=False`**（不许假成功）。
+既有 `test_visual_launch.py` 全绿（含 `options` 只读性）；全量回归与双平台见下。
+
 ## [4.8.92] - 2026-10-20
 
 **`ai.detail` 改为纯文本（界面上不许出现字面 `**`）**

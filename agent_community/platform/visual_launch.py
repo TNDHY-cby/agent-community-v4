@@ -145,6 +145,9 @@ def options(member, *, session_name: str | None = None, probe: bool = True) -> d
             "detail": ("匹配到 %d 个窗口（标题含会话名）" % len(matched)) if matched
                       else (win.get("detail") or "没有标题匹配的窗口"),
             "windows": matched[:5],
+            # ★2026-10-20：把"这种窗口常见送不进去"提前说清 —— 免得界面报了可用、点下去却失败。
+            "note": ("Chrome / Electron 类窗口通常**没有文本框子窗口**，消息式粘贴用不了；"
+                     "平台会自动改用「剪贴板 + Ctrl+V」兜底（不需要你手动贴）"),
         })
     else:
         out["methods"].append({
@@ -258,6 +261,43 @@ def launch(member, text: str, *, method: str = "auto", session_name: str | None 
         return res
     # 失败：如实回报，并在 auto 模式下退到兜底档
     reason = next((ln for ln in out.splitlines() if ln.startswith("[FAIL]")), None) or out[-200:]
+
+    # ★2026-10-20 修（老板真机报"无法激活/注入失败"）：`rc == 3` 的含义是
+    #   **「wmPaste 这种方法对这个窗口不适用」**（目标没有文本框子窗口 —— Chrome / Electron 的常态），
+    #   不是"目标坏了"。原来这里直接返回失败（界面上老板只看到"未核实"，还得自己点剪贴板），
+    #   于是"送不进去"变成人的活。
+    #   现在：**自动改用脚本的全自动 clipboard 档**（置顶 → 放进剪贴板 → 发 Ctrl+V），
+    #   并在 detail 里说清"为什么换方法、换了之后发生了什么"（仍不谎报"已验证"）。
+    # ★2026-10-20：`rc == 3` 有**两种完全不同的含义**，必须分开处理（否则会造出假成功）：
+    #   (a) `[FAIL] -Method wmpaste needs a text-control child` ⇒ **窗口找到了**，只是它没有文本框子窗
+    #       （Chrome/Electron 常态）⇒ 换方法（剪贴板 + Ctrl+V）是对的；
+    #   (b) `[FAIL] no matching window` ⇒ **根本没找到那个窗口** ⇒ 绝不能兜底成"成功"，
+    #       只能如实说"没找到窗口"（这是既有守卫 test_missing_window_never_reports_success 的承诺）。
+    if rc == 3 and "text-control" in out:
+        args2 = ["-TitleLike", name, "-Text", text, "-Method", "clipboard"]
+        args2 += (["-Enter", "-Verify", "-PasteDelayMs", "900"] if verify else ["-Enter"])
+        rc2, out2 = _run_inject(args2)
+        reached = rc2 == 0 and "[inject]" in out2
+        if not reached:
+            # **第三层兜底**：全自动剪贴板也没送进去 ⇒ 至少把内容放进剪贴板，让人一键贴
+            # （"失败要说话"不是"失败就交给人"，而是"能自动的自动，剩下的说清怎么手动"）。
+            fb = _clipboard(member, text)
+            fb["fallback_from"] = "wmpaste→clipboard"
+            fb["detail"] = ("wmpaste 不行（%s）⇒ 自动剪贴板档也没送进去（%s）⇒ 已退回半自动：%s"
+                            % (reason, (out2[-140:].strip() or "无输出"), fb.get("detail")))
+            return fb
+        evid2 = [ln for ln in out2.splitlines() if ln.startswith("[inject]")]
+        vline2 = next((ln for ln in out2.splitlines() if ln.startswith("[verify]")), "")
+        verified2 = True if (verify and "contains_expected=True" in vline2) else None
+        return {
+            "ok": True, "method": "clipboard", "fallback_from": "wmpaste",
+            "need_human": False, "verified": verified2,
+            "detail": ("wmpaste 不行（%s）⇒ 已自动改用「剪贴板 + Ctrl+V」：%s"
+                       % (reason, (evid2[-1] if evid2 else out2[-160:]).strip() or "（无输出）")),
+            "next_step": "已自动兜底送到会话（含回车）；若目标没回应，看它的日志/桥状态",
+            "warnings": [ln for ln in out2.splitlines() if ln.startswith("[WARN]")],
+        }
+
     if method == "wmpaste":
         return {"ok": False, "method": "wmpaste", "need_human": False,
                 "detail": "注入失败（exit=%s）：%s" % (rc, reason),

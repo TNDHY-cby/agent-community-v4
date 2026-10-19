@@ -1,4 +1,4 @@
-# inject_window.ps1 -- wake a GUI harness by OS-level input injection (ASCII only)
+﻿# inject_window.ps1 -- wake a GUI harness by OS-level input injection (ASCII only)
 #
 # WHY THIS EXISTS
 #   Some harnesses expose neither an HTTP API (wakeup_method=http_api) nor a CLI we can
@@ -67,6 +67,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# ★2026-10-20 修（老板真机报"探测到的窗口名是乱码"）：
+#   Python 侧是按 **UTF-8** 读本脚本 stdout 的，而 Windows PowerShell 5.1 默认用 OEM/ANSI
+#   （中文机器上是 GBK）往控制台写 ⇒ 中文窗口标题到了 Python 那边变成一串 `◆`/替换字符，
+#   界面上就是"扫描到的窗口名全是方块"。
+#   **一处真相**：输出编码在脚本这端钉死 UTF-8，别让调用方去猜。
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+try { $OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
 Add-Type -TypeDefinition @"
 using System;
 using System.Text;
@@ -88,6 +96,7 @@ public class WinInj {
     [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr parent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
     [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
 }
 "@
@@ -136,8 +145,52 @@ function Focus-Window([int64]$hwnd) {
     [void][WinInj]::BringWindowToTop([IntPtr]$hwnd)
     $ok = [WinInj]::SetForegroundWindow([IntPtr]$hwnd)
     Start-Sleep -Milliseconds $FocusDelayMs
-    $fg = [WinInj]::GetForegroundWindow()
-    return @{ requested = $ok; is_foreground = ([int64]$fg -eq $hwnd); foreground = [int64]$fg }
+
+    # ★2026-10-20 补（老板真机报"无法激活窗口、没调到最上层"）：
+    #   只靠 SetForegroundWindow 会被"前台锁"顶回来（Electron/Chrome 尤其常见），
+    #   于是文本发给了**后台**窗口，看起来"发出去了"其实没落到人眼前。
+    #   兜底组合（Windows 上验证过的老办法）：
+    #     ① 把本线程输入**临时附到当前前台线程**（AttachThreadInput）—— 才允许抢前台；
+    #     ② SetForegroundWindow 再试一次；
+    #     ③ SetWindowPos 抬到 TOP 并 SWP_SHOWWINDOW（保证"调到最上层"、不会被别的窗口压住）。
+    #   全程 try/catch：任何一步失败都**如实**反映到 is_foreground，不假装成功。
+    # ⚠️ 不要写 `[IntPtr][WinInj]::GetForegroundWindow()`：PowerShell 在
+    #    `$ErrorActionPreference="Stop"` 下对 IntPtr 强转偶尔拿到 $null（真机实测踩到），
+    #    直接用返回值 + `[int64]` 比较最稳。
+    $fgObj = [WinInj]::GetForegroundWindow()
+    $fgVal = 0
+    if ($null -ne $fgObj) { $fgVal = [int64]$fgObj }
+    if ($fgVal -ne $hwnd) {
+        $curThread = [WinInj]::GetCurrentThreadId()
+        [uint32]$pidTmp = 0
+        $fgThread = 0
+        try {
+            if ($fgVal -ne 0) { $fgThread = [WinInj]::GetWindowThreadProcessId($fgObj, [ref]$pidTmp) }
+        } catch {
+            # 前台窗口句柄拿不到（0/无效）时**不阻断**：直接走下面的 SetForegroundWindow 重试
+            $fgThread = 0
+        }
+        $attached = $false
+        try {
+            if ($fgThread -ne 0 -and $fgThread -ne $curThread) {
+                $attached = [WinInj]::AttachThreadInput($curThread, $fgThread, $true)
+            }
+            [void][WinInj]::ShowWindowAsync([IntPtr]$hwnd, $SW_RESTORE)
+            [void][WinInj]::SetForegroundWindow([IntPtr]$hwnd)
+            # HWND_TOP=0；SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW = 0x0001|0x0002|0x0040
+            [void][WinInj]::SetWindowPos([IntPtr]$hwnd, [IntPtr]::Zero, 0, 0, 0, 0, 0x0043)
+            Start-Sleep -Milliseconds 120
+        } catch {
+            Write-Output ("[WARN] foreground retry failed: {0}" -f $_.Exception.Message)
+        } finally {
+            if ($attached) { [void][WinInj]::AttachThreadInput($curThread, $fgThread, $false) }
+        }
+        $ok = [WinInj]::SetForegroundWindow([IntPtr]$hwnd)
+        Start-Sleep -Milliseconds 80
+    }
+
+    $fgNow = [int64][WinInj]::GetForegroundWindow()
+    return @{ requested = $ok; is_foreground = ($fgNow -eq $hwnd); foreground = $fgNow }
 }
 
 function Send-CtrlV {
