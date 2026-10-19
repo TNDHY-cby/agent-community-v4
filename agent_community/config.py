@@ -125,6 +125,43 @@ def load_config() -> dict[str, Any]:
     return merged
 
 
+def peek_config() -> dict[str, Any]:
+    """**只读**读配置：文件不存在/损坏时返回默认值，**绝不创建或改写任何文件**。
+
+    ★2026-10-20（V60 踩到的真问题）：`load_config()` 在首次运行时会**自动创建配置文件**
+    （`save_config(DEFAULT_CONFIG)`，见上面那行注释）。而 `/api/status` 是**高频只读端点**，
+    界面/看门狗/CLI 都在轮询它 —— 给只读端点接上"建文件"副作用有两个坏后果：
+      ① 在只读挂载 / 容器里打一次状态就报错或留下不该有的文件；
+      ② 测试里打一次 `/api/status` 就会在仓库 `data/` 造出配置文件，
+         被 `agent_community/tests/conftest.py` 的"防污染守卫"抓成「测试污染了真实数据」
+         （实测：Linux 侧双平台判据就是这么红的）。
+    只读场景一律用这个函数；要"顺手初始化配置"的地方才用 `load_config()`。
+    """
+    merged: dict[str, Any] = dict(DEFAULT_CONFIG)
+    try:
+        if CONFIG_FILE.exists():
+            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                merged.update(data)
+    except Exception:  # noqa: BLE001 — 损坏/不可读都退回默认值，**不修盘**
+        merged = dict(DEFAULT_CONFIG)
+    # 与 load_config 同一套"环境变量优先"（只读，不落盘）
+    try:
+        from .platform import env_spec as _es
+        for _cfg_key, _env_name in _ENV_OVERRIDES.items():
+            _v = _es.get(_env_name)
+            if _v != "":
+                merged[_cfg_key] = _v
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        if merged.get("ai_api_key"):
+            merged["ai_api_key"] = _decrypt_secret(merged["ai_api_key"])
+    except Exception:  # noqa: BLE001
+        pass
+    return merged
+
+
 def save_config(data: dict[str, Any]) -> None:
     """写入配置文件。"""
     _ensure_dir()

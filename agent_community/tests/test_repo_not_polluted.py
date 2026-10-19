@@ -31,15 +31,24 @@ def _load_tool():
 
 
 def test_pollution_detector_catches_new_and_rewritten_files():
-    """检测器必须同时抓：**新增**文件 与 **被改写**文件（只抓新增会漏掉"每轮重写 plan.md"）。"""
+    """检测器必须同时抓：**新增**文件 与**大小变了**的文件（只抓新增会漏掉"每轮重写"）。
+
+    ★2026-10-20 口径校正（判据自己假红）：签名从 `(mtime_ns, size)` 改成**只按 size**。
+    原因：`dual_platform_check` 跑用例时，**同机的生产实例/看门狗**会周期性用**相同内容**
+    重写 `data/audit.json` 等文件 —— mtime 一变就被判"测试污染"，跑一次红一次绿。
+    `conftest.py` 早在 2026-10-12 就把这条判清了（只变 mtime 不算污染）；本工具现在与它同一口径。
+    """
     dpc = _load_tool()
-    before = {"library/plan.md": (1, 100), "library/README.md": (1, 50)}
-    after = {"library/plan.md": (2, 120), "library/README.md": (1, 50),
-             "library/新人-测试/assignment.md": (3, 10)}
+    before = {"library/plan.md": 100, "library/README.md": 50, "data/audit.json": 80}
+    after = {"library/plan.md": 120, "library/README.md": 50, "data/audit.json": 80,
+             "library/新人-测试/assignment.md": 10}
     diff = dpc._pollution_diff(before, after)
-    assert any("plan.md" in d and "被改写" in d for d in diff), diff
+    assert any("plan.md" in d and ("被改写" in d or "大小变了" in d) for d in diff), diff
     assert any("assignment.md" in d and "新增" in d for d in diff), diff
     assert not any("README" in d for d in diff), "没动的文件不该报"
+    # ★这条是本次修复的**契约**：只变 mtime（同内容重写）**不许报** —— 那是别的进程在写。
+    assert not any("audit.json" in d for d in diff), \
+        "只变 mtime 被报成了污染（会把同机服务的正常写入误判成测试污染）：%s" % diff
 
 
 def test_snapshot_covers_runtime_dirs_and_ignores_missing_ones():

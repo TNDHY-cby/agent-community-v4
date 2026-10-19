@@ -773,7 +773,13 @@ async def list_rooms():
     return {"rooms": [r.model_dump() for r in discussion_rooms.values()]}
 @app.get("/api/status")
 async def api_status():
-    """服务状态检查接口 — CLI start 自检用"""
+    """服务状态检查接口 — CLI start 自检用
+
+    ★V60（2026-10-20，前端通道 201 申请）：增加 `ai` 段，让界面**不用猜 agent id**
+    就能如实显示"当前配置的平台 AI 通不通"。
+    ⚠️ **零成本铁律**：本端点被界面/看门狗/CLI 高频轮询 ⇒ **绝不在里面主动探活**，
+    `reachable` 只来自 V-16 自检的缓存结论；没验过就如实给 `null`（未知），不猜。
+    """
     online_agents = sum(1 for aid in agents if (
         aid in ws_agents or harness_manager.is_harness_agent(aid) or aid == orchestrator.AGENT_ID
     ))
@@ -786,7 +792,59 @@ async def api_status():
         "tasks_active": sum(1 for t in tasks.values() if t.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.ARCHIVED)),
         "harnesses": len(harness_manager.sessions),
         "pipe_dir": str(PIPE_DIR),
+        "ai": _ai_health_snapshot(),
     }
+
+
+def _ai_health_snapshot() -> dict:
+    """当前配置的平台 AI 健康快照（**只读缓存、绝不发请求**，见 V60 §3）。"""
+    out = {"provider": "", "model": "", "configured": False, "reachable": None,
+           "detail": "", "checked_at": "", "source": "not-configured", "age_seconds": None}
+    try:
+        # ⚠️ 必须用 **peek_config()**（只读）而不是 load_config()：
+        #    后者在首次运行时会**创建配置文件**，而这里是高频只读端点（见 V60 §3 与 config.peek_config 注释）。
+        from ..config import peek_config as _peek
+        cfg = _peek() or {}
+    except Exception as e:  # noqa: BLE001
+        out["detail"] = "读配置失败，无法判断平台 AI 状态：%s: %s" % (type(e).__name__, e)
+        return out
+    provider = str(cfg.get("ai_provider") or "").strip()
+    model = str(cfg.get("ai_model") or "").strip()
+    base_url = str(cfg.get("ai_base_url") or "").strip()
+    api_key = str(cfg.get("ai_api_key") or "").strip()
+    out["provider"], out["model"] = provider, model
+    out["configured"] = bool(provider and model)
+    if not out["configured"]:
+        out["detail"] = ("还没配置平台 AI：填 provider 与模型；填完在「设置」里点一次"
+                         "「验证连通」，这里就会显示真实结果")
+        return out
+    try:
+        from .ai_verify import cached_verdict
+        v = cached_verdict(provider, base_url, model, api_key, cfg=cfg)
+    except Exception as e:  # noqa: BLE001
+        out["detail"] = "查自检结论失败：%s: %s" % (type(e).__name__, e)
+        return out
+    if not v:
+        out["source"] = "unverified"
+        out["detail"] = ("已配置（%s / %s），但**还没验证过连通**——在「设置」里点一次"
+                         "「验证连通」" % (provider, model))
+        return out
+    import time as _time
+    out["checked_at"] = _time.strftime("%Y-%m-%dT%H:%M:%S", _time.localtime(v["ts"]))
+    out["age_seconds"] = int(v["age_s"])
+    if not v["fresh"]:
+        out["source"] = "unverified"
+        out["detail"] = ("上次验证是 %d 分钟前，结论已过期——点一次「验证连通」"
+                         % max(1, int(v["age_s"] // 60)))
+        return out
+    out["source"] = "cache"
+    out["reachable"] = bool(v["ok"])
+    if v["ok"]:
+        out["detail"] = "最近一次验证成功（%d 分钟前）" % int(v["age_s"] // 60)
+    else:
+        out["detail"] = ("最近一次验证失败（%d 分钟前）：%s"
+                         % (int(v["age_s"] // 60), v["detail"] or "没说原因"))
+    return out
 # ═══════════════════════════════════════════════════════════════
 # 旧版前端兼容 API
 # ═══════════════════════════════════════════════════════════════

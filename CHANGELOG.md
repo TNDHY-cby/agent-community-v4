@@ -4,6 +4,70 @@
 
 # 4.8.26
 
+## [4.8.91] - 2026-10-20
+
+**接口变更（前端通道 201 申请）：`GET /api/status` 增 `ai` 段 —— 大厅那盏"永远红灯"从此有真数据**
+
+### 为什么
+
+大厅左下角「状态：离线」指示灯原先**写死三个 agent id**（本机的 Ollama 与示例桥）去探在线列表
+⇒ **只有那台机器上显示正确**；AI 实际走云端 API 时**永远误报离线**（老板机上就是这样）。
+前端按老板「可以」提了接口变更申请：要一个**权威字段**，别让界面猜。
+
+### 新增字段（**既有字段一个没动**）
+
+```json
+"ai": {
+  "provider": "openai", "model": "…",
+  "configured": true,
+  "reachable": true,            // true / false / **null=未知**
+  "detail": "最近一次验证成功（3 分钟前）",
+  "checked_at": "2026-10-20T09:31:00",
+  "source": "cache",            // cache / unverified / not-configured
+  "age_seconds": 180
+}
+```
+
+### **零成本铁律**（这条决定了实现）
+
+`/api/status` 被界面 / 看门狗 / CLI **高频轮询** ⇒ **绝不在里面主动探活**（那等于每次刷新烧一次 token、
+还把状态接口拖慢）。`reachable` **只来自** V-16 连通性自检的 10 分钟缓存：
+
+| 情形 | reachable | source |
+|---|---|---|
+| 没配 provider/model | `null` | `not-configured`（detail 说清怎么配） |
+| 配了但从没验过 / 结论已过期 | `null` | `unverified`（detail 说"点一次验证连通"） |
+| 有缓存结论 | `true`/`false` | `cache`（失败带原因） |
+
+**没验过就显示"未知"**，比红灯或绿灯都诚实（准则⑤）。
+
+### 配套小能力（一处真相）
+
+`platform/ai_verify.py` 新增 `cached_verdict(provider_type, base_url, model, api_key, cfg=None)`：
+按模块内**同一套指纹**查缓存，返回 `{ok, status, detail, ts, age_s, fresh}` 或 `None`
+—— 别的调用方不用自己拼 fingerprint。
+
+### 判据（`agent_community/tests/test_ai_health_field.py`，6 条）
+
+① `ai` 段八字段齐全且**既有字段一个不少**；② 没配 ⇒ 如实说怎么配；
+③ 配了没验过 ⇒ `reachable=null`（**不许谎报 true**）；④ 缓存成功/失败各如实反映（失败带原因）；
+⑤ **不烧钱**：连打两次 `/api/status`，`checked_at` 不被刷新、`age_seconds` 不倒退、响应 < 500ms；
+⑥ **只读端点不许有写盘副作用**（见下）。
+
+### 顺带修掉两个真问题（都是这次做字段时被逼出来的）
+
+1. **只读端点接了写盘副作用**：`load_config()` 在配置不存在时会**自动创建配置文件**，
+   而我一开始就是用它读 AI 配置 ⇒ **打一次 `/api/status` 就在 `data/` 落一个 config.json**；
+   在只读挂载/容器里会报错，在测试里则被 `conftest` 的"防污染守卫"抓成「测试污染了真实数据」
+   （实测：Linux 侧双平台判据就是这么红的）。
+   ⇒ 新增 `agent_community/config.py::peek_config()`：**只读**读配置，文件不存在/损坏返回默认值、
+   **绝不建文件**；`/api/status` 改用它。守卫第 ⑥ 条就盯这件事。
+2. **双平台判据自己假红**（第三次同类）：`tools/dual_platform_check.py` 的仓库污染检查原先按
+   `(mtime, size)` 比对 ⇒ **同机生产实例的 20s 自动循环**用相同内容重写 `data/audit.json` 时，
+   mtime 一变就被判"测试污染"，跑一次红一次绿。`conftest` 早在 2026-10-12 就判清了
+   （**只变 mtime 不算污染**）。现改为同一口径（只按 新增/删除/大小变化），自测也补上了
+   "只变 mtime 不许报"这条契约。
+
 ## [4.8.90] - 2026-10-20
 
 **并入前端 1 笔：站内跳转一律当前页直跳（老板裁定：不再弹一堆新网页）**

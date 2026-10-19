@@ -226,6 +226,37 @@ def verify_provider(provider_type: str, base_url: str, model: str, api_key: str,
             "reason": "内部错误：事件循环内请改用 verify_provider_async"}
 
 
+def cached_verdict(provider_type: str, base_url: str, model: str, api_key: str,
+                   cfg: Optional[dict] = None) -> Optional[dict]:
+    """**只读**最近一次自检结论（V60：给 `/api/status` 的 `ai` 段用）。
+
+    为什么单独一个函数：`/api/status` 是**高频只读**端点，**绝不能**在里面主动探活
+    （每次轮询都花一次 token，还会把状态接口拖慢）。所以这里**只查缓存、不发请求**；
+    指纹算法也只在模块内一处（`_fingerprint`），调用方不用自己拼。
+
+    返回 `None`（从没验过）或：
+      `{"ok": bool, "status": int, "detail": str, "ts": float, "age_s": float, "fresh": bool}`
+    """
+    fp = _fingerprint(provider_type, base_url, model, api_key)
+    with _lock:
+        entry = _cache.get(fp)
+        if not entry:
+            return None
+        ts = float(entry.get("ts") or 0)
+        result = dict(entry.get("result") or {})
+    age = max(0.0, time.time() - ts)
+    ttl = cache_ttl(cfg)
+    detail = str(result.get("reason") or result.get("detail") or "").strip()
+    return {
+        "ok": bool(result.get("ok")),
+        "status": int(result.get("status") or 0),
+        "detail": detail,
+        "ts": ts,
+        "age_s": age,
+        "fresh": bool(ttl > 0 and age <= ttl),
+    }
+
+
 def clear_cache() -> int:
     """清空自检缓存（测试与"立刻重测"用）。返回清掉的条数。"""
     with _lock:

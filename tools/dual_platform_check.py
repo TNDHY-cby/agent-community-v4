@@ -217,20 +217,34 @@ def _snapshot_repo_runtime() -> dict:
         for p in base.rglob("*"):
             try:
                 st = p.stat()
-                snap[str(p.relative_to(ROOT))] = (st.st_mtime_ns, st.st_size)
+                # 只记**大小**：内容是否变，用大小判就够（真污染必然改大小/改集合）；
+                # mtime 会被同机其它进程的正常重写带偏（见 _pollution_diff 的注释）。
+                snap[str(p.relative_to(ROOT))] = st.st_size
             except OSError:
                 continue
     return snap
 
 
 def _pollution_diff(before: dict, after: dict) -> list:
-    """跑完用例后新增/改动的运行数据（按真文件判，不查源码文本）。"""
+    """跑完用例后新增/删掉/大小变了的运行数据（按真文件判，不查源码文本）。
+
+    ★2026-10-20 修（**判据自己假红**，第三次同类）：原先用 `(mtime_ns, size)` 比对，
+      于是**同机另一个进程**（生产实例 18920 的 20s 自动循环、看门狗）周期性地
+      **用相同内容重写** `data/audit.json` 等文件时，mtime 一变就被判成"测试污染"——
+      跑一次红一次绿，取决于那 20s 恰好有没有落到窗口里。
+      `agent_community/tests/conftest.py` 早在 2026-10-12 就把这件事判清了：
+      **只变 mtime 不算污染**，真污染必然改变"文件集合"或"大小"。
+      本工具现在与它同一口径（一处真相），并在文案里说清判据。
+    """
     out = []
-    for path, sig in after.items():
+    for path, size in after.items():
         if path not in before:
             out.append("%s（新增）" % path)
-        elif before[path] != sig:
-            out.append("%s（被改写）" % path)
+        elif before[path] != size:
+            out.append("%s（大小变了 %s→%s）" % (path, before[path], size))
+    for path in before:
+        if path not in after:
+            out.append("%s（被删除）" % path)
     return out
 
 
