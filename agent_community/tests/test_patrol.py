@@ -285,15 +285,40 @@ def test_result_rejects_bad_report(two):
 
 
 def test_result_applies_platform_verdict(two):
+    # 造一个**真实存在的**掉线信号（进入状态机 timeout ⇒ `signal_reasons` 非空）。
+    # ⚠️ 2026-10-19 修：这条原先把「测试环境拿不到心跳」当作"仍掉线"的依据——
+    #   那与产品口径矛盾（心跳在本项目是**可选**的，"没记录"不等于"掉线"），
+    #   而且真实原因是复核代码把 `offline_report()` 的 **list** 当 dict 用、每次都抛异常被兜底，
+    #   于是"永远判未修好"被固化成期望值。现在信号必须是**造出来的真信号**。
+    two["ws"].members[0].entry_state = "timeout"
     asyncio.run(wp.dispatch_patrol("ws_pt", _Req({"target_member_id": "m1"})))
     pid = two["ws"].patrols[0]["patrol_id"]
     code, body = _resp(asyncio.run(wp.submit_patrol_result("ws_pt", pid, _Req(_report()))))
     assert code == 200
-    # 复核用的 offline_report 在测试环境拿不到心跳 ⇒ 按"仍掉线"处理 ⇒ 不许判成 fixed
-    assert body["verdict"]["status"] in ("claimed_but_not_verified", "unverified", "not_fixed")
+    assert body["verdict"]["status"] == "claimed_but_not_verified"
     assert body["verdict"]["fixed"] is False
     assert "巡逻" in body["human_line"]
     assert two["ws"].members[0].entry_state == "needs_human"
+
+
+def test_result_confirms_fix_when_offline_signal_gone(two):
+    """★掉线判据**真消失**时，平台必须能确认修好。
+
+    回归的是 2026-10-19 由 `tools/offline_recover_check.py` 抓到的真缺陷：
+    复核代码 `rep.get("members")` 对 `offline_report()` 的 **list** 返回值操作 ⇒
+    `AttributeError` 被 except 兜底成「仍掉线」⇒ 巡逻员**永远无法确认修好**、用户每次都被升级。
+    本用例不 mock 复核函数，直接让信号消失（成员已恢复：无在途受阻、无心跳失联、无桥记录）。
+    """
+    target = two["ws"].members[0]
+    target.entry_state = ""          # 现场已恢复
+    target.status = "idle"
+    asyncio.run(wp.dispatch_patrol("ws_pt", _Req({"target_member_id": "m1"})))
+    pid = two["ws"].patrols[0]["patrol_id"]
+    code, body = _resp(asyncio.run(wp.submit_patrol_result("ws_pt", pid, _Req(_report()))))
+    assert code == 200
+    assert body["offline_still"] is False, "信号消失时复核结论必须是「已消失」"
+    assert body["verdict"]["status"] == "fixed" and body["verdict"]["fixed"] is True
+    assert target.entry_state == ""  # 真确认修好：清掉需要人工
 
 
 def test_list_patrols_filters_by_target(two):

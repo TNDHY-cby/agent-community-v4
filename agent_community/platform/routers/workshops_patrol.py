@@ -121,7 +121,8 @@ async def dispatch_patrol(ws_id: str, request: Request):
 async def submit_patrol_result(ws_id: str, patrol_id: str, request: Request):
     """巡逻员回报：校验（三类动作/三态/必填理由）→ **平台复核** → 一句人话 + 审计。"""
     from ..server import Utf8JSONResponse, _append_msg, now_iso, save_state
-    from ..member_offline import offline_report as _offline_report   # 内核在 platform/，不在 routers/
+    # 内核在 platform/，不在 routers/。判定口径只取 `rescue_needed()["signal_reasons"]`（见下）。
+    from ..member_offline import rescue_needed as _rescue_needed
 
     ws = workshops.get(ws_id)
     if not ws:
@@ -138,11 +139,18 @@ async def submit_patrol_result(ws_id: str, patrol_id: str, request: Request):
     target = _find_member(ws, rec["target_member_id"])
     offline_still = True
     if target is not None:
+        # ⭐2026-10-19 修（掉线恢复链端到端判据抓到）：这里原先把 `offline_report(ws)` 的返回值
+        #   当 dict 用（`rep.get("members")`），而它**返回的是 list** ⇒ 每次回报都在这里抛
+        #   `AttributeError: 'list' object has no attribute 'get'`，被 except 兜底成「仍掉线」
+        #   ⇒ **平台复核永远是"没修好"**：巡逻员就算真修好了也照样升级给用户，而且接口仍回 200、
+        #   结论看着合理（典型"看起来成功"）。端到端判据把服务端日志里的异常抓了出来。
+        # 现在改走**一处真相**：判定函数用 `patrol.py` 同一套（`rescue_needed` 的 signal_reasons），
+        # 心跳/桥口径复用 `workshops_recover` 里那份（别在这里写第二份 `_hb_status`）。
         try:
-            rep = _offline_report(ws) or {}
-            item = next((x for x in (rep.get("members") or [])
-                         if x.get("member_id") == target.member_id), None)
-            offline_still = bool((item or {}).get("needs_rescue", True))
+            from .workshops_recover import _bridge_alive, _hb_status
+            sig = _rescue_needed(ws, target, heartbeat_status=_hb_status,
+                                bridge_alive=_bridge_alive)["signal_reasons"]
+            offline_still = bool(sig)
         except Exception as _e:                 # 判不了就**如实**按"仍掉线"处理（宁可多升级，不谎报修好）
             print(f"[patrol] 复核掉线判据失败，按未修好处理: {_e}", flush=True)
             offline_still = True

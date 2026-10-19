@@ -18,6 +18,7 @@ python tools/core_check.py --plan     # 只打印会跑什么
 | 3 | acp 真拉起 + ACP 一轮对话 | `tools/acp_core_check.py` |
 | 4 | **看门狗真能救活服务**（能起 + 崩了能再起 + 有日志） | `tools/check_watchdog.py` |
 | 5 | **桥产物落点**：跑完这些检查后，仓库 `agent_community/bridges/` 不许多出目录 | 本文件快照对比 |
+| 6 | **掉线恢复链**（不打扰空闲 / 掉线可见 / 派巡逻员 / 假修好不放过 / 真修好能确认） | `tools/offline_recover_check.py` |
 """
 from __future__ import annotations
 
@@ -78,6 +79,7 @@ def main() -> int:
         ("acp 真拉起 + ACP 一轮对话", [py, str(ROOT / "tools" / "acp_core_check.py")]),
         ("看门狗真能救活服务", [py, str(ROOT / "tools" / "check_watchdog.py")]),
         ("一键更新可用（更新/回滚/拒绝）", [py, str(ROOT / "tools" / "check_update.py")]),
+        ("掉线恢复链（派巡逻员/复核/复验）", [py, str(ROOT / "tools" / "offline_recover_check.py")]),
     ]
     if a.plan:
         print("核心体检会跑 %d 项：" % (len(items) + 1))
@@ -120,7 +122,7 @@ def main() -> int:
     if skipped:
         print("结论：**%d 项没跑成（＝部分）** ⇒ 如实说，不算全绿" % skipped)
         return 2
-    print("结论：**核心全绿**（六协议 + 闭环 + acp + 产物落点）")
+    print("结论：**核心全绿**（六协议 + 闭环 + acp + 任务链路 + 掉线恢复 + 产物落点）")
     return 0
 
 
