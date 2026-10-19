@@ -93,6 +93,19 @@ def test_cached_success_and_failure_are_reported(client, monkeypatch):
     assert "密钥无效" in ai["detail"]
 
 
+def test_ai_detail_is_plain_text_for_ui(client, monkeypatch):
+    """`detail` 是**直接显示在界面上**的：不许带 markdown 记号（`**` 会原样露出）。
+    前端早就为"星号原样露出"修过一次（通道 186 的 mdLite 那笔）——这里守住同一口径。"""
+    _set_cfg(monkeypatch, ai_provider="openai", ai_model="example-model",
+             ai_base_url="https://api.example.com", ai_api_key="sk-example")
+    ai = client.get("/api/status").json()["ai"]
+    assert "**" not in ai["detail"], "detail 里出现了 markdown 记号：%r" % ai["detail"]
+
+    _set_cfg(monkeypatch, ai_provider="", ai_model="")
+    ai2 = client.get("/api/status").json()["ai"]
+    assert "**" not in ai2["detail"], "detail 里出现了 markdown 记号：%r" % ai2["detail"]
+
+
 def test_status_never_triggers_a_probe(client, monkeypatch):
     """连打两次，结论时间不许被刷新（证明 /api/status 没去探活）。"""
     from agent_community.platform import ai_verify

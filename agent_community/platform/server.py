@@ -826,7 +826,9 @@ def _ai_health_snapshot() -> dict:
         return out
     if not v:
         out["source"] = "unverified"
-        out["detail"] = ("已配置（%s / %s），但**还没验证过连通**——在「设置」里点一次"
+        # ⚠️ 这些 detail 是**直接显示在界面上**的：不要带 markdown 记号（`**` 会原样露出，
+        #    前端早就为"星号原样露出"修过一次）。对外文案一律纯文本。
+        out["detail"] = ("已配置（%s / %s），但还没验证过连通——在「设置」里点一次"
                          "「验证连通」" % (provider, model))
         return out
     import time as _time
