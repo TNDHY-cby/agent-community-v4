@@ -4,6 +4,40 @@
 
 # 4.8.26
 
+## [4.8.89] - 2026-10-19
+
+**核心判据再补一条：巡逻员「人工点派」全链（V56 的人工主路径被钉住了）**
+
+### 为什么补
+
+已有的覆盖是**两条半边**：`offline_recover_check.py` 验的是"抢救链**自动**派"，`patrol.py` 有**内核单测**。
+而"**人**在界面上点一下派巡逻员 → 它到现场看/修 → 回报 → 平台复核"这条**人工主路径**没有端到端判据。
+它的错法都很难看：派不出去却回 200（假装派了人）、回报不合规却被收下、"它说修好了"就当真。
+
+### 新判据：`tools/patrol_chain_check.py`（十二格，约 8 秒；掉线信号用**真心跳失联**造）
+
+| 格 | 判据 | 首跑 |
+|---|---|---|
+| ① | 工作间里没有巡逻员 ⇒ **409 + how_to_fix**（不假装派了人） | OK |
+| ② | 指定的成员不是巡逻员 ⇒ 400 说清 | OK |
+| ③ | 巡逻员**没绑 harness** ⇒ 400 说清 | OK |
+| ④ | 目标成员不存在 ⇒ 404 | OK |
+| ⑤ | 派单返回：检查单 + **正好三类动作** + 纯文本指令（无 `**`、含"不许改代码"） | OK |
+| ⑥ | **回报不合规五类各 422**（空 `checked` / 动作越界 / `fixed=null` 缺 `why_no_proof` / `fixed=false` 缺 `still_broken_reason` / `need_human` 缺 `user_action`），且都给出 `problems` | OK |
+| ⑦ | **不采信"我说修好了"**：心跳仍失联 ⇒ `claimed_but_not_verified`，目标标 `needs_human` | OK |
+| ⑧ | `fixed=false` ⇒ `not_fixed`，人话里带原因 | OK |
+| ⑨ | `fixed=null` ⇒ `unverified`（不许当修好） | OK |
+| ⑩ | 心跳恢复后再说修好 ⇒ `fixed`，且 `needs_human` 被清掉 | OK |
+| ⑪ | 巡逻历史每条带结论，`?target_member_id=` 过滤有效 | OK |
+| ⑫ | 审计有 `workshop.patrol.dispatch` 与 `workshop.patrol.result` | OK |
+
+已接进核心体检：`python tools/core_check.py` **17 项 → 18 项**。
+
+### 判据怎么造"真掉线"
+
+用心跳：`POST /api/heartbeat` 带 `interval=1` ⇒ 约 2 秒后判定失联（`stale`）；
+再把 `interval=30` 恢复 ⇒ 信号消失。**不用假数据、不 mock 复核函数**。
+
 ## [4.8.88] - 2026-10-19
 
 **并入前端 19 笔（含老板在 18920 上看到的顶栏叠字修复）**

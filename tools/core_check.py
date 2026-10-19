@@ -27,6 +27,7 @@ python tools/core_check.py --plan     # 只打印会跑什么
 | 12 | **受控重启 V58**（没看门狗就拒 / 缺确认就拒 / 非本机就拒 / 有看门狗真重启并自己回来） | `tools/admin_restart_check.py` |
 | 13 | **只读日志尾 V59**（尾部 / 上限 / 穿越被拒 / 去敏 / 只读 / 追尾 / 审计） | `tools/logs_tail_check.py` |
 | 14 | **任务树 + 资源库**（真嵌套 / 双向关联 / 删登记不删文件 / 落盘留痕） | `tools/tree_resources_check.py` |
+| 15 | **巡逻员人工点派**（拒得合理 / 三类动作 / 三态 / 平台复核 / 留痕） | `tools/patrol_chain_check.py` |
 """
 from __future__ import annotations
 
@@ -96,6 +97,7 @@ def main() -> int:
         ("受控重启 V58（没看门狗就拒）", [py, str(ROOT / "tools" / "admin_restart_check.py")]),
         ("只读日志尾 V59（白名单/去敏/只读）", [py, str(ROOT / "tools" / "logs_tail_check.py")]),
         ("任务树+资源库（双向关联/不删文件）", [py, str(ROOT / "tools" / "tree_resources_check.py")]),
+        ("巡逻员人工点派（三态/平台复核）", [py, str(ROOT / "tools" / "patrol_chain_check.py")]),
     ]
     if a.plan:
         print("核心体检会跑 %d 项：" % (len(items) + 1))
@@ -151,7 +153,7 @@ def main() -> int:
     if skipped:
         print("结论：**%d 项没跑成（＝部分）** ⇒ 如实说，不算全绿" % skipped)
         return 2
-    print("结论：**核心全绿**（六协议 + 闭环 + acp + 任务链路 + 掉线恢复 + 并发派活 + 证据链 + 辩论 + 继承 + 通道 + 受控重启 + 日志尾 + 任务树 + 产物落点）")
+    print("结论：**核心全绿**（六协议 + 闭环 + acp + 任务链路 + 掉线恢复 + 并发派活 + 证据链 + 辩论 + 继承 + 通道 + 受控重启 + 日志尾 + 任务树 + 巡逻员 + 产物落点）")
     return 0
 
 
