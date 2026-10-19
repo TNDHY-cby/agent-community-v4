@@ -4,6 +4,47 @@
 
 # 4.8.26
 
+## [4.8.85] - 2026-10-19
+
+**新增核心能力：只读日志尾端点 `GET /api/logs/tail`（V59）—— 界面终于能显示"真实发生的事"**
+
+### 为什么
+
+启动过场的"片尾字幕"一直是**演示文本**（前端通道 177/184 提过要绑真日志）。
+但直接给浏览器一个"读日志文件"的口子，等于开了"读任意文件"的后门。所以按"只读 + 只白名单 + 只尾部 + 去敏"做。
+
+### 契约（设计稿 `design-docs/V59_只读日志尾端点设计.md`）
+
+```
+GET /api/logs/tail?name=server&lines=50&since=0
+→ { success, name, file, lines:[{n,text}], total_lines, next_since,
+    truncated, partial, redacted, max_lines, note }
+```
+
+- `name` 是**白名单名**（`server`/`watchdog`/`a2a`/`grpc`），**不是路径**；任何路径字符一律 400；
+- `lines` 上限 **200**；`since` 用于轮询追尾（只给新行，不重复）；
+- 凭据样式（`sk-…` / `Bearer …` / `token=…` / `X-Agent-Token:` / `AC4_TOKEN=…`）遮成 `***`，并**如实报 `redacted` 计数**；
+- 只本机来源（复用 `origin_allowed()`）；审计记 `system.logs_tail`。
+
+### 四条硬边界（判据逐条证明）
+
+| # | 边界 | 判据格 |
+|---|---|---|
+| 1 | 只白名单（不认路径） | `../secret`、`C:\x.log`、`server_stdout.log`、`etc/passwd` ⇒ **400 且不返回任何内容** |
+| 2 | 只读 | 读前读后 **size/mtime 不变**、**不新建文件** |
+| 3 | 只尾部 | 请求 1000 行 ⇒ 实际 **≤200** 且 `truncated=true`；>8 MiB 只读尾部并标 `partial` |
+| 4 | 去敏 | 假凭据原值**在响应里搜不到**，`redacted ≥ 1` |
+
+### 判据与守卫
+
+- 新判据 `tools/logs_tail_check.py`（**八格真跑**，约 3 秒）⇒ 全绿；
+- 已接进核心体检：`python tools/core_check.py` **15 项 → 16 项**；
+- 行为守卫 `agent_community/tests/test_logs_tail.py`（**5 条**：白名单/去敏/不建文件/非本机/上限）。
+
+### 前端怎么用（一句话）
+
+首次 `?lines=50` 拿 `next_since`；之后每 2~3 秒 `?since=<上次 next_since>`，只渲染新行；**界面不要显示 `file` 字段**。
+
 ## [4.8.84] - 2026-10-19
 
 **口径校正：前端"没有换人"，`ZCode` 是同一前端会话的运行环境与署名**

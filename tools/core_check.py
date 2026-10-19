@@ -25,6 +25,7 @@ python tools/core_check.py --plan     # 只打印会跑什么
 | 10 | **隔间继承 V53**（只搬产物 / 邮箱桥不搬 / 逐项核对 / 不覆盖 / 不接管 / 幂等） | `tools/inherit_chain_check.py` |
 | 11 | **通道生命周期 V28**（真 active / 停用不假 / 停用后不投递 / 换对话序号与留痕） | `tools/channel_chain_check.py` |
 | 12 | **受控重启 V58**（没看门狗就拒 / 缺确认就拒 / 非本机就拒 / 有看门狗真重启并自己回来） | `tools/admin_restart_check.py` |
+| 13 | **只读日志尾 V59**（尾部 / 上限 / 穿越被拒 / 去敏 / 只读 / 追尾 / 审计） | `tools/logs_tail_check.py` |
 """
 from __future__ import annotations
 
@@ -92,6 +93,7 @@ def main() -> int:
         ("隔间继承 V53（只搬产物/不接管）", [py, str(ROOT / "tools" / "inherit_chain_check.py")]),
         ("通道生命周期 V28（停用后不投递）", [py, str(ROOT / "tools" / "channel_chain_check.py")]),
         ("受控重启 V58（没看门狗就拒）", [py, str(ROOT / "tools" / "admin_restart_check.py")]),
+        ("只读日志尾 V59（白名单/去敏/只读）", [py, str(ROOT / "tools" / "logs_tail_check.py")]),
     ]
     if a.plan:
         print("核心体检会跑 %d 项：" % (len(items) + 1))
@@ -147,7 +149,7 @@ def main() -> int:
     if skipped:
         print("结论：**%d 项没跑成（＝部分）** ⇒ 如实说，不算全绿" % skipped)
         return 2
-    print("结论：**核心全绿**（六协议 + 闭环 + acp + 任务链路 + 掉线恢复 + 并发派活 + 证据链 + 辩论 + 继承 + 通道 + 受控重启 + 产物落点）")
+    print("结论：**核心全绿**（六协议 + 闭环 + acp + 任务链路 + 掉线恢复 + 并发派活 + 证据链 + 辩论 + 继承 + 通道 + 受控重启 + 日志尾 + 产物落点）")
     return 0
 
 

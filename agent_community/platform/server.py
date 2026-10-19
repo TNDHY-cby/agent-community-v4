@@ -214,6 +214,8 @@ from .routers.system import router as _system_router
 app.include_router(_system_router)  # V-27 平台生命周期：GET /api/system/lifecycle、POST /api/system/shutdown（退出并关闭）
 from .routers.version import router as _version_router
 app.include_router(_version_router)  # V57 一键更新契约：GET /api/version（给外部更新插件；只读、不联网、缺项如实 null）
+from .routers.logs import router as _logs_router
+app.include_router(_logs_router)  # V59 只读日志尾：GET /api/logs/tail（白名单 + 上限 + 去敏 + 只本机；界面"最近发生了什么"用）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1", "http://localhost"],
