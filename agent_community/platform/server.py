@@ -5754,7 +5754,30 @@ def _dispatch_to_harness(harness_id, payload, kind="task"):
     - 其它：进 pending 队列（原逻辑）
     Returns: (是否成功派发, 说明)
     """
+    # ★2026-10-19 修（通道生命周期端到端判据抓到）：**V28 §2 规则 5「停用通道后不得再投消息」
+    #   原先只接在 `_activate_single` 一条路上** ⇒ 实测：某成员的通道停用之后，
+    #   `leader/assign` 照样把活写进它的 inbox（`dispatched=True`）——
+    #   用户看到的是"说了停用、消息照收"的假状态（准则⑤）。
+    #   修法：把关放进**派发总口**（组长派活/转向/检索委派/巡逻/抢救全都过这里），
+    #   判定本身仍只用一处真相 `member_channel_allows_dispatch()`（不在这里写第二份口径）。
+    #   只在通道**已停用**时拦；`pending`（还没接入）与 `active` 一律放行（不误伤）。
+    try:
+        _wid = str((payload or {}).get("workshop_id") or "")
+        _mid = str((payload or {}).get("member_id") or "")
+        if _wid and _mid:
+            _ws_gate = workshops.get(_wid)
+            if _ws_gate is not None:
+                _m_gate = next((x for x in (_ws_gate.members or []) if x.member_id == _mid), None)
+                if _m_gate is not None:
+                    from .routers.workshops_session import member_channel_allows_dispatch as _ch_ok
+                    _gate_ok, _gate_why = _ch_ok(_m_gate)
+                    if not _gate_ok:
+                        print(f"[dispatch] 拒绝派发 {_wid}/{_mid}：{_gate_why}", flush=True)
+                        return False, _gate_why
+    except Exception as _gate_e:      # noqa: BLE001 — 把关本身出错要留话，不静默
+        print(f"[dispatch] 通道把关异常（未拦，但已记录）: {_gate_e}", flush=True)
     sess = harness_manager.sessions.get(harness_id)
+
     method = _harness_wakeup_method(harness_id)
     # ── 经验包统一下发（V1）：task/activate 派发时平台代检索并注入消息尾部（覆盖 http_api/file_poll/pending）──
     if kind in ("task", "activation") and sess is not None:
