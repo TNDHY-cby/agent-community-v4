@@ -4,6 +4,40 @@
 
 # 4.8.26
 
+## [4.8.76] - 2026-10-19
+
+**核心补「任务全链路」：派活 → 回报（不误判）→ 复核 → 退回重派 → 完成**
+
+### 为什么补
+
+`task_rounds_check.py` 只验到"多轮派活 + 回报被接受"，那是**一半**。真实协作还要
+**组长复核 → 不通过就退回重派 → 最后完成**。这条回路此前没有端到端判据。
+
+### 新判据：`tools/task_flow_check.py`（六格，约 2 秒，全真打 HTTP）
+
+| 格 | 判据 | 结果 |
+|---|---|---|
+⓪ | **开工**（`discussing` → `running`）——建间默认是 discussing，不 start 就派活是错的姿势 | OK |
+① | 派活成功且**真落盘**（带 `task_id`），工作间仍是 `running` | OK `t-d1ed…` |
+② | 回报被接受，且**没有被误判成完成**（`status` 仍 `running`） | OK |
+③ | 进入复核：`status=review`，状态机 stage 跟着变 | OK |
+④ | **退回重派**：`continue` → `running`；再派一条（`task_id` 不同 + 带上一轮上下文） | OK `t-d1ed…` → `t-c864…`，上下文 1 条 |
+⑤ | 完成：`status=done`，状态机进终态 | OK |
+
+**判据看的是平台真实状态**（`GET /api/workshop/{ws}` 的 `status` 与 `sm/status`），
+不是"接口返回 200 就算过"。
+
+### 判据自己也踩了一个坑（已修，并写进守卫）
+
+第一版把 `/review`、`/continue`、`/complete` 当 **GET** 发出去（我的 `req()` 只有 body 非 None 才用 POST）
+⇒ 三个端点全 404，白排查一阵。现在：POST 必须带 body，**守卫直接断言这三处都带 `{}`**。
+
+### 判据
+
+- `python tools/task_flow_check.py` ⇒ **六格全绿**；
+- `python tools/core_check.py` ⇒ **八项全绿**（矩阵 77s / 建立会话 3s / 多轮派活 2s / **任务全链路 2s** / acp 7s / 看门狗 15s / 一键更新 8s / 产物落点）；
+- 新增守卫 `tests/test_task_flow.py`（2 条）：判据真绿 + **必须读真实状态、POST 必须带 body**。
+
 ## [4.8.75] - 2026-10-19
 
 **并入 MiMo 的 9 笔启动过场（前端）＋ 后端核心「多轮派活」判据与两个真缺口修复**
