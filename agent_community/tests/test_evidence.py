@@ -229,6 +229,24 @@ def test_conflict_marks_both_sides(ws):
     assert rid_b in cards[rid_a]["evidence"]["contradicts"]
 
 
+def test_conflict_also_works_from_evidence_block(ws):
+    """★2026-10-19（证据链端到端判据抓到）：`contradicts` 原先**只有 body 顶层生效**，
+    而 `ev.validate()` 归一化的是 `evidence.contradicts` ⇒ 按**校验器格式**交的卡永远不标争议
+    （接口照回 200、卡也进了，界面上看不出错）。现在两处都认，这条守住这个"两处口径"不再回来。
+    """
+    a = _card(name="卡片 A", note="说法一", evidence={
+        **_card()["evidence"], "limits": "只看官方"})
+    _, body_a = _resp(asyncio.run(wev.post_evidence("ws_ev", _Req(a))))
+    rid_a = body_a["resource"]["rid"]
+    b = _card(name="卡片 B", note="说法二", evidence={
+        **_card()["evidence"], "limits": "只看第三方", "contradicts": [rid_a]})
+    code, body_b = _resp(asyncio.run(wev.post_evidence("ws_ev", _Req(b))))
+    assert code == 200
+    assert body_b["marked_disputed_with"] == [rid_a], "校验器格式的 contradicts 必须生效"
+    cards = {r["rid"]: r for r in ws["ws"].resources}
+    assert cards[rid_a]["evidence"]["disputed"] is True
+
+
 def test_get_hides_quotes_by_default(ws):
     asyncio.run(wev.post_evidence("ws_ev", _Req(_card())))
     code, body = _resp(asyncio.run(wev.list_evidence("ws_ev")))

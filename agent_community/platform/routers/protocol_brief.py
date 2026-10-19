@@ -57,7 +57,10 @@ async def protocol_brief(request: Request):
             "（平台区分人报与机器报，避免冒充）",
             "4. 领任务：平台派活给你（HTTP 推送 / 文件轮询 / ACP 子进程）",
             "5. 执行 + 回报：POST /api/harness/task-result（body: workshop_id/member_id/ok/result；"
-            "若工作间开了辩论模式，可**在同一层**再带 claim/evidence/reasoning —— 见 how_to_behave.debate_statements）",
+            "若工作间开了辩论模式，可**在同一层**再带 claim/evidence/reasoning —— 见 how_to_behave.debate_statements）。"
+            "★若你还要带 harness_id，**必须是你自己那条、且是该成员绑定的那条** —— "
+            "平台会按成员的绑定关系核对；拿别人的（或别的成员的）harness_id 回报会被 403 拒绝并写明双方是谁"
+            "（2026-10-19 起：一个 harness 不能替别的成员交活）",
         ],
         "activation_result": {
             "endpoint": f"{base}/api/harness/activation-result",

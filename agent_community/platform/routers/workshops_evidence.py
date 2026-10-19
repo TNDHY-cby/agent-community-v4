@@ -131,7 +131,16 @@ async def post_evidence(ws_id: str, request: Request):
             "source_groups": len(groups),
             "grades": sorted({s["grade"] for s in graded["sources"]}),
             "disputed": False,
-            "contradicts": [str(x).strip() for x in (body.get("contradicts") or []) if str(x).strip()],
+            # ★2026-10-19（证据链端到端判据抓到）**同一件事原有两处口径**：
+            #   `evidence.validate()` 会把 `contradicts` 归一化进 `card["evidence"]["contradicts"]`，
+            #   而这里只读**body 顶层**的 `contradicts` ⇒ 按校验器格式交的卡，冲突**永远不生效**
+            #   （接口回 200、卡也进了，只是两张都没标争议 —— 又是"看起来成功"）。
+            #   现在两处都认（顶层优先，兼容既有调用方），归一到同一个字段。
+            "contradicts": [str(x).strip()
+                            for x in ((body.get("contradicts")
+                                       or card["evidence"].get("contradicts") or []))
+                            if str(x).strip()],
+
         },
     }
 

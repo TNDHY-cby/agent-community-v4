@@ -60,8 +60,11 @@ python tools/check_productization.py    # 平台专属命令冒充通用能力 /
 python tools/first_run_check.py --src <发布副本>   # 陌生人首次运行五步走查
 python tools/dual_platform_check.py     # ★双平台真跑（Windows + WSL Linux）——2026-10-17 起的 CI 替代判据
 python tools/pre_release_check.py       # ★发布前一条命令跑全五类判据（--fast 跳过双平台）
-python tools/core_check.py              # ★核心体检一条命令：六协议矩阵+闭环、建立会话、多轮派活、任务全链路、acp 真拉起、看门狗救活、一键更新、掉线恢复链、桥产物落点（9 项，约 3 分钟）
+python tools/core_check.py              # ★核心体检一条命令：六协议矩阵+闭环、建立会话、多轮派活、任务全链路、acp 真拉起、看门狗救活、一键更新、掉线恢复链、多成员并发派活、证据链 V55、辩论模式 V52、桥产物落点（12 项，约 4 分钟）
 python tools/offline_recover_check.py   # 掉线恢复链单跑：不打扰空闲 / 掉线可见 / 派巡逻员 / 假修好拦住 / 真修好确认
+python tools/task_parallel_check.py     # 多成员并发：各自落盘 / 各自回报 / 不串件 / 冒名被拦
+python tools/evidence_chain_check.py    # 证据链 V55：校验 / 压分 / 归并 / 冲突互链 / 限量分发 / 不泄漏摘录
+python tools/debate_chain_check.py      # 辩论模式 V52：默认关 / 只追加裁决 / 第二轮不重复烧钱
 python tools/watchdog.py --check        # 服务活没活（exit 0=活 / 1=挂）；--daemon 常驻守护（零第三方依赖）
 python tools/autostart.py enable        # 让平台随登录自启（Windows 启动文件夹 / Linux systemd user unit）
 python tools/check_watchdog.py          # 判据：看门狗真能救活服务（能起 + 崩了能再起 + 有日志）

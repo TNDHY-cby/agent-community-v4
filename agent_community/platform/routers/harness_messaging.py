@@ -140,6 +140,33 @@ async def harness_task_result(request: Request):
     ws = workshops.get(body.get("workshop_id", ""))
     if ws:
         mid = body.get("member_id")
+        # ★2026-10-19 修（多成员并发判据抓到）：**冒名回报**。
+        #   此前只校验 `X-Agent-Token` 是否属于 body 里的 `harness_id`，**没校验这个 harness
+        #   是不是该成员的**。实测：拿 A 的 token 报 `{harness_id:A, member_id:m1}`（m1 绑的是 B）
+        #   ⇒ 200 且内容写进讨论区（"par-a 回报已接入工作间 …（m1）"）
+        #   ⇒ 一个 harness 能替**另一个成员**交活：串件、假完成，且界面上看着完全正常。
+        #   现行口径（不误伤合法场景）：
+        #     · 成员绑了 harness ⇒ 回报的 harness **必须**在它的绑定里；
+        #     · 成员没绑 harness（空）或回报没带 harness_id（旧桥）⇒ 不假装知道，照旧放行。
+        if mid:
+            _m = next((x for x in (getattr(ws, "members", []) or []) if x.member_id == mid), None)
+            _hid_b = str(body.get("harness_id") or "").strip()
+            _bound = []
+            if _m is not None:
+                _bound = [str(h or "").strip() for h in (getattr(_m, "harness_ids", []) or [])
+                          if str(h or "").strip()]
+            if _m is not None and _bound and _hid_b and _hid_b not in _bound:
+                _audit_log.record("harness.task_result", actor="user", target=_hid_b,
+                                  detail="任务回报被拒：harness 与成员绑定不一致（member=%s）" % mid)
+                from ..server import Utf8JSONResponse
+                return Utf8JSONResponse({
+                    "error": "回报被拒：harness 与成员绑定不一致",
+                    "member_id": mid,
+                    "member_bound_harness": _bound,
+                    "reported_harness": _hid_b,
+                    "how_to_fix": "用该成员绑定的 harness 回报；一个 harness 不能替别的成员交活",
+                }, status_code=403)
+
         # ── R3：决策模式回报（组长独裁 decision / 举手表决 vote）──
         # 仅在 review 态且带明确裁决字段时接管收口；普通回报不受影响
         _dm = str(body.get("decision") or "").strip().lower()

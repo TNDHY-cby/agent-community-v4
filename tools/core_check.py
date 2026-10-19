@@ -19,6 +19,9 @@ python tools/core_check.py --plan     # 只打印会跑什么
 | 4 | **看门狗真能救活服务**（能起 + 崩了能再起 + 有日志） | `tools/check_watchdog.py` |
 | 5 | **桥产物落点**：跑完这些检查后，仓库 `agent_community/bridges/` 不许多出目录 | 本文件快照对比 |
 | 6 | **掉线恢复链**（不打扰空闲 / 掉线可见 / 派巡逻员 / 假修好不放过 / 真修好能确认） | `tools/offline_recover_check.py` |
+| 7 | **多成员并发派活**（各自落盘 / 各自回报 / 不串件 / 不互扰 / 冒名被拦） | `tools/task_parallel_check.py` |
+| 8 | **证据链 V55**（校验 / 压分 / 归并 / 冲突互链 / 限量分发 / 不泄漏摘录） | `tools/evidence_chain_check.py` |
+| 9 | **辩论模式 V52**（默认关 / 拒绝说清 / 陈述入池 / 触发裁决 / 只追加 / 不重复烧钱） | `tools/debate_chain_check.py` |
 """
 from __future__ import annotations
 
@@ -80,6 +83,9 @@ def main() -> int:
         ("看门狗真能救活服务", [py, str(ROOT / "tools" / "check_watchdog.py")]),
         ("一键更新可用（更新/回滚/拒绝）", [py, str(ROOT / "tools" / "check_update.py")]),
         ("掉线恢复链（派巡逻员/复核/复验）", [py, str(ROOT / "tools" / "offline_recover_check.py")]),
+        ("多成员并发派活（不串件/冒名被拦）", [py, str(ROOT / "tools" / "task_parallel_check.py")]),
+        ("证据链 V55（校验/压分/归并/不泄漏）", [py, str(ROOT / "tools" / "evidence_chain_check.py")]),
+        ("辩论模式 V52（只追加/不重复烧钱）", [py, str(ROOT / "tools" / "debate_chain_check.py")]),
     ]
     if a.plan:
         print("核心体检会跑 %d 项：" % (len(items) + 1))
@@ -102,6 +108,19 @@ def main() -> int:
         if st != "pass":
             for ln in (out or "").strip().splitlines()[-6:]:
                 print("            %s" % ln[:150])
+            # ★2026-10-19（本机踩到）：失败时只留 6 行 ⇒ **看不见是哪一格红**（六协议矩阵有 30+ 格），
+            #   当时又恰逢与全量 pytest 并行、事后单独重跑全绿 ⇒ 无法定位到底是什么失败。
+            #   判据必须可定位：把**完整输出**落盘并打印路径（失败要说话，也要可复查）。
+            try:
+                logp = ROOT / "temp" / ("core_check_fail_%s_%s.log"
+                                        % (time.strftime("%Y%m%d-%H%M%S"),
+                                           "".join(ch for ch in name if ch.isalnum() or ch in "-_")[:20]))
+                logp.parent.mkdir(parents=True, exist_ok=True)
+                logp.write_text((out or "") + "\n", encoding="utf-8")
+                print("            完整输出：%s" % logp)
+            except Exception as _e:                          # noqa: BLE001
+                print("            （完整输出落盘失败：%s）" % _e)
+
 
     after = _snapshot_bridges()
     new = sorted(set(after) - set(before))
@@ -122,7 +141,7 @@ def main() -> int:
     if skipped:
         print("结论：**%d 项没跑成（＝部分）** ⇒ 如实说，不算全绿" % skipped)
         return 2
-    print("结论：**核心全绿**（六协议 + 闭环 + acp + 任务链路 + 掉线恢复 + 产物落点）")
+    print("结论：**核心全绿**（六协议 + 闭环 + acp + 任务链路 + 掉线恢复 + 并发派活 + 证据链 + 辩论 + 产物落点）")
     return 0
 
 

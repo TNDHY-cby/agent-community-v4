@@ -19,6 +19,22 @@ from ..harness_adapter import harness_manager   # 与其余 8 个 router 同范�
 
 router = APIRouter()
 
+
+def _harness_display_name(hid) -> str:
+    """把 harness_id 翻成给人看的显示名（**只读、失败返回空串**，绝不编一个名字出来）。
+
+    用途：建工作间时调用方没给 `display_name` ⇒ 用它绑定的 harness 的注册名当显示名，
+    避免出现「所有成员同名」或「拿写死的示例名当默认值」（2026-10-19 多成员并发判据抓到）。
+    """
+    hid = str(hid or "").strip()
+    if not hid:
+        return ""
+    try:
+        sess = harness_manager.sessions.get(hid)
+        return str(getattr(getattr(sess, "info", None), "harness_name", "") or "").strip()
+    except Exception:                                        # noqa: BLE001
+        return ""
+
 @router.get("/api/workshop/{ws_id}/mode")
 async def api_workshop_mode_get(ws_id: str):
     from ..server import _load_workshop_modes
@@ -86,8 +102,16 @@ async def create_workshop(request: Request):
             WorkshopMember(
                 member_id=f"m{i}",
                 role=m.get("role", "员工"),
-                display_name=m.get("display_name", "示例Harness-E"),
-                harness_ids=m.get("harness_ids", ["示例Harness-E"]),
+                # ★2026-10-19（多成员并发判据抓到）**两处默认值都是假数据**：
+                #   ① `display_name` 默认写死「示例Harness-E」⇒ 调用方不传就读出**所有成员同名**，
+                #      界面上分不清两个同时干活的员工（前端一律 `display_name || member_id` 兜底，空着反而正确）；
+                #   ② `harness_ids` 默认写死 ["示例Harness-E"] ⇒ 不传就绑到一个**根本不存在的 harness**，
+                #      成员必然 blocked（典型"开箱假数据"，PRODUCTIZATION 规则 B）。
+                #   现改为：名字缺省→取该成员绑的 harness 的显示名（还没有就留空，前端显示成员 id）；
+                #   绑定缺省→**空**（不假装绑了谁，`_activate_single` 会如实标 blocked 并说清没绑）。
+                display_name=str(m.get("display_name") or "").strip() or _harness_display_name(
+                    (m.get("harness_ids") or [None])[0]),
+                harness_ids=[h for h in (m.get("harness_ids") or []) if str(h or "").strip()],
             )
             for i, m in enumerate(body.get("members") or [])
         ],
