@@ -1,0 +1,111 @@
+/* ============================================================
+   模块 F · 全局色彩与材质系统 —— 复古科幻 CRT 终端风（血红荧光版）
+   老板 2026-10-19 拍板启用；同日再裁定：核心强调不用荧光绿，改血红。
+   本文件只做「变量覆盖 + 全局材质/动效」：各页面自身样式在前，
+   本文件在 </head> 前最后引入，同优先级规则以后到者为准。
+   色彩 60-30-10：#0A0A0A 熄屏黑 / #1A1A1A 金属暗灰 / 血红 #FF0000
+   提示/链接 青蓝 #00FFFF · 备选琥珀 #FFB000
+   ============================================================ */
+
+:root{
+  /* 60% 主背景：CRT 熄屏黑（禁纯黑，带极微弱暗红调） */
+  --bg:#0A0A0A; --bg2:#121010; --bg3:#1A1A1A; --bg4:#242222; --bg5:#2E2B2B;
+  /* 文字：荧光衰减梯度（血红磷光） */
+  --ink:#F2C9C9; --muted:#AE7F7F; --dim:#7A4E4E;
+  /* 1px 纯实线描边：血红 40%~60% 透明 */
+  --rule:rgba(255,0,0,.22); --rule-strong:rgba(255,0,0,.45);
+  /* 10% 核心强调：血红（备选琥珀 #FFB000） */
+  --accent:#FF0000; --accent-hi:#FF3333; --accent-strong:#FF3333;
+  --accent-soft:rgba(255,0,0,.10);
+  /* 语义色：危险同源血红；提示/链接青蓝 */
+  --green:#FF0000; --green-soft:rgba(255,0,0,.10);
+  --red:#FF0000; --red-soft:rgba(255,0,0,.14);
+  --yellow:#FFB000; --yellow-soft:rgba(255,176,0,.12);
+  --amber:#FFB000; --amber-soft:rgba(255,176,0,.12);
+  --cyan:#00FFFF; --cyan-soft:rgba(0,255,255,.10);
+  --blue:#00FFFF; --blue-soft:rgba(0,255,255,.10);
+  --purple:#FFB000; --purple-soft:rgba(255,176,0,.10);
+  --focus-ring:0 0 0 3px rgba(255,0,0,.25);
+  /* 圆角完全禁用 */
+  --r-lg:0px; --r-md:0px; --r-sm:0px;
+  --radius-lg:0px; --radius-md:0px; --radius-sm:0px;
+  /* 电子束外发光（血红） */
+  --glow:0 0 8px rgba(255,0,0,.6);
+  /* 全局等宽字体（中文回退硬朗黑体） */
+  --font:"Fira Code","VT323","Courier New","Microsoft YaHei",monospace;
+  --mono:"Fira Code","VT323","Courier New",monospace;
+  --font-mono:"Fira Code","VT323","Courier New",monospace;
+}
+
+/* ── 硬直角：模拟早期电子设备屏幕 ── */
+*{border-radius:0 !important}
+
+/* ── 全局等宽 + 终端排版 ── */
+body{font-family:"Fira Code","VT323","Courier New","Microsoft YaHei",monospace !important}
+h1,h2,h3,h4,.col-header,.col-head,.fb-step,.ns-label,.zone-tag,.who{
+  letter-spacing:2px;
+}
+
+/* ── CRT 屏幕特效：扫描线 + 噪点（纯覆盖层，不挡交互） ── */
+body::after{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:2147483000;
+  background:repeating-linear-gradient(0deg, rgba(0,0,0,.20) 0 1px, transparent 1px 3px);
+}
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:2147482999; opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+}
+
+/* ── 主按钮：血红描边 + 外发光；悬停瞬间反色（红底黑字） ── */
+.btn{border:1px solid rgba(255,0,0,.40)}
+.btn:hover{background:#FF0000;color:#000;box-shadow:var(--glow);border-color:#FF0000}
+button{transition:none}
+button:hover{border-color:rgba(255,0,0,.60)}
+
+/* ── 强调类主 CTA：血红终端块 ── */
+.chat-input button,.send-btn,.wsv-input .btn,.btn-accent,.sendCommand{
+  background:#1A1A1A;color:#FF3333;border:1px solid rgba(255,0,0,.55);
+  box-shadow:var(--glow);font-weight:700;
+}
+.chat-input button:hover,.send-btn:hover,.wsv-input .btn:hover,.btn-accent:hover{
+  background:#FF0000;color:#000;
+}
+/* 相位条当前步：反色高亮块（血红底黑字） */
+.fb-step.active{background:#FF0000;color:#000;border-color:#FF0000;box-shadow:var(--glow);transform:none}
+.fb-step.done{background:rgba(255,0,0,.10);color:#FF3333;border-color:rgba(255,0,0,.45)}
+
+/* ── 链接/提示：青蓝 ── */
+a{color:#00FFFF}
+a:hover{text-shadow:0 0 8px rgba(0,255,255,.6)}
+
+/* ── 悬停文字闪烁（终端故障感），用于强调文本 ── */
+@keyframes crt-flicker{0%,100%{opacity:1}50%{opacity:.55}}
+.fb-step.active:hover,.ns-btn:hover{animation:crt-flicker .25s steps(2,end) infinite}
+
+/* ── 顶部像素方块加载条（由 theme-crt.js 注入驱动） ── */
+#crtLoadBar{position:fixed;top:0;left:0;right:0;z-index:2147483001;display:flex;gap:2px;padding:2px 4px;pointer-events:none}
+#crtLoadBar i{flex:1;height:4px;background:transparent}
+#crtLoadBar i.on{background:#FF0000;box-shadow:var(--glow)}
+
+/* ── 二轮打磨（真浏览器走查发现的残留） ── */
+/* 旧机甲红渐变 CTA（内联字面色，变量覆盖不到）→ 血红终端块 */
+.sidebar-back,.wsv-input .btn{background:#1A1A1A !important;color:#FF3333 !important;border:1px solid rgba(255,0,0,.55);box-shadow:var(--glow)}
+.sidebar-back:hover{background:#FF0000 !important;color:#000 !important}
+/* 相位条尾部状态徽标被 overflow:hidden 裁切 → 允许横向滚动兜底 */
+.fishbone{overflow-x:auto;scrollbar-width:none}
+.fishbone::-webkit-scrollbar{display:none}
+/* zone-tag（平台AI/组长等身份标签）→ 血红描边小方块 */
+.zone-tag{background:rgba(255,0,0,.10) !important;color:#FF3333 !important;border:1px solid rgba(255,0,0,.45)}
+/* 发送类按钮内联橙色渐变残留 */
+.wsv-input .btn{background:linear-gradient(135deg,#1A1A1A,#1A1A1A) !important;box-shadow:var(--glow)}
+/* 窄视口：压缩相位条步距，保右端状态徽标完整可见 */
+.fishbone{padding:0 10px;gap:2px}
+.fb-step{min-width:0;padding:8px 10px}
+.ws-status{padding:4px 10px;gap:.35rem;margin-left:6px}
+/* ── 加固：状态徽标任何视口下都不得竖排叠字（老板两报） ── */
+.ws-status,#wsText,#smText,.ws-sm{white-space:nowrap !important}
+.ws-status{flex-shrink:0 !important}
+
+/* ── 窄屏守卫：顶栏按钮不折字（横排换行代替竖排叠字） ── */
+.topbar{flex-wrap:wrap;height:auto;min-height:52px;padding:6px 12px}
+.topbar .btn,.topbar .logo,.topbar .tb-status{white-space:nowrap;flex-shrink:0}

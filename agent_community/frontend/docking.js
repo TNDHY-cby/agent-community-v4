@@ -81,7 +81,8 @@ function dockRender(d){
   const pick = document.getElementById('wsPickerWrap');
   const rail = document.getElementById('railList');
   if (DOCK_GLOBAL){
-    pick.innerHTML = '<span class="pick-label">工作间</span>' +
+    /* 「工作间」小标题已移除（老板 2026-10-19 裁定：无意义）——列表本身自明 */
+    pick.innerHTML =
       '<div style="display:flex;flex-direction:column;gap:4px">' +
       wsRows.map(w => '<a class="rail-item" href="/docking.html?ws=' + encodeURIComponent(w.ws_id) + '">' +
         '<span class="ri-name">' + esc(w.name || w.ws_id) + '</span>' +

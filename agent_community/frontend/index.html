@@ -363,6 +363,8 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
 .fs-enter:hover{background:var(--accent-soft)}
 
 </style>
+<link rel="stylesheet" href="/theme-crt.css">
+<script src="/theme-crt.js" defer></script>
 </head>
 <body>
 <div class="app">
@@ -370,14 +372,14 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
     <span class="logo">◈ 外端agent生产合作社</span>
     <div class="ws-status"><span class="ws-dot" id="wsDot"></span><span id="wsText">未连接</span></div>
     <div class="spacer"></div>
-    <button class="btn" onclick="openSettings()">⚙ 设置</button>
     <button class="btn" onclick="location.href='/docking.html'" title="对接中心 · 把外部 Agent 接进来、并让它跟工作间对上">🔌 对接中心</button>
     <button class="btn" onclick="location.href='/ops.html'" title="运维看板 · 工单审计与Agent在线">📡 看板</button>
     <button class="btn" onclick="location.href='/handover.html'" title="交付回执台 · 无证据不回执">🧾 回执</button>
     <button class="btn" onclick="location.href='/booths.html'" title="成员隔间与桥">🏗 隔间</button>
-    <button class="btn" onclick="saveSession()">保存</button>
-    <button class="btn" onclick="restoreSession()">恢复</button>
+    <button class="btn" onclick="saveSession()" title="保存当前会话快照">💾 保存</button>
+    <button class="btn" onclick="openSettings()">⚙ 设置</button>
   </div>
+  <!-- 「恢复」按钮已移除（老板 2026-10-19 裁定）：其重绘能力并入 init() 自动执行，见 restoreSession() -->
   <div class="main">
     <div class="col-left">
       <div class="col-header"><span class="nav-title">工作间</span><span class="ch-count" id="workshopCount">0</span><button class="nav-toggle" id="navToggle" onclick="toggleNav()" title="折叠/展开侧边栏">◀</button><button class="wi-act" style="margin-left:auto;font-size:12px" title="回收卡死工作间" onclick="event.stopPropagation();recycleStaleWorkshops()">♻️</button></div>
@@ -1135,7 +1137,7 @@ async function saveAdvancedConfig(){
 
 
 
-async function init(){initNav();initDsResizer();connectWS();await checkConfigStatus();await refreshAgents();await refreshTasks();await refreshStats();await checkHealth();await checkSession();setInterval(refreshAgents,10000);setInterval(refreshTasks,5000);setInterval(refreshStats,5000);setInterval(refreshBudget,3000);setInterval(checkHealth,30000);setInterval(pollPendingBridges,3000);document.getElementById('cmdInput').focus()}
+async function init(){initNav();initDsResizer();connectWS();await checkConfigStatus();await refreshAgents();await refreshTasks();await refreshStats();await checkHealth();await restoreSession();await checkSession();setInterval(refreshAgents,10000);setInterval(refreshTasks,5000);setInterval(refreshStats,5000);setInterval(refreshBudget,3000);setInterval(checkHealth,30000);setInterval(pollPendingBridges,3000);document.getElementById('cmdInput').focus()}
 init();
 /* ===== 自定义弹窗 UI ===== */
 (function(){var ov=null,timer=null,escH=null;

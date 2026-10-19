@@ -917,6 +917,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 </style>
 
 
+<link rel="stylesheet" href="/theme-crt.css">
+<script src="/theme-crt.js" defer></script>
 </head>
 
 
@@ -938,7 +940,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
       <a class="sidebar-back" href="/" title="返回大厅">← <span class="sb-text">返回大厅</span></a>
       <!-- ★V34 §1：工作间入口**只指向本工作间**（`?ws=`）—— 不带参数的总控入口在大厅 -->
       <a class="hub-pill" id="dockingPill" href="/docking.html" title="对接中心 · 本工作间的成员对接（看谁接上了、对上哪个岗位）">🔌 对接中心</a>
-      <a class="hub-pill" href="/hub.html" title="流程说明 · 全流程（只讲不做）">◈ 流程说明</a>
+      <!-- 流程说明按钮已移除（老板 2026-10-19 裁定）：hub-pill 是 fixed 同坐标定位，两枚常驻重叠；流程讲解正主在 hub.html，大厅入口仍在 -->
 
 
       <div class="col-header"><span class="nav-title">工作间</span><span class="ch-count" id="workshopCount">0</span><button class="nav-toggle" id="navToggle" onclick="toggleNav()" title="折叠/展开侧边栏">◀</button></div>
