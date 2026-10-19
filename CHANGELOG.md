@@ -4,6 +4,32 @@
 
 # 4.8.26
 
+## [4.8.82] - 2026-10-19
+
+**看门狗状态文件补「端口推断」**（让多实例场景能分清"哪只才是我的看门狗"）
+
+### 为什么
+
+v4.8.81 里看门狗会写一份**可读状态** `logs/watchdog.json`（因为 `watchdog.pid` 是被独占持有的锁文件，
+别的进程读不了）。但状态里的 `port` 只取 `AC_PORT` 环境变量 —— **没设就是空**。
+
+而平台侧 `watchdog_pids(server_port)` 靠这个端口判断"本实例的看门狗"还是"别的实例的"；
+留空虽然按"视为同一实例"放行（安全方向不错），但**多实例并存时会分不清**，
+容易把别人的看门狗当成自己的（受控重启最怕这个）。
+
+### 改了什么
+
+`tools/watchdog.py::write_state_file()` 的 `port` 改为：`AC_PORT` 优先，否则**从 `base_url` 推断**
+（都拿不到才留空，不编）。实测本机生产实例：`{"pid":26664,"port":"18920","base_url":"http://127.0.0.1:18920",...}`。
+
+### 真机验收（本机 18920 生产实例）
+
+- `GET /api/system/lifecycle` → `watchdog_running=true`（此前读不到）；
+- **真打 `POST /api/admin/restart {"confirm":true}`** → 200 `restart_scheduled`、
+  `watchdog_pids=[26664]`，**8 秒后服务自己回来**（`/api/status` 200、version 4.8.81）；
+- 审计落盘：`2026-10-19T13:27:25 system.restart local-ui port=18920 watchdog_pids=[26664] pin=none`；
+- 看门狗进程仍活（没被这次重启带走）。
+
 ## [4.8.81] - 2026-10-19
 
 **三件待拍板的事，按「最优解」做完**（老板原话：「这个最优解就行，我看不懂」）

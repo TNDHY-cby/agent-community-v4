@@ -171,6 +171,18 @@ def state_file() -> Path:
     return data_dir() / "logs" / "watchdog.json"
 
 
+def _state_port() -> str:
+    """状态文件里的端口：环境变量优先，否则从 base_url 推断（都拿不到就留空，不编）。"""
+    p = str(os.environ.get("AC_PORT") or "").strip()
+    if p:
+        return p
+    try:
+        from urllib.parse import urlparse
+        return str(urlparse(base_url() or "").port or "")
+    except Exception:                                        # noqa: BLE001
+        return ""
+
+
 def write_state_file(interval: float) -> None:
     """写可读状态（失败只记日志，**绝不**影响守护本身）。"""
     try:
@@ -178,7 +190,10 @@ def write_state_file(interval: float) -> None:
         p.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "pid": os.getpid(),
-            "port": os.environ.get("AC_PORT") or "",
+            # ★2026-10-19：没设 AC_PORT 时从 base_url 推端口 ——
+            #   平台侧 `watchdog_pids(server_port)` 靠它区分"本实例的看门狗"还是"别的实例的"，
+            #   留空会让多实例场景分不清（宁可推出来，也不留空）。
+            "port": _state_port(),
             "base_url": base_url(),
             "data_dir": str(data_dir()),
             "interval": float(interval),
