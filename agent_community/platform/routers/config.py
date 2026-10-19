@@ -202,6 +202,88 @@ async def api_config_status():
         "ai_manual_timeout": cfg.get("ai_manual_timeout", 120),
     }
 
+@router.post("/api/ai/verify")
+async def api_ai_verify(request: Request):
+    """**主动验证连通**（V60 §7，2026-10-20 补）：真跑一次极小探针，结论写回缓存。
+
+    为什么要有这个端点：`/api/status` 的 `ai.reachable` **只读缓存、绝不主动探活**
+    （它被界面/看门狗/CLI 高频轮询，实时探活等于每次刷新都烧 token）。
+    所以"第一次得到结论"必须有**一个明确的人工动作**——就是本端点（设置页的「验证连通」按钮）。
+
+    设计取舍：
+    - **走 V-16 的同一套缓存**（`use_cache=True`）：10 分钟内重复点直接回结论，**不重复烧钱**，
+      返回里用 `cached` 如实说明"这次是真验的还是用了刚才的结论"；
+    - 配置不全 / 非联网模式 ⇒ **400 说清怎么配**，不发起任何网络请求；
+    - 只接受本机来源（复用 `origin_allowed`，一处真相）；
+    - 审计 `ai.verify`（谁在什么时候验的、结果如何）。
+    """
+    from .system import origin_allowed
+    from ..server import Utf8JSONResponse
+    ok_origin, why = origin_allowed(request)
+    if not ok_origin:
+        return Utf8JSONResponse({"error": "来源不是本机", "detail": why}, status_code=403)
+
+    # ⚠️ 只读 + **延迟导入**（与 `/api/status` 的 `_ai_health_snapshot` 同一写法）：
+    #    · 只读：验证连通不该顺手创建配置文件（见 `config.peek_config`）；
+    #    · 延迟导入：让"改读法"只有一处真相，测试/替换也只 patch `agent_community.config.peek_config`。
+    from ...config import peek_config
+    cfg = peek_config()
+    provider = str(cfg.get("ai_provider") or "").strip()
+    model = str(cfg.get("ai_model") or "").strip()
+    base_url = str(cfg.get("ai_base_url") or "").strip()
+    api_key = str(cfg.get("ai_api_key") or "").strip()
+    mode = str(cfg.get("ai_mode") or "remote").strip().lower()
+
+    if not (provider and model):
+        return Utf8JSONResponse({
+            "ok": False, "error": "还没配置平台 AI（provider / 模型）",
+            "how_to_fix": "先在「设置」里填 AI 接口（provider、接口地址、模型、密钥），保存后再验证",
+        }, status_code=400)
+    if mode != "remote":
+        return Utf8JSONResponse({
+            "ok": False, "error": "当前是本地/人工模式（ai_mode=%s），没有联网接口可验" % mode,
+            "how_to_fix": "把 AI 模式切回「联网（remote）」再验证；本地模型请在它自己的服务里看状态",
+        }, status_code=400)
+
+    try:
+        from ..ai_verify import verify_provider_async
+        res = await verify_provider_async(provider, base_url, model, api_key,
+                                          cfg=cfg, actor="user:verify")
+    except Exception as e:  # noqa: BLE001 — 端点永不把探活异常抛给界面
+        return Utf8JSONResponse({
+            "ok": False, "error": "验证过程出错：%s: %s" % (type(e).__name__, e),
+            "how_to_fix": "看服务日志；若是超时，检查接口地址是否可达",
+        }, status_code=500)
+
+    import time as _time
+    reachable = bool(res.get("ok"))
+    at = float(res.get("at") or _time.time())
+    reason = str(res.get("reason") or (res.get("detail") or "")).strip()
+    elapsed = int(res.get("elapsed_ms") or 0)
+    cached = bool(res.get("cached"))
+    if reachable:
+        detail = ("验证成功（%d ms）%s" % (elapsed, "，用了 10 分钟内的结论" if cached else ""))
+    else:
+        detail = ("验证失败%s：%s" % ("（用了 10 分钟内的结论）" if cached else "", reason or "没说原因"))
+    _audit_log.record("ai.verify", actor="user", target=provider,
+                      detail="ok=%s status=%s cached=%s" % (reachable, res.get("status"), cached))
+    return {
+        "ok": reachable,
+        "provider": provider,
+        "model": model,
+        "status": int(res.get("status") or 0),
+        "reason": reason,
+        "elapsed_ms": elapsed,
+        "cached": cached,
+        "reachable": reachable,
+        "checked_at": _time.strftime("%Y-%m-%dT%H:%M:%S", _time.localtime(at)),
+        "detail": detail,
+        "how_to_fix": ("" if reachable else
+                       "常见原因：密钥无效（401）、接口地址写错、网络不通、余额用尽；"
+                       "改完再点一次本按钮"),
+    }
+
+
 @router.get("/api/config")
 async def api_get_config():
     """返回当前配置（API Key 脱敏）。

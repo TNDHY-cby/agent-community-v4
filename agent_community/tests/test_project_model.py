@@ -178,7 +178,20 @@ class TestFrameworkInfo:
         info = read_framework_info(ws)
         assert info["is_platform_template"] is False and info["size"] > 0 and info["updated_at"]
         write_library(ws, framework="# 改过的框架\n", updated_by="api")
-        assert read_framework_info(ws)["history_count"] == 1, "覆盖前必须备份"
+        # ★2026-10-21 修正：原断言 `== 1` 是**靠 bug 通过**的 —— 备份名只到秒，
+        #   同一秒内的两次覆盖互相盖掉，全量跑得慢一点就红（既丢备份又骗人）。
+        #   现在备份名唯一（`_unique_history_path`），两次覆盖就该留 **2** 份。
+        assert read_framework_info(ws)["history_count"] == 2, "覆盖前必须备份（且同秒也不许互相覆盖）"
+
+    def test_same_second_overwrites_do_not_destroy_backups(self, tmp_path):
+        """★同秒连续覆盖：**每份备份都要独立存在**（上面那个 bug 的守卫）。"""
+        from agent_community.platform.workshop import read_framework_info, write_library
+        ws = self._ws(tmp_path)
+        write_library(ws, updated_by="api")
+        for i in range(4):
+            write_library(ws, framework="# 版本 %d\n" % i, updated_by="api")
+        info = read_framework_info(ws)
+        assert info["history_count"] == 4, "同秒覆盖把备份盖掉了：history_count=%s" % info["history_count"]
 
     def test_get_library_exposes_framework(self, tmp_path):
         import asyncio

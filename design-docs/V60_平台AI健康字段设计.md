@@ -58,7 +58,38 @@
 | ④ | 缓存里有**成功**结论 ⇒ `reachable=true`；有**失败**结论 ⇒ `reachable=false` 且 `detail` 带原因 |
 | ⑤ | **不烧钱/不变慢**：两次 `/api/status` 的 `checked_at`/`age_seconds` 不因调用而刷新（证明没触发探活），且响应 < 500ms |
 
-## 6. 交付
+## 7. 主动验证端点 `POST /api/ai/verify`（2026-10-20 补，实施后追加）
 
-字段与验收脚本由 DSH 出；前端换 `checkHealth()` 的数据源与文案（三态不变：全部在线 / 在线 / 离线；
-`false` 与 `null` 都显示「离线/未知」，**不显示完成态**）。
+> **为什么补**：§3 定了 `/api/status` **只读缓存、绝不探活**。可是"结论从哪来"必须有个入口 ——
+> 原先只有"保存配置时（`ai_verify_on_save`）"和"启动时（`on_startup`）"两种自动触发，
+> **没有一个"我现在就想验一次"的人工动作**。前端要做「验证连通」按钮，就缺这一块。
+> （我在通道 202 里写过"调既有的 V-16 自检端点"——**那句是错的**，当时没核实；本端点补齐后才是事实。）
+
+```
+POST /api/ai/verify          （无 body；只接受本机来源）
+```
+
+| 情形 | HTTP | 返回要点 |
+|---|---|---|
+| 成功 | 200 | `ok=true, reachable=true, status, elapsed_ms, cached, checked_at, detail` |
+| 失败（有原因） | 200 | `ok=false, reachable=false, reason, how_to_fix` |
+| 没配 provider/model | 400 | `how_to_fix` 说清怎么配，**不发任何网络请求** |
+| `ai_mode` 不是 remote | 400 | 说清"当前是本地/人工模式，没有联网接口可验" |
+| 非本机来源 | 403 | 复用 `origin_allowed()`（一处真相） |
+
+- **走 V-16 同一套缓存**（10 分钟 TTL）：重复点不重复烧钱，返回里的 `cached` 如实说明；
+- 审计 `ai.verify`（谁、何时、结果）；
+- **只读纪律**：用 `peek_config()`（延迟导入），不创建/改写配置文件。
+
+### 判据（`agent_community/tests/test_ai_verify_endpoint.py`，6 条）
+
+① 没配 ⇒ 400 且**零网络调用**；② 非 remote ⇒ 400；③ 成功/失败各如实（失败带 `reason` + `how_to_fix`）；
+④ **验完之后 `/api/status` 的 `ai.reachable` 立刻有值**（整条链的契约：status 只读、verify 产生结论）；
+⑤ 非本机 403；⑥ 验证过程**不创建配置文件**。
+
+## 8. 交付（谁做什么）
+
+- **后端（DSH，已完成）**：`/api/status` 的 `ai` 段、`POST /api/ai/verify`、`peek_config()`、判据与守卫。
+- **前端（负责方）**：大厅左下角指示灯换数据源（`ai.reachable` 三态）+ 设置页「验证连通」按钮调
+  `POST /api/ai/verify`，成功后无需刷新即可（下一次轮询 `/api/status` 就绿）。
+

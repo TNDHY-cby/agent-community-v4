@@ -334,6 +334,24 @@ def read_model_info(workshop) -> dict:
 FRAMEWORK_TEMPLATE_MARK = "待一级/二级讨论收敛后更新"
 
 
+def _unique_history_path(hist: Path) -> Path:
+    """历史备份的落点：**同一秒内多次覆盖也必须各留一份**。
+
+    ★2026-10-21 修真 bug（做 V60 时被 `test_project_model` 的顺序抖动暴露）：
+      原先文件名只到**秒**（`%Y%m%d-%H%M%S.md`），于是**同一秒内的第二次覆盖会直接盖掉第一次的备份**
+      —— 用户连点两下"编辑框架"，第一版就没了，而界面还会说"已备份"。
+      更坏的是：**当时的测试恰好靠这个 bug 通过**（三步在同一秒跑完 ⇒ 只剩 1 个文件 ⇒ 断言 `==1` 成立），
+      全量跑得慢一点就红 ⇒ 既丢数据又骗人。
+    """
+    base = time.strftime("%Y%m%d-%H%M%S")
+    p = hist / f"{base}.md"
+    n = 1
+    while p.exists():
+        p = hist / f"{base}-{n}.md"
+        n += 1
+    return p
+
+
 def read_framework_info(workshop) -> dict:
     """**只读**项目框架状态（界面用）：是否存在 / 大小 / 最后写入时间 / 历史版本数 / 是否仍是平台模板。
 
@@ -396,7 +414,7 @@ def write_model(workshop, *, blocks: dict | None = None, text: str = "",
             try:
                 _old = path.read_text(encoding="utf-8")
                 if _old.strip():
-                    bak = hist / f"{time.strftime('%Y%m%d-%H%M%S')}.md"
+                    bak = _unique_history_path(hist)
                     bak.write_text(_old, encoding="utf-8")
                     out["backed_up"] = str(bak)
             except Exception as e:  # noqa: BLE001
@@ -547,7 +565,7 @@ def write_library(workshop: Workshop, framework: str = "", updated_by: str = "sy
                 if fw.is_file() and fw.read_text(encoding="utf-8").strip():
                     _fh = lib / "framework.history"
                     _fh.mkdir(parents=True, exist_ok=True)
-                    (_fh / f"{time.strftime('%Y%m%d-%H%M%S')}.md").write_text(
+                    _unique_history_path(_fh).write_text(
                         fw.read_text(encoding="utf-8"), encoding="utf-8")
                     made.append(str(_fh))
             except Exception as e:  # noqa: BLE001
