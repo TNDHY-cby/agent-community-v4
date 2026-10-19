@@ -113,13 +113,19 @@ def test_version_latest_endpoint_does_not_write_anything(client, monkeypatch):
     assert safety["replace_install_dir_only"] is True
     assert safety["keep_data_dir"] is True, "更新不许动数据目录"
     assert safety["restart_required"] is True
-    assert safety["restart_endpoint"] is None, \
-        "受控重启端点尚未拍板；若已实现，请同步更新 V57 与这条守卫"
+    # 2026-10-19（老板「最优解就行」拍板，V58）：受控重启端点已实现，契约必须指向它，
+    # 且必须把「没有看门狗会被拒」这条安全前提写在契约里（用户照着做不会把平台弄死）。
+    assert safety["restart_endpoint"] == "/api/admin/restart", \
+        "受控重启端点已实现（V58），契约必须指向它：%r" % safety["restart_endpoint"]
+    assert "看门狗" in safety["restart_howto"] and "confirm" in safety["restart_howto"], \
+        "restart_howto 必须说清看门狗前提与 confirm 字段：%r" % safety["restart_howto"]
 
 
 def test_contract_doc_exists_and_is_pending_decision():
+    """契约文档必须在发布面；受控重启已拍板（V58），文档要指向拍板稿与端点，别再写"待拍板"当现状。"""
     doc = _ROOT / "design-docs" / "V57_一键更新插件契约.md"
     assert doc.exists(), "缺一键更新插件契约文档（宋要照它做）"
     text = doc.read_text(encoding="utf-8", errors="replace")
-    assert "待老板拍板" in text, "契约必须标明「待拍板」（设计先行铁律）"
+    assert "已拍板" in text, "受控重启已拍板（2026-10-19），契约必须写明"
+    assert "V58_受控重启端点设计.md" in text, "契约要指向拍板稿 V58"
     assert "/api/version" in text and "install_dir" in text and "data_dir" in text

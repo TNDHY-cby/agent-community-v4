@@ -226,7 +226,12 @@ def enable_task(*, dry_run: bool = False) -> int:
         print("\n（--dry-run：什么都没写）")
         return 0
     lp.parent.mkdir(parents=True, exist_ok=True)
-    lp.write_text(launcher_content(), encoding="utf-8", newline="")
+    # ★2026-10-19（本机 pytest 抓到）：这里原先写 `encoding="utf-8"`（**无 BOM**），
+    #   而启动器是含中文的 .ps1 ⇒ 别人的 Windows PowerShell 5.1 会按 ANSI 读、直接 ParserError
+    #   ⇒ **开机自启在别人机器上静默失败**（正是"只在我这台机器成立"那类缺陷）。
+    #   守卫 `agent_community/tests/test_ps1_bom.py` 会扫 data/autostart 下所有 .ps1。
+    lp.write_text(launcher_content(), encoding="utf-8-sig", newline="")
+
     args = ["schtasks", "/Create", "/F", "/SC", "ONLOGON", "/TN", TASK_NAME, "/TR", cmd,
             "/RL", "LIMITED"]
     r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8",

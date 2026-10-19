@@ -98,8 +98,38 @@ def port_listening(port: int) -> bool:
 
 
 def watchdog_pid_file() -> Path:
-    """本实例的看门狗 pid 记录（由**快捷启动**在拉起看门狗时写入，单一事实源）。"""
-    return _REPO_ROOT / "agent_community" / "data" / "runtime" / "watchdog.pid"
+    """本实例的看门狗 pid 记录（**由 `tools/watchdog.py` 写**，单一事实源）。
+
+    ★2026-10-19 修（做受控重启端点时发现）：这里原先写死
+      `<仓库>/agent_community/data/runtime/watchdog.pid`，而**写方**
+      `tools/watchdog.py` 写的是 `<AC_DATA_DIR>/logs/watchdog.pid` ——
+      **路径不同、还不认 AC_DATA_DIR** ⇒ 读的这一侧**永远读不到**对方写的记录。
+      后果比"读不到"更糟：隔离实例（换了 AC_DATA_DIR）会读到**生产实例**的旧记录，
+      误判"我有看门狗"，然后允许重启自己 —— 而那只看门狗救的是生产实例，
+      **隔离实例就此永久宕机**（最坏的假成功）。
+      ⇒ 现在与写方**同一口径**：数据落点认 `AC_DATA_DIR`，文件名 `logs/watchdog.pid`。
+    """
+    base = Path(os.environ.get("AC_DATA_DIR") or (_REPO_ROOT / "agent_community" / "data"))
+    return base / "logs" / "watchdog.pid"
+
+
+
+def watchdog_state() -> dict:
+    """读看门狗写下的**可读状态** `<AC_DATA_DIR>/logs/watchdog.json`；读不到返回 `{}`。
+
+    ★为什么需要它：`watchdog.pid` 是单实例锁，看门狗**独占持有**它
+    （Windows `msvcrt.locking`）⇒ 别的进程**读不了**（PermissionError）。
+    2026-10-19 做受控重启端点时撞上：平台读不到 pid，就以为"没有看门狗"，
+    于是把本来能安全重启的实例误拒（或更糟：读到别的实例的记录而误放行）。
+    """
+    try:
+        import json as _json
+        import os as _os
+        base = Path(_os.environ.get("AC_DATA_DIR") or (_REPO_ROOT / "agent_community" / "data"))
+        p = base / "logs" / "watchdog.json"
+        return _json.loads(p.read_text(encoding="utf-8")) or {}
+    except Exception:                                        # noqa: BLE001
+        return {}
 
 
 def watchdog_pids(server_port: int | None = None) -> list[int]:
@@ -109,13 +139,22 @@ def watchdog_pids(server_port: int | None = None) -> list[int]:
     本机可以同时跑多个实例（生产 18920 + 隔离实例）。若按关键字盲杀，
     **在隔离实例上点一次"退出并关闭"，会把生产实例的看门狗一起杀掉**。
     ⇒ 判据按优先级收紧：
-      1. **优先**读 `data/runtime/watchdog.pid`（快捷启动写入的**本实例**记录）——
-         还要求该 pid 活着**且**命令行确实含 `watchdog`（双条件，防止 pid 被复用）；
+      1. **优先**读 `<AC_DATA_DIR>/logs/watchdog.pid`（`tools/watchdog.py` 写的**本实例**记录，
+         2026-10-19 起与写方同一口径）——还要求该 pid 活着**且**命令行确实含 `watchdog`（双条件，防止 pid 被复用）；
+
       2. 没有记录时，退化为"命令行含 `watchdog` **且**含本实例端口号"（`watchdog_autostart` 那类
          守护进程的命令行里带 `--port <端口>`）；
       3. 都不匹配 ⇒ **一个都不杀**（宁可不杀，也不误杀别人的实例）。
     返回值可能为空 —— 调用方**必须如实说明"没找到本实例的看门狗记录"**，不许假装已关。
     """
+    # 0) **可读状态优先**（2026-10-19 起）：锁文件读不了，JSON 才是可靠来源；
+    #    而且它**带端口** ⇒ 多实例不会互相误认（这是比"命令行含端口"更准的判据）。
+    _st = watchdog_state()
+    _pid = int((_st or {}).get("pid") or 0)
+    if _pid > 0 and _pid_alive(_pid) and _cmdline_has(_pid, "watchdog"):
+        _stat_port = str((_st or {}).get("port") or "")
+        if not server_port or not _stat_port or _stat_port == str(server_port):
+            return [_pid]
     # 1) 本实例记录优先
     try:
         f = watchdog_pid_file()
@@ -214,7 +253,7 @@ def shutdown_targets(server_port: int, a2a_port: int, grpc_port: int) -> dict:
     wds = watchdog_pids(server_port)
     if not wds:
         report["detail"]["watchdog"] = (
-            "未找到本实例的看门狗记录（`data/runtime/watchdog.pid` 不存在、"
+            "未找到本实例的看门狗记录（`<AC_DATA_DIR>/logs/watchdog.pid` 不存在、"
             "也没有命令行含本实例端口的看门狗）—— 本次未关任何看门狗")
         report["warnings"] = report.get("warnings", []) + [
             "没有找到本实例的看门狗：如果你是从旧的自启方式启动的，请手动停它，"
@@ -240,6 +279,82 @@ def shutdown_targets(server_port: int, a2a_port: int, grpc_port: int) -> dict:
     report["detail"]["platform"] = f"正在关闭本进程（{server_port}）——响应返回后退出"
     _schedule_self_exit()
     return report
+
+
+@router.post("/api/admin/restart")
+async def admin_restart(request: Request):
+    """**受控重启**（V58，老板 2026-10-19「最优解就行」拍板）。
+
+    四条闸门（缺一不可，逐条如实拒绝 —— 宁可拒绝，也不把平台弄成永久宕机）：
+      ① 来源必须是本机（无 Origin 的命令行调用也算本机）；
+      ② 配了 `AC4_SHUTDOWN_PIN` ⇒ 必须带对 `X-Shutdown-Pin`；
+      ③ **必须真有看门狗**（按实例端口认）：没有它，重启＝**永久宕机**；
+      ④ body 必须显式 `{"confirm": true}`（重启会短暂中断在跑的工作间）。
+
+    行为：**先让响应发出去**，0.8s 后本进程退出；看门狗按**原命令行**（含 token）重生，
+    鉴权口径不变。返回里如实给出看门狗 pid 与预计时间。
+    """
+    from ..server import Utf8JSONResponse
+
+    ok, why = origin_allowed(request)
+    if not ok:
+        return Utf8JSONResponse({"success": False, "error": f"拒绝重启：{why}"}, status_code=403)
+
+    pin = shutdown_pin()
+    if pin:
+        got = (request.headers.get("X-Shutdown-Pin") or "").strip()
+        if got != pin:
+            return Utf8JSONResponse(
+                {"success": False, "pin_required": True,
+                 "error": "重启口令不正确（在 deploy/.env 的 AC4_SHUTDOWN_PIN 里配置）"},
+                status_code=403)
+
+    try:
+        body = await request.json()
+    except Exception:                                     # noqa: BLE001
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    if body.get("confirm") is not True:
+        return Utf8JSONResponse({
+            "success": False,
+            "error": "重启会让在跑的工作间短暂中断，必须显式确认：body 带 {\"confirm\": true}",
+            "how_to_fix": "POST /api/admin/restart  body: {\"confirm\": true}",
+        }, status_code=400)
+
+    server_port = request.url.port or int(os.environ.get("AC4_SERVER_PORT", "18920") or 18920)
+    wds = watchdog_pids(server_port)
+    if not wds:
+        # ★这是本端点最重要的一条：**没有看门狗就不许重启**。
+        #   否则"点一下重启"= 平台永久消失，用户只会看到一个打不开的页面（最坏的假状态）。
+        return Utf8JSONResponse({
+            "success": False,
+            "error": "没有看门狗在守这个实例 —— 现在重启，平台不会自己回来（会永久宕机）",
+            "server_port": server_port,
+            "how_to_fix": "先起看门狗：python tools/watchdog.py --daemon --port %d" % server_port,
+        }, status_code=409)
+
+    try:
+        # ★2026-10-19 修：原写 `from ..audit_log import record` —— **该模块不存在**
+        #   （平台只有 `platform/audit.py`，单例叫 `audit_log`）⇒ ImportError 被下面的
+        #   except 静默吞掉 ⇒ 重启/关停**从来没写过审计**。现在用真实模块，且失败要出声。
+        from ..audit import audit_log as _audit
+        _audit.record("system.restart", actor="local-ui",
+                      detail=f"port={server_port} watchdog_pids={wds} pin={'set' if pin else 'none'}")
+    except Exception as _e:                               # noqa: BLE001
+        print(f"[system] 重启审计写入失败（重启照常进行）: {type(_e).__name__}: {_e}", flush=True)
+
+    _schedule_self_exit(0.8)
+    return {
+        "success": True,
+        "restart_scheduled": True,
+        "eta_seconds": 1,
+        "server_port": server_port,
+        "watchdog_pids": wds,
+        "how": "已安排重启：看门狗将在 ≤30s 内按**原命令行**（含 token）把平台拉回来；"
+               "期间本页面的接口会短暂连不上，属正常。",
+        "note": "本端点不会自己 exec 新进程（会丢参数、且可能与看门狗抢端口）—— 拉回交给唯一的看门狗。",
+    }
 
 
 def _pid_alive(pid: int) -> bool:
@@ -294,11 +409,12 @@ async def system_shutdown(request: Request):
     grpc_port = int(os.environ.get("AC4_GRPC_PORT", "9105") or 9105)
 
     try:
-        from ..audit_log import record as _audit_record
-        _audit_record("system.shutdown", actor="local-ui",
+        # 同上面 restart 那处：`platform/audit_log` 不存在，改用真实单例（失败要出声，不静默）
+        from ..audit import audit_log as _audit
+        _audit.record("system.shutdown", actor="local-ui",
                       detail=f"pin={'set' if pin else 'none'} ports={server_port}/{a2a_port}/{grpc_port}")
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as _e:                               # noqa: BLE001
+        print(f"[system] 关停审计写入失败（关停照常进行）: {type(_e).__name__}: {_e}", flush=True)
 
     report = shutdown_targets(server_port, a2a_port, grpc_port)
     report["message"] = ("正在关闭：看门狗 → A2A → grpc → 平台本体。"

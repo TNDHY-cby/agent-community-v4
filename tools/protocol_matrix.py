@@ -165,8 +165,20 @@ def run_one(p: dict, data_dir: Path) -> dict:
         gen_ok = (code == 400 and "不需要架桥" in str((body or {}).get("error") or "")
                   and bool((body or {}).get("hint")))
         bridge_file = ""
-    code2, body2 = req("/api/harness/bridge-verify", {"harness_id": hid})
-    ver_ok = code2 in (200, 202)
+    # ★2026-10-19（核心体检偶发假红抓到）：verify 的 timeout 必须放宽。
+    #   该端点内部会**同步扫进程表**（`_find_bridge_processes`）再等一次真实回报（默认 10s），
+    #   在负载高时合计会超过 20s ⇒ 矩阵侧 urllib 超时（HTTP 0）⇒ 同一份代码"跑一次红、跑一次绿"。
+    #   判据不稳定比没有判据更糟，所以这里给足时间（120s）。
+    code2, body2 = req("/api/harness/bridge-verify", {"harness_id": hid}, timeout=120.0)
+    if needs_bridge:
+        ver_ok = code2 in (200, 202)
+    else:
+        # 不需要桥的协议：桥本来就不存在，verify 只是**附带自检**；
+        # 允许 200/202/400，也允许"连不上"（0），但必须把这件事记进 notes（不掩盖）。
+        ver_ok = code2 in (200, 202, 400)
+        if code2 == 0:
+            row["notes"].append("verify 未应答（本协议不需要桥，此步仅附带自检）：%s"
+                                % str((body2 or {}).get("error") or "")[:80])
     row["cells"]["④生成桥+自检"] = (bool(gen_ok and ver_ok),
                                  "generate HTTP %s（%s）｜ verify HTTP %s"
                                  % (code, bridge_file[-34:] if bridge_file else str((body or {}).get("error") or "")[:34], code2))

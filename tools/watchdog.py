@@ -158,6 +158,48 @@ def acquire_lock():
 
 
 # ── 主流程 ─────────────────────────────────────────────────────
+def state_file() -> Path:
+    """**可读的**看门狗状态（pid / 端口 / 数据目录 / 启动时间）。
+
+    ★2026-10-19（做受控重启端点时发现）：`watchdog.pid` 是**单实例锁**，看门狗用
+    `msvcrt.locking` / `fcntl.flock` **独占持有**它 ⇒ Windows 上别的进程去读会直接
+    `PermissionError`。于是平台侧"我有没有看门狗"**永远读不到**，只能退化到猜命令行，
+    结果把"其实有看门狗"判成"没有"（受控重启会被误拒；`/api/system/lifecycle` 的同名字段也不准）。
+
+    因此**另写一份可读的状态**（锁文件职责不变）：纯文本 JSON、原子替换、失败不影响守护。
+    """
+    return data_dir() / "logs" / "watchdog.json"
+
+
+def write_state_file(interval: float) -> None:
+    """写可读状态（失败只记日志，**绝不**影响守护本身）。"""
+    try:
+        p = state_file()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "pid": os.getpid(),
+            "port": os.environ.get("AC_PORT") or "",
+            "base_url": base_url(),
+            "data_dir": str(data_dir()),
+            "interval": float(interval),
+            "started_at": time.time(),
+        }
+        tmp = p.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, p)                      # 原子替换：读方永远看不到半截文件
+    except Exception as e:                       # noqa: BLE001
+        log("写状态文件失败（不影响守护）: %s: %s" % (type(e).__name__, e))
+
+
+def clear_state_file() -> None:
+    try:
+        p = state_file()
+        if p.is_file():
+            p.unlink()
+    except Exception:                            # noqa: BLE001
+        pass
+
+
 def status_report() -> int:
     print("看门狗（发布面版）会守护：")
     print("  目标：%s/api/status" % (base_url() or "（算不出地址）"))
@@ -174,6 +216,7 @@ def daemon(interval: float, window_sec: float, max_restarts: int) -> int:
     if not acquire_lock():
         log("⛔ 已有一只看门狗在跑（同一个数据目录只允许一只）—— 本进程退出")
         return 2
+    write_state_file(interval)          # 可读状态：让平台/判据能看见"我在守"（锁文件读不了）
     log("看门狗启动：目标 %s ｜ 间隔 %.0fs ｜ 窗口 %.0fs 内最多重启 %d 次"
         % (base_url() or "（算不出地址）", interval, window_sec, max_restarts))
     attempts: list = []
@@ -188,6 +231,7 @@ def daemon(interval: float, window_sec: float, max_restarts: int) -> int:
             if len(attempts) >= max_restarts:
                 log("⛔ %.0fs 内已重启 %d 次仍不健康 —— 停止自动重启，请人工看日志：%s"
                     % (window_sec, len(attempts), log_path()))
+                clear_state_file()      # 我停了 ⇒ 别让平台以为还有人在守
                 return 3
             sent, sdetail = spawn()
             log(("重启：" if sent else "重启失败：") + sdetail)

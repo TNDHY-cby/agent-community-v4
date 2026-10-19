@@ -106,8 +106,12 @@ async def api_version():
             "replace_install_dir_only": True,
             "keep_data_dir": True,
             "restart_required": True,
-            "restart_endpoint": None,       # 受控重启端点尚未提供（设计稿 V57 待拍板）
-            "restart_howto": "python tools/update.py --apply --restart（或手工重启；前台进程需自行拉起）",
+            # ★2026-10-19（老板「最优解就行」拍板，V58）：受控重启端点已实现。
+            #   四条闸门：本机来源 / 口令（若配）/ **必须有看门狗** / body 带 confirm=true。
+            "restart_endpoint": "/api/admin/restart",
+            "restart_howto": "POST /api/admin/restart  body: {\"confirm\": true}"
+                             "（需本机来源；配了 AC4_SHUTDOWN_PIN 就要带 X-Shutdown-Pin；"
+                             "**没有看门狗会被拒 409**——那样重启会永久宕机）",
             "apply_howto": "python tools/update.py --apply",
             "rollback_howto": "python tools/update.py --rollback",
         },
@@ -127,7 +131,7 @@ async def api_version_latest():
       ① 前端直连会撞 CORS / 代理 / 网络策略（自部署环境五花八门）；
       ② 平台可以用**超时 + 60 秒缓存**兜住，失败时如实返回 `error`，不把界面卡死；
       ③ 这条端点**只读**（不下载、不替换、不重启）—— 真正的更新动作仍是命令行
-         `tools/update.py`（受控重启端点 `POST /api/admin/restart` 尚待拍板）。
+         `tools/update.py`；重启另有受控端点 `POST /api/admin/restart`（V58：本机 + 看门狗 + confirm）。
     """
     import time as _time
     import urllib.error
