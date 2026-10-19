@@ -83,6 +83,11 @@ body.nav-collapsed .workshop-item .wi-ico{display:inline-block;font-size:15px;li
 .hall-messages{flex:1;overflow-y:auto;padding:22px 28px;display:flex;flex-direction:column;gap:10px}
 .hall-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--dim);text-align:center;gap:6px;position:relative}
 .hall-empty .he-icon{font-size:44px;margin-bottom:6px;opacity:.35}
+/* 2026-10-19（老板指定，MiMo 通道 180）：大厅空状态中央图标＝镰刀锤子徽记。
+   复用 boot_emblem.png（透明贴图），红晕用 drop-shadow 跟随形状（透明底才不发方框）。 */
+.hall-empty .he-emblem{display:block;width:72px;height:72px;margin:2px auto 8px;opacity:.92;
+  filter:drop-shadow(0 0 14px rgba(226,45,55,.42)) drop-shadow(0 0 4px rgba(255,90,90,.28))}
+
 .hall-empty .he-title{font-size:17px;font-weight:700;color:var(--muted)}
 .hall-empty .he-sub{font-size:12.5px;color:var(--dim)}
 /* 功能入口坞：空白区左上角，未来功能区入口依次往里加（FE-10 修订） */
@@ -391,7 +396,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
               <span class="he-t">流程说明</span>
               <span class="he-s">使用说明书 · 流程 · 接口</span>
             </a>
-          </div><div class="he-icon">🏛️</div><div class="he-title">社区大厅</div><div class="he-sub">发布任务后，先与平台 AI 明确需求，再选员工分工执行</div>
+          </div><img class="he-emblem" src="boot_emblem.png" alt="徽记"><div class="he-title">社区大厅</div><div class="he-sub">发布任务后，先与平台 AI 明确需求，再选员工分工执行</div>
         </div></div>
         <div class="hall-input">
           <div class="hi-row">
@@ -722,7 +727,7 @@ async function refreshStats(){try{const r=await fetch('/api/bus/stats');const d=
 async function refreshBudget(){if(!currentWorkshopId){document.getElementById('bpEmpty').style.display='';document.getElementById('bpContent').style.display='none';return}try{const r=await fetch(`/api/budget/${currentWorkshopId}`);const d=await r.json();const spent=d.spent||0,budget=d.budget||0,ratio=d.ratio||0,status=d.status||'ok';const t=tasks.find(x=>x.task_id===currentWorkshopId);document.getElementById('bpEmpty').style.display='none';document.getElementById('bpContent').style.display='flex';document.getElementById('bpTaskName').textContent=t?t.title||'未知':'未知';document.getElementById('bpSpent').textContent=spent.toLocaleString();document.getElementById('bpBudget').textContent=budget.toLocaleString();document.getElementById('bpRatio').textContent=(ratio*100).toFixed(1)+'%';const bar=document.getElementById('bpBar');bar.style.width=Math.min(ratio*100,100)+'%';bar.className='bp-bar'+(status==='warning'?' warning':status==='cutoff'?' cutoff':'');const st=document.getElementById('bpStatus');const sl={ok:'正常',warning:'预警',cutoff:'已熔断'};st.textContent=sl[status]||status;st.className='bp-status'+(status==='warning'?' warning':status==='cutoff'?' cutoff':'')}catch(e){}}
 async function checkSession(){try{const r=await fetch('/api/session/restore');const d=await r.json();if(d.summary&&d.summary.has_previous){const s=d.summary;appendMessage({from_agent:'system',to_agent:'user',content:`上次会话: ${s.task_title} (${s.task_status}) · ${s.task_count} 个任务`,message_type:'text',timestamp:new Date().toISOString()})}}catch(e){}}
 async function saveSession(){try{await fetch('/api/session/save',{method:'POST'});document.getElementById('lastAction').textContent='会话已保存'}catch(e){}}
-async function restoreSession(){try{const r=await fetch('/api/events?limit=50');const d=await r.json();const ev=d.events||[];const s=document.getElementById('hallMessages');s.innerHTML='';if(ev.length===0){s.innerHTML='<div class="hall-empty"><div class="he-icon">🏛️</div><div class="he-title">社区大厅</div><div class="he-sub">输入指令广播任务</div></div>';return}ev.reverse().forEach(e=>{let c=e.content||'{}';try{c=JSON.stringify(JSON.parse(c),null,2)}catch(_){}appendMessage({from_agent:e.agent_id||'system',to_agent:'console',content:`[${e.event_type}] ${c}`,message_type:'text',timestamp:e.timestamp},true)});await refreshTasks()}catch(e){}}
+async function restoreSession(){try{const r=await fetch('/api/events?limit=50');const d=await r.json();const ev=d.events||[];const s=document.getElementById('hallMessages');s.innerHTML='';if(ev.length===0){s.innerHTML='<div class="hall-empty"><img class="he-emblem" src="boot_emblem.png" alt="徽记"><div class="he-title">社区大厅</div><div class="he-sub">输入指令广播任务</div></div>';return}ev.reverse().forEach(e=>{let c=e.content||'{}';try{c=JSON.stringify(JSON.parse(c),null,2)}catch(_){}appendMessage({from_agent:e.agent_id||'system',to_agent:'console',content:`[${e.event_type}] ${c}`,message_type:'text',timestamp:e.timestamp},true)});await refreshTasks()}catch(e){}}
 async function checkHealth(){try{const r=await fetch('/api/agents?online_only=true');const d=await r.json();const on=d.agents||[];const ol=on.some(a=>a.agent_id==='ollama-qwen25'||a.agent_id==='ollama-deepseek');const tr=on.some(a=>a.agent_id==='example-bridge');const el=document.getElementById('agentStatus');if(ol&&tr){el.textContent='全部在线';el.style.color='var(--green)'}else if(ol){el.textContent='Ollama在线';el.style.color='var(--yellow)'}else{el.textContent='离线';el.style.color='var(--red)'}}catch(e){}}
 function showBridgePanel(tid,prompt){bridgeTaskId=tid;bridgeCountdown=1800;let pt=prompt;['[桥接等待]','需要你在桥接目标中处理以下任务并提交响应:\n\n'].forEach(p=>{if(pt.startsWith(p))pt=pt.slice(p.length).trim()});document.getElementById('bridgePrompt').textContent=pt;document.getElementById('bridgeResponse').value='';document.getElementById('bridgeSubmitBtn').disabled=true;document.getElementById('bridgePanel').classList.add('show');document.getElementById('bridgeResponse').focus();startBridgeTimer();document.getElementById('lastAction').textContent='桥接等待中';renderWorkshops()}
 function hideBridgePanel(){document.getElementById('bridgePanel').classList.remove('show');bridgeTaskId=null;if(bridgeTimer){clearInterval(bridgeTimer);bridgeTimer=null}renderWorkshops()}
