@@ -69,8 +69,15 @@ class Lease:
 class OwnershipRegistry:
     """进程内原子所有权登记表（纯内存，不落盘）。"""
 
-    def __init__(self, default_ttl: float = 300.0):
+    def __init__(self, default_ttl: float = 300.0, clock=None):
+        """`clock` 可注入（默认 `time.time`）。
+
+        ★2026-10-20：加它是被**双平台判据连着打回三次**换来的 —— 那三个 TTL 用例在 WSL 里
+        随机红（每次还不是同一条），根因是**虚拟机时钟跳变**让 `time.time()` 在 sleep 期间倒退。
+        靠"多睡一会儿"治不了这个病；把时间从外部注进来，测试用假时钟，逻辑就与真实时钟解耦。
+        """
         self.default_ttl = float(default_ttl)
+        self._clock = clock or time.time
         self._owners: dict[str, dict[str, Any]] = {}
         # 同步互斥量：临界区内无 await，跨 loop / 跨线程均安全（见模块 docstring）
         self._mutex = threading.Lock()
@@ -91,7 +98,7 @@ class OwnershipRegistry:
             return None
         _ttl = float(ttl) if ttl else self.default_ttl
         with self._mutex:
-            now = time.time()
+            now = self._clock()
             cur = self._owners.get(key)
             if cur is not None:
                 same_owner = cur["owner"] == owner
@@ -141,14 +148,14 @@ class OwnershipRegistry:
             cur = self._owners.get(key)
             if cur is None:
                 return None
-            if (time.time() - cur["acquired_at"]) > cur["ttl"]:
+            if (self._clock() - cur["acquired_at"]) > cur["ttl"]:
                 return None
             return cur["owner"]
 
     def snapshot(self) -> dict:
         """只读快照（供 /api 展示与测试断言）。"""
         with self._mutex:
-            now = time.time()
+            now = self._clock()
             keys = [
                 {
                     "key": v["key"],
@@ -171,7 +178,7 @@ class OwnershipRegistry:
     async def reap_expired(self) -> list[str]:
         """清除全部过期票据，返回被回收的 key 列表。"""
         with self._mutex:
-            now = time.time()
+            now = self._clock()
             gone = [k for k, v in self._owners.items() if (now - v["acquired_at"]) > v["ttl"]]
             for k in gone:
                 self._owners.pop(k, None)

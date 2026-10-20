@@ -141,12 +141,33 @@ class TestRelease:
         assert run(main()) == (False, False, True)
 
 
+class _FakeClock:
+    """可控时钟（**测试专用**）：`advance(sec)` 手动往前走。
+
+    为什么要有它：这组 TTL 用例原来靠"真 sleep 一会儿"，结果在 WSL 里**随机红**（三次不同用例），
+    根因是虚拟机时钟跳变（`time.time()` 在 sleep 期间倒退）。真实时间不可靠 ⇒ 注入假时钟。
+    """
+
+    def __init__(self, start: float = 1_000_000.0):
+        self.t = float(start)
+
+    def __call__(self) -> float:
+        return self.t
+
+    def advance(self, sec: float) -> None:
+        self.t += float(sec)
+
+
 class TestTtlAndReap:
+    # ★2026-10-20（第三次修同一类，这次是根治）：不再依赖真实时间，全部注入 `_FakeClock`。
+    #   好处：① 不受机器负载/时钟跳变影响 ② 用例从"睡 1 秒"变成瞬间完成。
+
     def test_expired_lease_can_be_claimed_by_another_owner(self):
-        reg = OwnershipRegistry(default_ttl=0.05)
+        clk = _FakeClock()
+        reg = OwnershipRegistry(default_ttl=0.05, clock=clk)
         async def main():
             l1 = await reg.acquire(task_key("t"), "a")
-            await asyncio.sleep(0.12)
+            clk.advance(1.0)                     # 时间由我们说了算：一定已过期
             l2 = await reg.acquire(task_key("t"), "b")
             return l1, l2
         l1, l2 = run(main())
@@ -154,24 +175,23 @@ class TestTtlAndReap:
         assert l2.token != l1.token, "过期重发必须换新 token，让旧票据彻底作废"
 
     def test_owner_of_returns_none_after_expiry(self):
-        reg = OwnershipRegistry(default_ttl=0.03)
+        clk = _FakeClock()
+        reg = OwnershipRegistry(default_ttl=0.03, clock=clk)
         async def main():
             await reg.acquire(task_key("t"), "a")
-            await asyncio.sleep(0.08)
+            clk.advance(1.0)
             return reg.owner_of(task_key("t"))
         assert run(main()) is None
 
     def test_reap_expired_returns_and_clears_keys(self):
-        # ★2026-10-20 加固（整包跑时偶发红，单跑 20 次全过）：
-        #   原来是 `default_ttl=0.05` + `sleep(0.12)` —— **余量只有 70ms**。
-        #   整包跑（1800+ 用例、机器负载高）时，调度/GC 抖动会把这点余量吃掉，
-        #   于是一条**测试脆弱**被报成产品有问题。这里把余量放大到 20 倍（TTL 50ms、睡 1s），
-        #   语义完全不变（仍然验证"过期后被 reap 掉、held 归零、计数正确"），只是不再抖。
-        reg = OwnershipRegistry(default_ttl=0.05)
+        # ★2026-10-20（第三次修，根治）：也改成注入假时钟 —— 不再"睡 1 秒"。
+        #   前两次修法（放大余量）没治好，因为在 WSL 里 `time.time()` 会跳变。
+        clk = _FakeClock()
+        reg = OwnershipRegistry(default_ttl=0.05, clock=clk)
         async def main():
             await reg.acquire(task_key("t1"), "a")
             await reg.acquire(task_key("t2"), "a")
-            await asyncio.sleep(1.0)          # 20 × TTL，避开高负载下的计时抖动
+            clk.advance(1.0)
             gone = await reg.reap_expired()
             return sorted(gone), reg.snapshot()
         gone, snap = run(main())

@@ -107,8 +107,22 @@ def test_listening_ports_and_pids_see_a_real_socket_we_open():
         pids = sysprobe.listening_pids(port)
         # ⚠️Linux 非 root 只能看到**自己**进程的套接字 —— 我们是自己进程，所以这里必定看得到
         assert os.getpid() in pids, "自己进程在听这个端口，却没认出来：%r" % (pids,)
-        assert sysprobe.port_listening(port + 1) is False or port + 1 == port, \
-            "没人在听的端口不该报 True"
+        # ★2026-10-20 修（这条真被红过）：原来断言 `port_listening(port + 1) is False`，
+        #   隐含假设"相邻端口一定没人监听"。实测本机常年有 30 个常驻监听端口
+        #   （135/139/445/5040/5357/7680/18920…），`port+1` 撞上一个就**假红**。
+        #   正确做法：**先探出一个此刻确实空闲的端口**，再问它"有人在听吗"。
+        quiet_ok = False
+        for _ in range(3):
+            probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                probe.bind(("127.0.0.1", 0))
+                cand = int(probe.getsockname()[1])
+            finally:
+                probe.close()                    # 立刻关掉 ⇒ 此刻它确实没人在听
+            if sysprobe.port_listening(cand) is False:
+                quiet_ok = True
+                break
+        assert quiet_ok, "空闲端口被误报成「有人在听」"
     finally:
         srv.close()
     # 关掉之后应当不再算"在听"（允许极短的回收窗口）
