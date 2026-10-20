@@ -60,9 +60,14 @@ python tools/check_productization.py    # 平台专属命令冒充通用能力 /
 python tools/first_run_check.py --src <发布副本>   # 陌生人首次运行五步走查
 python tools/dual_platform_check.py     # ★双平台真跑（Windows + WSL Linux）——2026-10-17 起的 CI 替代判据
 python tools/pre_release_check.py       # ★发布前一条命令跑全五类判据（--fast 跳过双平台）
-python tools/core_check.py              # ★核心体检一条命令：六协议矩阵+闭环、建立会话、多轮派活、任务全链路、acp 真拉起、看门狗救活、一键更新、掉线恢复链、多成员并发派活、证据链 V55、辩论模式 V52、隔间继承 V53、通道生命周期 V28、受控重启 V58、只读日志尾 V59、任务树+资源库、巡逻员人工点派、视觉拉起、公司间合作 P1、桥产物落点（20 项，约 9 分钟）
-python tools/cross_company_check.py     # 公司间合作 P1：两个独立实例真投 / 真收 / 回查 / 鉴权 / 数据隔离（不需要 frp）
-python tools/gen_frpc.py --check        # 公司间合作 P2：生成 frpc 配置（缺项清晰报错；token 不打印明文）
+python tools/core_check.py              # ★核心体检一条命令（**24 项**，约 20 分钟）：六协议矩阵+闭环、建立会话、多轮派活、任务全链路、acp 真拉起、看门狗救活、一键更新、掉线恢复链、多成员并发派活、证据链 V55、辩论模式 V52、隔间继承 V53、通道生命周期 V28、受控重启 V58、只读日志尾 V59、任务树+资源库、巡逻员人工点派、视觉拉起、公司间合作 P1、**外部访问（只读档/令牌/cookie）**、**中转 M1/M2/M3**、桥产物落点
+python tools/cross_company_check.py     # 公司间合作 P1：两个独立实例真投 / 真收 / 回查 / 鉴权 / 数据隔离 / 产物清单（**20 格**，不需要 frp）
+python tools/external_access_check.py   # 外部访问 V65：只读档 / 三种令牌携带 / 401与403区分 / ?token= 种 cookie（九格）
+python tools/relay_check.py             # 中转 V66 M1：一 Hub + 两终端互达 / 终端零入站 / 鉴权 / 断线重连 / 队列有界（九格）
+python tools/relay_crossnet_check.py    # 中转跨网络：Non-loopback 地址 + WSL 另一网络栈；TLS 缺件**如实 SKIP**（不假绿）
+python tools/relay_dispatch_check.py    # 中转 V67 M2：派活真建间 / ack / 回执自动更新 / 失败可见 / 零对外监听（八格）
+python tools/relay_isolation_check.py   # 中转 V68 M3：私有形态不退化 / 共享形态真隔离 / 跨公司两道许可（六格）
+python tools/gen_frpc.py --check        # 公司间合作 P2（**可选**）：生成 frpc 配置（缺项清晰报错；token 不打印明文）
 python tools/visual_launch_check.py     # 视觉拉起：窗口列表不乱码 / 只读选项 / 真置顶 / 方法兜底 / 不许假成功（非 Windows 如实跳过）
 python tools/patrol_chain_check.py      # 巡逻员人工点派：拒得合理 / 三类动作 / 三态 / 平台复核 / 留痕
 python tools/tree_resources_check.py    # 任务树+资源库：真嵌套 / 双向关联 / 删登记不删文件 / 落盘留痕
@@ -99,6 +104,33 @@ python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 
 > 做完跑 `check_portability` → `check_productization` → `pytest`；涉及用户入口的改动再跑
 > `first_run_check`。**验收＝换目录 + 换端口 + 换数据目录、不改一行代码能走通。**
+
+## 当前架构方向（2026-10-20 老板拍板，**压过一切细节**）
+
+> 老板原话：「**隧道镜像没啥用**，最好还是像大厂做 APP 一样**每个终端都有平台，需要远程内容通过服务器**」，
+> 紧接着又补两条：「**不能只是局域网**」「**没有怎么办**」（他手上没有公网服务器）。
+
+```
+终端 A（完整平台，本机直接用）──只出站──▶ 中转 Hub ◀──只出站── 终端 B（完整平台）
+```
+
+| 角色 | 干什么 | **不干什么** |
+|---|---|---|
+| **终端** | 跑完整平台（工作间/员工/任务/隔间/审计全在本地）；主动连 Hub；收件箱落本地 | **不监听公网端口、不要公网 IP、不要隧道** |
+| **Hub** | 终端登记与在线状态、按 ID 转发、**有限暂存**（条数上限 + 过期） | **不存业务数据**、不主动连终端、不代理管理面 |
+
+- 代码：`tools/relay_hub.py`（标准库零依赖，能跑在任何人的机器上）、`platform/relay_client.py`（只出站，长轮询）、
+  `platform/relay_handler.py`（收到就办：`task.assign` 建工作间、`task.result` 更新外部任务）、`routers/relay.py`；
+- 设计稿：`V66`（架构）/ `V67`（派活走中转）/ `V68`（公司隔离）/ `RUNBOOK_没有公网服务器怎么当中转.md`；
+- **两条路别混**：`/api/relay/*` = 经中转（主路径）；`/api/peers` = 点对点 a2a（双方都有可达地址时才用）；
+  外部任务表里有 **`via`** 字段（`hub`/`a2a`），界面上要显示"这条活儿怎么走的"；
+- **隧道/frp 降级为可选**：`tools/gen_frpc.py` 保留但不主推；`RUNBOOK_公司间合作_隧道怎么用.md` 头部已标方向提示；
+- **没有公网服务器的三条路**（私有组网推荐 / 暴露成 https（必须 TLS）/ 点对点），平台只认 `AC_HUB_URL` 一个地址，
+  **不绑定任何服务商**。
+
+> ⚠️ **反私人定制（老板 2026-10-20 第二次强调）**：不许为"某一台机器/某一个域名/某一家穿透服务"写特例。
+> 验收判据＝**换机器 + 换端口 + 换域名 + 换穿透方式，不改一行代码**走通；
+> 代码与设计稿里**连举例都不写**具体域名/服务商/机器路径。
 
 ## 铁律（违反即为错）
 
@@ -150,10 +182,11 @@ python tools/gen_env_docs.py --check # 环境变量文档不许漂移
 
 必须**在项目根目录**（即 `agent_community` 包的父目录）跑 `python -m agent_community.*`，否则包解析失败。
 
-`agent_community/platform/server.py` 是 **269 KB / 5498 行**（2026-10-03 实测），**仍挂着 46 个 `@app.*` 端点**（44 HTTP + 2 WS：`/api/assistant/chat`、`/api/command`、`/ws`、`/api/room/*`、`/api/wakeup/*` 等）。
+`agent_community/platform/server.py` 是 **330 KB / 6597 行 / 51 个 `@app.*` 端点**（**2026-10-20 实测**），仍是巨无霸。
+> 规模数字**以实测为准**，别照抄历史文档（旧版写"269 KB / 5498 行 / 46 端点"，早已失真）。
 > ⚠️ 本文件旧版曾写「已不含任何路由（只剩 `include_router` 与编排）」—— **实测为误**，`server.py` 自己的路由一直都在。
 > **「新端点加到 `routers/` 对应端点组」这条规矩不变**，只是别再当作"server 已经没有路由"来理解。
-> HTTP 业务端点在 `platform/routers/`：
+> HTTP 业务端点在 `platform/routers/`（**33 个文件**）：
 
 | 端点组 | 结构（V-13 拆分后，每个 ≤500 行） |
 |---|---|
