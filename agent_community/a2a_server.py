@@ -222,17 +222,79 @@ def _text_of(message: dict) -> str:
     return "\n".join(texts) or str(message)
 
 
+#: `task_id → 工作间 id` 映射（V64）。为什么需要：
+#: `tasks/get` 原来只认 `task["room_id"]`，而 a2a 建出来的是**工作间**不是讨论室 ⇒ room_id 为空
+#: ⇒ `ws_id` 退回成 `task_id` ⇒ `/api/workshop/{task_id}/outputs` 404 ⇒ **回执里永远没有产物**。
+#: 进程内映射 + 扫工作间列表兜底（进程重启后靠扫；扫不到就退化成"没有产物"，如实）。
+_TASK_TO_WS: dict[str, str] = {}
+
+
+def _remember_task_ws(task_id: str, ws_id: str) -> None:
+    if task_id and ws_id:
+        _TASK_TO_WS[str(task_id)] = str(ws_id)
+
+
+def _find_ws_by_task(task_id: str) -> str:
+    """扫工作间列表，找出包含这个 task 的工作间（兜底，只读）。"""
+    if not task_id:
+        return ""
+    try:
+        data = _get("/api/workshops")
+        items = (data.get("workshops") if isinstance(data, dict) else data) or []
+        for w in items:
+            if not isinstance(w, dict):
+                continue
+            if str(w.get("task_id") or "") == task_id or task_id in (w.get("task_ids") or []):
+                return str(w.get("workshop_id") or w.get("ws_id") or "")
+            # 有些工作间把 task 放在 members/任务树里 —— 用宽松匹配（id 出现在结构里即可）
+            if task_id and task_id in str(w.get("tasks") or ""):
+                return str(w.get("workshop_id") or w.get("ws_id") or "")
+    except Exception:                                        # noqa: BLE001
+        return ""
+    return ""
+
+
 def _task_to_a2a(ws_id: str, task: dict | None, status: str = "working") -> dict:
-    """把平台工作间/任务映射为 A2A Task 对象。"""
+    """把平台工作间/任务映射为 A2A Task 对象。
+
+    ★2026-10-20（V64）：`artifacts` 不再恒为空 —— 从平台只读端点
+    `GET /api/workshop/{ws}/outputs` 取**产物清单**映射过来。
+    为什么重要：跨公司派活时，本侧要能看到"**对方交了什么东西**"；此前回执只有状态，
+    等于交付物凭空消失（`artifacts: []`）。
+    **边界（诚实）**：只带清单（名字/大小/归属成员），**不带文件内容**——
+    文件在对端那台机器上，跨公司不做自动下载。
+    """
+    artifacts = []
+    try:
+        outs = _get("/api/workshop/%s/outputs" % urllib.parse.quote(str(ws_id)))
+        if not isinstance(outs, dict) or not outs.get("success"):
+            # ⚠️ 不许静默：列不出产物要说出来（第一版这里 except 直接吞掉，害我查了半天）
+            print("[a2a] 列产物失败 ws=%s → %s" % (ws_id, str(outs)[:160]), file=sys.stderr)
+        for f in (outs.get("files") or [])[:50] if isinstance(outs, dict) else []:
+            artifacts.append({
+                "name": "%s/%s" % (f.get("member_id") or "?", f.get("name") or "?"),
+                "parts": [],          # 不带内容（不传文件）
+                "metadata": {
+                    "bytes": f.get("bytes"),
+                    "member_id": f.get("member_id"),
+                    "role": f.get("role"),
+                    "owner": "remote",       # 归属：对端机器
+                    "note": "产物在对端那台机器上；本侧只看到清单，不自动下载",
+                },
+            })
+    except Exception as e:                                   # noqa: BLE001
+        print("[a2a] 列产物异常 ws=%s: %s: %s" % (ws_id, type(e).__name__, e), file=sys.stderr)
+        artifacts = []
     return {
         "id": ws_id,
         "status": status,  # submitted / working / completed / failed / input-required / canceled
-        "artifacts": [],
+        "artifacts": artifacts,     # V64：产物**清单**（不带内容；见上）
         "history": [],
         "metadata": {
             "task_title": (task or {}).get("title", ""),
             "task_status": (task or {}).get("status", ""),
             "ws_status": (task or {}).get("ws_status", ""),
+            "artifacts_note": "只给清单；文件在对端机器上，跨公司不自动下载",
         },
     }
 
@@ -284,6 +346,7 @@ def handle_rpc(msg: dict, host: str, port: int) -> dict:
             _a2a_relay.on_task_created(ws_id, task_id, title)
         except Exception:  # noqa: BLE001
             pass
+        _remember_task_ws(task_id, ws_id)      # V64：记住 task→工作间，回查时才能列出产物
         return _rpc_success(msg_id, _task_to_a2a(ws_id, resp, "working"))
 
     if method == "tasks/get":
@@ -292,11 +355,14 @@ def handle_rpc(msg: dict, host: str, port: int) -> dict:
             return _rpc_error(msg_id, -32602, "缺少 taskId")
         # 先按 task_id 查任务，再尝试按工作间 id 查
         task = _get(f"/api/task/{urllib.parse.quote(task_id)}")
-        ws_id = task_id
-        if isinstance(task, dict):
-            room = task.get("room_id")
-            if room:
-                ws_id = room
+        # V64：工作间 id 的解析顺序 —— ①进程内映射 ②任务的 room_id ③扫工作间列表 ④退回 task_id
+        ws_id = _TASK_TO_WS.get(task_id) or ""
+        if not ws_id and isinstance(task, dict) and task.get("room_id"):
+            ws_id = str(task.get("room_id"))
+        if not ws_id:
+            ws_id = _find_ws_by_task(task_id)
+        if not ws_id:
+            ws_id = task_id
         detail = _get(f"/api/room/by-task/{urllib.parse.quote(task_id)}")
         status = "working"
         if isinstance(task, dict) and task.get("status") in ("completed", "failed"):

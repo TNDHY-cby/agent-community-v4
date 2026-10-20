@@ -569,6 +569,34 @@ async def workshop_library_update(ws_id: str, request: Request):
             "note": _note}
 
 
+@router.get("/api/workshop/{ws_id}/outputs")
+async def workshop_outputs(ws_id: str):
+    """**只读**：各成员隔间 `output/` 里的产物清单（V64）。
+
+    为什么要有它：公司间合作时，对端的 a2a 回执要能带回"**这趟活交了什么**"
+    （`a2a_server` 会把这里的结果映射成 A2A `artifacts`）。而原来的 `integrate` 是**写操作**
+    （落清单 + 派活给整合者），不能拿来当只读查询用。
+
+    **只给清单，不给文件内容**（附 `note` 说明：文件在对端那台机器上，本侧不自动下载）。
+    """
+    from ..server import Utf8JSONResponse
+    from ..workshop import collect_member_outputs
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    col = collect_member_outputs(ws)
+    rows = []
+    for r in (col.get("members") or []):
+        for f in (r.get("files") or []):
+            rows.append({"member_id": r.get("member_id"), "role": r.get("role"),
+                         "name": f.get("name"), "bytes": f.get("bytes"),
+                         "mtime": f.get("mtime")})
+    return {"success": True, "workshop_id": ws_id, "total_files": len(rows),
+            "files": rows[:200],
+            "note": "这些是产物清单（名字/大小/归属成员）；文件内容不在这个接口里——"
+                    "跨公司时文件在对端那台机器上，本侧不自动下载"}
+
+
 @router.post("/api/workshop/{ws_id}/integrate")
 async def workshop_integrate(ws_id: str):
     """**阶段整合**（老板流程 ⑧ 后半：「阶段完成**由一个 agent 整合**」）。

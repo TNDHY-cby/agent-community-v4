@@ -317,6 +317,36 @@ def main() -> int:
              and len(t2.get("timeline") or []) >= 2,
              "status=%s ｜ 时间线 %d 条" % (t2.get("status"), len(t2.get("timeline") or [])))
 
+        # ══ V64：对端交了什么（产物清单）—— 必须放在"停掉对端"那格**之前** ══
+        # ⚠️ 必须针对**本格这条任务**对应的对端工作间造产物（第一版造在 ⑪ 那个工作间 ⇒ 查不到，白红一次）：
+        #    对端工作间的 id 就等于 a2a 的 task_id（`origin_task_id` 同值）。
+        art_ok = False
+        detail_art = "未测到"
+        try:
+            ws_b = tid3 or ""
+            st_m, _mb = req(base_b, "/api/workshop/%s/members" % ws_b,
+                            {"members": [{"role": "码农", "harness_ids": []}]})
+            st_w, wbody = req(base_b, "/api/workshop/%s" % ws_b)
+            wdir = Path(str((wbody or {}).get("workspace_dir") or ""))
+            members = (wbody or {}).get("members") or []
+            made = ""
+            if wdir.is_dir() and members:
+                m = members[0]
+                outdir = wdir / ("%s_%s" % (m.get("role"), m.get("member_id"))) / "output"
+                outdir.mkdir(parents=True, exist_ok=True)
+                (outdir / "报告.md").write_text("# 对端交付\n这是对端员工写的报告。\n", encoding="utf-8")
+                made = str(outdir.name)
+            st_o, ob = req(base_b, "/api/workshop/%s/outputs" % ws_b)
+            st_r2, rb2 = req(base_a, "/api/peer-tasks/%s/refresh" % pt_id, {})
+            arts = ((rb2 or {}).get("task") or {}).get("artifacts") or []
+            art_ok = bool(arts) and all(a.get("owner") == "remote" for a in arts)
+            detail_art = ("产物 %d 个 ｜ 对端ws=%s 加成员=%s 成员=%d 目录=%s ｜ 对端outputs=%s/%s ｜ %s" %
+                          (len(arts), ws_b or "?", st_m, len(members), made or "无",
+                           st_o, (ob or {}).get("total_files"), (arts[0].get("name") if arts else "无")))
+        except Exception as e:                               # noqa: BLE001
+            detail_art = "异常：%s: %s" % (type(e).__name__, str(e)[:80])
+        cell("⑱ 对端交了什么：回执带产物清单（只清单、标 remote、不下载）", art_ok, detail_art)
+
         st, wb = req(base_a, "/api/peer-tasks?workshop_id=ws_demo_001")
         only = (wb or {}).get("tasks") or []
         st2, wb2 = req(base_a, "/api/peer-tasks?workshop_id=ws_other")
@@ -330,7 +360,7 @@ def main() -> int:
         time.sleep(1.0)
         st, nb = req(base_a, "/api/peer-tasks/%s/refresh" % pt_id, {})
         t3 = (nb or {}).get("task") or {}
-        cell("⑱ 按工作间过滤生效；对端停掉后刷新 ⇒ unreachable（不假装在跑）",
+        cell("⑲ 按工作间过滤生效；对端停掉后刷新 ⇒ unreachable（不假装在跑）",
              len(only) == 1 and not other and t3.get("status") == "unreachable",
              "匹配 %d 条 ｜ 其它间 %d 条 ｜ 断线后状态=%s" % (len(only), len(other), t3.get("status")))
     finally:
@@ -344,7 +374,7 @@ def main() -> int:
                 except Exception:                            # noqa: BLE001
                     pass
         alive = [p.pid for p in procs if p.poll() is None]
-        print("   %-52s %-6s %s" % ("⑲ 收尾：两个实例都停掉", "OK" if not alive else "★FAIL",
+        print("   %-52s %-6s %s" % ("⑳ 收尾：两个实例都停掉", "OK" if not alive else "★FAIL",
                                     "残留 %s" % (alive or "无")))
         if alive:
             fails += 1
@@ -352,9 +382,10 @@ def main() -> int:
         shutil.rmtree(tmp, ignore_errors=True)
 
     print("-" * 96)
-    print("结论：%s" % ("**公司间合作（P1 + V62 通用框架 + V63 外部任务）全绿**（双实例 / 真投 / 真收 / 回查 / 鉴权 / "
-                      "隔离 / 登记对端 / 验证 / 派活 / 回查 / 停用 / 错令牌如实失败 / 隧道建议 / "
-                      "外部任务可见 / 回执刷新 / 断线如实标不可达 / 收尾）"
+    print("结论：%s" % ("**公司间合作（P1 + V62 通用框架 + V63 外部任务 + V64 产物清单）全绿**"
+                      "（双实例 / 真投 / 真收 / 回查 / 鉴权 / 隔离 / 登记对端 / 验证 / 派活 / 回查 / 停用 / "
+                      "错令牌如实失败 / 隧道建议 / 外部任务可见 / 回执刷新 / **对端交了什么** / "
+                      "断线如实标不可达 / 收尾）"
                       if not fails else "**有 %d 格失败**" % fails))
     return 0 if not fails else 1
 

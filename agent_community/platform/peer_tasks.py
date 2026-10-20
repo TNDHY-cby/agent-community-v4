@@ -122,6 +122,27 @@ def _map_remote_status(info: dict) -> tuple[str, str]:
     return "working", "对端报了未知状态 %r，按在做处理（不假装完成）" % raw
 
 
+def _artifacts_of(info: dict) -> list:
+    """从对端回执里抽**产物清单**（V64）：只留名字/大小/归属，**不带内容**。
+
+    诚实边界：`owner=remote` 表示"文件在对端那台机器上"，本侧**不自动下载**。
+    """
+    out = []
+    for a in ((info or {}).get("artifacts") or [])[:50]:
+        if not isinstance(a, dict):
+            continue
+        md = a.get("metadata") or {}
+        out.append({
+            "name": str(a.get("name") or "?")[:200],
+            "bytes": md.get("bytes"),
+            "member_id": md.get("member_id"),
+            "role": md.get("role"),
+            "owner": md.get("owner") or "remote",
+            "note": md.get("note") or "在对端机器上，本侧不自动下载",
+        })
+    return out
+
+
 def record_check(pt_id: str, ok: bool, info: dict = None, error: str = "") -> dict:
     """把一次回查结果写进记录（**失败就标 unreachable，不留 working**）。"""
     data = load_tasks()
@@ -131,6 +152,7 @@ def record_check(pt_id: str, ok: bool, info: dict = None, error: str = "") -> di
     at = now()
     if ok:
         st, detail = _map_remote_status(info or {})
+        rec["last_artifacts"] = _artifacts_of(info or {})
     else:
         st, detail = "unreachable", "够不着对端：%s" % (error or "未知原因")
     rec["status"] = st
@@ -148,4 +170,8 @@ def public_view(rec: dict) -> dict:
                                    "remote_task_id", "status", "created_at", "updated_at")}
     out["last_check"] = rec.get("last_check") or {}
     out["timeline"] = (rec.get("timeline") or [])[-5:]
+    # V64：对端交了什么（清单；文件在对端机器上，不自动下载）
+    out["artifacts"] = rec.get("last_artifacts") or []
+    out["artifacts_note"] = ("这些是对端产物清单（名字/大小/归属）；文件在对端那台机器上，"
+                             "本侧不自动下载") if out["artifacts"] else ""
     return out

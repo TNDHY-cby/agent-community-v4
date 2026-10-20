@@ -4,6 +4,42 @@
 
 # 4.8.26
 
+## [4.9.3] - 2026-10-20
+
+**对端交了什么：回执里带产物清单（V64）—— 跨公司派活终于能看见"对方交了哪些文件"**
+
+### 为什么
+
+V62/V63 打完，跨公司派活已经能"投出去、收状态"，但 `a2a` 回执里的 `artifacts` **恒为空**
+⇒ 对端干完了，**本侧看不到它交了什么**，等于交付物凭空消失。
+
+### 做了什么
+
+1. **平台侧新只读端点** `GET /api/workshop/{ws_id}/outputs`（复用 `collect_member_outputs`，一处真相）：
+   列出各成员隔间 `output/` 的产品清单（成员/角色/文件名/字节/时间），**只给清单、不给内容**。
+   为什么不用现成的 `/integrate`：那是**写操作**（落清单 + 派活给整合者），不能当只读查询。
+2. **a2a 回执带 artifacts**：`_task_to_a2a` 把上面的清单映射成 A2A `artifacts`，
+   每条带 `metadata{bytes, member_id, role, owner=remote, note}`，**`parts` 留空**（绝不传文件内容）。
+3. **本侧保存摘要**：`peer_tasks.record_check` 存 `last_artifacts`，详情/列表返回 `artifacts` +
+   `artifacts_note`（"文件在对端机器上，本侧不自动下载"）。
+
+### 修掉一个真 bug（一路查出来的）
+
+`tasks/get` 解析工作间 id 时**只认 `task["room_id"]`**，而 a2a 建出来的是**工作间**不是讨论室
+⇒ `room_id` 为空 ⇒ 退回 `task_id` ⇒ `/api/workshop/{task_id}/outputs` 404 ⇒ **回执永远没有产物**。
+现在按 ①进程内 `task→ws` 映射 ②`room_id` ③扫工作间列表 ④退回 `task_id` 的顺序解析。
+
+另外：`_task_to_a2a` 里我第一版写了 `except: artifacts = []` —— **静默吞异常**，
+害我多查了一轮。现在**列不出产物会打印原因**（失败要说话）。
+
+### 判据
+
+- `test_peer_artifacts.py`（3 条）：产物摘要不含内容 / 没产物时如实为空（不给说明）/ outputs 端点只读。
+- `cross_company_check.py`：**19 格 → 20 格**，新增
+  **⑱ 对端交了什么**（造真文件 → 本侧 refresh 后看到 `m0/报告.md`、`owner=remote`）；
+  两处自我纠正：**产物要造在"本格这条任务"的工作间里**（第一版造错了间，白红一次）、
+  收尾格编号从重复的 ⑲ 改成 ⑳。
+
 ## [4.9.2] - 2026-10-20
 
 **并入前端「外部公司管理 + 对外任务」界面（3 笔）；修我留的一处 markdown 文案泄漏**
