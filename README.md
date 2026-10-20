@@ -181,6 +181,9 @@ python -m agent_community.cli agents list
 | `AC_HUB_TERMINAL_ID` | 本终端在中转里的名字（自己起，如 home-desktop；**空=不启用中转**） | `（空）` | 条件必需（设了 AC_HUB_URL 时） |
 | `AC_HUB_TERMINAL_NAME` | 本终端显示名（可选，默认同 ID） | `（空）` | 否 |
 | `AC_HUB_TOKEN` | 中转共享密钥（**终端与 Hub 用同一个；绝不入库**） | `（空）` | 否 |
+| `AC_HUB_COMPANY` | 本终端所属公司（V68；空=default）。只在**共享中转**下参与隔离判断 | `（空）` | 否 |
+| `AC_HUB_SHARED` | 中转形态：=1 共享（按公司隔离）／默认私有（所有终端互通） | `0` | 否 |
+| `AC_HUB_ALLOW_CROSS` | 共享中转下是否允许跨公司（=1 允许；每条消息还要显式带 allow_cross） | `0` | 否 |
 | `AC_HUB_INBOX_MAX` | 本机收件箱最多保留几条（默认 200） | `200` | 否 |
 | `AC_HUB_PORT` | Hub 监听端口（跑中转的那台机器用） | `9400` | 否 |
 | `AC_HUB_HOST` | Hub 监听地址（跑中转的那台机器用） | `0.0.0.0` | 否 |

@@ -78,6 +78,21 @@ def hub_token() -> str:
     return (os.environ.get("AC_HUB_TOKEN") or "").strip()
 
 
+def hub_shared() -> bool:
+    """共享形态（V68）：一台 Hub 服务多家公司 ⇒ 按公司隔离。默认**私有**（所有终端互通）。"""
+    return (os.environ.get("AC_HUB_SHARED") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def allow_cross() -> bool:
+    """共享形态下是否**允许**跨公司（默认不允许；允许时每条消息还要显式带 `allow_cross`）。"""
+    return (os.environ.get("AC_HUB_ALLOW_CROSS") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def company_of(tid: str) -> str:
+    rec = TERMINALS.get(tid) or {}
+    return str(rec.get("company") or "default")
+
+
 def _now() -> float:
     return time.time()
 
@@ -170,18 +185,21 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/hub/health":
             return self._json(200, {"ok": True, "terminals": len(TERMINALS),
-                                    "queue_max": queue_max(), "ttl_s": ttl()})
+                                    "queue_max": queue_max(), "ttl_s": ttl(),
+                                    "shared": hub_shared(), "allow_cross": allow_cross()})
         if path == "/hub/terminals":
             if not self._auth():
                 return self._json(401, {"error": "需要 Hub 令牌"})
             with _LOCK:
                 _expire()
                 items = [{"terminal_id": tid, "name": (rec.get("name") or ""),
+                          "company": (rec.get("company") or "default"),
                           "last_seen": float(rec.get("last_seen") or 0),
                           "age_s": round(_now() - float(rec.get("last_seen") or 0), 1),
                           "queue_len": len(QUEUES.get(tid) or [])}
                          for tid, rec in sorted(TERMINALS.items())]
-                return self._json(200, {"terminals": items, "total": len(items)})
+                return self._json(200, {"terminals": items, "total": len(items),
+                                        "shared": hub_shared()})
         return self._json(404, {"error": "未知路径：%s" % path})
 
     def do_POST(self):
@@ -194,12 +212,24 @@ class Handler(BaseHTTPRequestHandler):
             tid = str(body.get("terminal_id") or "").strip()
             if not tid:
                 return self._json(400, {"error": "terminal_id 必填（自己起个名字，如 home-desktop）"})
+            company = str(body.get("company_id") or "").strip() or "default"
             with _LOCK:
-                TERMINALS[tid] = {"name": str(body.get("name") or tid)[:80], "last_seen": _now()}
+                old = TERMINALS.get(tid) or {}
+                if hub_shared() and old and str(old.get("company") or "default") != company:
+                    # 同名终端换公司 = 要么是打错了，要么想蹭别人的名字 ⇒ 拒绝并说清
+                    return self._json(409, {
+                        "error": "这个 terminal_id 已经被别的公司登记过",
+                        "terminal_id": tid,
+                        "registered_company": str(old.get("company") or "default"),
+                        "how_to_fix": "换一个 terminal_id（每个公司的终端名不要重名）",
+                    })
+                TERMINALS[tid] = {"name": str(body.get("name") or tid)[:80],
+                                  "company": company, "last_seen": _now()}
                 _LOCK.notify_all()
-            print("[hub] 登记终端 %s（%s）" % (tid, TERMINALS[tid]["name"]), flush=True)
-            return self._json(200, {"ok": True, "terminal_id": tid, "poll_max_s": poll_max(),
-                                    "queue_max": queue_max(), "ttl_s": ttl()})
+            print("[hub] 登记终端 %s（%s ｜ 公司 %s）" % (tid, TERMINALS[tid]["name"], company), flush=True)
+            return self._json(200, {"ok": True, "terminal_id": tid, "company": company,
+                                    "poll_max_s": poll_max(), "queue_max": queue_max(),
+                                    "ttl_s": ttl(), "shared": hub_shared()})
 
         if path == "/hub/heartbeat":
             tid = str(body.get("terminal_id") or "").strip()
@@ -222,6 +252,29 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": "to 必填（对方 terminal_id）"})
             if not frm:
                 return self._json(400, {"error": "from 必填（你是谁）"})
+            # ── V68 公司隔离（只在**共享形态**下生效；私有形态保持 M1/M2 的老行为）──
+            if hub_shared():
+                with _LOCK:
+                    known = (frm in TERMINALS) and (to in TERMINALS)
+                if not known:
+                    missing = frm if frm not in TERMINALS else to
+                    return self._json(403, {
+                        "error": "有一方还没在中转上登记（不许给看不见的终端发）",
+                        "missing": missing,
+                        "how_to_fix": "让对方先启动平台（它会自动登记）；或者你打错了 terminal_id",
+                    })
+                c_from, c_to = company_of(frm), company_of(to)
+                if c_from != c_to:
+                    if not (allow_cross() and bool(body.get("allow_cross"))):
+                        return self._json(403, {
+                            "error": "跨公司发送被拒绝",
+                            "from_company": c_from, "to_company": c_to,
+                            "allow_cross_enabled": allow_cross(),
+                            "how_to_fix": ("这是共享中转，默认只允许公司内部发送。"
+                                           "若要跨公司合作：中转侧设 AC_HUB_ALLOW_CROSS=1，"
+                                           "且每条消息显式带 allow_cross=true"),
+                        })
+                    print("[hub] 跨公司放行：%s(%s) → %s(%s)" % (frm, c_from, to, c_to), flush=True)
             kind = str(body.get("kind") or "text")[:40]
             info = put_message(to, frm, kind, body.get("payload"))
             print("[hub] %s → %s（%s，seq=%s，对方在线=%s）" %

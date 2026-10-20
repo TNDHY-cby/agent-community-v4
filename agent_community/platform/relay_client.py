@@ -57,6 +57,11 @@ def hub_token() -> str:
     return _env("AC_HUB_TOKEN")
 
 
+def company_id() -> str:
+    """本终端所属公司（V68；空 ⇒ `default`）。只在**共享中转**下参与隔离判断。"""
+    return _env("AC_HUB_COMPANY", "default")
+
+
 def is_configured() -> bool:
     return bool(hub_url() and terminal_id())
 
@@ -149,6 +154,7 @@ def _post(path: str, body: dict, timeout: float = 30.0) -> tuple[int, dict]:
 def register() -> tuple[int, dict]:
     """登记到 Hub（**每次重连都调**；Hub 重启后靠这个自动回来）。"""
     st, body = _post("/hub/register", {"terminal_id": terminal_id(),
+                                      "company_id": company_id(),
                                       "name": _env("AC_HUB_TERMINAL_NAME", terminal_id())})
     with _LOCK:
         STATE["configured"] = is_configured()
@@ -164,10 +170,15 @@ def register() -> tuple[int, dict]:
     return st, body
 
 
-def send(to_terminal: str, payload, kind: str = "text") -> tuple[int, dict]:
-    """把一条内容发给另一个终端（经 Hub）。"""
+def send(to_terminal: str, payload, kind: str = "text",
+         allow_cross: bool = False) -> tuple[int, dict]:
+    """把一条内容发给另一个终端（经 Hub）。
+
+    `allow_cross`（V68）：共享中转下**跨公司**要显式带这个标记（默认不带 ⇒ 被拒）。
+    """
     st, body = _post("/hub/send", {"from": terminal_id(), "to": to_terminal,
-                                   "kind": kind, "payload": payload})
+                                   "kind": kind, "payload": payload,
+                                   "allow_cross": bool(allow_cross)})
     if st == 200:
         with _LOCK:
             STATE["sent"] = int(STATE.get("sent") or 0) + 1
