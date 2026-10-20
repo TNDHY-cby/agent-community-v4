@@ -154,6 +154,13 @@ async def _app_lifespan(_app):
             print("[startup] 对外任务回执自动收回已启用：%s" % _peer_poll_status(), flush=True)
     except Exception as _pe:
         print(f"[startup] 对外任务轮询启动失败（不影响主流程）: {_pe}", flush=True)
+    # V66：中转客户端（**默认不配就不启动**：本机一切照常，只是跨端不可用）
+    try:
+        from .relay_client import start as _relay_start, status as _relay_status
+        if _relay_start():
+            print("[startup] 中转客户端已启动：%s" % _relay_status().get("note"), flush=True)
+    except Exception as _re:
+        print(f"[startup] 中转客户端启动失败（不影响主流程）: {_re}", flush=True)
     yield
     task.cancel()
     task2.cancel()
@@ -162,6 +169,11 @@ async def _app_lifespan(_app):
     try:
         from .peer_poll import stop as _peer_poll_stop
         _peer_poll_stop()
+    except Exception:                                        # noqa: BLE001
+        pass
+    try:
+        from .relay_client import stop as _relay_stop
+        _relay_stop()
     except Exception:                                        # noqa: BLE001
         pass
     try:
@@ -230,6 +242,8 @@ from .routers.logs import router as _logs_router
 app.include_router(_logs_router)  # V59 只读日志尾：GET /api/logs/tail（白名单 + 上限 + 去敏 + 只本机；界面"最近发生了什么"用）
 from .routers.peer_companies import router as _peers_router
 app.include_router(_peers_router)  # V62 对端公司（我去连谁）：/api/peers 登记/验证/派活/回查/停用；隧道只体现为一个 http 地址
+from .routers.relay import router as _relay_router
+app.include_router(_relay_router)  # V66 中转（本地优先）：/api/relay/status|send|inbox —— 终端只出站连 Hub
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1", "http://localhost"],

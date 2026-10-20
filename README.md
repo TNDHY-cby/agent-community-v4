@@ -177,6 +177,14 @@ python -m agent_community.cli agents list
 | `AC_PEER_POLL_ENABLED` | 对外任务回执自动收回开关（**默认关**；=1 才开） | `0` | 否 |
 | `AC_PEER_POLL_INTERVAL` | 自动收回间隔（秒，最小 10） | `60` | 否 |
 | `AC_PEER_POLL_MAX` | 每轮最多查几条回执（1~20） | `3` | 否 |
+| `AC_HUB_URL` | 中转服务器地址（**终端只出站连它**；空=不启用中转，本机功能照常） | `（空）` | 条件必需（要跨终端/跨公司协作时） |
+| `AC_HUB_TERMINAL_ID` | 本终端在中转里的名字（自己起，如 home-desktop；**空=不启用中转**） | `（空）` | 条件必需（设了 AC_HUB_URL 时） |
+| `AC_HUB_TERMINAL_NAME` | 本终端显示名（可选，默认同 ID） | `（空）` | 否 |
+| `AC_HUB_TOKEN` | 中转共享密钥（**终端与 Hub 用同一个；绝不入库**） | `（空）` | 否 |
+| `AC_HUB_INBOX_MAX` | 本机收件箱最多保留几条（默认 200） | `200` | 否 |
+| `AC_HUB_PORT` | Hub 监听端口（跑中转的那台机器用） | `9400` | 否 |
+| `AC_HUB_HOST` | Hub 监听地址（跑中转的那台机器用） | `0.0.0.0` | 否 |
+| `AC_HUB_QUEUE_MAX` | Hub 每个终端队列上限（超了按最旧丢） | `200` | 否 |
 | `AC_ACP_CWD` | ACP 命令的工作目录 | `（空）` | 否 |
 | `AC_ACP_REPO` | ACP 仓库根（部分 harness 需要） | `（空）` | 否 |
 | **— 开发/测试内部 —** | | | |
