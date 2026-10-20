@@ -263,3 +263,27 @@ body.app-bg-dock .card:after{content:"";position:absolute;bottom:7px;left:7px;wi
 @media (prefers-reduced-motion:reduce){
   .dock-tile,.dock-tile .tile-ico,body.app-bg-dock .btn{transition:none!important}
 }
+
+/* ── 外部公司（V62/V63，2026-10-20）── */
+.peers-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:900px){.peers-grid{grid-template-columns:1fr}}
+.peers-list{display:flex;flex-direction:column;gap:8px;font-size:12px}
+.peer-row{border:1px solid var(--dk-line);background:var(--dk-panel,#161513);padding:8px 10px}
+.peer-row .pr-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.peer-row .pr-name{font-weight:800;color:var(--dk-ink)}
+.peer-row .pr-sub{font-size:11px;color:var(--dk-dim);word-break:break-all;margin-top:3px}
+.peer-row .pr-acts{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.peer-row .pr-acts .btn{font-size:11px;padding:2px 9px}
+.dotv{display:inline-block;width:8px;height:8px;border-radius:0;vertical-align:middle}
+.dotv.ok{background:var(--dk-glow,#FF3527);box-shadow:0 0 6px rgba(255,53,39,.6)}
+.dotv.bad{background:#FF0000}
+.dotv.unknown{background:var(--dk-dim2,#6E6960)}
+.dotv.dis{background:transparent;border:1px dashed var(--dk-dim2,#6E6960)}
+.pt-row{border:1px solid var(--dk-line);padding:6px 9px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pt-status{font-size:11px;font-weight:800;padding:1px 8px;border:1px solid var(--dk-line-hi)}
+.pt-status.sent{color:var(--dk-dim)}
+.pt-status.working{color:#FFB000}
+.pt-status.done{color:#8FB39B}
+.pt-status.failed,.pt-status.unreachable{color:#FF0000}
+.dock-form label{display:block;color:var(--dk-dim);font-size:11px;margin-top:4px}
+.dock-form label input{width:100%;margin-top:2px}

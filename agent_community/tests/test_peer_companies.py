@@ -77,7 +77,26 @@ def test_tunnel_advice_is_generic(monkeypatch):
     assert out["local_port"] == 9104
 
 
-def test_inbound_ready_is_fail_closed():
+def test_tunnel_advice_is_plain_text_for_ui(monkeypatch):
+    """★`suggest` / `why` / `must_not_expose` / `problems` 都是**直接显示在界面上**的：
+    不许带 markdown 记号（`**` 与反引号会原样露出）。
+
+    这条是前端 2026-10-20 报的（215）：`/api/peers/tunnel-advice` 的文案里还带 `**` 和反引号，
+    我 203 只改了 `/api/status` 的 detail，**同一个毛病漏了这一处**。现在两处都有守卫。
+    """
+    monkeypatch.setenv("AC_HOST", "0.0.0.0")
+    from agent_community.platform import tunnel
+    out = tunnel.advise(local_port=9104, peer_url="http://peer.example.com:9104")
+    blob = " ".join([str(out.get("why") or "")] + [str(x) for x in out.get("suggest") or []]
+                    + [str(x) for x in out.get("must_not_expose") or []])
+    assert "**" not in blob, "advise 文案里出现了 markdown 强调记号：%r" % blob[:120]
+    assert "`" not in blob, "advise 文案里出现了反引号（界面会原样显示）：%r" % blob[:120]
+
+    for ready in (False, True):
+        chk = tunnel.check_inbound_ready(token_ready=ready, exposed=True)
+        text = " ".join([str(chk.get("note") or "")] + [str(x) for x in chk.get("problems") or []])
+        assert "**" not in text and "`" not in text, "check_inbound_ready 文案带 markdown：%r" % text[:120]
+
     from agent_community.platform import tunnel
     bad = tunnel.check_inbound_ready(token_ready=False, exposed=True)
     assert bad["ok"] is False and bad["problems"], "没鉴权却允许暴露＝裸奔"

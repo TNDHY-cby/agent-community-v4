@@ -97,6 +97,11 @@
             <span class="tile-sub">说不清就直接问，平台助手用它自己的工具看现状</span>
             <span class="tile-go">去办 →</span>
           </div>
+          <div class="dock-tile" data-dock-service="peers" role="button" tabindex="0" aria-label="外部公司协作" onclick="dockGo('peers')" onkeydown="dockTileKey(event,'peers')">
+            <span class="tile-ico">⇄</span><span class="tile-name">外部公司</span>
+            <span class="tile-sub">登记对端 · 验证 · 派活给别的合作社 · 隧道建议</span>
+            <span class="tile-go">去办 →</span>
+          </div>
         </div>
       </section>
 
@@ -114,6 +119,34 @@
         <section id="dockActivateWrap"></section>
         <!-- 检查更新（只读展示 + 复制命令；执行升级永远在用户自己的终端） -->
         <section id="dockUpdateWrap"></section>
+        <!-- ★V62/V63：外部公司（对端管理 + 对外任务）。别做：无公网映射引导；对端不伪装成本地员工；前端不存令牌明文 -->
+        <section id="dockPeersWrap">
+          <div class="peers-grid">
+            <div class="card" style="min-width:0">
+              <h3>已登记的外部公司 <button class="btn mini" style="float:right" onclick="dockLoadPeers()">⟳ 刷新</button></h3>
+              <div id="peersList" class="peers-list"><p class="sub">加载中...</p></div>
+              <h3 style="margin-top:14px">对外任务 <span class="sub" id="peerPollNote"></span></h3>
+              <div id="peerTasksList" class="peers-list"><p class="sub">加载中...</p></div>
+            </div>
+            <div class="card" style="min-width:0">
+              <h3 id="peerFormTitle">登记外部公司</h3>
+              <div class="dock-form">
+                <label>名字<input id="peerName" placeholder="例如：二车间合作社"></label>
+                <label>对端地址 base_url<input id="peerUrl" placeholder="不要带路径，形如 http://对端主机:对端a2a端口"></label>
+                <label>对方令牌 token（只提交，不保存明文）<input id="peerToken" type="password" placeholder="对端签发给你的令牌；留空=不改"></label>
+                <label>备注 note<input id="peerNote" placeholder="可选"></label>
+                <input type="hidden" id="peerEditId">
+                <div class="dock-form-actions">
+                  <button class="btn mini" onclick="dockPeerSave()">保存</button>
+                  <button class="btn mini ghost" onclick="dockPeerFormReset()">清空表单</button>
+                  <span class="dock-msg" id="peerFormMsg"></span>
+                </div>
+              </div>
+              <h3 style="margin-top:14px">隧道建议 <button class="btn mini" style="float:right" onclick="dockLoadTunnelAdvice()">⟳</button></h3>
+              <div id="peerAdvice" class="peers-list"><p class="sub">加载中...</p></div>
+            </div>
+          </div>
+        </section>
         <!-- 问前台（直聊，功能不是讲解） -->
         <section id="dockAskWrap">
           <div class="card">

@@ -269,9 +269,190 @@ const DOCK_SVC = {
   archive:         { sec:'dockArchiveWrap',  title:'员工档案',       mount(){ dockLoadArchive(); } },
   ask_frontdesk:   { sec:'dockAskWrap',      title:'问前台',         mount(){} },
   update:          { sec:'dockUpdateWrap',   title:'检查更新',       mount(){ dockLoadUpdate(); } },
+  peers:           { sec:'dockPeersWrap',    title:'外部公司（登记对端 / 验证 / 派活 / 隧道）', mount(){ dockMountPeers(); } },
   ws_ops:          { sec:'dockActivateWrap', title:'工作间操作（建会话 / 送桥 / 抢救 / 通道 / 架桥）', mount(){ dockMountWsGuide(); } }
 };
 const DOCK_WS_TILES = ['session_bridge', 'onboard_recover', 'channel', 'bridge_helper'];
+
+/* ══ 外部公司（V62/V63）════════════════════════════════════════
+ * 纪律：令牌只提交不保存（input type=password，提交后清空）；token 永远只显示 token_masked；
+ * 验证结论 last_verify.ok：true 绿 / false 红 / null·缺失 黄「未验证」；
+ * 对外任务状态按后端枚举原样显示——unreachable 绝不显示成进行中/成功；
+ * 自动收回是部署侧环境变量（AC_PEER_POLL_*），界面不做开关，只按 poll-status 如实描述；
+ * 无任何「把 18920 映射到公网」的引导；不提具体穿透服务商名。 */
+const PEER_STATUS_TEXT = {
+  sent:'刚投出', working:'对端在做', done:'完成', failed:'失败', unreachable:'够不着对端'
+};
+function _peerVerifyDot(lv){
+  const ok = lv && typeof lv.ok === 'boolean' ? lv.ok : null;
+  if (ok === true) return '<span class="dotv ok" title="上次验证通过' + (lv.checked_at?(' · '+esc(String(lv.checked_at))):'') + '"></span>';
+  if (ok === false) return '<span class="dotv bad" title="上次验证失败' + (lv.detail?(' · '+esc(String(lv.detail))):'') + '"></span>';
+  return '<span class="dotv unknown" title="未验证"></span>';
+}
+function dockMountPeers(){
+  dockLoadPeers();
+  dockLoadPeerTasks();
+  dockLoadTunnelAdvice();
+}
+async function dockLoadPeers(){
+  const box = document.getElementById('peersList');
+  if (!box) return;
+  try{
+    const r = await fetch('/api/peers');
+    const d = await r.json();
+    const rows = d.peers || d.items || [];
+    if (rows.length === 0){ box.innerHTML = '<p class="sub">还没有登记外部公司。右侧表单登记一个：名字 + 对端地址（不带路径）+ 对方令牌。</p>'; return; }
+    box.innerHTML = rows.map(p => {
+      const en = p.enabled !== false;
+      return '<div class="peer-row" data-peer="' + esc(p.peer_id||'') + '">' +
+        '<div class="pr-top">' + _peerVerifyDot(p.last_verify) +
+        '<span class="pr-name">' + esc(p.display_name || p.peer_id || '') + '</span>' +
+        (en ? '' : '<span class="dotv dis" title="已停用：派活会被对端/本侧拒绝"></span><span class="sub">已停用</span>') +
+        '<span class="sub">令牌 ' + esc(p.token_masked || '（未存）') + '</span></div>' +
+        '<div class="pr-sub">' + esc(p.base_url || '') + (p.note?(' · ' + esc(p.note)):'') + '</div>' +
+        '<div class="pr-acts">' +
+        '<button class="btn mini" onclick="dockPeerVerify(\'' + esc(p.peer_id||'') + '\')">验证</button>' +
+        '<button class="btn mini" onclick="dockPeerDispatchAsk(\'' + esc(p.peer_id||'') + '\')">派活</button>' +
+        '<button class="btn mini" onclick="dockPeerToggle(\'' + esc(p.peer_id||'') + '\',' + (en?'false':'true') + ')">' + (en?'停用':'启用') + '</button>' +
+        '<button class="btn mini" onclick="dockPeerEdit(\'' + esc(p.peer_id||'') + '\')">编辑</button>' +
+        '<button class="btn mini" onclick="dockPeerDelete(\'' + esc(p.peer_id||'') + '\')">删除</button>' +
+        '</div><div class="pr-sub" data-peermsg></div></div>';
+    }).join('');
+  }catch(e){ box.innerHTML = '<p class="sub">加载失败：' + esc(e.message) + '</p>'; }
+}
+function _peerRowMsg(id, text, bad){
+  const row = document.querySelector('.peer-row[data-peer="' + id + '"] [data-peermsg]');
+  if (row){ row.textContent = text || ''; row.style.color = bad ? 'var(--red,#FF0000)' : ''; }
+}
+async function dockPeerVerify(id){
+  _peerRowMsg(id, '验证中…（读对端卡片，不花 AI 费用）');
+  const res = await dockPost('/api/peers/' + encodeURIComponent(id) + '/verify', {});
+  if (res.ok && res.data && res.data.ok){ _peerRowMsg(id, '验证通过' + (res.data.elapsed_ms?('（' + res.data.elapsed_ms + ' ms）'):'')); dockLoadPeers(); }
+  else _peerRowMsg(id, '验证未通过：' + ((res.data && (res.data.reason || res.data.error)) || ('HTTP ' + res.status)) + ((res.data && res.data.how_to_fix) ? ' · ' + res.data.how_to_fix : ''), true);
+}
+function dockPeerEdit(id){
+  /* 列表里已有打码信息；把可改字段填进表单（令牌永不回填明文） */
+  fetch('/api/peers').then(r=>r.json()).then(d=>{
+    const p = (d.peers||d.items||[]).find(x=>x.peer_id===id);
+    if(!p)return;
+    document.getElementById('peerEditId').value = id;
+    document.getElementById('peerName').value = p.display_name || '';
+    document.getElementById('peerUrl').value = p.base_url || '';
+    document.getElementById('peerToken').value = '';
+    document.getElementById('peerNote').value = p.note || '';
+    document.getElementById('peerFormTitle').textContent = '编辑外部公司（' + id + '）· 令牌留空=不改';
+  }).catch(()=>{});
+}
+function dockPeerFormReset(){
+  ['peerEditId','peerName','peerUrl','peerToken','peerNote'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});
+  document.getElementById('peerFormTitle').textContent = '登记外部公司';
+  document.getElementById('peerFormMsg').textContent = '';
+}
+async function dockPeerSave(){
+  const msg = document.getElementById('peerFormMsg');
+  const editId = document.getElementById('peerEditId').value;
+  const body = {
+    display_name: document.getElementById('peerName').value.trim(),
+    base_url: document.getElementById('peerUrl').value.trim(),
+    note: document.getElementById('peerNote').value.trim()
+  };
+  const token = document.getElementById('peerToken').value;
+  if (token) body.token = token;
+  if (editId) body.peer_id = editId;
+  msg.textContent = '保存中...';
+  const res = await dockPost('/api/peers', body);
+  document.getElementById('peerToken').value = '';   /* 明文即用即清，不留在前端 */
+  if (!res.ok || res.data.error){
+    msg.textContent = '保存未通过：' + ((res.data && (res.data.error || res.data.reason)) || ('HTTP ' + res.status)) + ((res.data && res.data.how_to_fix) ? ' · ' + res.data.how_to_fix : '');
+    msg.style.color = 'var(--red,#FF0000)';
+    return;
+  }
+  msg.style.color = '';
+  msg.textContent = '已保存' + (res.data.token_masked ? (' · 令牌 ' + res.data.token_masked) : '');
+  dockPeerFormReset(); dockLoadPeers();
+}
+async function dockPeerToggle(id, enabled){
+  const res = await dockPost('/api/peers/' + encodeURIComponent(id) + '/enabled', {enabled});
+  if (!(res.ok && !(res.data && res.data.error))) _peerRowMsg(id, '操作未成功：' + ((res.data && (res.data.error||res.data.reason)) || ('HTTP '+res.status)), true);
+  dockLoadPeers();
+}
+async function dockPeerDelete(id){
+  if (!confirm('确定删除这个外部公司登记？（只删本机登记，不动对端）')) return;
+  const path = '/api/peers/' + encodeURIComponent(id);
+  if (!dockAllowed(path)){ _peerRowMsg(id, '这个页面不允许调用 ' + path, true); return; }
+  try{
+    const r = await fetch(path, {method:'DELETE'});
+    if (!r.ok){ const d = await r.json().catch(()=>({})); _peerRowMsg(id, '删除未成功：' + (d.error || ('HTTP ' + r.status)) + (d.how_to_fix ? (' · ' + d.how_to_fix) : ''), true); return; }
+    dockLoadPeers();
+  }catch(e){ _peerRowMsg(id, '删除失败：' + e.message, true); }
+}
+async function dockPeerDispatchAsk(id){
+  const title = prompt('要派给外部公司的任务标题：');
+  if (title === null) return;
+  if (!title.trim()){ _peerRowMsg(id, '标题不能为空', true); return; }
+  _peerRowMsg(id, '派活中…');
+  const res = await dockPost('/api/peers/' + encodeURIComponent(id) + '/dispatch', {title: title.trim()});
+  if (res.ok && !(res.data && res.data.error)){
+    const pt = res.data.peer_task_id ? ('（对外任务 ' + res.data.peer_task_id + '）') : '';
+    _peerRowMsg(id, '已派给对端' + pt);
+    dockLoadPeerTasks();
+  } else {
+    _peerRowMsg(id, '派活未成功：' + ((res.data && (res.data.error || res.data.reason)) || ('HTTP ' + res.status)) + ((res.data && res.data.how_to_fix) ? ' · ' + res.data.how_to_fix : ''), true);
+  }
+}
+const PT_STATUS_TEXT = PEER_STATUS_TEXT;
+async function dockLoadPeerTasks(){
+  const box = document.getElementById('peerTasksList');
+  if (!box) return;
+  try{
+    /* 自动收回口径（V63 §6 / DSH 214）：开关是环境变量，界面不做开关按钮，只按 poll-status 如实描述 */
+    let poll = null;
+    try{ poll = (await (await fetch('/api/peer-tasks/poll-status')).json()); }catch(e){}
+    const note = document.getElementById('peerPollNote');
+    if (note){
+      if (poll && poll.enabled) note.textContent = '（自动收回开着：每 ' + (poll.interval_s||60) + ' 秒收一次，每轮最多 ' + (poll.max_per_round||3) + ' 条 · 运行中=' + (poll.running?'是':'否') + '）';
+      else note.textContent = '（自动收回未开——状态只在你点「刷新回执」时更新）';
+    }
+    const r = await fetch('/api/peer-tasks');
+    const d = await r.json();
+    const rows = d.tasks || d.items || [];
+    if (rows.length === 0){ box.innerHTML = '<p class="sub">还没有派出去的活。在对端行的「派活」按钮里填标题即可。</p>'; return; }
+    box.innerHTML = rows.map(t => {
+      const st = String(t.status||'');
+      const stText = PT_STATUS_TEXT[st] || st;   /* 枚举原样；unreachable 显示为"够不着对端"，绝不写成进行中 */
+      return '<div class="pt-row" data-pt="' + esc(t.peer_task_id||t.id||'') + '">' +
+        '<b>' + esc(t.title || '(无标题)') + '</b>' +
+        '<span class="sub">投给 ' + esc(t.peer_display_name || t.peer_id || '?') + '</span>' +
+        '<span class="pt-status ' + esc(st) + '">' + esc(stText) + '</span>' +
+        '<span class="sub">' + esc(t.dispatched_at || t.created_at || '') + (t.receipt_at || t.updated_at ? (' · 回执 ' + esc(t.receipt_at || t.updated_at)) : '') + '</span>' +
+        '<button class="btn mini" onclick="dockPtRefresh(\'' + esc(t.peer_task_id||t.id||'') + '\')">刷新回执</button>' +
+        (st==='unreachable' ? '<span class="sub" style="color:var(--red,#FF0000)">我们查不到对端（隧道断/服务停/令牌失效）</span>' : '') +
+        '</div>';
+    }).join('');
+  }catch(e){ box.innerHTML = '<p class="sub">加载失败：' + esc(e.message) + '</p>'; }
+}
+async function dockPtRefresh(ptId){
+  const res = await dockPost('/api/peer-tasks/' + encodeURIComponent(ptId) + '/refresh', {});
+  if (!(res.ok && !(res.data && res.data.error))){
+    /* 失败原因原样说话（常见：够不着对端） */
+    const row = document.querySelector('.pt-row[data-pt="' + ptId + '"]');
+    if (row){ let s = row.querySelector('span[style]'); row.insertAdjacentHTML('beforeend','<span class="sub" style="color:var(--red,#FF0000)">' + esc((res.data && (res.data.error || res.data.reason)) || ('HTTP ' + res.status)) + ((res.data && res.data.how_to_fix)?(' · '+res.data.how_to_fix):'') + '</span>'); }
+  }
+  dockLoadPeerTasks();
+}
+async function dockLoadTunnelAdvice(){
+  const box = document.getElementById('peerAdvice');
+  if (!box) return;
+  try{
+    const r = await fetch('/api/peers/tunnel-advice');
+    const d = await r.json();
+    const sug = d.suggest || [];
+    const bad = d.must_not_expose || [];
+    box.innerHTML =
+      (sug.length ? sug.map(s=>'<p class="lead">· ' + esc(typeof s==='string'?s:JSON.stringify(s)) + '</p>').join('') : '<p class="sub">（后端暂无建议）</p>') +
+      (bad.length ? '<p class="lead" style="color:var(--red,#FF0000)">绝对不能暴露：' + bad.map(b=>esc(typeof b==='string'?b:JSON.stringify(b))).join('；') + '</p>' : '');
+  }catch(e){ box.innerHTML = '<p class="sub">加载失败：' + esc(e.message) + '</p>'; }
+}
 
 function dockOpenModal(svc){
   const meta = DOCK_SVC[svc] || (DOCK_WS_TILES.indexOf(svc) >= 0 ? DOCK_SVC.ws_ops : null);
