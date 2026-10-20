@@ -162,11 +162,16 @@ class TestTtlAndReap:
         assert run(main()) is None
 
     def test_reap_expired_returns_and_clears_keys(self):
+        # ★2026-10-20 加固（整包跑时偶发红，单跑 20 次全过）：
+        #   原来是 `default_ttl=0.05` + `sleep(0.12)` —— **余量只有 70ms**。
+        #   整包跑（1800+ 用例、机器负载高）时，调度/GC 抖动会把这点余量吃掉，
+        #   于是一条**测试脆弱**被报成产品有问题。这里把余量放大到 20 倍（TTL 50ms、睡 1s），
+        #   语义完全不变（仍然验证"过期后被 reap 掉、held 归零、计数正确"），只是不再抖。
         reg = OwnershipRegistry(default_ttl=0.05)
         async def main():
             await reg.acquire(task_key("t1"), "a")
             await reg.acquire(task_key("t2"), "a")
-            await asyncio.sleep(0.12)
+            await asyncio.sleep(1.0)          # 20 × TTL，避开高负载下的计时抖动
             gone = await reg.reap_expired()
             return sorted(gone), reg.snapshot()
         gone, snap = run(main())
