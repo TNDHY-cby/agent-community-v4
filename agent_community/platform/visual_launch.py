@@ -181,6 +181,21 @@ def _clipboard(member, text: str) -> dict:
                           % (name or "你的 agent", "，再按回车发送"))}
 
 
+def _focus_flag(out: str):
+    """从脚本输出里读**置顶到底成没成**（`[focus] ... is_foreground=True/False`）。
+
+    ★2026-10-20 补：老板报"没调到最上层"时，界面只有一句「未核实」——因为平台**根本没把这件事带回来**。
+    现在 `launch()` 的结果里带 `foreground`：`True`=真到前台了 / `False`=没抢到 / `None`=脚本没报。
+    """
+    for ln in out.splitlines():
+        if ln.startswith("[focus]"):
+            if "is_foreground=True" in ln:
+                return True
+            if "is_foreground=False" in ln:
+                return False
+    return None
+
+
 def launch(member, text: str, *, method: str = "auto", session_name: str | None = None,
            verify: bool = True) -> dict:
     """**真拉起**：把 `text` 送进这个成员的会话。
@@ -247,6 +262,7 @@ def launch(member, text: str, *, method: str = "auto", session_name: str | None 
         pick = next((ln for ln in evid if ("WM_PASTE" in ln or "clipboard" in ln or "SendKeys" in ln)),
                     evid[-1] if evid else out.splitlines()[-1])
         res = {"ok": True, "method": "wmpaste", "need_human": False, "verified": None,
+               "foreground": _focus_flag(out),
                "detail": pick[:200],
                "next_step": "已送达会话（含回车）；若目标没回应，看它的日志/桥状态",
                "warnings": [ln for ln in out.splitlines() if ln.startswith("[WARN]")]}
@@ -292,6 +308,7 @@ def launch(member, text: str, *, method: str = "auto", session_name: str | None 
         return {
             "ok": True, "method": "clipboard", "fallback_from": "wmpaste",
             "need_human": False, "verified": verified2,
+            "foreground": _focus_flag(out2),
             "detail": ("wmpaste 不行（%s）⇒ 已自动改用「剪贴板 + Ctrl+V」：%s"
                        % (reason, (evid2[-1] if evid2 else out2[-160:]).strip() or "（无输出）")),
             "next_step": "已自动兜底送到会话（含回车）；若目标没回应，看它的日志/桥状态",
