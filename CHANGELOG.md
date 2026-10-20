@@ -4,6 +4,38 @@
 
 # 4.8.26
 
+## [4.8.96] - 2026-10-20
+
+**并入前端 1 笔：大厅心跳灯接上 V60 契约 + 「验证连通」按钮（写死的 Ollama agent id 清零）**
+
+### 前端做了什么（`a778d82`，只动 `index.html`）
+
+- `checkHealth()` 的数据源换成 `/api/status` 的 `ai` 段（V60），**移除写死的
+  `ollama-qwen25` / `ollama-deepseek` / `example-bridge` 三个 agent id**
+  —— 那三个 id 只有"本机 Ollama + 示例桥"那台机器才存在，AI 走云端时永远误报离线。
+- 四态：`configured=false`→「AI未配置」灰 / `reachable=null`→「AI未验证」黄 /
+  `true`→「AI在线」绿（title 带"多久前验证"）/ `false`→「AI离线」红（原因进 title）。
+  **`false` 与 `null` 都不算绿**（照 202 的映射表）。
+- 新增「验证连通」按钮 → `POST /api/ai/verify`；成功显示 `detail`（`cached=true` 时如实标"10 分钟内缓存"），
+  失败显示 `reason` + `how_to_fix`，HTTP 400（没配/本地模式）也如实显示；跑完重读 status 刷灯。
+- 前端自证：初始「AI未验证」(黄) → 点按钮 → **真实验证成功 692ms** → 「AI在线」(绿)。
+
+### 并入方式（同一套纪律）
+
+我方 `index.html` 与她基线 `cf0da78` 的 blob **完全一致**（`b33edc8…`）⇒ 直接取其最终版（`15aa41d…`），
+111424 字节、**CRLF=0**，旧文件留备份。
+
+> 她 205 里说"共 2 笔待并入（站内直跳 + 本笔）"——**站内直跳那笔 v4.8.90 已并入过**，
+> 本轮只并这 1 笔（已在通道回执里点明，免得她下次重复计算基线）。
+
+### 判据（本仓库真跑）
+
+- `check_frontend_spec.py` ⇒ **PASS 20 / FAIL 0 / 待人工 2**（exit 0）
+- `check_frontend_localization.py` ⇒ 产品侧合格（本机路径 0 处）
+- `test_frontend_handover.py` ⇒ 通过；`index.html` **CRLF=0**
+- **写死的 `ollama-qwen25` / `ollama-deepseek` / `example-bridge` 残留 = 0 处**
+- `check_portability.py` ⇒ fail=0
+
 ## [4.8.95] - 2026-10-20
 
 **核心判据再补一条：视觉拉起端到端（老板刚在这条链上踩过两个坑，之前只有 mock 单测）**

@@ -236,6 +236,9 @@ body.nav-collapsed .workshop-item .wi-ico{display:inline-block;font-size:15px;li
 /* statusbar */
 .statusbar{display:flex;align-items:center;padding:0 16px;background:var(--bg2);border-top:1px solid var(--rule);font-size:11px;color:var(--muted);gap:1rem}
 .statusbar .sb-item{display:flex;align-items:center;gap:5px}
+.statusbar .sb-verify{background:transparent;border:1px solid var(--rule);color:var(--muted);font:inherit;font-size:10.5px;padding:1px 8px;cursor:pointer;white-space:nowrap}
+.statusbar .sb-verify:hover{color:var(--accent);border-color:var(--accent)}
+.statusbar .sb-verify:disabled{opacity:.6;cursor:wait}
 .statusbar .sb-item strong{color:var(--ink);font-weight:700}
 /* bridge panel */
 .bridge-panel{display:none;position:fixed;bottom:30px;left:var(--nav-w,248px);right:280px;background:var(--bg2);border-top:2px solid var(--yellow);box-shadow:0 -6px 30px rgba(0,0,0,.5);z-index:100;animation:bsu .3s ease-out;border-radius:14px 14px 0 0;border:1px solid var(--yellow-soft);border-bottom:none;overflow:hidden}
@@ -452,7 +455,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
       </div>
     </div>
   </div>
-  <div class="statusbar"><div class="sb-item">状态: <strong id="agentStatus">检查中...</strong></div><div class="sb-item">|</div><div class="sb-item" id="lastAction">就绪</div></div>
+  <div class="statusbar"><div class="sb-item">状态: <strong id="agentStatus">检查中...</strong></div><button class="sb-verify" onclick="verifyAI(this)" title="对当前配置的平台 AI 做一次连通验证（POST /api/ai/verify）">验证连通</button><div class="sb-item">|</div><div class="sb-item" id="lastAction">就绪</div></div>
 </div>
 <div class="bridge-panel" id="bridgePanel">
   <div class="bp-header"><span class="bp-icon">🔗</span><span class="bp-title">桥接等待中</span><span class="bp-timer" id="bridgeTimer">30:00</span></div>
@@ -730,7 +733,12 @@ async function refreshBudget(){if(!currentWorkshopId){document.getElementById('b
 async function checkSession(){try{const r=await fetch('/api/session/restore');const d=await r.json();if(d.summary&&d.summary.has_previous){const s=d.summary;appendMessage({from_agent:'system',to_agent:'user',content:`上次会话: ${s.task_title} (${s.task_status}) · ${s.task_count} 个任务`,message_type:'text',timestamp:new Date().toISOString()})}}catch(e){}}
 async function saveSession(){try{await fetch('/api/session/save',{method:'POST'});document.getElementById('lastAction').textContent='会话已保存'}catch(e){}}
 async function restoreSession(){try{const r=await fetch('/api/events?limit=50');const d=await r.json();const ev=d.events||[];const s=document.getElementById('hallMessages');s.innerHTML='';if(ev.length===0){s.innerHTML='<div class="hall-empty"><img class="he-emblem" src="boot_emblem.png" alt="徽记"><div class="he-title">社区大厅</div><div class="he-sub">输入指令广播任务</div></div>';return}ev.reverse().forEach(e=>{let c=e.content||'{}';try{c=JSON.stringify(JSON.parse(c),null,2)}catch(_){}appendMessage({from_agent:e.agent_id||'system',to_agent:'console',content:`[${e.event_type}] ${c}`,message_type:'text',timestamp:e.timestamp},true)});await refreshTasks()}catch(e){}}
-async function checkHealth(){try{const r=await fetch('/api/agents?online_only=true');const d=await r.json();const on=d.agents||[];const ol=on.some(a=>a.agent_id==='ollama-qwen25'||a.agent_id==='ollama-deepseek');const tr=on.some(a=>a.agent_id==='example-bridge');const el=document.getElementById('agentStatus');if(ol&&tr){el.textContent='全部在线';el.style.color='var(--green)'}else if(ol){el.textContent='Ollama在线';el.style.color='var(--yellow)'}else{el.textContent='离线';el.style.color='var(--red)'}}catch(e){}}
+/* 心跳灯 V60（2026-10-20）：数据源=/api/status 的 ai 段（平台权威），不再写死 agent id。
+   三态如实：只有 reachable===true 才绿；null=未知不绿；false=离线红+detail 原因放 title。 */
+function fmtAge(s){if(s==null)return'';if(s<60)return'刚刚';if(s<3600)return Math.round(s/60)+' 分钟前';return Math.round(s/3600)+' 小时前'}
+async function checkHealth(){try{const r=await fetch('/api/status');const d=await r.json();const ai=(d&&d.ai)||{};const el=document.getElementById('agentStatus');if(!el)return;if(ai.configured===false){el.textContent='AI未配置';el.style.color='var(--muted)';el.title=ai.detail||'在「设置」里配置平台 AI 后可用'}else if(ai.reachable===true){el.textContent='AI在线';el.style.color='var(--green)';const ag=fmtAge(ai.age_seconds);el.title=(ai.detail||'连通正常')+(ag?('（'+ag+'验证）'):'')}else if(ai.reachable===false){el.textContent='AI离线';el.style.color='var(--red)';el.title=ai.detail||'连通失败——点右侧「验证连通」看原因'}else{el.textContent='AI未验证';el.style.color='var(--yellow)';el.title=ai.detail||'已配置但还没验证过连通——点右侧「验证连通」核实'}}catch(e){}}
+/* 验证连通：POST /api/ai/verify（无 body）；成功/失败都用返回 detail/reason+how_to_fix 说话；cached=true 如实标「刚验证过」 */
+async function verifyAI(btn){const el=document.getElementById('lastAction');const old=btn.textContent;btn.disabled=true;btn.textContent='验证中...';try{const r=await fetch('/api/ai/verify',{method:'POST'});const d=await r.json().catch(()=>({}));if(r.ok&&d.ok){el.textContent='验证连通：'+(d.detail||('成功 '+d.elapsed_ms+'ms'))+(d.cached?'（刚验证过，10分钟内缓存）':'')}else{el.textContent='验证连通未通过：'+(d.reason||d.detail||('HTTP '+r.status))+(d.how_to_fix?(' · '+d.how_to_fix):'')}}catch(e){el.textContent='验证连通失败：'+e.message}btn.disabled=false;btn.textContent=old;await checkHealth()}
 function showBridgePanel(tid,prompt){bridgeTaskId=tid;bridgeCountdown=1800;let pt=prompt;['[桥接等待]','需要你在桥接目标中处理以下任务并提交响应:\n\n'].forEach(p=>{if(pt.startsWith(p))pt=pt.slice(p.length).trim()});document.getElementById('bridgePrompt').textContent=pt;document.getElementById('bridgeResponse').value='';document.getElementById('bridgeSubmitBtn').disabled=true;document.getElementById('bridgePanel').classList.add('show');document.getElementById('bridgeResponse').focus();startBridgeTimer();document.getElementById('lastAction').textContent='桥接等待中';renderWorkshops()}
 function hideBridgePanel(){document.getElementById('bridgePanel').classList.remove('show');bridgeTaskId=null;if(bridgeTimer){clearInterval(bridgeTimer);bridgeTimer=null}renderWorkshops()}
 function startBridgeTimer(){if(bridgeTimer)clearInterval(bridgeTimer);bridgeTimer=setInterval(()=>{bridgeCountdown--;if(bridgeCountdown<=0){hideBridgePanel();return}const m=Math.floor(bridgeCountdown/60),s=bridgeCountdown%60;document.getElementById('bridgeTimer').textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`},1000)}
