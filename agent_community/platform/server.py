@@ -156,7 +156,11 @@ async def _app_lifespan(_app):
         print(f"[startup] 对外任务轮询启动失败（不影响主流程）: {_pe}", flush=True)
     # V66：中转客户端（**默认不配就不启动**：本机一切照常，只是跨端不可用）
     try:
-        from .relay_client import start as _relay_start, status as _relay_status
+        from .relay_client import (start as _relay_start, set_handler as _relay_set_handler,
+                                   status as _relay_status)
+        # V67：注册消息处理钩子 —— 收到 task.assign 就真建工作间，收到 task.result 就更新外部任务
+        from .relay_handler import handle as _relay_handle
+        _relay_set_handler(_relay_handle)
         if _relay_start():
             print("[startup] 中转客户端已启动：%s" % _relay_status().get("note"), flush=True)
     except Exception as _re:
@@ -6473,6 +6477,9 @@ if STATIC_DIR.exists():
     print(f"[static] 前端已挂载: {STATIC_DIR}", flush=True)
 else:
     print(f"[static] 警告: 前端目录不存在 {STATIC_DIR}", flush=True)
+#: 实际监听端口（V67：`__main__` 里 uvicorn 启动前赋值；中转消息处理用它做本机自调用）
+BOUND_PORT = 0
+
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="外端Agent生产合作社（External Agent Community） Platform v4")
@@ -6579,4 +6586,11 @@ if __name__ == "__main__":
     #   `.env.example` / README ⇒ **文档承诺了改不动的开关**（实测 `AC_HOST=127.0.0.1` 无效）。
     #   优先级：`--host` > `AC_HOST` > 默认 `0.0.0.0`（见 platform_address.resolve_host）。
     print(f"[listen] 绑定 {host}:{port}（改地址用 AC_HOST / --host）", flush=True)
+    # ★2026-10-20（V67）：把实际端口记下来 —— 中转消息处理要在本机**自调用**现有端点
+    #   （一处真相，不另写一套建间逻辑），它需要一个本机地址。
+    #   ⚠️ **必须走环境变量**，不能用模块全局：`python -m agent_community.platform.server`
+    #      时 `__main__` 与 `agent_community.platform.server` 是**两个模块对象**，
+    #      在 `__main__` 里赋值 `BOUND_PORT` 另一边看不见（实测踩到：一直是 0）。
+    BOUND_PORT = int(port)
+    os.environ["AC_BOUND_PORT"] = str(int(port))
     uvicorn.run(app, host=host, port=port, log_level="info")

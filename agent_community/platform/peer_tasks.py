@@ -60,10 +60,16 @@ def now() -> str:
 
 
 def create(peer_id: str, peer_name: str, title: str, remote_task_id: str,
-           workshop_id: str = "") -> dict:
-    """派活成功后立刻建记录（`status=sent`）。"""
+           workshop_id: str = "", via: str = "a2a", pt_id: str = "") -> dict:
+    """派活成功后立刻建记录（`status=sent`）。
+
+    `via`（V67）：这条活儿**怎么到的对端** —— `hub`（经中转发消息）/ `a2a`（点对点）。
+    界面要显示它，别让用户猜；同一个字段也决定了回执从哪条路回来。
+    `pt_id` 可由调用方指定（经中转派活时，我把 pt_id 一并发给对方，回执靠它精确对上）。
+    """
     data = load_tasks()
-    pt_id = "pt_" + uuid.uuid4().hex[:8]
+    pt_id = (pt_id or "").strip() or ("pt_" + uuid.uuid4().hex[:8])
+    _via = (via or "a2a").strip().lower()
     rec = {
         "pt_id": pt_id,
         "peer_id": peer_id,
@@ -71,12 +77,15 @@ def create(peer_id: str, peer_name: str, title: str, remote_task_id: str,
         "title": title[:300],
         "workshop_id": (workshop_id or "").strip(),
         "remote_task_id": remote_task_id,
+        "via": _via,
         "status": "sent",
         "created_at": now(),
         "updated_at": now(),
         "last_check": {},
         "timeline": [{"at": now(), "event": "sent",
-                      "detail": "已投给 %s（对端任务 %s）" % (peer_name or peer_id, remote_task_id or "?")}],
+                      "detail": "已投给 %s（%s ｜ 对端任务 %s）" %
+                                (peer_name or peer_id, "经中转" if _via == "hub" else "点对点",
+                                 remote_task_id or "?")}],
     }
     data["tasks"][pt_id] = rec
     save_tasks(data)
@@ -164,10 +173,29 @@ def record_check(pt_id: str, ok: bool, info: dict = None, error: str = "") -> di
     return rec
 
 
+def add_timeline(pt_id: str, event: str, detail: str) -> dict:
+    """往时间线追加一条（**不改变状态**；状态变化只能走 `record_check`）。
+
+    V67 需要它：经中转派活时，"投出去了/发送失败"是过程事件，不能据此把状态写成成功。
+    """
+    data = load_tasks()
+    rec = data["tasks"].get((pt_id or "").strip())
+    if not rec:
+        return {}
+    at = now()
+    rec.setdefault("timeline", []).append({"at": at, "event": (event or "note")[:40],
+                                           "detail": str(detail or "")[:300]})
+    rec["updated_at"] = at
+    data["tasks"][rec["pt_id"]] = rec
+    save_tasks(data)
+    return rec
+
+
 def public_view(rec: dict) -> dict:
     """给界面看的样子（不含任何凭据）。"""
     out = {k: rec.get(k) for k in ("pt_id", "peer_id", "peer_name", "title", "workshop_id",
                                    "remote_task_id", "status", "created_at", "updated_at")}
+    out["via"] = rec.get("via") or "a2a"        # V67：怎么到的对端（hub / a2a），界面要显示
     out["last_check"] = rec.get("last_check") or {}
     out["timeline"] = (rec.get("timeline") or [])[-5:]
     # V64：对端交了什么（清单；文件在对端机器上，不自动下载）

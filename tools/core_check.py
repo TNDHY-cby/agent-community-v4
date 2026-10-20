@@ -33,6 +33,7 @@ python tools/core_check.py --plan     # 只打印会跑什么
 | 18 | **外部访问通用能力**（只读档 / 三种令牌携带 / 401与403区分 / cookie） | `tools/external_access_check.py` |
 | 19 | **中转（本地优先）**（一 Hub 两终端互达 / 终端零入站 / 鉴权 / 断线重连 / 队列有界） | `tools/relay_check.py` |
 | 20 | **中转跨网络**（非回环地址 / WSL 另一网络栈 / TLS 有则测无则如实跳过） | `tools/relay_crossnet_check.py` |
+| 21 | **派活与回执走中转**（派活真建间 / ack / 回执自动更新 / 失败可见 / 零对外监听） | `tools/relay_dispatch_check.py` |
 """
 from __future__ import annotations
 
@@ -108,6 +109,7 @@ def main() -> int:
         ("外部访问（只读档/令牌/cookie）", [py, str(ROOT / "tools" / "external_access_check.py")]),
         ("中转（本地优先：两终端经服务器互达）", [py, str(ROOT / "tools" / "relay_check.py")]),
         ("中转跨网络（非回环/WSL）", [py, str(ROOT / "tools" / "relay_crossnet_check.py")]),
+        ("派活与回执走中转（M2）", [py, str(ROOT / "tools" / "relay_dispatch_check.py")]),
     ]
     if a.plan:
         print("核心体检会跑 %d 项：" % (len(items) + 1))

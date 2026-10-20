@@ -22,6 +22,17 @@ from typing import Optional
 _LOCK = threading.Lock()
 _THREAD: Optional[threading.Thread] = None
 _STOP = threading.Event()
+#: 收到消息的处理钩子（V67）：`fn(msg) -> (ok: bool, detail: str)`。
+#: **只在平台进程内注册**；在轮询线程里**串行执行**（避免并发建间打架）。
+_HANDLER = None
+#: 需要交给钩子处理的 kind（其余只落收件箱给人看）
+HANDLED_KINDS = ("task.assign", "task.result")
+
+
+def set_handler(fn) -> None:
+    """注册消息处理钩子（`None` = 只落收件箱）。"""
+    global _HANDLER
+    _HANDLER = fn
 
 #: 运行态（只读给界面看）
 STATE: dict = {
@@ -183,6 +194,17 @@ def poll_once(wait: float = 0.0) -> dict:
             STATE["last_error"] = str((body or {}).get("error") or "取消息失败（HTTP %s）" % st)
     msgs = (body or {}).get("messages") or []
     if msgs:
+        # V67：**收到就要办** —— 需要处理的类型依次交给钩子（轮询线程里串行，不会并发建间）
+        for m in msgs:
+            if not isinstance(m, dict):
+                continue
+            if _HANDLER is not None and str(m.get("kind") or "") in HANDLED_KINDS:
+                try:
+                    ok, detail = _HANDLER(m)
+                except Exception as e:                       # noqa: BLE001
+                    ok, detail = False, "%s: %s" % (type(e).__name__, str(e)[:160])
+                m["handled"] = {"ok": bool(ok), "detail": str(detail or "")[:300],
+                                "at": time.time()}
         data.setdefault("messages", []).extend(msgs)
         data["cursor"] = int((body or {}).get("cursor") or since)
         save_inbox(data)
