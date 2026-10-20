@@ -420,6 +420,17 @@ async function dockLoadPeerTasks(){
     box.innerHTML = rows.map(t => {
       const st = String(t.status||'');
       const stText = PT_STATUS_TEXT[st] || st;   /* 枚举原样；unreachable 显示为"够不着对端"，绝不写成进行中 */
+      /* V64 对端交付物：只有清单没有内容——显示名字/大小/归属 + 「在对端机器上」，不做下载/打开按钮（本侧拿不到文件，做了就是假承诺）；
+         artifacts=[] 且 note 为空时什么都不写，不暗示有交付物 */
+      let arts = '';
+      const al = Array.isArray(t.artifacts) ? t.artifacts : [];
+      if (al.length){
+        const fmt = a => esc(a.name||'?') + '（' + (a.bytes!=null ? (a.bytes>=1024 ? (a.bytes/1024).toFixed(1)+' KB' : a.bytes+' B') : '?') + '）' + (a.role?(' · '+esc(a.role)):'');
+        arts = '<div class="pt-arts"><span class="sub">对端交付：</span>' +
+          al.slice(0,3).map(fmt).join(' · ') +
+          (al.length>3 ? (' <span class="sub">还有 ' + (al.length-3) + ' 个</span>') : '') +
+          ' <span class="sub">· 在对端机器上，本侧不自动下载</span></div>';
+      }
       return '<div class="pt-row" data-pt="' + esc(t.peer_task_id||t.id||'') + '">' +
         '<b>' + esc(t.title || '(无标题)') + '</b>' +
         '<span class="sub">投给 ' + esc(t.peer_display_name || t.peer_id || '?') + '</span>' +
@@ -427,6 +438,7 @@ async function dockLoadPeerTasks(){
         '<span class="sub">' + esc(t.dispatched_at || t.created_at || '') + (t.receipt_at || t.updated_at ? (' · 回执 ' + esc(t.receipt_at || t.updated_at)) : '') + '</span>' +
         '<button class="btn mini" onclick="dockPtRefresh(\'' + esc(t.peer_task_id||t.id||'') + '\')">刷新回执</button>' +
         (st==='unreachable' ? '<span class="sub" style="color:var(--red,#FF0000)">我们查不到对端（隧道断/服务停/令牌失效）</span>' : '') +
+        arts +
         '</div>';
     }).join('');
   }catch(e){ box.innerHTML = '<p class="sub">加载失败：' + esc(e.message) + '</p>'; }
