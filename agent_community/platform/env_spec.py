@@ -143,6 +143,20 @@ SPEC: dict[str, Var] = {v.name: v for v in [
     Var("AC4_COMPANY_TOKEN", "公司级令牌", default="", kind="feature",
         required_when="设了 AC4_PEER_URL 时"),
 
+    # ── 公司间合作：frp 穿透（V61，2026-10-20；**全部可选**，不设也能跑 P1）────────
+    Var("AC_FRP_SERVER_ADDR", "frps 地址（公司 B 要被公司 A 访问时才需要）", default="",
+        kind="feature", example="frp.example.com",
+        required_when="要生成 frpc 配置把本实例映射到公网时"),
+    Var("AC_FRP_SERVER_PORT", "frps 控制端口", default="7000", kind="feature"),
+    Var("AC_FRP_TOKEN", "frps 的 token（**绝不入库**，与服务器侧同一串）", default="",
+        kind="feature", example="your-frp-token",
+        required_when="要生成 frpc 配置时"),
+    Var("AC_FRP_REMOTE_PORT", "frps 上对外开放的端口（公司 A 就访问它）", default="",
+        kind="feature", example="19030",
+        required_when="要生成 frpc 配置时"),
+    Var("AC_FRP_PROXY_NAME", "frpc 代理名（同一 frps 上区分多个实例）", default="ac-company-b",
+        kind="feature"),
+
     # ── 桥/脚本侧（由平台注入给桥；手工跑桥时才需要自己设）──────────────
     Var("AC_ACP_COMMAND", "ACP 拉起命令（桥用它拉起 agent）", default="", kind="core",
         required_when="手工跑 ACP 类桥且平台未注入时"),

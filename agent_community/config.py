@@ -1,6 +1,12 @@
 """外端Agent生产合作社（External Agent Community） 配置管理模块
 
-配置文件路径：~/.agent_community/config.json
+配置文件路径：
+  · 默认（老用户照旧）：`~/.agent_community/config.json`
+  · **显式设了 `AC_DATA_DIR`**：`<AC_DATA_DIR>/config/config.json`
+    —— 为什么（2026-10-20，V61 公司间合作/双实例）：`AC_DATA_DIR` 的语义是"这个实例的全部自有数据"，
+      而配置文件里有 **AI 接口/密钥/模式** 这类会互相影响的设置。原先它写死在用户目录 ⇒
+      **同一台机器上跑两个实例（公司 A / 公司 B）会共用同一份配置**：改 B 的模型就把 A 也改了，
+      隔离形同虚设。现在"数据目录在哪儿，配置就在哪儿"，不设 `AC_DATA_DIR`（老用户）行为完全不变。
 所有 AI Provider 配置统一从此文件读写，不再依赖命令行传参。
 """
 
@@ -13,7 +19,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
-CONFIG_DIR = Path.home() / ".agent_community"
+def _resolve_config_dir() -> Path:
+    """配置目录：显式设了 `AC_DATA_DIR` ⇒ 跟着它走（每实例一套配置）；否则用户级（老用户照旧）。"""
+    root = (os.environ.get("AC_DATA_DIR") or "").strip()
+    if root:
+        return Path(root) / "config"
+    return Path.home() / ".agent_community"
+
+
+CONFIG_DIR = _resolve_config_dir()
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULT_CONFIG: dict[str, Any] = {

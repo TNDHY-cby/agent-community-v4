@@ -60,7 +60,9 @@ python tools/check_productization.py    # 平台专属命令冒充通用能力 /
 python tools/first_run_check.py --src <发布副本>   # 陌生人首次运行五步走查
 python tools/dual_platform_check.py     # ★双平台真跑（Windows + WSL Linux）——2026-10-17 起的 CI 替代判据
 python tools/pre_release_check.py       # ★发布前一条命令跑全五类判据（--fast 跳过双平台）
-python tools/core_check.py              # ★核心体检一条命令：六协议矩阵+闭环、建立会话、多轮派活、任务全链路、acp 真拉起、看门狗救活、一键更新、掉线恢复链、多成员并发派活、证据链 V55、辩论模式 V52、隔间继承 V53、通道生命周期 V28、受控重启 V58、只读日志尾 V59、任务树+资源库、巡逻员人工点派、视觉拉起、桥产物落点（19 项，约 9 分钟）
+python tools/core_check.py              # ★核心体检一条命令：六协议矩阵+闭环、建立会话、多轮派活、任务全链路、acp 真拉起、看门狗救活、一键更新、掉线恢复链、多成员并发派活、证据链 V55、辩论模式 V52、隔间继承 V53、通道生命周期 V28、受控重启 V58、只读日志尾 V59、任务树+资源库、巡逻员人工点派、视觉拉起、公司间合作 P1、桥产物落点（20 项，约 9 分钟）
+python tools/cross_company_check.py     # 公司间合作 P1：两个独立实例真投 / 真收 / 回查 / 鉴权 / 数据隔离（不需要 frp）
+python tools/gen_frpc.py --check        # 公司间合作 P2：生成 frpc 配置（缺项清晰报错；token 不打印明文）
 python tools/visual_launch_check.py     # 视觉拉起：窗口列表不乱码 / 只读选项 / 真置顶 / 方法兜底 / 不许假成功（非 Windows 如实跳过）
 python tools/patrol_chain_check.py      # 巡逻员人工点派：拒得合理 / 三类动作 / 三态 / 平台复核 / 留痕
 python tools/tree_resources_check.py    # 任务树+资源库：真嵌套 / 双向关联 / 删登记不删文件 / 落盘留痕
