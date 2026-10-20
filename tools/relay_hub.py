@@ -238,13 +238,29 @@ def main(argv=None) -> int:
                     help="监听地址（默认 0.0.0.0；只本机测就填 127.0.0.1）")
     ap.add_argument("--port", type=int, default=_env_int("AC_HUB_PORT", 9400),
                     help="监听端口（默认取 AC_HUB_PORT 或 9400）")
+    ap.add_argument("--certfile", default=(os.environ.get("AC_HUB_TLS_CERT") or ""),
+                    help="TLS 证书（PEM）；给了就启用 HTTPS，**跨公网必须开**（否则令牌明文传输）")
+    ap.add_argument("--keyfile", default=(os.environ.get("AC_HUB_TLS_KEY") or ""),
+                    help="TLS 私钥（PEM）")
     a = ap.parse_args(argv)
     if not hub_token():
         print("[hub] ⚠ 未设 AC_HUB_TOKEN：**谁都能往队列里塞消息**，只适合本机自测。"
               "正式用请设 AC_HUB_TOKEN 并让终端带同一个值。", flush=True)
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
-    print("[hub] 监听 http://%s:%d ｜ 队列上限 %d 条 / 存活 %ds / 长轮询最长 %ds" %
-          (a.host, a.port, queue_max(), ttl(), poll_max()), flush=True)
+    scheme = "http"
+    if a.certfile and a.keyfile:
+        # ★跨公网必须 TLS：HTTP 明文传 `Authorization: Bearer` 等于把钥匙贴在网上。
+        import ssl
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(a.certfile, a.keyfile)
+        srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+        scheme = "https"
+        print("[hub] TLS 已启用（证书 %s）" % Path(a.certfile).name, flush=True)
+    elif not a.certfile:
+        print("[hub] ⚠ 当前是 **明文 HTTP**：只适合内网/本机自测。"
+              "跨公网请用 --certfile/--keyfile 开 HTTPS（或在前面放一层带证书的反向代理）。", flush=True)
+    print("[hub] 监听 %s://%s:%d ｜ 队列上限 %d 条 / 存活 %ds / 长轮询最长 %ds" %
+          (scheme, a.host, a.port, queue_max(), ttl(), poll_max()), flush=True)
     print("[hub] 终端用出站连接过来登记（Hub 不会主动连终端）", flush=True)
     try:
         srv.serve_forever()

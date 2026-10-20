@@ -86,6 +86,30 @@ def save_inbox(data: dict) -> None:
     os.replace(tmp, p)
 
 
+def _ssl_context():
+    """自签证书自测用的宽松校验（**只在本机/内网自测时开**；默认严格校验）。
+
+    `AC_HUB_INSECURE=1` ⇒ 不校验证书（**明文风险自负**，只在自签证书自测时用）。
+    `AC_HUB_CA_FILE=<pem>` ⇒ 用指定 CA 校验证书（推荐：自签也能安全）。
+    """
+    import ssl
+    url = hub_url()
+    if not url.startswith("https://"):
+        return None
+    if _env("AC_HUB_INSECURE") in ("1", "true", "yes", "on"):
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+    ca = _env("AC_HUB_CA_FILE")
+    if ca:
+        try:
+            return ssl.create_default_context(cafile=ca)
+        except Exception:                                    # noqa: BLE001
+            return ssl.create_default_context()
+    return ssl.create_default_context()
+
+
 def _post(path: str, body: dict, timeout: float = 30.0) -> tuple[int, dict]:
     """向 Hub 发一个请求（**出站**）。返回 `(状态码, JSON)`；网络错误时返回 `(0, {...})`。"""
     base = hub_url()
@@ -98,7 +122,8 @@ def _post(path: str, body: dict, timeout: float = 30.0) -> tuple[int, dict]:
         h["Authorization"] = "Bearer " + tok
     r = urllib.request.Request(base + path, data=data, method="POST", headers=h)
     try:
-        with urllib.request.urlopen(r, timeout=timeout) as resp:
+        ctx = _ssl_context()
+        with urllib.request.urlopen(r, timeout=timeout, context=ctx) as resp:
             return resp.status, json.loads(resp.read().decode("utf-8", "replace"))
     except urllib.error.HTTPError as e:
         raw = e.read().decode("utf-8", "replace")
