@@ -146,6 +146,12 @@ def main() -> int:
                  res_out.strip()[:200])
             step("③b 不许出现「空原因」的错误（`[Error: ]`）",
                  "[Error: ]" not in res_out and "[Error:]" not in res_out, res_out.strip()[:160])
+            # ★③c（V69）：失败要**说人话** —— 只给 `[Errno 11001] getaddrinfo fail`
+            #   等于没告诉陌生人"要干什么"。所以失败时必须同时出现「原因」与「怎么办」。
+            #   这一格防的是：以后有人把翻译层去掉、又退回裸技术串。
+            if "没有产生有效结果" in res_out:
+                step("③c AI 失败时说人话（有「原因：」和「怎么办：」，不只给技术串）",
+                     ("原因：" in res_out) and ("怎么办：" in res_out), res_out.strip()[:220])
 
         p = cli("stop")
         time.sleep(3)

@@ -414,11 +414,14 @@ def task_result(task_id):
                 # ★2026-10-15：`[Error: …]` 是**失败文本**，不是"结果"。
                 #   朋友第一次跑时结果正文就只有一个 `[Error: ]` —— 把它当结果打印，
                 #   用户根本不知道发生了什么。⇒ 显式按失败呈现，并把怎么改指出来。
-                click.secho("\n✗ 这次没有产生有效结果（AI 调用失败）:", fg="yellow")
-                click.echo(res)
-                click.echo("  怎么改：按上面这条错误里的提示处理（多半是还没配 AI —— "
-                           "设 AC_AI_BASE_URL / AC_AI_API_KEY / AC_AI_MODEL，"
-                           "或把 ai_mode 设为 off 明确不接 AI）。")
+                # ★2026-10-20（V69）：再进一步 —— **先给按人话翻译**，原始技术串缩到最后。
+                #   起因：陌生人第 4 步看到的是 `[Errno 11001] getaddrinfo fail`，
+                #   等于没告诉他"要干什么"（准则⑤：失败要说话，说的是人能懂的话）。
+                from .platform import ai_error_human as _h
+                click.secho("\n✗ 这次没有产生有效结果（AI 调用失败）", fg="yellow")
+                click.echo(_h.with_explanation(res, indent="  "))
+                click.echo("  换个说法：没有 AI 也能用平台（工作间/派活/留痕都照常），"
+                           "只是这类「让 AI 干活」的步骤不会有结果。")
             elif res:
                 click.secho("\n结果:", fg="cyan")
                 click.echo(res)

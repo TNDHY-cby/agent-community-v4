@@ -24,6 +24,8 @@
 """
 
 from __future__ import annotations
+
+from . import ai_error_human  # 失败要说人话（V69）
 import json
 import os
 from abc import ABC, abstractmethod
@@ -394,7 +396,7 @@ class OpenAICompatibleProvider(AIProvider):
         #   "AI 选了空名单"，只留一句"无法解析 AI 回复" —— 典型的假状态（准则⑤）。
         _err = ai_error_text(reply)
         if _err:
-            return {"selected": [], "reason": f"平台 AI 调用失败：{_err[:200]}",
+            return {"selected": [], "reason": ("平台 AI 调用失败：%s ｜ %s" % (_err[:160], ai_error_human.humanize(_err))),
                     "error_code": "ai_unavailable"}
 
         # 解析 JSON
@@ -555,7 +557,7 @@ class OllamaProvider(AIProvider):
         # ★2026-10-12：先认 AI 错误文本（否则"AI 没答"会被当成"选了空名单"）
         _err = ai_error_text(reply)
         if _err:
-            return {"selected": [], "reason": f"平台 AI 调用失败：{_err[:200]}",
+            return {"selected": [], "reason": ("平台 AI 调用失败：%s ｜ %s" % (_err[:160], ai_error_human.humanize(_err))),
                     "error_code": "ai_unavailable"}
 
         try:
@@ -665,7 +667,7 @@ class HTTPCallbackProvider(AIProvider):
             # ★2026-10-12：HTTP 200 也可能是**错误正文**（网关/回调方把错误塞进 body）⇒ 同样先判
             _err = ai_error_text(reply)
             if _err:
-                return {"selected": [], "reason": f"平台 AI 调用失败：{_err[:200]}",
+                return {"selected": [], "reason": ("平台 AI 调用失败：%s ｜ %s" % (_err[:160], ai_error_human.humanize(_err))),
                         "error_code": "ai_unavailable"}
             try:
                 start = reply.find("{")

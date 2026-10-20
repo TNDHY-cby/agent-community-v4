@@ -19,6 +19,8 @@ context_digest / created_at / created_ts / timeout_s / reply / replied_at
 
 from __future__ import annotations
 
+from . import ai_error_human  # 失败要说人话（V69）
+
 import os
 
 import asyncio
@@ -421,7 +423,7 @@ class ManualAIProvider(AIProvider):
         except Exception:  # noqa: BLE001 — 判据不可用时不阻断（退化为原行为）
             _err = ""
         if _err:
-            return rule_classify_result(f"AI 调用失败：{_err[:160]}")
+            return rule_classify_result("AI 调用失败：%s ｜ %s" % (_err[:160], ai_error_human.humanize(_err)))
         try:
             start, end = reply.find("{"), reply.rfind("}") + 1
             if start >= 0 and end > start:
