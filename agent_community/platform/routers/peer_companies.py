@@ -155,10 +155,80 @@ async def dispatch_to_peer(peer_id: str, request: Request):
         tid = str(sent.get("id") or (sent.get("task") or {}).get("id") or "")
     if tid:
         _peers.record_task(rec["peer_id"], tid, title)
+    # V63：**本侧也留一条可见记录**（外部任务）——否则投出去之后看板/任务树什么也看不到
+    pt = {}
+    if tid:
+        try:
+            from .. import peer_tasks as _pt
+            pt = _pt.create(rec["peer_id"], rec.get("display_name") or rec["peer_id"],
+                            title, tid, str((body or {}).get("workshop_id") or ""))
+        except Exception as e:                               # noqa: BLE001 — 记录失败不该让派活失败，但要说话
+            print("[peer] 外部任务记录写入失败: %s" % e, flush=True)
     _audit_log.record("peer.dispatch", actor="user", target=rec["peer_id"],
                       detail="task=%s 标题=%s" % (tid or "?", title[:60]))
-    return {"success": True, "task_id": tid, "peer": _peers.public_view(_peers.get_peer(peer_id) or {}),
+    return {"success": True, "task_id": tid,
+            "peer_task_id": (pt or {}).get("pt_id", ""),
+            "peer": _peers.public_view(_peers.get_peer(peer_id) or {}),
             "note": "已投给对端；它的员工接不接、什么时候回，看对端平台。回查用下面的端点。"}
+
+
+@router.get("/api/peer-tasks")
+async def list_peer_tasks(peer_id: str = "", workshop_id: str = "", status: str = ""):
+    """**对外任务**列表（V63）：我们派给外部公司的活，在本侧看得见。
+
+    过滤：`peer_id` / `workshop_id` / `status`（`sent|working|done|failed|unreachable`）。
+    """
+    from .. import peer_tasks as _pt
+    items = [_pt.public_view(x) for x in _pt.list_tasks(peer_id, workshop_id, status)]
+    return {"success": True, "tasks": items, "total": len(items),
+            "statuses": list(_pt.STATUSES)}
+
+
+@router.get("/api/peer-tasks/{pt_id}")
+async def get_peer_task(pt_id: str):
+    """单条详情（**只读本地记录**，不发网络请求；要刷新状态用下一个端点）。"""
+    from ..server import Utf8JSONResponse
+    from .. import peer_tasks as _pt
+    rec = _pt.get(pt_id)
+    if not rec:
+        return Utf8JSONResponse({"error": "外部任务不存在：%s" % pt_id}, status_code=404)
+    return {"success": True, "task": _pt.public_view(rec)}
+
+
+@router.post("/api/peer-tasks/{pt_id}/refresh")
+async def refresh_peer_task(pt_id: str, request: Request):
+    """**真去查对端**并更新状态（人点才查，不自动轮询——省网络也省对端）。"""
+    deny = _local_only(request)
+    if deny is not None:
+        return deny
+    from ..server import Utf8JSONResponse
+    from .. import peer_tasks as _pt
+    rec = _pt.get(pt_id)
+    if not rec:
+        return Utf8JSONResponse({"error": "外部任务不存在：%s" % pt_id}, status_code=404)
+    peer = _peers.get_peer(rec.get("peer_id") or "") or {}
+    if not peer:
+        updated = _pt.record_check(pt_id, False, error="对端公司登记已不存在（可能被删了）")
+        return {"success": True, "task": _pt.public_view(updated),
+                "note": "对端登记没了，已把状态标成 unreachable"}
+    token = _peers.peer_token(peer)
+    base = str(peer.get("base_url") or "").rstrip("/")
+    try:
+        import asyncio
+        from ...a2a_client import get_task
+        info = await asyncio.to_thread(get_task, base + "/", rec.get("remote_task_id") or "", token, 30)
+        updated = _pt.record_check(pt_id, True, info=info)
+        _audit_log.record("peer.task.refresh", actor="user", target=rec.get("peer_id") or "",
+                          detail="%s → %s" % (pt_id, updated.get("status")))
+        return {"success": True, "task": _pt.public_view(updated)}
+    except Exception as e:                                   # noqa: BLE001
+        err = "%s: %s" % (type(e).__name__, str(e)[:160])
+        updated = _pt.record_check(pt_id, False, error=err)
+        _audit_log.record("peer.task.refresh", actor="user", target=rec.get("peer_id") or "",
+                          detail="%s → unreachable（%s）" % (pt_id, err[:80]))
+        return {"success": True, "task": _pt.public_view(updated),
+                "note": "查不到对端（隧道断/服务停/令牌失效）——已如实标 unreachable，不会假装还在跑",
+                "tunnel_advice": _tunnel.advise(peer_url=base)}
 
 
 @router.get("/api/peers/{peer_id}/tasks/{task_id}")

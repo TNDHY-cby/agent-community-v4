@@ -83,3 +83,34 @@ def test_inbound_ready_is_fail_closed():
     assert bad["ok"] is False and bad["problems"], "没鉴权却允许暴露＝裸奔"
     good = tunnel.check_inbound_ready(token_ready=True, exposed=True)
     assert good["ok"] is True
+
+
+# ── V63 外部任务 ────────────────────────────────────────────────────────────
+def test_peer_task_status_is_honest(peers_env):
+    """**断线必须标 unreachable**，不许留在 working 假装还在跑。"""
+    from agent_community.platform import peer_tasks as t
+    rec = t.create("co-b", "公司 B", "统一错误提示", "remote-123", workshop_id="ws-1")
+    assert rec["status"] == "sent" and rec["timeline"], "刚投出去要有 sent + 时间线"
+    assert t.get(rec["pt_id"])["remote_task_id"] == "remote-123"
+
+    # 对端说在做 ⇒ working
+    t.record_check(rec["pt_id"], True, info={"status": "working"})
+    assert t.get(rec["pt_id"])["status"] == "working"
+
+    # 够不着对端 ⇒ unreachable（**关键：不许留在 working**）
+    t.record_check(rec["pt_id"], False, error="connection refused")
+    got = t.get(rec["pt_id"])
+    assert got["status"] == "unreachable", "断线了却还显示 %s" % got["status"]
+    assert "connection refused" in got["last_check"]["detail"]
+    assert len(got["timeline"]) >= 3, "时间线要留下每次核对"
+
+
+def test_peer_task_filters_and_public_view(peers_env):
+    from agent_community.platform import peer_tasks as t
+    a = t.create("co-b", "公司 B", "活一", "r1", workshop_id="ws-1")
+    t.create("co-c", "公司 C", "活二", "r2", workshop_id="ws-2")
+    assert [x["pt_id"] for x in t.list_tasks(peer_id="co-b")] == [a["pt_id"]]
+    assert len(t.list_tasks(workshop_id="ws-1")) == 1
+    view = t.public_view(a)
+    assert "remote_task_id" in view and "timeline" in view
+    assert "token" not in str(view).lower(), "外部任务视图不该带任何凭据字段"

@@ -291,6 +291,48 @@ def main() -> int:
              and str((adv or {}).get("reachable_from_outside")) in ("likely", "unlikely", "unknown"),
              "建议 %d 条 ｜ 禁暴露 %d 条 ｜ 判断=%s" % (len(suggest), len(must),
                                                      (adv or {}).get("reachable_from_outside")))
+
+        # ══ V63：外部任务进本侧视野 ══
+        # ⚠️ ⑬ 刚把这个对端**停用**过（那格就是要验"停用后派活被拒"）⇒ 这里派活前必须先启用回来，
+        #    否则 ⑯ 拿到的是 403、没有 peer_task_id（第一版就踩了：pt=? status=None）。
+        req(base_a, "/api/peers/%s/enabled" % peer.get("peer_id"), {"enabled": True})
+        st, pb = req(base_a, "/api/peers/%s/dispatch" % peer.get("peer_id"),
+                     {"title": title2, "workshop_id": "ws_demo_001"})
+        pt_id = str((pb or {}).get("peer_task_id") or "")
+        tid3 = str((pb or {}).get("task_id") or "")     # 本次派活的对端任务号（别拿 ⑪ 那次的比）
+        st, lb = req(base_a, "/api/peer-tasks?peer_id=%s" % peer.get("peer_id"))
+        listed_pt = (lb or {}).get("tasks") or []
+        mine = next((x for x in listed_pt if x.get("pt_id") == pt_id), {})
+        cell("⑯ 派活后本侧能看到这条外部任务（status=sent + 对端任务号）",
+             st == 200 and bool(pt_id) and mine.get("status") == "sent"
+             and bool(tid3) and mine.get("remote_task_id") == tid3,
+             "pt=%s ｜ status=%s ｜ remote=%s" % (pt_id or "?", mine.get("status"),
+                                                  mine.get("remote_task_id")))
+
+        st, rb = req(base_a, "/api/peer-tasks/%s/refresh" % pt_id, {})
+        t2 = (rb or {}).get("task") or {}
+        cell("⑰ 刷新回执 ⇒ 状态更新 + 记下核对时间 + 时间线追加",
+             st == 200 and t2.get("status") in ("sent", "working", "done", "failed")
+             and bool((t2.get("last_check") or {}).get("at"))
+             and len(t2.get("timeline") or []) >= 2,
+             "status=%s ｜ 时间线 %d 条" % (t2.get("status"), len(t2.get("timeline") or [])))
+
+        st, wb = req(base_a, "/api/peer-tasks?workshop_id=ws_demo_001")
+        only = (wb or {}).get("tasks") or []
+        st2, wb2 = req(base_a, "/api/peer-tasks?workshop_id=ws_other")
+        other = (wb2 or {}).get("tasks") or []
+        # 把对端的 a2a 停掉 ⇒ 再刷新必须如实变 unreachable（**不许留在 working 假装还在跑**）
+        try:
+            procs[1].terminate()
+            procs[1].wait(timeout=15)
+        except Exception:                                    # noqa: BLE001
+            pass
+        time.sleep(1.0)
+        st, nb = req(base_a, "/api/peer-tasks/%s/refresh" % pt_id, {})
+        t3 = (nb or {}).get("task") or {}
+        cell("⑱ 按工作间过滤生效；对端停掉后刷新 ⇒ unreachable（不假装在跑）",
+             len(only) == 1 and not other and t3.get("status") == "unreachable",
+             "匹配 %d 条 ｜ 其它间 %d 条 ｜ 断线后状态=%s" % (len(only), len(other), t3.get("status")))
     finally:
         for p in reversed(procs):
             try:
@@ -302,7 +344,7 @@ def main() -> int:
                 except Exception:                            # noqa: BLE001
                     pass
         alive = [p.pid for p in procs if p.poll() is None]
-        print("   %-52s %-6s %s" % ("⑯ 收尾：两个实例都停掉", "OK" if not alive else "★FAIL",
+        print("   %-52s %-6s %s" % ("⑲ 收尾：两个实例都停掉", "OK" if not alive else "★FAIL",
                                     "残留 %s" % (alive or "无")))
         if alive:
             fails += 1
@@ -310,8 +352,9 @@ def main() -> int:
         shutil.rmtree(tmp, ignore_errors=True)
 
     print("-" * 96)
-    print("结论：%s" % ("**公司间合作（P1 + V62 通用框架）全绿**（双实例 / 真投 / 真收 / 回查 / 鉴权 / 隔离 / "
-                      "登记对端 / 验证 / 派活 / 回查 / 停用 / 错令牌如实失败 / 隧道建议 / 收尾）"
+    print("结论：%s" % ("**公司间合作（P1 + V62 通用框架 + V63 外部任务）全绿**（双实例 / 真投 / 真收 / 回查 / 鉴权 / "
+                      "隔离 / 登记对端 / 验证 / 派活 / 回查 / 停用 / 错令牌如实失败 / 隧道建议 / "
+                      "外部任务可见 / 回执刷新 / 断线如实标不可达 / 收尾）"
                       if not fails else "**有 %d 格失败**" % fails))
     return 0 if not fails else 1
 
