@@ -207,6 +207,90 @@ def main() -> int:
                     continue
         cell("⑦ 隔离：A 的数据目录里没有 B 的工作间", not a_leak,
              "泄漏=%s" % ("是" if a_leak else "否"))
+
+        # ══ V62：走**平台业务端点**的通用框架链（登记/验证/派活/回查/停用/错令牌）══
+        port_a = free_port()
+        base_a = "http://127.0.0.1:%d" % port_a
+        env_a = _env(AC_PORT=port_a, AC_DATA_DIR=str(dir_a), PYTHONPATH=str(ROOT),
+                     PYTHONIOENCODING="utf-8", AC_PYTHON=sys.executable)
+        procs.append(subprocess.Popen([sys.executable, "-m", "agent_community.platform.server"],
+                                      cwd=str(ROOT), env=env_a,
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        up_a = False
+        for _ in range(120):
+            st, _b = req(base_a, "/api/status", timeout=3)
+            if st == 200:
+                up_a = True
+                break
+            time.sleep(0.5)
+        cell("⑧ A 实例起来（我方视角，独立数据目录）", up_a, "port=%d" % port_a)
+        if not up_a:
+            return 2
+
+        st, b = req(base_a, "/api/peers", {"display_name": "公司 B（示例）",
+                                           "base_url": a2a_url, "token": token,
+                                           "note": "同机第二个实例"}, token="")
+        peer = (b or {}).get("peer", {}) if isinstance(b, dict) else {}
+        listed = req(base_a, "/api/peers")[1]
+        items = (listed or {}).get("peers") or []
+        only_masked = all(("token_enc" not in x) and ("token" not in x) for x in items)
+        cell("⑨ 登记对端公司（列表只回打码令牌）",
+             st == 200 and peer.get("peer_id") and only_masked,
+             "peer=%s ｜ 打码=%s" % (peer.get("peer_id"), peer.get("token_masked")))
+
+        st, vb = req(base_a, "/api/peers/%s/verify" % peer.get("peer_id"), {}, token="")
+        cell("⑩ 验证对端（读 Agent Card，不烧 token）",
+             st == 200 and (vb or {}).get("ok") is True,
+             str((vb or {}).get("detail"))[:60])
+
+        title2 = "跨公司派活（平台端点）：统一错误提示口径 #%d" % (int(time.time()) % 10000)
+        st, db = req(base_a, "/api/peers/%s/dispatch" % peer.get("peer_id"), {"title": title2})
+        tid2 = str((db or {}).get("task_id") or "")
+        got_ws = ""
+        for _ in range(40):
+            st_w, wslist2 = req(base_b, "/api/workshops")
+            items2 = (wslist2 or {}).get("workshops") or []
+            for w in items2 or []:
+                if isinstance(w, dict) and title2[:10] in str(w.get("name") or ""):
+                    got_ws = str(w.get("workshop_id") or "")
+                    break
+            if got_ws:
+                break
+            time.sleep(0.5)
+        cell("⑪ 派活成功且对端真收到（对端出现工作间）",
+             st == 200 and bool(tid2) and bool(got_ws),
+             "task=%s ｜ 对端 ws=%s" % (tid2 or "?", got_ws or "未出现"))
+
+        st, tb = req(base_a, "/api/peers/%s/tasks/%s" % (peer.get("peer_id"), tid2))
+        cell("⑫ 回查对端任务状态", st == 200 and bool((tb or {}).get("task")),
+             "HTTP %s" % st)
+
+        req(base_a, "/api/peers/%s/enabled" % peer.get("peer_id"), {"enabled": False})
+        st_off, offb = req(base_a, "/api/peers/%s/dispatch" % peer.get("peer_id"),
+                           {"title": "停用后不该派出去"})
+        cell("⑬ 停用后派活被拒（如实说怎么开）",
+             st_off == 403 and bool((offb or {}).get("how_to_fix")),
+             "HTTP %s" % st_off)
+
+        st_bad_peer, bad_peer = req(base_a, "/api/peers", {
+            "display_name": "坏令牌公司", "base_url": a2a_url, "token": "your-wrong-token"})
+        bad_id = str(((bad_peer or {}).get("peer") or {}).get("peer_id") or "")
+        st_bd, bdb = req(base_a, "/api/peers/%s/dispatch" % bad_id, {"title": "应当被拒"})
+        after = req(base_a, "/api/peers")[1]
+        bad_rec = next((x for x in ((after or {}).get("peers") or [])
+                        if x.get("peer_id") == bad_id), {})
+        cell("⑭ 错令牌派活 ⇒ 如实失败，且本地索引不写成功",
+             st_bd in (401, 403, 502) and int(bad_rec.get("tasks_count") or 0) == 0,
+             "HTTP %s ｜ 索引条数=%s" % (st_bd, bad_rec.get("tasks_count")))
+
+        st, adv = req(base_a, "/api/peers/tunnel-advice")
+        suggest = (adv or {}).get("suggest") or []
+        must = (adv or {}).get("must_not_expose") or []
+        cell("⑮ 隧道建议：给三类办法 + 明确「别暴露管理端点」",
+             st == 200 and len(suggest) >= 3 and bool(must)
+             and str((adv or {}).get("reachable_from_outside")) in ("likely", "unlikely", "unknown"),
+             "建议 %d 条 ｜ 禁暴露 %d 条 ｜ 判断=%s" % (len(suggest), len(must),
+                                                     (adv or {}).get("reachable_from_outside")))
     finally:
         for p in reversed(procs):
             try:
@@ -218,7 +302,7 @@ def main() -> int:
                 except Exception:                            # noqa: BLE001
                     pass
         alive = [p.pid for p in procs if p.poll() is None]
-        print("   %-52s %-6s %s" % ("⑧ 收尾：两个实例都停掉", "OK" if not alive else "★FAIL",
+        print("   %-52s %-6s %s" % ("⑯ 收尾：两个实例都停掉", "OK" if not alive else "★FAIL",
                                     "残留 %s" % (alive or "无")))
         if alive:
             fails += 1
@@ -226,7 +310,8 @@ def main() -> int:
         shutil.rmtree(tmp, ignore_errors=True)
 
     print("-" * 96)
-    print("结论：%s" % ("**公司间合作 P1 全绿（双实例 / 真投 / 真收 / 回查 / 鉴权 / 隔离 / 收尾）**"
+    print("结论：%s" % ("**公司间合作（P1 + V62 通用框架）全绿**（双实例 / 真投 / 真收 / 回查 / 鉴权 / 隔离 / "
+                      "登记对端 / 验证 / 派活 / 回查 / 停用 / 错令牌如实失败 / 隧道建议 / 收尾）"
                       if not fails else "**有 %d 格失败**" % fails))
     return 0 if not fails else 1
 

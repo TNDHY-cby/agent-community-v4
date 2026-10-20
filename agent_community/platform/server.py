@@ -216,6 +216,8 @@ from .routers.version import router as _version_router
 app.include_router(_version_router)  # V57 一键更新契约：GET /api/version（给外部更新插件；只读、不联网、缺项如实 null）
 from .routers.logs import router as _logs_router
 app.include_router(_logs_router)  # V59 只读日志尾：GET /api/logs/tail（白名单 + 上限 + 去敏 + 只本机；界面"最近发生了什么"用）
+from .routers.peer_companies import router as _peers_router
+app.include_router(_peers_router)  # V62 对端公司（我去连谁）：/api/peers 登记/验证/派活/回查/停用；隧道只体现为一个 http 地址
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1", "http://localhost"],
