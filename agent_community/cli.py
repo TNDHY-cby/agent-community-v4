@@ -6,6 +6,7 @@
     agent-community status
     agent-community task "描述你的任务"
     agent-community task-result <task_id>
+    agent-community ai-check                    # 一键自检 AI 能不能用（真跑一次极小探针）
     agent-community harness list
     agent-community agents list
 
@@ -49,26 +50,43 @@ from .platform.env_spec import data_dir as _data_dir  # noqa: E402
 LOG_DIR = _data_dir() / "logs"
 
 
-def _get_base_url() -> str:
-    """CLI 该连哪个地址：**PID 文件里记的端口** > `AC_PORT` > 默认。
+def _probe(port: int, timeout: float = 2.0) -> bool:
+    """这个端口上有没有在跑的平台（**只探活，不改任何状态**）。"""
+    try:
+        return httpx.get(f"http://127.0.0.1:{int(port)}/api/status", timeout=timeout).status_code == 200
+    except Exception:                                        # noqa: BLE001
+        return False
 
-    ★2026-10-15 实测缺陷（顺着"没配 AI"的复现发现）：
-      这里原来直接用 `platform_address.DEFAULT_PORT`（**常量 18920**）当兜底，
-      **完全不认 `AC_PORT`** ⇒ 用户/脚本用 `AC_PORT=别的端口` 起服务、或不经 `cli start`
-      起服务（看门狗拉起、手动 `python -m ...server --port X`）时，CLI 会**连到错的端口**：
-      轻则"服务未运行"，重则**打到本机另一个实例上**（实测：提示 URL 打的是 18920，
-      而服务在 18960）。
-      ⇒ 兜底改走**端口的唯一解析点** `resolve_port()`（命令行 > AC_PORT > 默认）。
+
+def _cli_port() -> int:
+    """CLI 该用哪个端口（**一处真相**，`_get_base_url` 与 `_is_running` 都用它）。
+
+    顺序：**`AC_PORT`（用户明确指定）> 活着的 PID 记录端口 > `resolve_port()` 默认**
+
+    ★2026-10-20（V70）修过的真缺陷：原顺序是「PID 文件 > AC_PORT」，且**不校验 PID 是否过期**。
+      实测：`~/.agent_community/server.pid` 留着上次的 `{"port": 18926}`（进程早没了），
+      于是 CLI 永远探死端口 —— **不管用户怎么设 `AC_PORT`、服务明明开在默认端口，都报"服务未运行"**。
+      现在：PID 里的端口**必须探得通才采用**，否则回到端口的唯一解析点。
     """
     from .platform_address import resolve_port as _resolve_port
-    port = _resolve_port()
-    if PID_FILE.exists():
+    explicit = str(os.environ.get("AC_PORT") or "").strip()
+    if explicit:
+        return int(_resolve_port())
+    default_port = int(_resolve_port())
+    data = _read_pid()
+    if data and data.get("port"):
         try:
-            data = json.loads(PID_FILE.read_text())
-            port = int(data.get("port") or port)
-        except Exception:  # noqa: BLE001
-            pass
-    return f"http://127.0.0.1:{port}"
+            p = int(data["port"])
+        except Exception:                                    # noqa: BLE001
+            p = 0
+        if p and p != default_port and _probe(p):
+            return p
+    return default_port
+
+
+def _get_base_url() -> str:
+    """CLI 该连哪个地址（端口解析见 `_cli_port`，与 `_is_running` 同一处真相）。"""
+    return "http://127.0.0.1:%d" % _cli_port()
 
 
 def _read_pid() -> dict | None:
@@ -94,19 +112,32 @@ def _remove_pid():
 
 
 def _is_running(port: int = None) -> bool:
-    """检查服务是否在运行（端口解析与 `_get_base_url` 同口径：PID 文件 > AC_PORT > 默认）。"""
+    """检查服务是否在运行。
+
+    端口解析顺序（★2026-10-20 V70 修过一次真缺陷）：
+      **参数 > `AC_PORT`（用户明确指定）> PID 文件里记的端口 > `resolve_port()` 默认**
+
+    原来的写法是「PID 文件优先于 AC_PORT」，而且**不校验 PID 文件是否过期**，后果实测到过：
+    `~/.agent_community/server.pid` 里留着上一次的 `{"port": 18926}`，那个进程早已结束，
+    于是 CLI 永远探一个死端口 ⇒ **不管用户怎么设 AC_PORT，CLI 都说「服务未运行」**。
+    （真机表现：服务明明起着，`cli task` 报"服务未运行"。）
+
+    另外：探测失败且 PID 文件存在时**顺手清掉过期 PID 文件**（不留死状态）。
+    """
+    from .platform_address import resolve_port as _resolve_port
     if port is None:
-        data = _read_pid()
-        if data and data.get("port"):
-            port = data["port"]
-        else:
-            from .platform_address import resolve_port as _resolve_port
-            port = _resolve_port()          # ★别写死常量：用户可能用 AC_PORT 换了端口
+        port = _cli_port()
     try:
         r = httpx.get(f"http://127.0.0.1:{port}/api/status", timeout=3.0)
-        return r.status_code == 200
-    except Exception:
-        return False
+        alive = r.status_code == 200
+    except Exception:                                        # noqa: BLE001
+        alive = False
+    if not alive:
+        # 探不到 ⇒ 那个 PID 文件已经没意义了（下次启动会重写），删掉免得一直误导
+        _d = _read_pid()
+        if _d and int(_d.get("port") or 0) == int(port):
+            _remove_pid()
+    return alive
 
 
 def _table(headers: list[str], rows: list[list[str]]):
@@ -336,6 +367,73 @@ def _task_payload(description: str) -> dict:
     }
 
 
+def _ai_status_line() -> str:
+    """一行 AI 可用性（**只读缓存，不烧钱**）。取不到就如实说取不到。
+
+    为什么要这么一行：用户是在**提交任务之前**需要知道"这台机器现在能不能让 AI 干活"，
+    而不是提交完看到失败才被解释。`/api/status` 的 `ai` 字段就是照这个用途做的
+    （它只读缓存、绝不主动探活）。
+    """
+    try:
+        r = httpx.get(f"{_get_base_url()}/api/status", timeout=5.0)
+        ai = (r.json() or {}).get("ai") or {}
+    except Exception as e:                                   # noqa: BLE001
+        return "AI 状态：读不到（%s）" % type(e).__name__
+    reach = ai.get("reachable")
+    note = str(ai.get("detail") or ai.get("note") or "")
+    if reach is True:
+        return "AI 状态：可用" + ("（%s）" % note if note else "")
+    if reach is False:
+        return "AI 状态：**不可用**" + ("（%s）" % note if note else "") + \
+               " —— 提交后这类步骤不会有结果；怎么配：cli ai-check 会告诉你"
+    return "AI 状态：还没验证过（跑一次 `cli ai-check` 就知道能不能用）"
+
+
+@main.command("ai-check")
+def ai_check():
+    """**一键自检 AI 可用性**（真跑一次极小探针；10 分钟内重复跑不重复花钱）。"""
+    if not _is_running():
+        click.secho("[ERROR] 服务未运行，请先执行 python -m agent_community.cli start", fg="red")
+        sys.exit(1)
+    base = _get_base_url()
+    try:
+        r = httpx.post(f"{base}/api/ai/verify", timeout=60.0)
+    except Exception as e:                                   # noqa: BLE001
+        click.secho("[ERROR] 连不上本机平台：%s" % type(e).__name__, fg="red")
+        sys.exit(1)
+
+    if r.status_code == 200:
+        d = r.json() or {}
+        ok = bool(d.get("reachable"))
+        if ok:
+            click.secho("[OK] AI 可用" + ("（%d ms%s）" % (d.get("elapsed_ms") or 0,
+                                                          "，用了刚才的结论" if d.get("cached") else "")),
+                        fg="green")
+            click.echo("  模型：%s" % (d.get("model") or d.get("model_name") or "（未报）"))
+            click.echo("  现在可以让 AI 干活了（提交任务会有结果）。")
+            return
+        click.secho("[FAIL] AI 不可用", fg="yellow")
+        click.echo("  原因：%s" % (d.get("reason_human") or d.get("reason") or "没说原因"))
+        if d.get("how_to_fix"):
+            click.echo("  怎么办：%s" % d.get("how_to_fix"))
+        if d.get("reason") and str(d.get("reason")) != str(d.get("reason_human") or ""):
+            click.echo("  原始信息（排查用）：%s" % str(d.get("reason"))[:300])
+        click.echo("  提示：没有 AI 也能用平台（工作间/派活/留痕都照常），只是「让 AI 干活」的步骤不会有结果。")
+        sys.exit(1)
+
+    # 400 = 配置不全（后端明确说了怎么配）；别的码如实照抄
+    try:
+        d = r.json() or {}
+    except Exception:                                        # noqa: BLE001
+        d = {"error": (r.text or "")[:200]}
+    click.secho("[FAIL] 现在还验不了（HTTP %s）" % r.status_code, fg="yellow")
+    click.echo("  原因：%s" % (d.get("error") or "没说原因"))
+    if d.get("how_to_fix"):
+        click.echo("  怎么办：%s" % d.get("how_to_fix"))
+    click.echo("  提示：没有 AI 也能用平台（工作间/派活/留痕都照常），只是「让 AI 干活」的步骤不会有结果。")
+    sys.exit(1)
+
+
 @main.command()
 @click.argument("description")
 def task(description):
@@ -343,6 +441,9 @@ def task(description):
     if not _is_running():
         click.secho("[ERROR] 服务未运行，请先执行 python -m agent_community.cli start", fg="red")
         sys.exit(1)
+    # ★V70：提交之前先说清"这台机器现在能不能让 AI 干活"（只读缓存，不烧钱）。
+    #   起因：陌生人提交完才看到 `getaddrinfo fail`——那是"失败后才解释"。
+    click.echo("  " + _ai_status_line())
 
     base = _get_base_url()
     try:

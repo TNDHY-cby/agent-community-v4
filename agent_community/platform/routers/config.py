@@ -21,6 +21,7 @@ def _sv():
 
 # ── 独立模块引用（与 server.py 共享同一实例）──
 from ..ai_external import VALID_MODES as AI_MODES
+from .. import ai_error_human as _ai_human       # 失败要说人话（V70，一处真相）
 from ..ai_external import get_mode as ai_external_get_mode
 from ..ai_external import get_timeout as ai_external_get_timeout
 from ..ai_external import list_pending as ai_external_list_pending
@@ -278,10 +279,12 @@ async def api_ai_verify(request: Request):
         "reachable": reachable,
         "checked_at": _time.strftime("%Y-%m-%dT%H:%M:%S", _time.localtime(at)),
         "detail": detail,
-        "how_to_fix": ("" if reachable else
-                       "常见原因：密钥无效（401）、接口地址写错、网络不通、余额用尽；"
-                       "改完再点一次本按钮"),
-    }
+            # ★V70：**按真实原因给具体下一步**，不再罗列"常见原因"。
+            #   原来是固定一句"密钥无效/地址写错/网络不通/余额用尽"，对用户等于没指路；
+            #   现在交给一处真相的翻译层（认不出时它会如实说认不出并给出通用检查清单）。
+            "how_to_fix": ("" if reachable else _ai_human.explain(str(reason or ""))["fix"]),
+            "reason_human": ("" if reachable else _ai_human.explain(str(reason or ""))["human"]),
+        }
 
 
 @router.get("/api/config")

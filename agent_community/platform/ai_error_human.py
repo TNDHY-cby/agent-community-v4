@@ -37,11 +37,13 @@ _RULES = (
      "先看 AI 地址有没有拼错（常见：多打了路径、少了端口）；本机能上网吗？"
      "地址在哪改：对接中心 → AI 设置（或环境变量 AC_AI_BASE_URL / 配置文件里的 ai.base_url）"),
     ("conn_refused",
-     r"connection refused|errno 111|actively refused|connectex",
-     "地址能解析，但那个端口没有服务在听",
-     "多半是端口写错或模型服务没起。检查 AI 地址的端口；如果填的是本机地址，确认那个服务在跑"),
+     r"connection refused|errno 111|actively refused|connectex|connecterror|"
+     r"connection error|newconnectionerror|failed to establish",
+     "连不上模型服务（对方没有接受连接）",
+     "多半是地址/端口写错，或那个服务没起。先确认 AI 地址能打开（浏览器或 curl 试一下），"
+     "再确认为模型服务写的端口；如果填的是本机地址，看那个服务在不在跑"),
     ("timeout",
-     r"timed out|timeout|errno 60|errno 10060|read timeout|connect timeout",
+     r"timed out|timeout|errno 60|errno 10060|readtimeout|connecttimeout|pooltimeout",
      "连模型时超时了",
      "网络慢或地址不通。先确认地址能打开（浏览器/curl 试一下），再看是否需要代理"),
     ("network_other",
