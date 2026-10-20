@@ -173,6 +173,9 @@ python -m agent_community.cli agents list
 | `AC_FRP_TOKEN` | frps 的 token（**绝不入库**，与服务器侧同一串） | `（空）` | 条件必需（要生成 frpc 配置时） |
 | `AC_FRP_REMOTE_PORT` | frps 上对外开放的端口（公司 A 就访问它） | `（空）` | 条件必需（要生成 frpc 配置时） |
 | `AC_FRP_PROXY_NAME` | frpc 代理名（同一 frps 上区分多个实例） | `ac-company-b` | 否 |
+| `AC_PEER_POLL_ENABLED` | 对外任务回执自动收回开关（**默认关**；=1 才开） | `0` | 否 |
+| `AC_PEER_POLL_INTERVAL` | 自动收回间隔（秒，最小 10） | `60` | 否 |
+| `AC_PEER_POLL_MAX` | 每轮最多查几条回执（1~20） | `3` | 否 |
 | `AC_ACP_CWD` | ACP 命令的工作目录 | `（空）` | 否 |
 | `AC_ACP_REPO` | ACP 仓库根（部分 harness 需要） | `（空）` | 否 |
 | **— 开发/测试内部 —** | | | |

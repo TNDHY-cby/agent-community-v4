@@ -157,6 +157,12 @@ SPEC: dict[str, Var] = {v.name: v for v in [
     Var("AC_FRP_PROXY_NAME", "frpc 代理名（同一 frps 上区分多个实例）", default="ac-company-b",
         kind="feature"),
 
+    # ── 公司间合作：对外任务回执自动收回（V63 §6，**默认关**）──────────────────────
+    Var("AC_PEER_POLL_ENABLED", "对外任务回执自动收回开关（**默认关**；=1 才开）",
+        default="0", kind="feature", example="1"),
+    Var("AC_PEER_POLL_INTERVAL", "自动收回间隔（秒，最小 10）", default="60", kind="feature"),
+    Var("AC_PEER_POLL_MAX", "每轮最多查几条回执（1~20）", default="3", kind="feature"),
+
     # ── 桥/脚本侧（由平台注入给桥；手工跑桥时才需要自己设）──────────────
     Var("AC_ACP_COMMAND", "ACP 拉起命令（桥用它拉起 agent）", default="", kind="core",
         required_when="手工跑 ACP 类桥且平台未注入时"),

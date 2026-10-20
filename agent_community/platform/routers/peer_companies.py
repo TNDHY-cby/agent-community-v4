@@ -184,6 +184,17 @@ async def list_peer_tasks(peer_id: str = "", workshop_id: str = "", status: str 
             "statuses": list(_pt.STATUSES)}
 
 
+@router.get("/api/peer-tasks/poll-status")
+async def peer_poll_status():
+    """回执自动收回的状态（V63 §6）：是否开启、间隔、每轮几条。
+
+    **默认关**（`AC_PEER_POLL_ENABLED=0`）——自动对外发请求属于"要用户点头"的那类；
+    关闭时界面只给"手动刷新回执"，不给假承诺。
+    """
+    from .. import peer_poll as _poll
+    return {"success": True, **_poll.status()}
+
+
 @router.get("/api/peer-tasks/{pt_id}")
 async def get_peer_task(pt_id: str):
     """单条详情（**只读本地记录**，不发网络请求；要刷新状态用下一个端点）。"""

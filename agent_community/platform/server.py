@@ -147,11 +147,23 @@ async def _app_lifespan(_app):
     # 平台自治：桥进程看护循环（崩溃自动重启）+ 工作间恢复扫描（激活超时重派/漏发开工补发）
     task3 = asyncio.create_task(watch_harness_bridges())
     task4 = asyncio.create_task(_autonomy_recovery_loop())
+    # V63 §6：对外任务回执自动收回（**默认关**，AC_PEER_POLL_ENABLED=1 才开；省网络、失败如实标 unreachable）
+    try:
+        from .peer_poll import start as _peer_poll_start, status as _peer_poll_status
+        if _peer_poll_start():
+            print("[startup] 对外任务回执自动收回已启用：%s" % _peer_poll_status(), flush=True)
+    except Exception as _pe:
+        print(f"[startup] 对外任务轮询启动失败（不影响主流程）: {_pe}", flush=True)
     yield
     task.cancel()
     task2.cancel()
     task3.cancel()
     task4.cancel()
+    try:
+        from .peer_poll import stop as _peer_poll_stop
+        _peer_poll_stop()
+    except Exception:                                        # noqa: BLE001
+        pass
     try:
         stop_harness_bridges()
     except Exception as _be:
