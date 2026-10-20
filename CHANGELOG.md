@@ -4,6 +4,54 @@
 
 # 4.8.26
 
+## [4.10.0] - 2026-10-20
+
+**外部访问的通用能力（V65）：只读档 + 令牌种 cookie —— 按「禁止私人定制」重做这个问题**
+
+### 起因与**问题重定义**（这条最重要）
+
+老板把平台经免费 HTTP 隧道开到公网，外网 403。**技术定位本身没错**（进程没加载令牌），
+但如果我照着"修那条隧道"去做，就会写死域名/服务商/机器路径 —— **私人定制**。
+
+所以我把问题重定义为**平台缺三件通用能力**，验收＝换机器 / 换端口 / 换域名 / 换穿透方式
+**不改一行代码**走通：
+
+| 缺的 | 补的（通用） |
+|---|---|
+| 对外只有"全开"或"全关" | **只读外部档** `AC_EXTERNAL_READONLY=1`：非本地只放查看类 GET，写操作 403 并说清 |
+| 页面能开但 `/api/*` 全 401（浏览器不带令牌） | **`?token=` 种同源 HttpOnly cookie**；之后浏览器自动带 |
+| 401 与 403 语义混（"配了但传错"也像"没配"） | 保持并**判据钉死**：403=没配令牌 / 401=配了但不对 |
+
+### 实现要点
+
+- **只读白名单用列举**（`EXTERNAL_READONLY_EXACT` / `_PREFIX` / `_PAGES`）：新增端点**默认不对外**（fail-closed）；
+- **明确永不对公网**：`/api/config`、`/api/admin/*`、`/api/logs/*`、`/api/plugins`、`/api/policy`，
+  即使令牌正确、即使 GET，也只读档下**一律 403**；
+- cookie：`HttpOnly` + `SameSite=Lax` + `path=/` + 7 天；**https 时自动加 `Secure`**；
+  **只对校验通过的令牌种**；新增 `POST /api/auth/logout` 清 cookie（不吊销令牌）；
+- 令牌携带方式现在是 **`Authorization` / `X-API-Key` / `?token=` / cookie** 四种，`_auth_check` 一处判。
+
+### 判据（`tools/external_access_check.py`，九格真起实例）
+
+① 没配令牌+外部 ⇒ 403 ② 三种携带方式 ⇒ 200 ③ 令牌错 ⇒ **401** ④ 本机一切照旧
+⑤ 只读档 + 外部写 ⇒ 403 带 `how_to_fix` ⑥ 只读档 + 白名单内 GET ⇒ 200
+⑦ 只读档 + **白名单外** GET（`/api/config`）⇒ 403（**令牌不能绕过档位**）⑦b 只读档不影响本机
+⑧ `?token=` 正确才种 cookie。
+
+已接进核心体检：**19 项 → 20 项**。
+
+### 顺带修的两处
+
+1. 索引漂移（新增 V65 未入索引）—— 已重新生成；
+2. `_extract_token` 里我直接用了 `request.cookies`，而 `test_plugins` 用的是**轻量替身 `FakeRequest`**
+   （没有 `.cookies`）⇒ `AttributeError`。改成 `getattr` 防御（真实请求不受影响）。
+
+### 通用性自查（写在判据里的纪律）
+
+`agent_community/platform/server.py` 与 `tools/external_access_check.py` 里 **grep 不到任何**域名 /
+服务商 / 隧道名 / 机器路径（`owo.lat` / `chmlfrp` / `frp-agent` / `MCServer` / `agentcomm` 全部零命中）；
+`check_portability.py` fail=0、`check_productization.py` OK。
+
 ## [4.9.4] - 2026-10-20
 
 **并入前端 1 笔：对外任务行显示"对端交付物"（V64 的界面那一半）**

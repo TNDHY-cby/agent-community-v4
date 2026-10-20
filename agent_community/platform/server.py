@@ -287,7 +287,16 @@ def _extract_token(request: Request) -> str:
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         return auth[7:]
-    return request.headers.get("X-API-Key", "") or request.query_params.get("token", "")
+    # ⚠️ 不假设 request 一定有 `.cookies`：测试里的轻量替身（FakeRequest）就没有
+    #    （实测：test_plugins 用过假 request ⇒ AttributeError）。真实 Starlette 请求有。
+    _cookies = getattr(request, "cookies", None) or {}
+    try:
+        cookie_tok = _cookies.get(EXT_TOKEN_COOKIE, "")
+    except Exception:                                        # noqa: BLE001
+        cookie_tok = ""
+    return (request.headers.get("X-API-Key", "")
+            or request.query_params.get("token", "")
+            or cookie_tok)                                   # V65：外部访问时的同源 cookie
 def _extract_ws_token(ws: WebSocket) -> str:
     auth = ws.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
@@ -303,13 +312,78 @@ def _ws_auth_ok(ws: WebSocket) -> bool:
     if not ALLOWED_TOKENS:
         return False
     return _extract_ws_token(ws) in ALLOWED_TOKENS
+
+
+# ══════════════════════════════════════════════════════════════════════
+# V65：**外部访问的通用能力**（只读档 + 令牌种 cookie）
+#
+# 纪律（老板 2026-10-20「注意禁止私人订制化」）：
+#   · **不认**任何域名 / 服务商 / 隧道名 / 机器路径 —— 只有环境变量与请求本身；
+#   · 判据：换机器、换端口、换域名、换穿透方式 ⇒ **不改一行代码**走通；
+#   · 只读白名单用**列举**（新增端点默认不对外 = fail-closed），不用"排除法"。
+# ══════════════════════════════════════════════════════════════════════
+EXT_TOKEN_COOKIE = "ac_ext_token"
+
+#: 外部**只读**档允许的 GET 路径（精确匹配）
+EXTERNAL_READONLY_EXACT = frozenset({
+    "/api/status", "/api/workshops", "/api/sessions", "/api/audit",
+    "/api/peers", "/api/peer-tasks", "/api/peer-tasks/poll-status",
+    "/api/harness/list", "/api/docking/overview",
+})
+#: 外部只读档允许的 GET 前缀（详情类）
+EXTERNAL_READONLY_PREFIX = ("/api/workshop/", "/api/peers/", "/api/peer-tasks/")
+#: 外部只读档允许的静态页（界面本身可以看）
+EXTERNAL_READONLY_PAGES = frozenset({
+    "/", "/index.html", "/workshop.html", "/docking.html", "/hub.html",
+    "/ops.html", "/booths.html", "/handover.html", "/register.html",
+})
+#: 明确**永不对公网**的端点（即使开了只读档也不给；写进这里的用意是留证据）
+EXTERNAL_READONLY_DENY = ("/api/config", "/api/admin/", "/api/logs/", "/api/plugins", "/api/policy")
+
+
+def external_readonly_enabled() -> bool:
+    """外部只读档开关（`AC_EXTERNAL_READONLY=1`，默认关）。"""
+    v = (os.environ.get("AC_EXTERNAL_READONLY") or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def _readonly_allows(request: Request) -> bool:
+    """只读档下，这个请求**能不能**放行（只在非本地、令牌已通过之后调用）。"""
+    if request.method not in ("GET", "HEAD"):
+        return False
+    p = request.url.path or "/"
+    if any(p.startswith(x) for x in EXTERNAL_READONLY_DENY):
+        return False
+    if p in EXTERNAL_READONLY_EXACT:
+        return True
+    if any(p.startswith(x) for x in EXTERNAL_READONLY_PREFIX):
+        return True
+    if p in EXTERNAL_READONLY_PAGES:
+        return True
+    # 静态资源（页面自己带的 js/css/字体/图片）：同目录一层内
+    if p.endswith((".js", ".css", ".png", ".ico", ".svg", ".woff", ".woff2", ".map")) and p.count("/") == 1:
+        return True
+    return False
+
+
 def _auth_check(request: Request):
-    """全局认证检查：本地放行；非本地需 Token。未配置 Token 时拒绝非本地访问。"""
+    """全局认证检查：本地放行；非本地需 Token。未配置 Token 时拒绝非本地访问。
+
+    V65 追加：令牌通过后，若开了**外部只读档**，再判一次"这个操作是否对外"。
+    """
     if _is_localhost(request):
         return
     if not ALLOWED_TOKENS:
         raise HTTPException(status_code=403, detail="服务未配置访问 Token，拒绝非本地访问")
     if _extract_token(request) in ALLOWED_TOKENS:
+        # 令牌对了，再看档位
+        if external_readonly_enabled() and not _readonly_allows(request):
+            raise HTTPException(status_code=403, detail={
+                "error": "外部只读模式：这个操作不对外",
+                "how_to_fix": ("当前是只读档（AC_EXTERNAL_READONLY=1）：只有查看类 GET 放行；"
+                               "要允许外部写操作，请在部署侧关掉只读档并自担风险"),
+                "path": request.url.path, "method": request.method,
+            })
         return
     raise HTTPException(status_code=401, detail="需要有效的 Token 认证（Authorization: Bearer <token> 或 X-API-Key）")
 @app.middleware("http")
@@ -323,8 +397,22 @@ async def security_middleware(request: Request, call_next):
     try:
         _auth_check(request)
     except HTTPException as e:
-        return Utf8JSONResponse(status_code=e.status_code, content={"error": e.detail})
-    return await call_next(request)
+        body = e.detail if isinstance(e.detail, dict) else {"error": e.detail}
+        return Utf8JSONResponse(status_code=e.status_code, content=body)
+    resp = await call_next(request)
+    # V65：用 `?token=<正确令牌>` 打开过一次 ⇒ 种同源 cookie，浏览器后续请求自动带上
+    # （否则外网能打开页面，但页面里每个 /api/* 都 401 —— 那是"看起来成功"）
+    try:
+        _qt = request.query_params.get("token", "")
+        if _qt and ALLOWED_TOKENS and _qt in ALLOWED_TOKENS:
+            resp.set_cookie(
+                EXT_TOKEN_COOKIE, _qt, max_age=7 * 24 * 3600, path="/",
+                httponly=True, samesite="lax",
+                secure=(request.url.scheme == "https"),
+            )
+    except Exception:                                        # noqa: BLE001 — 种 cookie 失败不该影响响应
+        pass
+    return resp
 def validate_callback_url(url: str) -> tuple[bool, str]:
     """SSRF 防护：校验回调/唤醒 URL，禁止内网、回环、元数据地址。"""
     if not url:
@@ -785,6 +873,18 @@ async def list_tasks(limit: int = None):
 @app.get("/api/rooms")
 async def list_rooms():
     return {"rooms": [r.model_dump() for r in discussion_rooms.values()]}
+@app.post("/api/auth/logout")
+async def api_auth_logout():
+    """退出外部访问（V65）：清掉 `?token=` 种的同源 cookie。
+
+    只影响**携带方式**，不吊销令牌本身（要吊销请改 `AC4_TOKEN` 并重启）。
+    """
+    from fastapi.responses import JSONResponse
+    r = JSONResponse({"success": True, "note": "已清掉外部访问 cookie；令牌本身未吊销"})
+    r.delete_cookie(EXT_TOKEN_COOKIE, path="/")
+    return r
+
+
 @app.get("/api/status")
 async def api_status():
     """服务状态检查接口 — CLI start 自检用

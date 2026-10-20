@@ -82,6 +82,8 @@ SPEC: dict[str, Var] = {v.name: v for v in [
     Var("AC4_TOKEN", "平台访问令牌（跨机/对外访问时必设；空=仅本机可用）",
         default="", kind="core", example="sk-your-token",
         required_when="对外暴露平台（AC_HOST 非回环）时"),
+    Var("AC_EXTERNAL_READONLY", "外部访问只读档：=1 时**非本地**请求只放行查看类 GET，写操作一律 403（默认 0）",
+        default="0", kind="core", example="1"),
     Var("AC4_SHUTDOWN_PIN", "关停口令（空=关停端点仅允许本机来源 + 二次确认）",
         default="", kind="core", example="your-pin"),
 

@@ -30,6 +30,7 @@ python tools/core_check.py --plan     # 只打印会跑什么
 | 15 | **巡逻员人工点派**（拒得合理 / 三类动作 / 三态 / 平台复核 / 留痕） | `tools/patrol_chain_check.py` |
 | 16 | **视觉拉起**（窗口列表不乱码 / 只读选项 / 置顶 / 方法兜底 / 不许假成功） | `tools/visual_launch_check.py` |
 | 17 | **公司间合作 P1**（双实例真投 / 真收 / 回查 / 鉴权 / 隔离） | `tools/cross_company_check.py` |
+| 18 | **外部访问通用能力**（只读档 / 三种令牌携带 / 401与403区分 / cookie） | `tools/external_access_check.py` |
 """
 from __future__ import annotations
 
@@ -102,6 +103,7 @@ def main() -> int:
         ("巡逻员人工点派（三态/平台复核）", [py, str(ROOT / "tools" / "patrol_chain_check.py")]),
         ("视觉拉起（置顶/兜底/不乱码）", [py, str(ROOT / "tools" / "visual_launch_check.py")]),
         ("公司间合作 P1（双实例真投/隔离）", [py, str(ROOT / "tools" / "cross_company_check.py")]),
+        ("外部访问（只读档/令牌/cookie）", [py, str(ROOT / "tools" / "external_access_check.py")]),
     ]
     if a.plan:
         print("核心体检会跑 %d 项：" % (len(items) + 1))
@@ -157,7 +159,7 @@ def main() -> int:
     if skipped:
         print("结论：**%d 项没跑成（＝部分）** ⇒ 如实说，不算全绿" % skipped)
         return 2
-    print("结论：**核心全绿**（六协议 + 闭环 + acp + 任务链路 + 掉线恢复 + 并发派活 + 证据链 + 辩论 + 继承 + 通道 + 受控重启 + 日志尾 + 任务树 + 巡逻员 + 视觉拉起 + 公司间合作 + 产物落点）")
+    print("结论：**核心全绿**（六协议 + 闭环 + acp + 任务链路 + 掉线恢复 + 并发派活 + 证据链 + 辩论 + 继承 + 通道 + 受控重启 + 日志尾 + 任务树 + 巡逻员 + 视觉拉起 + 公司间合作 + 外部访问 + 产物落点）")
     return 0
 
 
