@@ -18,6 +18,7 @@ const CHAPTERS = [
   { no:'9', id:'visual', t:'9 · 更新视觉脚本', s:'现状：只做到“名字进数据”', api:'session_aliases（独立视觉脚本未做）', render:chVisual },
   { no:'10', id:'d23', t:'10 · 二三级讨论', s:'二级=与组长+建模 · 三级=全员', api:'library/model.md（五块）', render:chD23 },
   { no:'尾', id:'integrate', t:'收尾 · 阶段整合', s:'收 output 清单 · 无产物如实显示', api:'POST …/integrate', render:chIntegrate },
+  { no:'公', id:'peers', t:'11 · 和别的公司协作', s:'登记对端 → 验证 → 派活 · 隧道只管地址通', api:'/api/peers 家族', render:chPeers },
   { no:'随', id:'rescue', t:'随时 · 掉线抢救', s:'空闲是正常态 · 硬信号才说联系不上', api:'offline-report · recover', render:chRescue },
   { no:'查', id:'cheat', t:'速查表', s:'你要干什么 → 去哪 · 端点归属', api:'一页查全', render:chCheat }
 ];
@@ -296,6 +297,22 @@ function chIntegrate(){
   </div>`;
 }
 
+/* 11 · 和别的公司协作（内容基准：V30 §11，2026-10-20；完整教程=RUNBOOK_公司间合作_隧道怎么用.md） */
+function chPeers(){
+  return `
+  <div class="card">
+    <h3><span class="dot"></span>11 · 和别的公司协作（公司间合作 / 隧道）</h3>
+    <p class="lead"><b>一句话</b>：两个<b>各自独立</b>的合作社（不同机器、或同一台机器的两个目录），A 能把活派给 B，B 真收到并回执。<b>平台只认一件事：对端公司有一个能通的 http 地址。</b></p>
+    <p class="lead" style="margin-top:6px"><b>要不要隧道</b>：同机/同局域网 ⇒ 不要（直接用内网 IP）；B 有公网 IP ⇒ 不要；都不是 ⇒ 要一条隧道。<b>平台不推荐也不内置任何穿透服务商</b>（frp / ngrok / 反向代理都行，最终只给你"一个域名 + 一个端口"）。</p>
+    <p class="lead" style="margin-top:6px"><b>暴露哪个端口（最容易做错）</b>：只暴露 <code>a2a 端口（默认 9104）</code>；<b>平台管理端口（18920）绝不映射到公网</b>——那上面有改配置、可重启、能读日志的端点。</p>
+    <p class="lead" style="margin-top:6px"><b>A 侧三步</b>：① <code>/api/peers</code> 登记（名字 + 隧道地址 + 对方令牌）→ ② <code>verify</code> 验证（读对端卡片，<b>不需要令牌、不花 AI 费用</b>）→ ③ <code>dispatch</code> 派活，<code>/tasks/&lt;id&gt;</code> 查回执。</p>
+    <p class="lead" style="margin-top:6px"><b>地址变了怎么办</b>：只改 <code>base_url</code> 那一行（同 <code>peer_id</code> 覆盖），<b>其余不动</b>。</p>
+    <p class="lead" style="margin-top:6px"><b>怎么知道自己没搞错</b>：<code>GET /api/peers/tunnel-advice</code> 会告诉你该暴露哪个端口、能不能被外面连到、以及<b>绝对不能暴露什么</b>；<code>tools/cross_company_check.py</code> 会起两个真实例把整条链跑一遍（<b>不用隧道也能跑</b>，它证明"逻辑对不对"，隧道只影响"地址通不通"）。</p>
+    <p class="lead" style="margin-top:6px"><b>两个方向别混</b>：<code>/api/companies</code> 是"<b>谁能进我家</b>"（我给别人签发令牌）；<code>/api/peers</code> 是"<b>我要去谁家</b>"（我保存别人的地址和令牌）。</p>
+    <p class="sub" style="margin-top:8px">管理界面：${link('/docking.html','对接中心 →')}　·　完整教程见仓库 <code>design-docs/RUNBOOK_公司间合作_隧道怎么用.md</code></p>
+  </div>`;
+}
+
 function chRescue(){
   return `
   <div class="tri">
@@ -330,7 +347,8 @@ function chCheat(){
     ['审计时间线、心跳、健康','运维看板'],
     ['谁交了活、回执','交付回执台'],
     ['登记 agent（harness）','Harness 接入'],
-    ['全流程总说明（只讲不做）','本页（流程说明）']
+    ['全流程总说明（只讲不做）','本页（流程说明）'],
+    ['和别的公司协作（登记对端 / 验证 / 派活 / 隧道怎么弄）','本页第 11 节 + RUNBOOK_公司间合作_隧道怎么用.md']
   ].map(r=>`<div class="pick-row"><b>${esc(r[0])}</b><span class="why">${esc(r[1])}</span></div>`).join('');
   const rows=[
     ['接入注册','POST /api/harness/register','接入页'],

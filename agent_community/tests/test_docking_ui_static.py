@@ -56,7 +56,7 @@ def test_page_and_script_exist_with_the_frontdesk_contract():
 
 
 def test_write_whitelist_matches_the_design_contract():
-    """★写请求白名单必须**正好**是 FE-26 §5 那一份（19 条）。
+    """★写请求白名单必须**正好**是 FE-26 §5 那一份（25 条）。
 
     对接中心能调的写端点是有明确清单的：多一条就是"偷偷扩大了权限面"，
     少一条就是"界面上的按钮会点不动"。
@@ -82,6 +82,11 @@ def test_write_whitelist_matches_the_design_contract():
         "/api/docking/locate", "/api/docking/try-activate",
         "/api/docking/compose-script", "/api/docking/run-script",
         "/api/docking/harness/*",
+        # ★2026-10-20（FE-26 §5 增补，V62/V63）：对端公司管理 + 对外任务——
+        #   这 6 条都会**改变外部状态**（真的往对方公司投任务、真的删登记），正属于白名单要管的，
+        #   **不豁免**（"走 dockPost 但豁免"等于开后门，判据就白设了）。
+        "/api/peers", "/api/peers/*", "/api/peers/*/verify",
+        "/api/peers/*/dispatch", "/api/peers/*/enabled", "/api/peer-tasks/*/refresh",
     }
     assert got == expect, "白名单与 FE-26 §5 不一致：多=%s 少=%s" % (sorted(got - expect), sorted(expect - got))
 

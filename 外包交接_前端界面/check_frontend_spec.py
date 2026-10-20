@@ -52,6 +52,10 @@ WHITELIST_EXPECT = {
     "/api/docking/harness/*",
     # ★2026-10-16 §12 补的两条：正文生成（屏 4）与一键脚本激活
     "/api/docking/compose-script", "/api/docking/run-script",
+    # ★2026-10-20 FE-26 §5 增补（V62 对端公司 + V63 对外任务）：这 6 条都会**改变外部状态**
+    #   （真往对方公司投任务、真删登记）⇒ 必须进白名单，**不豁免**
+    "/api/peers", "/api/peers/*", "/api/peers/*/verify",
+    "/api/peers/*/dispatch", "/api/peers/*/enabled", "/api/peer-tasks/*/refresh",
 }
 
 #: `FE-26` §2a：第一屏的功能模块（每块＝一件能当场办的事）。`data-dock-service` 用这些 id。

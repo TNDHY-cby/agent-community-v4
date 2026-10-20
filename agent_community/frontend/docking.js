@@ -176,6 +176,14 @@ const DOCK_WRITE_WHITELIST = [
   '/api/docking/compose-script',
   '/api/docking/run-script',
   '/api/docking/harness/*',
+  // ★对端公司管理 + 对外任务（FE-26 §5 增补 / V62 V63，2026-10-20 由 DSH 加，
+  //   与判据 test_docking_ui_static 的 25 条一一对应；前端同学改界面时**保留这 6 行**）
+  '/api/peers',
+  '/api/peers/*',
+  '/api/peers/*/verify',
+  '/api/peers/*/dispatch',
+  '/api/peers/*/enabled',
+  '/api/peer-tasks/*/refresh',
 ];
 
 /** 路径模板（**字面量、唯一来源**）：界面上的每个动作都从这里取路径。 */
