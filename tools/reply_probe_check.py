@@ -116,6 +116,29 @@ def main() -> int:
     ok6 = cap2["state"] == "ok" and "evidence" in cap2 and "evidence_scope" in cap2
     check("⑥ 验过之后带 evidence 与范围原话", ok6, str(cap2.get("evidence_scope"))[:70])
 
+    # ⑦ 超时必须记失败（V74 §4：超时上限可配；超时不许永远 pending）
+    import time as _t
+
+    from agent_community.platform import reply_probe as _rp
+
+    make_session("rp-timeout", "file_poll", wakeup_dir=str(inbox))
+    r = c.post("/api/harness/rp-timeout/probe-reply", json={"mode": "auto"})
+    ok7a = r.status_code == 200 and r.json().get("probe_id")
+    if ok7a:                                     # 把"等回执"的过期时间拨到过去 = 已超时
+        _rp._INFLIGHT["rp-timeout"]["expire_ts"] = _t.time() - 1
+        sess_rec = c.get("/api/harness/rp-timeout/probe-reply").json()
+        # 记录里的 expire_at 也要跟着过期，capability 才会判成失败
+        from agent_community.platform.harness_adapter import harness_manager
+
+        info = harness_manager.sessions["rp-timeout"].info
+        info.metadata["reply_probe"] = dict(info.metadata.get("reply_probe") or {},
+                                            expire_at="2000-01-01T00:00:00")
+        cap7 = c.get("/api/harness/rp-timeout/capability").json()["segments"]["agent_can_reply"]
+        ok7 = cap7["state"] == "failed" and "超时" in (cap7.get("why") or "")
+        check("⑦ 超时 ⇒ failed 且写明超时", bool(ok7), "%s %s" % (cap7.get("state"), (cap7.get("why") or "")[:50]))
+    else:
+        check("⑦ 超时 ⇒ failed 且写明超时", False, "发起失败，无法验超时")
+
     print("\n结果：%d/%d 格通过" % (sum(1 for _, ok in results if ok), len(results)))
     return 0 if all(ok for _, ok in results) else 1
 

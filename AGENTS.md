@@ -63,7 +63,7 @@ python tools/check_productization.py    # 平台专属命令冒充通用能力 /
 python tools/first_run_check.py --src <发布副本>   # 陌生人首次运行五步走查
 python tools/dual_platform_check.py     # ★双平台真跑（Windows + WSL Linux）——2026-10-17 起的 CI 替代判据
 python tools/pre_release_check.py       # ★发布前一条命令跑全五类判据（--fast 跳过双平台）
-python tools/core_check.py              # ★核心体检一条命令（**24 项**，约 20 分钟）：六协议矩阵+闭环、建立会话、多轮派活、任务全链路、acp 真拉起、看门狗救活、一键更新、掉线恢复链、多成员并发派活、证据链 V55、辩论模式 V52、隔间继承 V53、通道生命周期 V28、受控重启 V58、只读日志尾 V59、任务树+资源库、巡逻员人工点派、视觉拉起、公司间合作 P1、**外部访问（只读档/令牌/cookie）**、**中转 M1/M2/M3**、桥产物落点
+python tools/core_check.py              # ★核心体检一条命令（**26 项**，约 20 分钟）：六协议矩阵+闭环、建立会话、多轮派活、任务全链路、acp 真拉起、看门狗救活、一键更新、掉线恢复链、多成员并发派活、证据链 V55、辩论模式 V52、隔间继承 V53、通道生命周期 V28、受控重启 V58、只读日志尾 V59、任务树+资源库、巡逻员人工点派、视觉拉起、公司间合作 P1、**外部访问（只读档/令牌/cookie）**、**中转 M1/M2/M3**、桥产物落点
 python tools/cross_company_check.py     # 公司间合作 P1：两个独立实例真投 / 真收 / 回查 / 鉴权 / 数据隔离 / 产物清单（**20 格**，不需要 frp）
 python tools/external_access_check.py   # 外部访问 V65：只读档 / 三种令牌携带 / 401与403区分 / ?token= 种 cookie（九格）
 python tools/relay_check.py             # 中转 V66 M1：一 Hub + 两终端互达 / 终端零入站 / 鉴权 / 断线重连 / 队列有界（九格）

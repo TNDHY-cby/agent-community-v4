@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
-"""platform/reply_probe：**「agent 能否回话」探针**（`V74`，待拍板稿的落地实现）。
+"""platform/reply_probe：「agent 能否回话」探针（`V74`，待拍板稿的落地实现）。
 
 ## 它解决的真事
 
-平台此前只能证明**桥配置**这一段（`bridge_template_verified[].verified_scope` 自己写着
+平台此前只能证明桥配置这一段（`bridge_template_verified[].verified_scope` 自己写着
 "harness 侧是否运行该桥、agent 能否回话，本次未验证"）。于是界面显示"接入成功"，
-却**没有任何证据**说明"发消息给它，它会回话"——老板最恨的"看起来成功"就在这里。
+却没有任何证据说明"发消息给它，它会回话"——老板最恨的"看起来成功"就在这里。
 
 ## 三条硬约束（`V74` §3，写进代码注释防止被后人改掉）
 
-1. **不烧钱**：`AC_REPLY_PROBE_ENABLED` 默认 `0`（关）；一次只发 **1 条**；超时可配。
-2. **不假装**：投递走**和真实派活同一条路**（`file_poll` 写 inbox / 其它走 `pending_bridge_tests`
+1. 不烧钱：`AC_REPLY_PROBE_ENABLED` 默认 `0`（关）；一次只发 1 条；超时可配。
+2. 不假装：投递走和真实派活同一条路（`file_poll` 写 inbox / 其它走 `pending_bridge_tests`
    队列，与 `/api/harness/bridge-test` 完全一致），不另开捷径。
-3. **不绑定 harness 类型**：人工中转型（`clipboard` / `manual`）没有自动回报通道 ⇒
-   **只接受人工确认**（`source=human_confirm`），尝试自动验证必须被拒并说清原因。
+3. 不绑定 harness 类型：人工中转型（`clipboard` / `manual`）没有自动回报通道 ⇒
+   只接受人工确认（`source=human_confirm`），尝试自动验证必须被拒并说清原因。
 
 ## 证据长什么样（落 `info.metadata["reply_probe"]`）
 
@@ -79,7 +79,7 @@ def _persist(sess, record: dict) -> None:
 
 def start(sess) -> dict:
     """发起一次探针。返回 `{ok, probe_id, channel, how_to…}` 或 `{ok: False, error, how_to_fix}`。"""
-    # 投递走**和真实桥测试同一条路**：这三个辅助函数在 `server.py`（`harness_bridge` 也是从那儿拿的）
+    # 投递走和真实桥测试同一条路：这三个辅助函数在 `server.py`（`harness_bridge` 也是从那儿拿的）
     from .routers.harness_bridge import _wake_channel
     from .server import _file_poll_send, _harness_wakeup_method, _pending_push
     from .state import pending_bridge_tests
@@ -88,7 +88,7 @@ def start(sess) -> dict:
     method = _harness_wakeup_method(hid)
     if is_manual(method):
         return {"ok": False,
-                "error": "这个员工是**人工中转**型（没有自动回报通道），平台没法自动验证它回不回话",
+                "error": "这个员工是人工中转型（没有自动回报通道），平台没法自动验证它回不回话",
                 "how_to_fix": "用 mode=human_confirm 记一条人工确认：你发给它、它回了，就点确认"}
 
     probe_id = "rp-" + uuid.uuid4().hex[:10]
@@ -109,18 +109,20 @@ def start(sess) -> dict:
     else:
         _pending_push(pending_bridge_tests, hid, payload)
 
+    expire_ts = time.time() + timeout_seconds()
     _INFLIGHT[hid] = {"probe_id": probe_id, "at": _now(),
-                      "expire_ts": time.time() + timeout_seconds(),
+                      "expire_ts": expire_ts,
                       "reported": False, "channel": channel}
     _persist(sess, {"at": _now(), "mode": "auto", "state": "pending", "source": "auto",
-                    "probe_id": probe_id, "channel": channel})
+                    "probe_id": probe_id, "channel": channel,
+                    "expire_at": datetime.fromtimestamp(expire_ts).isoformat(timespec="seconds")})
     return {"ok": True, "probe_id": probe_id, "channel": channel,
             "wait_seconds": timeout_seconds(),
             "report_endpoint": payload["report_endpoint"]}
 
 
 def record_result(sess, probe_id: str, echo: str = "") -> dict:
-    """harness 侧回报（**必须带回本次 probe_id**，否则不算数）。"""
+    """harness 侧回报（必须带回本次 probe_id，否则不算数）。"""
     hid = str(getattr(sess.info, "harness_id", "") or "")
     inflight = _INFLIGHT.get(hid) or {}
     body_id = str(probe_id or "").strip()
@@ -142,7 +144,7 @@ def record_result(sess, probe_id: str, echo: str = "") -> dict:
 
 
 def human_confirm(sess, note: str = "", by: str = "user") -> dict:
-    """人工确认（**只有人工中转型才该用**；自动型也能用，但证据来源会标 human_confirm）。"""
+    """人工确认（只有人工中转型才该用；自动型也能用，但证据来源会标 human_confirm）。"""
     record = {"at": _now(), "mode": "human_confirm", "state": "ok", "source": "human_confirm",
               "confirmed_by": by, "evidence": {"note": str(note or "")[:200]}}
     _persist(sess, record)
@@ -155,6 +157,23 @@ def fail(sess, why: str) -> dict:
               "why": str(why or "未知原因")[:200]}
     _persist(sess, record)
     return {"ok": False, "state": "failed", "why": record["why"]}
+
+
+def pending_expired(record: dict) -> bool:
+    """这条 `pending` 记录是不是已经超时（纯函数，不写任何东西）。
+
+    ★V74 §4 要求"超时上限可配"；超时就必须如实记失败，
+    否则永远停在 `pending` — 那正是"看起来还在等、其实不会有了"的假状态。
+    """
+    if not isinstance(record, dict) or record.get("state") != "pending":
+        return False
+    exp = str(record.get("expire_at") or "")
+    if not exp:
+        return False
+    try:
+        return datetime.now() > datetime.fromisoformat(exp)
+    except Exception:                                        # noqa: BLE001 — 解析不了就不判断（不当失败）
+        return False
 
 
 def clear(hid: str) -> None:

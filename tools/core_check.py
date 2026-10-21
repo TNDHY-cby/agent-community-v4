@@ -35,6 +35,7 @@ python tools/core_check.py --plan     # 只打印会跑什么
 | 20 | **中转跨网络**（非回环地址 / WSL 另一网络栈 / TLS 有则测无则如实跳过） | `tools/relay_crossnet_check.py` |
 | 21 | **派活与回执走中转**（派活真建间 / ack / 回执自动更新 / 失败可见 / 零对外监听） | `tools/relay_dispatch_check.py` |
 | 22 | **公司隔离**（私有形态不退化 / 共享形态真隔离 / 跨公司要两道许可） | `tools/relay_isolation_check.py` |
+| 23 | **回话探针 V74**（默认关 / 人工中转型只能人工确认 / 错 nonce 拒 / 超时记失败 / 没证据仍 unverified） | `tools/reply_probe_check.py` |
 """
 from __future__ import annotations
 
@@ -112,6 +113,7 @@ def main() -> int:
         ("中转跨网络（非回环/WSL）", [py, str(ROOT / "tools" / "relay_crossnet_check.py")]),
         ("派活与回执走中转（M2）", [py, str(ROOT / "tools" / "relay_dispatch_check.py")]),
         ("公司隔离（一个 Hub 多家公司）", [py, str(ROOT / "tools" / "relay_isolation_check.py")]),
+        ("回话探针 V74（验过才叫接上 / 超时记失败）", [py, str(ROOT / "tools" / "reply_probe_check.py")]),
     ]
     if a.plan:
         print("核心体检会跑 %d 项：" % (len(items) + 1))

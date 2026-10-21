@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
-"""platform/routers/reply_probe：**回话探针**端点（`V74`）。
+"""platform/routers/reply_probe：回话探针端点（`V74`）。
 
 ```
 POST /api/harness/{id}/probe-reply          发起一次探针（默认关；见 AC_REPLY_PROBE_ENABLED）
      body: {"mode": "auto" | "human_confirm", "note": "人工确认时的一句说明"}
 GET  /api/harness/{id}/probe-reply          查最近一次结果（只读，没有就如实说没有）
-POST /api/harness/reply-probe-result        harness 侧回报（**必须带回本次 probe_id**）
+POST /api/harness/reply-probe-result        harness 侧回报（必须带回本次 probe_id）
 ```
 
-为什么单独一组：`V74` 要求"只有验过才叫接上"，这是一条**新的判断通道**，
+为什么单独一组：`V74` 要求"只有验过才叫接上"，这是一条新的判断通道，
 与档案读写（`/api/docking/harness/{id}`）和桥测试（`/api/harness/bridge-test`）都不是一回事。
 """
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
+
+from ..audit import audit_log as _audit_log
 
 router = APIRouter()
 
@@ -51,6 +53,8 @@ async def harness_probe_reply(harness_id: str, request: Request):
     if mode in ("human", "human_confirm", "manual"):
         out = rp.human_confirm(sess, note=str(body.get("note") or ""),
                                by=str(body.get("by") or "user"))
+        _audit_log.record("harness.reply_probe.human_confirm", actor="user",
+                          target=harness_id, detail="人工确认 agent 能回话")
         save_state()
         return out
 
@@ -61,6 +65,9 @@ async def harness_probe_reply(harness_id: str, request: Request):
     out = rp.start(sess)
     if not out.get("ok"):
         return Utf8JSONResponse(out, status_code=400)
+    _audit_log.record("harness.reply_probe.start", actor="user", target=harness_id,
+                      detail="发起回话探针 probe_id=%s channel=%s"
+                             % (out.get("probe_id"), out.get("channel")))
     save_state()
     return out
 
@@ -84,7 +91,7 @@ async def harness_probe_reply_status(harness_id: str):
 
 @router.post("/api/harness/reply-probe-result")
 async def harness_reply_probe_result(request: Request):
-    """harness 侧的回报入口（桥脚本用）。**必须带回平台发出的 probe_id**。"""
+    """harness 侧的回报入口（桥脚本用）。必须带回平台发出的 probe_id。"""
     from ..server import Utf8JSONResponse, save_state
     from .. import reply_probe as rp
 
@@ -102,7 +109,11 @@ async def harness_reply_probe_result(request: Request):
 
     out = rp.record_result(sess, str(body.get("probe_id") or ""), echo=str(body.get("echo") or ""))
     if not out.get("ok"):
+        _audit_log.record("harness.reply_probe.reject", actor="harness", target=hid,
+                          detail="回报被拒：%s" % str(out.get("error"))[:80])
         return Utf8JSONResponse({"error": out.get("error")},
                                 status_code=int(out.get("status_code") or 403))
+    _audit_log.record("harness.reply_probe.result", actor="harness", target=hid,
+                      detail="探针回执通过（probe_id=%s）" % str(body.get("probe_id")))
     save_state()
     return out

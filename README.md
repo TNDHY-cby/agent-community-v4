@@ -1,9 +1,53 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.17.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.18.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
+
+## 先看界面（截图来自真实实例，数据是**演示数据**）
+
+![大厅](agent_community/frontend/ui_screenshot_index.png)
+
+![工作间](agent_community/frontend/ui_screenshot_workshop.png)
+
+> 第三张是旧注册页的只读镜像（`ui_screenshot_register.png`，已不作为入口，仅存证）。
+
+## 30 秒跑通（复制即用）
+
+```bash
+git clone https://gitee.com/TNDHY-cby/external-agents-community.git
+cd external-agents-community
+pip install -r requirements.txt
+python -m agent_community.cli start          # 起服务 + 桌面窗口；只要后端就加 --no-gui
+python -m agent_community.cli task "写一个排序函数"   # 另一终端：提交第一个任务
+```
+
+看到什么：窗口打开 → 大厅显示「工作间/任务/员工」→ 上一条命令建出任务并自动为它开一个工作间。
+**下一步是接入一个 agent**（没有 agent 时任务会停在进行中，并如实提示"先接入 Harness"）。
+
+## 三条安装路径（按你的环境挑一条）
+
+| 方式 | 适合 | 命令 / 说明 | 判据 |
+|---|---|---|---|
+| **源码直跑** | 想读代码、要改 | 上面 30 秒那段（Python **3.10+**） | `python tools/first_run_check.py --src .` |
+| **Docker** | 不想碰本机 Python | 仓库根有 `Dockerfile`，`docker build -t ac4 . && docker run -p 18920:18920 ac4` | 容器内 `/api/status` 回 200 |
+| **桌面窗口** | 想双击就用 | `启动合作社.vbs`（Windows）/ `python -m agent_community.cli start` | `python tools/launcher_check.py` |
+
+> **端口/数据目录因人而异**：只改环境变量，不改代码 —— `AC_PORT` / `AC_DATA_DIR`。
+> **装不上、卡住、端口被占？** 先看 [`docs/FAQ.md`](docs/FAQ.md)（常见故障与"为什么"），
+> 仍不行的把它贴到 Gitee 的 Issues。
+
+## 它跟"前端编排工具"不是一层东西（定位，先说清）
+
+| | 本仓库 | 典型前端编排工具（如 Ekko / LobeChat 这类） |
+|---|---|---|
+| 强在哪 | **协议标准与协作治理**：8 种协议（HTTP/WS/PIPE/ACP/MCP/**A2A**/SSE/gRPC）、组长选举、三级讨论、能力匹配派活、可验证的判据体系 | **产品化与分发**：安装包、可视化画布、IM 渠道、移动端 |
+| 缺在哪 | **包装**：没有可视化画布、没有安装包、截图少（正在补） | 协议层通常只有 MCP，**没有 A2A**、没有协作治理、没有评测闭环 |
+
+⇒ 我们的位置是**它们缺的后端 runtime 层**：你要"看得见的画布"，我们提供"画布背后的协议与治理"。
+两者可以对接（`A2A` + `HTTP` 就是接口），**不打算做成它们的替代品**。
+
 
 > 同一个 AI 接入不同 harness（编辑器 / 终端 / 桌面 Agent / CLI Agent）后，表现并不相同。
 > 平台不假设 Agent 同构，而是按各 harness 的框架能力编排协作：注册发现 → 架桥激活 → 工作间协商 → 委托执行 → 评估沉淀。

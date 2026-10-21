@@ -1,28 +1,28 @@
 # -*- coding: utf-8 -*-
-"""platform/harness_capability：**「这个 harness 有什么能力、凭什么这么说」**（V73 §9 落地）。
+"""platform/harness_capability：「这个 harness 有什么能力、凭什么这么说」（V73 §9 落地）。
 
 ## 为什么要有它（来自本机 8 条真实记录的实测）
 
-平台存的能力是**三处、且互相打架**：
+平台存的能力是三处、且互相打架：
 - `ai.capabilities`（声明的标签，同一件事有三种写法：`shell` / `bash` / `exec_command`）；
 - `ai.can_code` / `ai.can_file_ops` / `ai.can_browse` / `ai.can_see`（布尔，和上面经常不一致）；
 - `tools[]`（只有少数记录有，`parameters` 全空）。
 
-而"验证"只到**桥配置**这一段——`metadata.bridge_template_verified` 里平台自己写明了范围：
+而"验证"只到桥配置这一段——`metadata.bridge_template_verified` 里平台自己写明了范围：
 
-> 仅桥配置（桥能连平台/领件/回报；且这只桥是**平台在验证间里启动的**）——
+> 仅桥配置（桥能连平台/领件/回报；且这只桥是平台在验证间里启动的）——
 > harness 侧是否运行该桥、agent 能否回话，本次未验证
 
-⇒ 本模块只做一件事：把**能力**与**证据来源**摊平成一份只读视图，
-**不新增存储、不改任何记录、不假装验证过**。判定口径见 `design-docs/V73_…md` §4 / §9。
+⇒ 本模块只做一件事：把能力与证据来源摊平成一份只读视图，
+不新增存储、不改任何记录、不假装验证过。判定口径见 `design-docs/V73_…md` §4 / §9。
 
 ## 证据分级（唯一口径）
 
 | 来源 | 含义 | 谁给的 |
 |---|---|---|
-| `declared` | 它/登记人声明的，**未验证** | `ai.capabilities`、`ai.can_*`、`tools[]` |
-| `probed` | 平台在**宿主**上探到的事实（进程/端口/路径线索），**零侵入零 token** | `metadata.probe_hints` |
-| `verified` | 平台在**验证间**真跑通过——**范围仅"桥配置"** | `metadata.bridge_test.ok`、`bridge_template_verified[].evidence.state == "ok"` |
+| `declared` | 它/登记人声明的，未验证 | `ai.capabilities`、`ai.can_*`、`tools[]` |
+| `probed` | 平台在宿主上探到的事实（进程/端口/路径线索），零侵入零 token | `metadata.probe_hints` |
+| `verified` | 平台在验证间真跑通过——范围仅"桥配置" | `metadata.bridge_test.ok`、`bridge_template_verified[].evidence.state == "ok"` |
 | `failed` | 探到过但失败（`bridge_test.ok == False`） | 同上 |
 
 ## 三段（V73 §4，别混）
@@ -33,7 +33,7 @@ harness_running_bridge harness 侧真的在跑那只桥     ← 本机 8/8 未�
 agent_can_reply        agent 真的能回话             ← 本机 8/8 未验证
 ```
 
-**只有第三段绿才叫"接上了"**；前两段绿只叫"配置可行"（沿用 V43 §0' 的口径）。
+只有第三段绿才叫"接上了"；前两段绿只叫"配置可行"（沿用 V43 §0' 的口径）。
 """
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ CAPABILITY_ALIASES = {
     "vision": "vision",
 }
 
-#: 归一后的中文显示名（界面直接用，**别在界面里另编**）
+#: 归一后的中文显示名（界面直接用，别在界面里另编）
 CAPABILITY_LABEL = {
     "shell": "执行命令",
     "coding": "写代码",
@@ -70,9 +70,10 @@ CAPABILITY_LABEL = {
     "vision": "看图",
 }
 
-#: 验证范围原话 **不再自带一份**：唯一实现在 `platform/evidence_scope.py`
+#: 验证范围原话 不再自带一份：唯一实现在 `platform/evidence_scope.py`
 #: （写入侧 `verify_sandbox` 与读取侧本模块共用，避免两处各写一套）。
 from . import evidence_scope as _scope
+from . import reply_probe as _rp
 SCOPE_BRIDGE_ONLY = _scope.SCOPE_BRIDGE_ONLY
 SCOPE_UNVERIFIED = _scope.SCOPE_NONE
 
@@ -82,7 +83,7 @@ def _now_iso() -> str:
 
 
 def normalize_capability(name: str) -> tuple:
-    """`(canonical, label_zh)`；认不出来就原样（**不编造**）。"""
+    """`(canonical, label_zh)`；认不出来就原样（不编造）。"""
     raw = str(name or "").strip()
     key = raw.lower()
     canonical = CAPABILITY_ALIASES.get(key, key)
@@ -124,7 +125,7 @@ def _segment(state: str, why: str, extra: dict | None = None) -> dict:
 def build_provenance(info: dict) -> dict:
     """把一条 harness 记录算成「三段状态 ＋ 能力清单（带来源）」。
 
-    **纯函数**：只读入参、不发请求、不写任何状态；`info` 就是 `HarnessInfo` 的 dict。
+    纯函数：只读入参、不发请求、不写任何状态；`info` 就是 `HarnessInfo` 的 dict。
     """
     info = info if isinstance(info, dict) else {}
     ai = _ai(info)
@@ -153,13 +154,20 @@ def build_provenance(info: dict) -> dict:
         reply_seg = _segment("ok", (
             "验过了：平台投递一条带 probe_id 的消息，它回了带回执的消息"
             if _src == "auto" else
-            "**人工确认**（用户说它回了）——不是平台自动验的，来源已标注"), {
+            "人工确认（用户说它回了）——不是平台自动验的，来源已标注"), {
             "evidence_scope": ("自动回执：本次证明的是「这条桥投递后 agent 回了带回执的消息」"
                                if _src == "auto" else
                                "人工确认：本次只证明「用户判断它回了」，平台没有自动回执"),
             "source": _src, "at": probe.get("at"),
             "evidence": probe.get("evidence") or {},
         })
+    elif probe.get("state") == "pending" and _rp.pending_expired(probe):
+        # 超时 ⇒ 如实记失败（不许永远停在 pending）
+        reply_seg = _segment("failed",
+                             "探针超时：等了 %s 秒也没收到带回执的消息（发起于 %s）"
+                             % (_rp.timeout_seconds(), probe.get("at") or "?"),
+                             {"source": probe.get("source") or "auto", "at": probe.get("at"),
+                              "expire_at": probe.get("expire_at")})
     elif probe.get("state") in ("failed", "pending"):
         reply_seg = _segment(
             "failed" if probe.get("state") == "failed" else "unverified",
@@ -182,7 +190,7 @@ def build_provenance(info: dict) -> dict:
     connected = segments["agent_can_reply"]["state"] == "ok"
 
     # ── ② 能力条目：来自 `ai.capabilities`（逐条标来源），工具单列 ─────────
-    #    ⚠️ 按**归一后的名字**去重：真实记录里 `shell`/`bash`/`exec_command` 会同时出现，
+    #    ⚠️ 按归一后的名字去重：真实记录里 `shell`/`bash`/`exec_command` 会同时出现，
     #    直接展开会让界面出现三条"执行命令"（本机 8 条记录实测）。
     caps: list = []
     index: dict = {}
@@ -216,7 +224,7 @@ def build_provenance(info: dict) -> dict:
             index[canonical] = item
             caps.append(item)
 
-    # ── ③ 布尔声明与标签的**不一致**要说出来（别替它们圆场）─────────────
+    # ── ③ 布尔声明与标签的不一致要说出来（别替它们圆场）─────────────
     notes = []
     flags = {"can_code": "coding", "can_file_ops": "file_ops", "can_browse": "web_search",
              "can_see": "vision"}
@@ -239,7 +247,7 @@ def build_provenance(info: dict) -> dict:
         "checked_at": _now_iso(),
         "connected": connected,
         "verdict_text": ("已接上（agent 能回话有证据）" if connected
-                         else "配置可行，但**没有证据证明 agent 能回话**"),
+                         else "配置可行，但没有证据证明 agent 能回话"),
         "segments": segments,
         "capabilities": caps,
         "tools": tools,
@@ -251,6 +259,6 @@ def build_provenance(info: dict) -> dict:
             "tools": len(tools),
         },
         "notes": notes,
-        "source_hint": ("能力名称是 harness **声明**的（未验证）；`probed` 是平台在宿主上探到的事实；"
+        "source_hint": ("能力名称是 harness 声明的（未验证）；`probed` 是平台在宿主上探到的事实；"
                         "`verified` 仅指桥配置这一段"),
     }
