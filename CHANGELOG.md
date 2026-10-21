@@ -2,6 +2,52 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.15.9] - 2026-10-21
+
+**外部审查报告（v4.15.8）逐条落地：README/CLI 文案/CHANGELOG 三处硬伤已修，并加了 6 条守卫防回归**
+
+收到一份针对公开仓库的《README 与文档一致性审查报告》。**逐条复核，全部属实**（不是照单全收，先自己跑了一遍）：
+它抓的都是"代码改了、文档没跟"——正是规则 20 要防的。
+
+### 一、一级（照 README 抄就失败）
+
+1. **README 承诺了 4 个不存在的 `cli start` 参数**（`--ai-provider/--ai-model/--ai-api-key/--ai-base-url`）
+   ——〔实测〕`cli start --help` 只有 `--port/--wakeup/--gui|--no-gui`。照抄示例 ⇒ `No such option`。
+   **修**：README 的「服务管理」用法行删掉假参数；「AI Provider 配置」整节重写成
+   **桌面窗口** 或 **环境变量** 两条路（附 Linux/macOS 与 PowerShell 两套示例），并指向 `cli ai-check` 自检。
+2. **CLI 源码/提示里还有裸 `agent-community <cmd>`**（本仓库不是 pip 包，无 `pyproject/setup`，
+   没有 console_scripts ⇒ 那条命令根本不存在）。**修**：`cli.py` 顶部用法、`task` 文档串、`task-result`
+   提示共 **9 处**统一为 `python -m agent_community.cli …`；`start --wakeup` 的提示也不再引 `--ai-provider`。
+
+### 二、二级（文档自身硬伤）
+
+3. **`CHANGELOG.md` 顶部有个孤立 H1 `# 4.8.26`** ⇒ 按"首个版本标题"读会得出错误版本。**已删**。
+4. **`AGENTS.md` 首屏相对链接指向 `HANDOVER.md`**，而公开仓库里没这个文件（它含真实本机坐标，故意不同步）
+   ⇒ 死链。**修**：改成"开发副本内部先读 `HANDOVER.md`；公开读者看 `项目完整模型.md` / `CHANGELOG.md`"。
+5. **CHANGELOG 里"README 15,890 字节"对不上**（实测 27,920 字节）——**是我取错了单位**：
+   那个数来自 `Invoke-WebRequest` 的**字符数**，不是字节。**修**：去掉会漂的字节数，只留"200（可匿名读）"。
+
+### 三、三级（口径对齐）
+
+6. README 标题下加**当前版本行**（`4.15.8`，指向 CHANGELOG）。
+7. 注册示例里的路径改成**占位符**（不写真机用户目录，也就不会被可移植性扫描误判），并说明 Windows 反斜杠写法。
+8. 设计稿份数统一为「**100 份设计稿 + 1 份索引**」（索引文件自己说"共 100 份"、目录里 101 个 `.md`，原本三种说法）。
+
+### 四、新增守卫（`agent_community/tests/test_docs_cli_consistency.py`，6 条）
+
+1. `cli.py` 源码里**不许**再出现裸 `agent-community <cmd>`；
+2. 真跑 `cli start --help`，帮助文本里**不许**有裸命令；
+3. **README 里写在 `cli start` 旁边的每个 `--option`，都必须在真实 `--help` 里存在**（这条直接防第 1 类回归）；
+4. README 不许再出现 `--ai-provider/--ai-model/--ai-api-key/--ai-base-url` 四个已取消参数；
+5. `CHANGELOG` 第一个版本标题必须是 `## [当前版本]`，且等于 `__version__`（防 `# 4.8.26` 那类抢位）；
+6. `AGENTS.md` 不许用相对链接指向 dev-only 的 `HANDOVER.md`（公开树会 404）。
+
+### 判据
+
+- 新守卫 **5 通过 / 1 跳过**（跳过项在开发副本里没有 CHANGELOG，发布副本里会真跑）；
+- `test_cli_ai_check` / `test_cli_contract` 全过；
+- `gen_env_docs --check`、`gen_design_index --check`、`check_stale_github` 三个守卫复跑无漂移。
+
 ## [4.15.8] - 2026-10-21
 
 **撤回 GitHub 更新（老板同日改口）；README 加「仓库里有什么」内容地图，确认仓库公开可见**

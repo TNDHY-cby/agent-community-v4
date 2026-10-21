@@ -4,9 +4,10 @@
 > `ac-project-dev`（若你的环境支持技能，直接加载它；不支持就读
 > `docs/` 与 `design-docs/平台设计总纲.md`）。
 >
-> 🔖 **接力/新会话先读 [`HANDOVER.md`](./HANDOVER.md)** ——
-> 当前进度（V-15 九步全部完成且**步骤8/9 已补测**）、未提交改动清单、
-> 待拍板事项、关键文件地图、高频坑与汇报约定，全在那里。
+> 🔖 **接力/新会话（开发副本内部）**：先读 `HANDOVER.md`
+> —— 当前进度、未提交改动清单、待拍板事项、关键文件地图、高频坑与汇报约定，全在那里。
+> ⚠️ **`HANDOVER.md` 是开发副本独有、公开仓库里没有**（它含真实本机坐标）；外部读者想看项目现状，
+> 读 [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) 与 [`CHANGELOG.md`](CHANGELOG.md)。
 
 > ⚠️ **2026-10-05 实测警告**：本机 fastapi 0.141.1 / starlette 1.7.0，
 > `app.include_router()` 往 `app.routes` 放的是 **`_IncludedRouter`（`.path is None`）**，

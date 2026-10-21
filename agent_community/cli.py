@@ -1,16 +1,18 @@
 """外端Agent生产合作社（External Agent Community） CLI — 命令行管理工具
 
-用法：
-    python -m agent_community.cli start [--port 18920] [--wakeup]
-    agent-community stop
-    agent-community status
-    agent-community task "描述你的任务"
-    agent-community task-result <task_id>
-    agent-community ai-check                    # 一键自检 AI 能不能用（真跑一次极小探针）
-    agent-community harness list
-    agent-community agents list
+用法（**唯一入口就是 `python -m agent_community.cli`**：本仓库不是 pip 包，
+没有 console_scripts，所以不存在 `agent-community` 这个可执行命令）：
+    python -m agent_community.cli start [--port 18920] [--wakeup] [--gui|--no-gui]
+    python -m agent_community.cli stop
+    python -m agent_community.cli status
+    python -m agent_community.cli task "描述你的任务"
+    python -m agent_community.cli task-result <task_id>
+    python -m agent_community.cli ai-check        # 一键自检 AI 能不能用（真跑一次极小探针）
+    python -m agent_community.cli harness list
+    python -m agent_community.cli agents list
 
-AI Provider 配置统一在桌面窗口内完成，不再通过命令行传参。
+AI Provider 配置统一在桌面窗口内完成（或设环境变量 `AC_AI_PROVIDER` / `AC_AI_MODEL` /
+`AC_AI_API_KEY` / `AC_AI_BASE_URL`），**不接受命令行参数**。
 """
 
 from __future__ import annotations
@@ -251,7 +253,8 @@ def start(port, wakeup, gui):
                 click.echo(f"  已注册 Agent: {data.get('agents_registered', 0)}")
                 click.echo(f"  Harness: {data.get('harnesses', 0)}")
                 if wakeup:
-                    click.echo("[INFO] Wakeup Agent 由 server 内部预注册，通过 --ai-provider 配置 AI 后端")
+                    click.echo("[INFO] Wakeup Agent 由 server 内部预注册；AI 后端在「桌面窗口 → 设置」里配，"
+                               "或设环境变量 AC_AI_PROVIDER / AC_AI_MODEL / AC_AI_API_KEY / AC_AI_BASE_URL")
                 return
         except Exception:
             pass
@@ -343,7 +346,7 @@ def status():
 # ── task ───────────────────────────────────────────────────────
 
 def _task_payload(description: str) -> dict:
-    """`agent-community task "…"` 发给 `/api/command` 的请求体（**只有这一处**）。
+    """`python -m agent_community.cli task "…"` 发给 `/api/command` 的请求体（**只有这一处**）。
 
     ★为什么单独抽出来：这个字段名与端点**曾经对不上**（CLI 发 `content`、
     端点只认 `input`/`command`），而 CLI 又只打一个 `HTTP 400`、什么原因都不说 ——
@@ -453,7 +456,7 @@ def task(description):
             ws = data.get("workshop_id") or ""
             if ws:
                 click.echo(f"  工作间:  {ws}（已自动建间，去界面里选成员）")
-            click.echo(f"  查询结果: agent-community task-result {task_id}")
+            click.echo(f"  查询结果: python -m agent_community.cli task-result {task_id}")
         else:
             # ★失败要说话（准则⑤）：把**服务端原话**打出来，别只留一个状态码。
             detail = ""

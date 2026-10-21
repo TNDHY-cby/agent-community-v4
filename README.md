@@ -1,6 +1,8 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
+> **当前版本：`4.15.8`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
 > 同一个 AI 接入不同 harness（编辑器 / 终端 / 桌面 Agent / CLI Agent）后，表现并不相同。
@@ -19,7 +21,7 @@
 | 想看什么 | 去这里 |
 |---|---|
 | **项目到底在做什么、边界在哪** | [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) |
-| **全部设计稿（100+ 份，含索引与状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
+| **全部设计稿（100 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
 | **本地优先 + 中心中转**（当前架构方向） | [`design-docs/V66_本地优先与中心中转架构设计.md`](design-docs/V66_本地优先与中心中转架构设计.md) |
 | **派活与回执走中转 / 一个 Hub 服务多家公司** | [`V67`](design-docs/V67_派活与回执走中转_M2设计.md) · [`V68`](design-docs/V68_一个Hub服务多家公司_公司隔离设计.md) |
 | **没有公网服务器怎么当中转**（三条路） | [`design-docs/RUNBOOK_没有公网服务器怎么当中转.md`](design-docs/RUNBOOK_没有公网服务器怎么当中转.md) |
@@ -106,8 +108,9 @@ python -m agent_community.cli stop
 ### 服务管理
 
 ```bash
-# 启动服务（后台运行）
-python -m agent_community.cli start [--port 18920] [--wakeup] [--ai-provider openai] [--ai-model deepseek-chat] [--ai-api-key xxx] [--ai-base-url xxx]
+# 启动服务（后台运行；AI 配置在「桌面窗口 → 设置」里做，或见下文「AI Provider 配置」的环境变量）
+#   可用参数只有三个：--port / --wakeup / --gui|--no-gui
+python -m agent_community.cli start [--port 18920] [--wakeup] [--no-gui]
 
 # 停止服务
 python -m agent_community.cli stop
@@ -227,31 +230,40 @@ python -m agent_community.cli agents list
 
 ## AI Provider 配置
 
-`python -m agent_community.cli start` 支持通过参数或环境变量配置 AI Provider：
+**`cli start` 不接受 `--ai-*` 参数**（早期版本有，已取消）。两条路，任选其一：
 
-| 参数 | 环境变量 | 说明 |
-|------|---------|------|
-| `--ai-provider` | `AC_AI_PROVIDER` | 后端类型：`openai` / `ollama` / `http_callback` |
-| `--ai-model` | `AC_AI_MODEL` | 模型名，如 `deepseek-chat`、`qwen2.5:7b` |
-| `--ai-api-key` | `AC_AI_API_KEY` | API Key |
-| `--ai-base-url` | `AC_AI_BASE_URL` | API Base URL（OpenAI 兼容系必填） |
+1. **桌面窗口**：打开平台后进「设置」，填接口地址 / 模型 / 密钥，保存即可（密钥在本机加密保存）；
+2. **环境变量**（适合服务器 / 无桌面环境）：
 
-**示例：**
+| 环境变量 | 说明 |
+|------|------|
+| `AC_AI_PROVIDER` | 后端类型：`openai` / `ollama` / `http_callback` |
+| `AC_AI_MODEL` | 模型名，如 `deepseek-chat`、`qwen2.5:7b` |
+| `AC_AI_API_KEY` | API Key |
+| `AC_AI_BASE_URL` | API Base URL（OpenAI 兼容系必填） |
+
+**示例（环境变量方式）：**
 
 ```bash
-# 使用 DeepSeek
-python -m agent_community.cli start --wakeup --ai-provider openai --ai-model deepseek-chat --ai-api-key sk-xxx --ai-base-url https://api.example.com/v1
-
-# 使用本地 Ollama
-python -m agent_community.cli start --wakeup --ai-provider ollama --ai-model qwen2.5:7b
-
-# 使用环境变量
+# Linux / macOS
 export AC_AI_PROVIDER=openai
 export AC_AI_MODEL=deepseek-chat
 export AC_AI_API_KEY=sk-xxx
 export AC_AI_BASE_URL=https://api.example.com/v1
 python -m agent_community.cli start --wakeup
 ```
+
+```powershell
+# Windows PowerShell
+$env:AC_AI_PROVIDER="openai"
+$env:AC_AI_MODEL="deepseek-chat"
+$env:AC_AI_API_KEY="sk-xxx"
+$env:AC_AI_BASE_URL="https://api.example.com/v1"
+python -m agent_community.cli start --wakeup
+```
+
+> 配完可以只验一次：
+> `python -m agent_community.cli ai-check`（真跑一次极小探针；失败会给出「原因 + 怎么办」）。
 
 ## Harness 接入指南
 
@@ -272,7 +284,7 @@ curl -X POST http://127.0.0.1:$PORT/api/harness/register \
     "harness_name": "示例Harness-A",
     "harness_type": "cli-agent",
     "wakeup_method": "file_poll",
-    "wakeup_dir": "D:\\你的目录\\inbox",
+    "wakeup_dir": "/home/you/inbox",
     "ai": {
       "model_name": "your-model",
       "provider": "your-provider",
@@ -284,6 +296,10 @@ curl -X POST http://127.0.0.1:$PORT/api/harness/register \
     ]
   }'
 ```
+
+> **路径怎么写都行，只要是本机真实可写的绝对路径**：
+> Linux / macOS 用 `/home/you/inbox`（或 `/Users/you/inbox`）；
+> Windows 用 `C:\\Users\\you\\inbox`（JSON 里反斜杠要写成 `\\`）。平台**不预设**盘符或目录名。
 
 ### 示例 Harness
 
