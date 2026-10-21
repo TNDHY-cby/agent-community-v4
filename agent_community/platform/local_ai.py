@@ -35,6 +35,22 @@ import time
 import urllib.request
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger("ac.localai")
+
+#: 同一类失败**每进程只喊一次**（不刷屏，但不许静默 —— 准则⑤）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
+
+
 # 内置默认端点（按优先级探测；无配置文件时不含自启能力）
 DEFAULT_ENDPOINTS: list[dict] = [
     # portability: allow(下面是本机模型服务的**出厂候选地址**，只用于自动探测；用户可改)
@@ -70,8 +86,10 @@ def endpoints() -> list[dict]:
                 if not any(m["base"] == d["base"] for m in merged):
                     merged.append(d)
             return merged
-    except Exception:
-        pass
+    except Exception as _e:        # 读不到用户配置的端点 ⇒ 只能用默认，用户会以为「我配了没用」
+        _warn_once("endpoints_read_failed",
+                   "读本地 AI 端点配置失败（改用默认端点）：%s: %s"
+                   % (type(_e).__name__, str(_e)[:120]), _e)
     return list(DEFAULT_ENDPOINTS)
 
 
@@ -215,7 +233,7 @@ def extract_json(text: str) -> dict | None:
             if seg.startswith("{"):
                 try:
                     return json.loads(seg)
-                except Exception:
+                except Exception:    # noqa: BLE001 — 有意静默：这里就是「逐个候选段试解析」的语义，失败即试下一段
                     pass
     start = s.find("{")
     while start != -1:

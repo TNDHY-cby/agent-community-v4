@@ -18,6 +18,7 @@ from pathlib import Path
 import httpx
 
 from .pipe_agent import PipeAgent
+import tempfile
 
 
 def _default_platform_url() -> str:
@@ -135,7 +136,7 @@ async def _main():
     args = parser.parse_args()
 
     pipe_dir = args.pipe_dir or os.path.join(
-        os.environ.get("TEMP", str(Path.home() / "AppData" / "Local" / "Temp")),
+        tempfile.gettempdir(),
         "agent_community_pipe",
     )
 

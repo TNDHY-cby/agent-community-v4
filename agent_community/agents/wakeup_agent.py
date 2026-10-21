@@ -21,6 +21,7 @@ from ..platform.ai_provider import (
     OpenAICompatibleProvider, OllamaProvider, HTTPCallbackProvider,
 )
 from ..platform.ai_external import run_ai_call
+import tempfile
 
 
 def _default_platform_url() -> str:
@@ -414,7 +415,7 @@ async def _main():
 
     # Pipe 目录
     pipe_dir = args.pipe_dir or os.path.join(
-        os.environ.get("TEMP", str(Path.home() / "AppData" / "Local" / "Temp")),
+        tempfile.gettempdir(),
         "agent_community_pipe",
     )
 

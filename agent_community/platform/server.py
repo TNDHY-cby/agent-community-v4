@@ -254,7 +254,9 @@ app.include_router(_docking_router)  # V34 对接中心：GET /api/docking/overv
 from .routers.rooms_discuss import router as _rooms_discuss_router
 app.include_router(_rooms_discuss_router)
 from .routers.assistant import router as _assistant_router
-app.include_router(_assistant_router)  # 助手会话一族（2026-10-21 从 server.py 整块搬出）
+app.include_router(_assistant_router)
+from .routers.reply_probe import router as _reply_probe_router
+app.include_router(_reply_probe_router)  # V74 回话探针：验一次「发消息给它、它回了」并落证据  # 助手会话一族（2026-10-21 从 server.py 整块搬出）
 from .routers.agents_registry import router as _agents_registry_router
 app.include_router(_agents_registry_router)  # Agent 注册与在线列表（2026-10-21 从 server.py 整块搬出）
 from .routers.legacy_misc import router as _legacy_misc_router

@@ -28,7 +28,8 @@ import click
 import httpx
 
 # PID 文件路径
-PID_DIR = Path.home() / ".agent_community"
+# ★2026-10-21 反私人定制：PID 目录只认一处真相（见 port_resolve._pid_dir）
+from .port_resolve import PID_DIR, PID_FILE  # noqa: E402
 PID_FILE = PID_DIR / "server.pid"
 # ★2026-10-13：端口**只有一处真相**（`platform_address`）——
 #   原来这里写 9103、server 写 9103、其它模块写 18920，同一件事四处各写一套。

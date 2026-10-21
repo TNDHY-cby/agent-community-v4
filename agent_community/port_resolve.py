@@ -27,8 +27,21 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+def _pid_dir() -> Path:
+    """PID 记录目录 —— **跟着数据目录一处真相走**（`AC_DATA_DIR/run`）。
+
+    ★2026-10-21（反私人定制）：原来写死在 `~/.agent_community`，后果是
+    **换掉 `AC_DATA_DIR` 之后 PID 记录仍落在用户主目录** —— 两个不同数据目录的实例
+    会互相看见对方的 PID，"这个端口是不是我自己占的"就判错了。
+    现在 `AC_DATA_DIR` 一变，PID 记录跟着变（判据：`test_no_home_dir_data.py`）。
+    """
+    from .platform.env_spec import data_dir
+
+    return Path(data_dir()) / "run"
+
+
 #: PID 记录文件（与 `agent_community/cli.py` 同一处；那边从这里取，不再自己拼）
-PID_DIR = Path.home() / ".agent_community"
+PID_DIR = _pid_dir()
 PID_FILE = PID_DIR / "server.pid"
 
 

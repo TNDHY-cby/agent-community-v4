@@ -10,7 +10,24 @@
 
 from __future__ import annotations
 import json
+
+import logging
+
+logger = logging.getLogger("ac.usage")
+
+#: 同一类失败**每进程只喊一次**（不刷屏，但不许静默 —— 准则⑤）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
+
 import os
+from pathlib import Path
 import time
 from typing import Optional
 
@@ -138,10 +155,24 @@ def get_default_usage() -> AIUsage:
             root = cfg.get("data_dir") or ""
             if root:
                 usage_dir = os.path.join(root, "usage")
-            else:
-                usage_dir = os.path.join(os.path.expanduser("~"), ".agent_community", "data", "usage")
-        except Exception:
-            pass
+        except Exception as _e:            # 读配置失败 ⇒ 用量目录仍按一处真相走（见下）
+            _warn_once("usage_cfg_read_failed",
+                       "读 AI 用量配置失败：%s: %s" % (type(_e).__name__, str(_e)[:120]), _e)
+        # ★2026-10-21 反私人定制：用量目录**只认一处真相**（AC_AI_USAGE_DIR > AC_DATA_DIR/usage），
+        #   不再回落到 ~/.agent_community/...（那等于把账记在某一台机器的某一个用户名下）
+        # 优先级：显式 AC_AI_USAGE_DIR > 配置里的 data_dir > 一处真相（AC_DATA_DIR/usage）
+        # ⚠️用户的显式环境变量必须最高优先，否则"换数据目录不改代码"就不成立（守卫抓过这条）
+        if os.environ.get("AC_AI_USAGE_DIR"):
+            usage_dir = os.environ["AC_AI_USAGE_DIR"]
+        if not usage_dir:
+            try:
+                from .env_spec import data_dir as _data_dir
+                usage_dir = str(Path(_data_dir()) / "usage")
+            except Exception as _e:        # noqa: BLE001
+                _warn_once("usage_dir_resolve_failed",
+                           "解析 AI 用量目录失败，本次不记账：%s: %s"
+                           % (type(_e).__name__, str(_e)[:120]), _e)
+                usage_dir = ""
         _default_usage = AIUsage(usage_dir=usage_dir)
         # 预算与单价从 config 注入（构造时环境变量优先，这里用 config 覆盖默认）
         try:
@@ -153,6 +184,8 @@ def get_default_usage() -> AIUsage:
                 _default_usage.monthly_budget = float(_cfg["budget_monthly"])
             if _cfg.get("ai_price_per_1k") is not None:
                 _default_usage.price_per_1k = float(_cfg["ai_price_per_1k"])
-        except Exception:
-            pass
+        except Exception as _e:            # ★预算/单价读不出来 ⇒ 熔断与花费都不准，必须说
+            _warn_once("usage_budget_read_failed",
+                       "读 AI 预算/单价失败（预算熔断与花费统计可能不准）：%s: %s"
+                       % (type(_e).__name__, str(_e)[:120]), _e)
     return _default_usage

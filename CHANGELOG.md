@@ -2,6 +2,54 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.17.0] - 2026-10-21
+
+**V74 落地：回话探针 —— 平台第一次能**证明**「发消息给它，它回了」**
+
+### 一、解决的真事
+
+此前平台只能证明**桥配置**这一段。每条记录里平台自己写着「harness 侧是否运行该桥、**agent 能否回话，本次未验证**」
+（本机 8/8 条都是这个状态）——界面显示"接入成功"，却没有一条证据说明"发消息它会回话"。
+
+现在：`V73` 能力视图里的 `segments.agent_can_reply` 从**恒为 `unverified`** 变成
+**能验、验完如实写**（`ok` / `failed` + 证据 + 范围原话 + 来源）。
+
+### 二、三个端点（`routers/reply_probe.py`）
+
+```
+POST /api/harness/{id}/probe-reply       发起一次探针（mode=auto | human_confirm）
+GET  /api/harness/{id}/probe-reply       查最近一次结果（没有就如实说没有）
+POST /api/harness/reply-probe-result     harness 侧回报（**必须带回本次 probe_id**）
+```
+
+### 三、三条硬约束（写进代码注释，防后人改掉）
+
+1. **不烧钱**：`AC_REPLY_PROBE_ENABLED` **默认 0（关）**；一次只发 **1 条**；超时 `AC_REPLY_PROBE_TIMEOUT`（默认 120s）。
+2. **不假装**：投递走**和真实桥测试同一条路**（`file_poll` 写 inbox / 其它走 `pending_bridge_tests` 队列），
+   不另开捷径；**回报 nonce 不对一律 403**。
+3. **不绑定 harness 类型**：人工中转型（本机 6/8）没有自动回报通道 ⇒ 自动验证**直接拒**并说清原因，
+   只能 `mode=human_confirm`，证据里标 `source=human_confirm`，与自动回执**分开显示**。
+
+### 四、判据 `tools/reply_probe_check.py`（7 格真跑，全过）
+
+默认关→409 且说怎么开 / 人工中转型 auto→400 说人话 / human_confirm 落证据并标 source /
+自动型发起拿到 probe_id / **错 nonce 403、对 nonce 通过** / 没验过仍 `unverified` /
+验过后带 `evidence` 与 `evidence_scope`。
+
+### 五、其他
+
+- 静默吞异常：**59 → 37**（桥/ACP/适配器/AI 缓存与用量/harness 回报/巡逻员重置/工作间目录 等，
+  每处都按"用户会不会把坏了当正常"判过）；
+- 反私人定制：PID 记录改跟 `AC_DATA_DIR`、`TEMP` 改 `tempfile.gettempdir()`、桌面先问系统；
+  新增守卫 `test_no_home_dir_data.py`（AST 判真实调用 + 行为判 PID 跟随）与 `test_ai_dirs_follow_data_dir.py`；
+- 端点债收尾：`@app.*` **51 → 2**（只剩两条 WebSocket，故意不搬），`routers/` 41 个文件；
+- 环境变量 71 → **73**（新增两个探针开关）。
+
+### 六、判据
+
+`agent_community/tests` 该域 21 条全过；`reply_probe_check` 7/7；`gen_env_docs` / `gen_design_index` 无漂移；
+服务重启后 `version=4.17.0`。
+
 ## [4.16.0] - 2026-10-21
 
 **结构债收尾批次：`server.py` 的 `@app.*` 端点从 51 收到 **2**（只剩两条 WebSocket）；

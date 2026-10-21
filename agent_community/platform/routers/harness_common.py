@@ -24,6 +24,21 @@ from ..audit import audit_log as _audit_log
 
 router = APIRouter()
 
+import logging
+
+logger = logging.getLogger("ac.harnessws")
+
+#: 同一类失败**每进程只喊一次**（不刷屏，但不许静默 —— 准则⑤）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
+
 def _sv():
     """返回活跃 server 副本（__main__，uvicorn 实际运行的实例）模块。"""
     return sys.modules["__main__"]
@@ -186,10 +201,12 @@ async def harness_ws(ws: WebSocket, harness_id: str):
             data = json.loads(raw)
             msg = HarnessMessage(**data)
             harness_manager.handle_reply(msg)
-    except WebSocketDisconnect:
+    except WebSocketDisconnect:      # noqa: BLE001 — 有意静默：harness 断连是常态
         pass
-    except Exception:
-        pass
+    except Exception as _e:          # 解析/处理回报失败 ⇒ 这条回执等于丢了，必须说
+        _warn_once("harness_ws_msg_failed",
+                   "处理 harness 回报失败（该条回执可能丢失）：%s: %s"
+                   % (type(_e).__name__, str(_e)[:120]), _e)
     finally:
         if harness_id in harness_manager.sessions:
             harness_manager.sessions[harness_id].status = HarnessStatus.OFFLINE

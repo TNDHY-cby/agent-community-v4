@@ -46,6 +46,22 @@ import httpx
 # ── 协议类型（从共享类型模块导入，与 agent_community.platform.protocol 同源）──
 from agent_community.shared_types import SubTaskAssignment, DelegationRequest, ReviewRequest
 
+import logging
+
+logger = logging.getLogger("ac.sdk")
+
+#: 同一类失败**每进程只喊一次**（不刷屏，但不许静默 —— 准则⑤）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
+
+
 
 # ═══════════════════════════════════════════════════════════════
 #  AgentClient — 无状态接入
@@ -152,8 +168,10 @@ class AgentClient:
                 f"/api/harness/{self.agent_id}",
                 headers=headers,
             )
-        except Exception:
-            pass
+        except Exception as _e:        # 注销失败 ⇒ 平台侧可能留一个僵尸成员
+            _warn_once("sdk_disconnect_failed",
+                       "注销 harness 失败（平台侧可能残留）：%s: %s"
+                       % (type(_e).__name__, str(_e)[:120]), _e)
         finally:
             self._connected = False
             if self._http:
@@ -227,8 +245,8 @@ class AgentClient:
             try:
                 loop = asyncio.get_running_loop()
                 loop.add_signal_handler(sig, stop_event.set)
-            except NotImplementedError:
-                pass  # Windows 不支持 add_signal_handler
+            except NotImplementedError:   # noqa: BLE001 — 有意静默：Windows 本就没有 add_signal_handler（平台差异，非故障）
+                pass
 
         self._logger.info("Idle — waiting for tasks...")
         try:

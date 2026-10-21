@@ -146,15 +146,38 @@ def build_provenance(info: dict) -> dict:
     else:
         bridge_cfg = _segment("unknown", SCOPE_UNVERIFIED, {"evidence_scope": SCOPE_UNVERIFIED})
 
+    # ── 第二/三段：只有真的验过才敢说 ok（`V74` 回话探针）────────────
+    probe = md.get("reply_probe") if isinstance(md.get("reply_probe"), dict) else {}
+    if probe.get("state") == "ok":
+        _src = probe.get("source") or "auto"
+        reply_seg = _segment("ok", (
+            "验过了：平台投递一条带 probe_id 的消息，它回了带回执的消息"
+            if _src == "auto" else
+            "**人工确认**（用户说它回了）——不是平台自动验的，来源已标注"), {
+            "evidence_scope": ("自动回执：本次证明的是「这条桥投递后 agent 回了带回执的消息」"
+                               if _src == "auto" else
+                               "人工确认：本次只证明「用户判断它回了」，平台没有自动回执"),
+            "source": _src, "at": probe.get("at"),
+            "evidence": probe.get("evidence") or {},
+        })
+    elif probe.get("state") in ("failed", "pending"):
+        reply_seg = _segment(
+            "failed" if probe.get("state") == "failed" else "unverified",
+            ("探针失败：" + str(probe.get("why") or "未知原因")) if probe.get("state") == "failed"
+            else "探针已发出，还没收到回执（超时后会自动记为失败）",
+            {"source": probe.get("source") or "auto", "at": probe.get("at")})
+    else:
+        reply_seg = _segment(
+            "unverified",
+            "没有任何记录证明这个 agent 收到消息后能回话"
+            + ("；本条记录的验证范围原话是：" + str(last.get("scope")) if last.get("scope") else ""))
+
     segments = {
         "bridge_config": bridge_cfg,
         "harness_running_bridge": _segment(
             "unverified",
             "平台没有观测到 harness 侧真的在跑这只桥（验证间里对面是平台自己）"),
-        "agent_can_reply": _segment(
-            "unverified",
-            "没有任何记录证明这个 agent 收到消息后能回话"
-            + ("；本条记录的验证范围原话是：" + str(last.get("scope")) if last.get("scope") else "")),
+        "agent_can_reply": reply_seg,
     }
     connected = segments["agent_can_reply"]["state"] == "ok"
 

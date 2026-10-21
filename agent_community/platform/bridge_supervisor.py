@@ -16,6 +16,22 @@ import subprocess
 import sys
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger("ac.bridgesup")
+
+#: 同一类失败**每进程只喊一次**（不刷屏，但不许静默 —— 准则⑤）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
+
+
 # 每个要跟随平台一起起停的桥。key = harness_id
 # bridge_file: 桥脚本路径（**填实际存在的路径**）；url: 平台地址；extra: 额外参数
 #
@@ -105,15 +121,19 @@ def stop_harness_bridges() -> None:
         if proc.poll() is None:
             try:
                 proc.terminate()
-            except Exception:
-                pass
+            except Exception as _e:    # terminate 无效（下一步会 kill）—— 留个痕，别装作没发生
+                _warn_once("bridge_terminate_failed",
+                           "桥进程不响应 terminate（将改 kill）：%s: %s"
+                           % (type(_e).__name__, str(_e)[:120]), _e)
             try:
                 proc.wait(timeout=5)
             except Exception:
                 try:
                     proc.kill()
-                except Exception:
-                    pass
+                except Exception as _e:    # 杀不掉 = 可能留僵尸进程
+                    _warn_once("bridge_kill_failed",
+                               "结束桥进程失败（可能留僵尸）：%s: %s"
+                               % (type(_e).__name__, str(_e)[:120]), _e)
         _procs.pop(hid, None)
         print(f"[bridge_supervisor] {hid} 桥已停止", flush=True)
 

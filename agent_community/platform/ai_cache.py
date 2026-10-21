@@ -9,8 +9,25 @@
 
 from __future__ import annotations
 import hashlib
+
+import logging
+
+logger = logging.getLogger("ac.cache")
+
+#: 同一类失败**每进程只喊一次**（不刷屏，但不许静默 —— 准则⑤）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
+
 import json
 import os
+from pathlib import Path
 import time
 from typing import Optional
 
@@ -80,8 +97,10 @@ class AICache:
         if self._path and os.path.exists(self._path):
             try:
                 os.remove(self._path)
-            except OSError:
-                pass
+            except OSError as _e:      # 删不掉 ⇒ 之后可能一直读到旧缓存值
+                _warn_once("cache_remove_failed",
+                           "删旧缓存文件失败（可能读到旧值）：%s: %s"
+                           % (type(_e).__name__, str(_e)[:120]), _e)
 
     @property
     def size(self) -> int:
@@ -103,12 +122,26 @@ def get_default_cache() -> AICache:
             cfg = load_config()
             ttl = int(cfg.get("ai_cache_ttl") or 0)
             max_entries = int(cfg.get("ai_cache_max") or 0)
-            root = cfg.get("data_dir") or ""
-            if root:
-                cache_dir = os.path.join(root, "cache")
-            else:
-                cache_dir = os.path.join(os.path.expanduser("~"), ".agent_community", "data", "cache")
-        except Exception:
-            pass
+            _root = cfg.get("data_dir") or ""
+            if _root:
+                cache_dir = os.path.join(_root, "cache")
+        except Exception as _e:            # 配置读不到 ⇒ 只有缓存开关用默认，**目录仍按一处真相走**
+            _warn_once("cache_cfg_read_failed",
+                       "读 AI 缓存配置失败（ttl/上限按默认）：%s: %s"
+                       % (type(_e).__name__, str(_e)[:120]), _e)
+        # ★2026-10-21 反私人定制：缓存目录**只认一处真相**（AC_AI_CACHE_DIR > AC_DATA_DIR/cache），
+        #   不再回落到 ~/.agent_community/... —— 那等于把数据写进某台机器的某个用户主目录。
+        # 优先级：显式 AC_AI_CACHE_DIR > 配置里的 data_dir > 一处真相（AC_DATA_DIR/cache）
+        if os.environ.get("AC_AI_CACHE_DIR"):
+            cache_dir = os.environ["AC_AI_CACHE_DIR"]
+        if not cache_dir:
+            try:
+                from .env_spec import data_dir as _data_dir
+                cache_dir = str(Path(_data_dir()) / "cache")
+            except Exception as _e:            # noqa: BLE001
+                _warn_once("cache_dir_resolve_failed",
+                           "解析 AI 缓存目录失败，本次不落盘缓存：%s: %s"
+                           % (type(_e).__name__, str(_e)[:120]), _e)
+                cache_dir = ""
         _default_cache = AICache(ttl=ttl, max_entries=max_entries, cache_dir=cache_dir)
     return _default_cache

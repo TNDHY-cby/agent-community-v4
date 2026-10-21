@@ -31,6 +31,22 @@ import threading
 import time
 from typing import Any, Optional
 
+import logging
+
+logger = logging.getLogger("ac.aiverify")
+
+#: 同一类失败**每进程只喊一次**（不刷屏，但不许静默 —— 准则⑤）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
+
+
 # 单次探针超时（秒）。⚠️ 2026-10-05 实测修正：
 #   原设计稿写"超时 ≤8s"，查表口径抄的是 /api/ai/models 的 8.0s —— 但**那是列清单**，
 #   而这里是**一次真实 chat 调用**。实测真实服务（示例模型线）`max_tokens=1` 也要
@@ -109,8 +125,10 @@ def _precheck(provider_type: str, base_url: str, model: str) -> tuple[str, str, 
     try:
         from .ai_provider import _normalize_base_url as _norm
         norm = _norm(norm)
-    except Exception:
-        pass
+    except Exception as _e:        # URL 规范化失败：多半是 base_url 写法不对（缺 /v1 之类），要说
+        _warn_once("base_url_normalize_failed",
+                   "AI base_url 规范化失败（可能写法不对）：%s: %s"
+                   % (type(_e).__name__, str(_e)[:120]), _e)
     return norm, "", None
 
 
@@ -155,7 +173,7 @@ def _audit(actor: str, norm: str, model: str, result: dict) -> None:
             detail=(f"model={model} ok={result.get('ok')} status={result.get('status')} "
                     f"cached={result.get('cached')} elapsed={result.get('elapsed_ms')}ms "
                     f"reason={result.get('reason') or '-'}"))
-    except Exception:
+    except Exception:      # noqa: BLE001 — 有意静默：只影响审计 detail 的拼装，验证结论已拿到
         pass
 
 

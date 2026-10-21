@@ -16,6 +16,21 @@ from ..audit import audit_log as _audit_log
 
 router = APIRouter()
 
+import logging
+
+logger = logging.getLogger("ac.wstask")
+
+#: 同一类失败**每进程只喊一次**（不刷屏，但不许静默 —— 准则⑤）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
+
 @router.post("/api/workshop/{ws_id}/halt-and-reset")
 async def workshop_halt_and_reset(ws_id: str, request: Request):
     _audit_log.record("workshop.halt_and_reset", actor="user", target=ws_id, detail="中止并重置工作间")
@@ -56,15 +71,17 @@ async def workshop_halt_and_reset(ws_id: str, request: Request):
         try:
             if hasattr(ws, attr):
                 delattr(ws, attr)
-        except Exception:
+        except Exception:      # noqa: BLE001 — 有意静默：只是清理可能不存在的临时属性
             pass
 
     # 2. 反思总结归档（DETOUR_SUMMARY.md）
     ws_dir = Path(ws.workspace_dir)
     try:
         ws_dir.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
+    except Exception as _e:            # 目录建不出来 ⇒ 后面的交接单写不下去，用户看不到
+        _warn_once("ws_dir_mkdir_failed",
+                   "创建工作间目录失败（交接单可能写不下去）：%s: %s"
+                   % (type(_e).__name__, str(_e)[:120]), _e)
     detour_path = ws_dir / "DETOUR_SUMMARY.md"
     try:
         lines = [

@@ -14,6 +14,7 @@ import httpx
 from fastapi import WebSocket
 
 from .protocol import (
+
     AgentCard, AgentEndpoint, Message, MessageType,
     IMPLEMENTED_TRANSPORTS,
     PipeRequest, PipeResponse, TransportType,
@@ -21,6 +22,20 @@ from .protocol import (
 
 
 # ── 端点选择 ──────────────────────────────────────────────────
+
+import logging
+
+logger = logging.getLogger("ac.adapters")
+
+#: 同一类失败**每进程只喊一次**（不刷屏，但不许静默 —— 准则⑤）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
 
 def select_endpoint(card: AgentCard, preferred: TransportType | None = None) -> AgentEndpoint | None:
     """从多端点中选择最优接入点。
@@ -53,7 +68,7 @@ def select_endpoint(card: AgentCard, preferred: TransportType | None = None) -> 
 async def ws_send(ws: WebSocket, msg: Message):
     try:
         await ws.send_text(msg.model_dump_json())
-    except Exception:
+    except Exception:      # noqa: BLE001 — 有意静默：广播时对端已断是常态（每轮都可能发生），不是故障
         pass
 
 
@@ -176,8 +191,10 @@ class PipeAdapter:
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
                 reqs.append(PipeRequest(**data))
-            except Exception:
-                pass
+            except Exception as _e:        # 这条请求会被丢掉 ⇒ 提交方以为成功了，必须说
+                _warn_once("pipe_request_bad",
+                           "有一条 pipe 请求解析失败（该请求被跳过）：%s: %s"
+                           % (type(_e).__name__, str(_e)[:120]), _e)
         return reqs
 
     def respond(self, request_id: str, resp: PipeResponse):

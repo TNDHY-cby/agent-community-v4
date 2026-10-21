@@ -21,6 +21,21 @@ from ..identity import issue_agent_token as _issue_agent_token
 
 router = APIRouter()
 
+import logging
+
+logger = logging.getLogger("ac.harnessreg")
+
+#: 同一类失败**每进程只喊一次**（不刷屏，但不许静默 —— 准则⑤）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
+
 async def _maybe_pull_mcp_tools(info):
     """MCP 类 harness：从远程 MCP 服务器的 `tools/list` 拉工具表并写回 `info.tools`。
 
@@ -704,8 +719,10 @@ async def harness_activation_result(request: Request):
             is_new = False
             try:
                 is_new = not session_registry.find(workshop_id=wid, member_id=mid)
-            except Exception:
-                pass
+            except Exception as _e:        # 判不出是不是新会话 ⇒ 审计标记可能错，要说
+                _warn_once("session_new_check_failed",
+                           "判断「是否新会话」失败（审计标记可能不准）：%s: %s"
+                           % (type(_e).__name__, str(_e)[:120]), _e)
             rec = session_registry.register(
                 harness_id=hid or (f"human::{wid}" if source == SRC_HUMAN else "unknown"),
                 session_id=sid,
@@ -729,7 +746,7 @@ async def harness_activation_result(request: Request):
                         detail=f"session_id={rec.get('session_id')} "
                                f"context_turns={rec['context_turns']}（新会话应为 1）",
                     )
-                except Exception:
+                except Exception:        # noqa: BLE001 — 有意静默：只影响一条审计 detail 的拼装
                     pass
         except Exception as _e:
             print(f"[session_registry] 登记失败（不阻断）: {_e}", flush=True)

@@ -25,6 +25,21 @@ from ..state import workshops
 router = APIRouter()
 
 
+import logging
+
+logger = logging.getLogger("ac.patrol")
+
+#: 同一类失败**每进程只喊一次**（不刷屏，但不许静默 —— 准则⑤）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
+
 def _find_member(ws, member_id: str):
     return next((m for m in (ws.members or []) if m.member_id == member_id), None)
 
@@ -36,7 +51,7 @@ def _patrol_log(ws) -> list:
         log = []
         try:
             ws.patrols = log
-        except Exception:                      # 老对象/只读替身：退回旁挂
+        except Exception:      # noqa: BLE001 — 有意静默：老对象/只读替身没有这个属性，退回旁挂即可（设计内兜底）
             pass
     return log
 
@@ -162,8 +177,10 @@ async def submit_patrol_result(ws_id: str, patrol_id: str, request: Request):
         target.entry_reason = ""
         try:
             target.offline_attempts = 0
-        except Exception:
-            pass
+        except Exception as _e:        # 重置失败 ⇒ 会重复派巡逻员（同一件事反复打扰）
+            _warn_once("patrol_reset_attempts_failed",
+                       "重置成员 offline_attempts 失败（可能重复派巡逻员）：%s: %s"
+                       % (type(_e).__name__, str(_e)[:120]), _e)
     elif target is not None and not v["fixed"]:
         target.entry_state = "needs_human"
         target.entry_reason = pt.human_line(norm, v)

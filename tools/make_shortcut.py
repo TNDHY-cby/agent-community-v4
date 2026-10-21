@@ -47,14 +47,56 @@ def _ps(script: str) -> str:
 
 
 def desktop_dir() -> Path:
-    """桌面目录（**用系统 API 取**：可能被 OneDrive 重定向，别用 `~/Desktop` 猜）。"""
-    try:
-        p = _ps("[Environment]::GetFolderPath('Desktop')")
-        if p and Path(p).exists():
-            return Path(p)
-    except Exception:                                        # noqa: BLE001
-        pass
-    return Path(os.path.expanduser("~")) / "Desktop"
+    """桌面目录 —— **先问系统，别猜**（猜错就是"只对我这台机器成立"）。
+
+    顺序：
+    ① **Windows**：PowerShell `GetFolderPath('Desktop')`（可能被 OneDrive 重定向，`~/Desktop` 会猜错）；
+    ② **Linux**：`XDG_DESKTOP_DIR` 环境变量 → `xdg-user-dir DESKTOP` → `~/.config/user-dirs.dirs` 里那一行；
+       （中文/其它语言的桌面目录是「桌面」「デスクトップ」等，`~/Desktop` 根本不存在）
+    ③ **macOS**：`~/Desktop`（这个是真的固定）；
+    ④ 全都不行：**如实返回 `~/Desktop` 并说明这是兜底**——调用方会打印，不假装成功。
+    """
+    import sys as _sys
+
+    # ① Windows：系统 API
+    if _sys.platform == "win32":
+        try:
+            p = _ps("[Environment]::GetFolderPath('Desktop')")
+            if p and Path(p).exists():
+                return Path(p)
+        except Exception:                                    # noqa: BLE001
+            pass
+
+    # ② Linux：XDG 三路
+    if _sys.platform.startswith("linux"):
+        env = os.environ.get("XDG_DESKTOP_DIR")
+        if env and Path(env).exists():
+            return Path(env)
+        try:
+            out = subprocess.run(["xdg-user-dir", "DESKTOP"], capture_output=True,
+                                 text=True, timeout=5)
+            cand = (out.stdout or "").strip()
+            if cand and Path(cand).exists():
+                return Path(cand)
+        except Exception:                                    # noqa: BLE001 — 没装 xdg-user-dirs 很常见
+            pass
+        cfg = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")) / "user-dirs.dirs"
+        try:
+            for line in cfg.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if line.startswith("XDG_DESKTOP_DIR="):
+                    val = line.split("=", 1)[1].strip().strip('"')
+                    val = val.replace("$HOME", str(Path.home()))
+                    if val and Path(val).exists():
+                        return Path(val)
+        except Exception:                                    # noqa: BLE001
+            pass
+
+    # ③ macOS / ④ 兜底
+    fallback = Path.home() / "Desktop"
+    print("[make_shortcut] 没能从系统问出桌面目录，按兜底用 %s"
+          "（若不对，请把快捷方式手工放到你的桌面）" % fallback, flush=True)
+    return fallback
 
 
 def read_lnk(path: Path) -> dict:
