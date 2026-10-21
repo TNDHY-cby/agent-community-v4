@@ -2,6 +2,60 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.15.17] - 2026-10-21
+
+**结构债第二批：讨论室一族 **9 个端点**整块搬出 `server.py` —— 端点 42 → 33，行数 6573 → 6318**
+
+### 一、搬了什么
+
+`server.py` → 新模块 `platform/routers/rooms_discuss.py`：
+
+```
+GET  /api/room/{room_id}                             看一间讨论室
+GET  /api/room/by-task/{task_id}                     按任务找它那间
+POST /api/room/{room_id}/message                     发一条消息
+POST /api/room/{room_id}/proposal                    提交提案
+POST /api/room/{room_id}/proposal/prefill            AI 预填提案字段
+POST /api/room/{room_id}/vote                        投票
+POST /api/room/{room_id}/consensus                   强制共识（采纳票数最高的提案）
+POST /api/room/{room_id}/proposal/{pid}/edit         改自己的提案
+POST /api/room/{room_id}/proposal/{pid}/withdraw     撤回自己的提案
+```
+
+**只搬运、不重写**：函数体原样搬；`server` 的全局（`discussion_rooms` / `Utf8JSONResponse` /
+`bcast_to_clients` / `save_state` / `ai_provider` …）在**函数体内惰性 import**（模块级 import 会与
+`server.py` 形成循环，这是仓库既有约定）。注册走 `app.include_router`。
+
+### 二、搬运时被守卫抓到的**两个真 bug**（不是我事后自查出来的）
+
+1. **漏了 3 个名字**：`DiscussionMessage` / `TaskProposal` / `save_state` 没进惰性 import ⇒
+   真会 `NameError`。抓到它的是 `test_no_undefined_calls`（静态分析 routers，不跑请求）；
+2. **一处相对导入要少一层**：`from .ai_provider import ai_error_text` → 搬家后必须写成
+   `from ..ai_provider import …`，否则报 `No module named 'agent_community.platform.routers.ai_provider'`。
+   抓到它的是 `test_ai_error_guard_batch2`（真调 `prefill_proposal`，走 AI 失败路径）。
+
+⇒ 这就是"搬家也要判据"的理由：**纯搬代码照样能搬出 bug**。
+
+### 三、判据（真跑）
+
+- **端到端真请求 7/7**：用真实任务 `6af24a3b` 建讨论室 → 读回（`room_id` 对得上）→ 发消息 →
+  提提案 → 改提案 → 撤回提案，全部 200；
+- **404 分支 9/9 无 500**（import 断掉会立刻 500）：9 个端点各打一次不存在的房间；
+- **全量回归**：`agent_community/tests` **1846 passed / 3 skipped**；根 `tests` **66 passed**；
+- 路由自省：业务路由 **233 条不变**、`@app.*` 端点 **42 → 33**、9 条 room 路由路径方法完全一致。
+
+### 四、如实记录一条既有行为（不是本次引入）
+
+`GET /api/room/by-task/{task_id}` 查的是 `task_to_room` 映射，而**旧端点
+`POST /api/task/{id}/discuss` 建的房间不会写这张表**（表由工作间/任务启动流程填充）
+⇒ 用那条路建的房间，`by-task` 查不到（404）。**搬家前就是这个行为**，本次原样保留，
+已写进端到端探针的注释里——不粉饰成"全绿"。
+
+### 五、文档同步
+
+`design-docs/项目完整模型.md` 的五分钟版第 4 条、`AGENTS.md` 的规模行都改成实测值
+（**324 KB / 6318 行 / 33 个 `@app.*`**、`routers/` **35 个文件**）——`test_model_docs` 会盯这一致性。
+
 ## [4.15.16] - 2026-10-21
 
 **《项目完整模型》拆分 + 只留当前口径 + 索引与守卫（老板：防污染建模、上下文过长要分文件做索引）**

@@ -91,6 +91,10 @@ def test_prefill_proposal_returns_failure_when_ai_errors(monkeypatch):
     import asyncio
 
     from agent_community.platform import server as srv
+    # ★2026-10-21：`prefill_proposal` 随讨论室一族搬进 `routers/rooms_discuss.py`
+    #   （`server.py` 从 6573 行瘦到 6316 行）。判据不变，只是**从新家取函数**——
+    #   别写死"必须在 server 里"，否则下次再搬还要改一遍测试。
+    from agent_community.platform.routers import rooms_discuss as rooms
 
     class _DeadAI:
         """最小 provider：按**既有契约**返回错误文本（失败=文本，不抛异常）。"""
@@ -112,7 +116,7 @@ def test_prefill_proposal_returns_failure_when_ai_errors(monkeypatch):
 
     try:
         # 注意签名：`prefill_proposal(room_id)` —— 只接 room_id（不接 request）
-        out = asyncio.run(srv.prefill_proposal("prove-room"))
+        out = asyncio.run(rooms.prefill_proposal("prove-room"))
     finally:
         srv.discussion_rooms.pop("prove-room", None)
 
@@ -140,8 +144,8 @@ def test_prefill_proposal_has_error_guard():
     """
     import inspect
 
-    from agent_community.platform import server as srv
-    fn = getattr(srv, "prefill_proposal", None)
+    from agent_community.platform.routers import rooms_discuss as rooms
+    fn = getattr(rooms, "prefill_proposal", None)
     assert fn is not None, "找不到 prefill_proposal（改名了？请同步本测试）"
     body = inspect.getsource(fn)
     assert "ai_error_text" in body, "预填路径缺少'先认错误文本'的守护 ⇒ 假成功会复发"

@@ -188,11 +188,11 @@ python tools/gen_env_docs.py --check # 环境变量文档不许漂移
 
 必须**在项目根目录**（即 `agent_community` 包的父目录）跑 `python -m agent_community.*`，否则包解析失败。
 
-`agent_community/platform/server.py` 是 **336 KB / 6573 行 / 42 个 `@app.*` 端点**（**2026-10-21 实测**；当天清掉了 6 组重复注册 + 3 个"永远成功"的老桩，从 51 个降到 42 个），仍是巨无霸。
+`agent_community/platform/server.py` 是 **324 KB / 6318 行 / 33 个 `@app.*` 端点**（**2026-10-21 实测**；当天清掉 6 组重复注册 + 3 个假成功老桩，又把讨论室一族 **9 个端点**整块搬进 `routers/rooms_discuss.py`，从 51 个降到 33 个），仍是巨无霸。
 > 规模数字**以实测为准**，别照抄历史文档（旧版写"269 KB / 5498 行 / 46 端点"，早已失真）。
 > ⚠️ 本文件旧版曾写「已不含任何路由（只剩 `include_router` 与编排）」—— **实测为误**，`server.py` 自己的路由一直都在。
 > **「新端点加到 `routers/` 对应端点组」这条规矩不变**，只是别再当作"server 已经没有路由"来理解。
-> HTTP 业务端点在 `platform/routers/`（**33 个文件**）：
+> HTTP 业务端点在 `platform/routers/`（**35 个文件**）：
 
 | 端点组 | 结构（V-13 拆分后，每个 ≤500 行） |
 |---|---|
