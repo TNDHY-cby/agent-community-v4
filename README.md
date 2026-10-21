@@ -9,9 +9,26 @@
 > **仓库地址（Gitee，主仓库）**：<https://gitee.com/TNDHY-cby/external-agents-community>
 > 下载：`git clone https://gitee.com/TNDHY-cby/external-agents-community.git`，
 > 或打开上面地址点「克隆/下载」→「下载 ZIP」。
-> ★ **两个远端都在更新**（2026-10-21 起）：Gitee 是主站（国内下载最快），GitHub 同步镜像。
-> 两边内容一致；如果只看到其中一边落后，那是同步还没跑完，**以远端 `ls-remote` 的 sha 为准**。
+> ⚠️ **GitHub 那一份已停止更新**（2026-10-16 起）—— 那边是历史归档，**不要再从 GitHub 拉代码**。
 > 代码、发行版、下载都在上面这个 Gitee 地址。
+
+## 这个仓库里有什么（**想直接看内容，从这里点**）
+
+本仓库是**公开**的：不用克隆，打开上面的 Gitee 地址就能在网页里直接浏览下面这些内容。
+
+| 想看什么 | 去这里 |
+|---|---|
+| **项目到底在做什么、边界在哪** | [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) |
+| **全部设计稿（100+ 份，含索引与状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
+| **本地优先 + 中心中转**（当前架构方向） | [`design-docs/V66_本地优先与中心中转架构设计.md`](design-docs/V66_本地优先与中心中转架构设计.md) |
+| **派活与回执走中转 / 一个 Hub 服务多家公司** | [`V67`](design-docs/V67_派活与回执走中转_M2设计.md) · [`V68`](design-docs/V68_一个Hub服务多家公司_公司隔离设计.md) |
+| **没有公网服务器怎么当中转**（三条路） | [`design-docs/RUNBOOK_没有公网服务器怎么当中转.md`](design-docs/RUNBOOK_没有公网服务器怎么当中转.md) |
+| **接入一个 agent 要准备什么 / 桥怎么跑通** | [`CHECKLIST_接入者要准备什么`](design-docs/CHECKLIST_接入者要准备什么.md) · [`RUNBOOK_桥怎么跑通`](design-docs/RUNBOOK_桥怎么跑通.md) |
+| **前端交接件（对外契约 + 可执行预检）** | [`外包交接_前端界面/`](外包交接_前端界面/) |
+| **这个平台怎么被验证的（判据清单）** | [`AGENTS.md`](AGENTS.md) 的「产品化硬规则」段 |
+| **每个版本改了什么** | [`CHANGELOG.md`](CHANGELOG.md) |
+| **许可证** | [`LICENSE`](LICENSE)（AGPL-3.0） |
+
 
 ## 协议矩阵（多接口多选择）
 

@@ -4,6 +4,41 @@
 
 # 4.8.26
 
+## [4.15.8] - 2026-10-21
+
+**撤回 GitHub 更新（老板同日改口）；README 加「仓库里有什么」内容地图，确认仓库公开可见**
+
+### 一、口径回到「只推 Gitee」
+
+老板 2026-10-21 先后两句：上午「**更新Github**」→ 同日「**算了算了，不要更新Github了**」。
+**以后者为准**：发布只推 Gitee；`publish_acv4.ps1` 恢复为"GitHub 只在 `-MirrorGithub` 应急时才推"。
+v4.15.6 里为"两边都推"做过的那批口径（文档、判据、发布脚本、技能副本）**逐处回退**，
+`tools/github_push.py` 一并撤掉（留着就会和口径打架）。GitHub 上停在 `9bc206f` 之前的内容，**不再跟随**。
+
+### 二、仓库公开状态的**实测**（老板要的"让别人看得见"）
+
+| 项 | 实测结果 |
+|---|---|
+| 可见性 | Gitee API `private=false`、`public=true`（**已是公开仓库**） |
+| 匿名访问 | `https://gitee.com/TNDHY-cby/external-agents-community` → **200**（未登录也能打开） |
+| 匿名读 README | `/raw/master/README.md` → **200**，15,890 字节 |
+| 匿名列目录 | 根目录 **31 个条目**（`agent_community` / `design-docs` / `tools` / `docs` / `tests` / `外包交接_前端界面` …） |
+| 许可证 | `AGPL-3.0`（Gitee 侧已识别） |
+| 内容规模 | 设计稿 **101 份**、`tools/` **48 个脚本**，README/CHANGELOG/索引/双击入口都在 |
+| 敏感面 | 公开树里**没有** `HANDOVER.md`、`dsh-tooling/`、`temp/`、`bridges/`、`agent_community/data/`（都是 0 个跟踪文件） |
+
+### 三、README 加了「仓库里有什么」
+
+在下载说明下面新增一张表：**不克隆、直接在网页里点**就能看——
+项目完整模型 / 设计稿索引（100+ 份）/ 当前架构（V66）/ 中转 M2·M3 / 没有公网服务器的三条路 /
+接入清单与桥怎么跑通 / 前端交接件 / 判据清单 / CHANGELOG / LICENSE。
+外部读者进仓库第一屏就知道"里面有什么、从哪点进去"。
+
+### 判据
+
+`check_stale_github.py` **0 处**过时指令；`pre_release_check --fast` 见本轮输出；
+README 新增内容为纯文档，不涉及代码路径。
+
 ## [4.15.7] - 2026-10-21
 
 **恢复 GitHub 后 CI 真跑，抓出 3 处"只在我这台机器成立"的测试 —— 已修**
