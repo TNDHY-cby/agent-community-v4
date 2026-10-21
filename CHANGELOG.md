@@ -2,6 +2,56 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.15.20] - 2026-10-21
+
+**结构债第三批：唤醒 4 + 心跳 3 共 **7 个端点**搬到 `routers/wakeup_heartbeat.py`；
+并把"搬家"本身做成了**可复用工具** `tools/move_endpoints.py`**
+
+### 一、搬了什么
+
+```
+POST /api/wakeup/trigger      POST /api/wakeup/mutual      GET /api/wakeup/status
+POST /api/wakeup/response     POST /api/heartbeat          GET /api/heartbeat
+GET  /api/heartbeat/stale
+```
+
+`server.py` **6345 → 6076 行**，`@app.*` 端点 **33 → 26**，`routers/` **35 → 36 个文件**；业务路由 **233 条不变**。
+
+### 二、新增工具 `tools/move_endpoints.py`（这次真正值钱的东西）
+
+手工搬家连续踩坑（漏惰性 import、相对导入少一层、装饰器忘改），所以把搬家做成工具：
+
+```bash
+python tools/move_endpoints.py --module wakeup_heartbeat.py --title "唤醒与心跳一族" \
+    --paths /api/wakeup/trigger,/api/wakeup/mutual,/api/wakeup/status,/api/wakeup/response,/api/heartbeat,/api/heartbeat/stale \
+    --dry-run      # 先看清单；去掉 --dry-run 才真改
+```
+
+它自带三条保险：
+1. **函数体原样搬**，只把 `@app.` 改成 `@router.`；
+2. **惰性 import 自动算**：对每个 handler 求出"用到但自己没定义、且确实存在于 `server` 命名空间"的名字；
+   标准库/框架的（`Request` / `json` / `time` / `uuid4` …）自动写进模块头；
+3. **拒绝搬带 `global`/`nonlocal` 的 handler**（那种搬了会改语义，必须人工）。
+
+工具开发期被自己抓到两个 bug（都写进注释了）：
+- 第一版走 AST 时**把装饰器也算进去**，于是 `app`、`Request` 全被当成"要 import 的 server 全局"；
+- 另一版按**路径**做 dict key，而 `POST /api/heartbeat` 与 `GET /api/heartbeat` 同路径 ⇒ **POST 那条被覆盖丢了**
+  （干跑数出 6 个而不是 7 个才发现）。
+
+### 三、判据
+
+- **真请求 7/7**：用**真实注册的 harness** 打 `POST /api/heartbeat` → 200，`GET /api/heartbeat` 能看到它 online；
+  `/api/heartbeat/stale`、`/api/wakeup/status` 200；三个缺参数的唤醒端点各自**说人话**
+  （`task not found` / `from_harness_id required` / `该任务当前无进行中的唤醒流程，拒绝回报`）——**没有 500**；
+- **全量回归**：`agent_community/tests` **1850 passed / 3 skipped**；根 `tests` **66 passed**；
+- 路由自省：业务路由 **233 条不变**、9 条 room 路由与 7 条唤醒心跳路由路径+方法完全一致。
+
+### 四、测试也跟着"搬家"（记一条方法论）
+
+`test_member_offline.py` 有 3 条直接调 `srv.api_heartbeat(...)`，搬家后全红。
+修法不是改一行 `srv.` → `wh.`，而是抽一个 `_hb_fn()`：**先去 server 找、找不到再去 router 找** ——
+这样以后再搬都不用改判据。**判据不该写死"函数必须在某个文件里"。**
+
 ## [4.15.19] - 2026-10-21
 
 **P0-2 收尾：`server.py` 15 处静默 `except: pass` 逐条判定完毕 —— 全仓静默 94 → 68**

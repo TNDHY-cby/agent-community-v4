@@ -24,6 +24,21 @@ from agent_community.platform import member_offline as mo  # noqa: E402
 from agent_community.platform.workshop import Workshop, WorkshopMember  # noqa: E402
 
 
+
+
+def _hb_fn():
+    """心跳 handler 现在住在 `routers/wakeup_heartbeat.py`（2026-10-21 从 server 搬出）。
+
+    **别再写死从 server 取**：搬家是持续动作，判据要跟着"它现在在哪"走。
+    """
+    from agent_community.platform import server as _srv
+    fn = getattr(_srv, "api_heartbeat", None)
+    if fn is not None:
+        return fn
+    from agent_community.platform.routers import wakeup_heartbeat as _wh
+    return _wh.api_heartbeat
+
+
 def run(coro):
     return asyncio.run(coro)
 
@@ -202,7 +217,7 @@ class TestHeartbeatIntervalIsEffective:
         except Exception:  # noqa: BLE001
             pass
         import asyncio as _a
-        out = _a.run(srv.api_heartbeat(self._stub_request(body)))
+        out = _a.run(_hb_fn()(self._stub_request(body)))
         rec = heartbeat_registry.status("off-man") or {}
         return out, rec
 
