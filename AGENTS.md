@@ -151,6 +151,23 @@ python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 5. **不向老板问技术细节**（harness_type / model / capabilities / 端口自己探），只问只有他知道的事。
 6. **对外文档与示例一律用虚拟名**（`示例Harness-A` / `sk-your-key` / `api.example.com`），禁止出现真实 harness 名。
 
+## 工作模式（**老板 2026-10-21 拍板**；preset「合作社开发模式」与技能 `ac-project-dev` 里是同一份口径）
+
+> 老板原话：「**以后都把连续的任务放的任务列表里（插件），不要停下来，除非遇到分岔口**」。
+
+| # | 规矩 | 一句话判据 |
+|---|---|---|
+| ① | **任务列表驱动**：连续任务先列出来，逐项推进 | 只在地道**分岔口**停（只有老板能定的事 / 等外部条件 / 不可回退的取向） |
+| ② | **判据必须是真的** | 真请求 / 真文件 / 真数路由；查源码只许查"有没有调那个函数"（接线），不查"某句话在不在" |
+| ③ | **判据不许写死位置** | 取 handler 用 `tests/conftest.resolve_handler(name)`（先 `server` 再 `routers/*`）——端点在持续搬家 |
+| ④ | **失败要说话** | 判据＝被吞掉时用户会不会把"坏了"当"正常"；会⇒`_warn_once` 每进程一次带真实原因，不会⇒`# noqa: BLE001 — 有意静默：<理由>`；闸门 `tools/silent_except_report.py --check`（只减不增） |
+| ⑤ | **一次性脚本进 `tools/`** | `move_endpoints.py`（搬端点）/ `fix_doc_split.py`（拆文档）/ `silent_except_report.py`，都带 `--dry-run`/`--check` |
+| ⑥ | **每版收尾固定** | compileall → 守卫 → 全量 → 重启真打 → `pre_release_check --fast` → publish(Gitee) → tag+release → `dual_platform_check` 两侧真跑 |
+| ⑦ | **不粉饰** | "我以为改完了"不算，**守卫绿了才算**；既有问题如实说并注明"非本次引入" |
+
+> 详细版（含判定表与范例轨迹）：技能 `ac-project-dev` 的 `references/workmode.md`。
+
+
 ## 副本地图（2026-10-02 实测核实）
 
 | 副本 | 路径 | git | 说明 |

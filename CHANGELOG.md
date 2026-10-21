@@ -2,6 +2,55 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.15.23] - 2026-10-21
+
+**把这轮的工作模式写进「合作社开发模式」（preset）+ 技能 + `AGENTS.md`，并加守卫**
+
+老板：「**这个工作模式写入合作社开发模式里面**」——即 2026-10-21 定的那套做事方式
+（任务列表驱动、不停下来、判据要真、失败要说话…）要成为**模式的一部分**，不是一次性的口头约定。
+
+### 一、写进了三处（口径一致，改一处要同时改三处）
+
+| 落点 | 形态 | 为什么放这儿 |
+|---|---|---|
+| preset「合作社开发模式」`ac-dev` 的 **persona** | **七条极简**（含判定口径） | persona **每一步都在上下文里** ⇒ 只能短；已做到无动态内容（不破 KV 前缀缓存） |
+| 技能 `ac-project-dev` 的 `references/workmode.md` | **详细版**（判定表 + 范例轨迹） | `SKILL.md` 本体建议 < 8192 字符（超了会被修剪器裁），细节必须外置 |
+| 仓库 `AGENTS.md` 的「工作模式」一节 | **七行表 + 一句话判据** | 任何进这个仓库的 agent（哪怕不是这个模式）都能看到 |
+
+### 二、七条（写进去的就是这些）
+
+1. **任务列表驱动**：连续任务先列出来，逐项推进；只在**分岔口**停（老板才能定的事 / 等外部条件 / 不可回退的取向）；
+2. **判据必须是真的**：真请求 / 真文件 / 真数路由；查源码**只许查"有没有调那个函数"**；
+3. **判据不许写死位置**：取 handler 用 `tests/conftest.resolve_handler(name)`（先 `server` 再 `routers/*`）；
+4. **失败要说话**：判据＝被吞掉时用户会不会把"坏了"当"正常"；会 ⇒ `_warn_once` 带真实原因，不会 ⇒ `noqa: BLE001 — 有意静默：<理由>`；
+   闸门 `tools/silent_except_report.py --check`（只减不增）；
+5. **一次性脚本进 `tools/`**：`move_endpoints.py` / `fix_doc_split.py` / `silent_except_report.py`；
+6. **每版收尾固定**：compileall → 守卫 → 全量 → 重启真打 → `pre_release_check --fast` → publish(Gitee) → tag+release → 双平台；
+7. **不粉饰**："我以为改完了"不算，守卫绿了才算；既有问题如实说并注明"非本次引入"。
+
+### 三、顺手修掉两处**过期口径**（技能里）
+
+技能 `ac-project-dev` 顶部与副本地图里写着「2026-10-21 起 GitHub 恢复同步、两个都推」——
+那是**当天上午的中间态**，老板当天下班前已撤回（「算了算了，不要更新Github了」）。
+现值：**发布只推 Gitee**，`-MirrorGithub` 仅应急；GitHub Actions 不算判据证据。已改。
+
+### 四、守卫
+
+新增 `agent_community/tests/test_workmode_doc.py`（3 条）：
+① `AGENTS.md` 必须有「工作模式」一节且七条关键词齐全；
+② 必须指向详细版 `references/workmode.md`（只有口号没有判法等于没有）；
+③ 七条必须是**表格**（每条带"一句话判据"），row 数必须正好 7。
+
+> 另两份（preset persona / 技能 references）在用户目录，**CI 管不到**——已在 `references/workmode.md`
+> 顶部写明"三处口径一致，改一处要同时改三处"。
+
+### 五、怎么验证生效
+
+- `AGENTS.md` 与守卫：跑 `pytest agent_community/tests/test_workmode_doc.py`（**3 passed**）；
+- preset：已用**忽略 `!!js` 标签的 YAML loader 真解析**两份 `cordis.patch.yml`，
+  persona 里"工作模式"块存在（`[OK] … persona 27 行，工作模式块 在`）。
+  ⚠️ **preset 只对之后新建的会话生效**——要验证得**开一个新会话**看人设里有没有"任务列表驱动"。
+
 ## [4.15.22] - 2026-10-21
 
 **把两件"一次性脚本"固化进 `tools/`（审计点名的欠账）：搬端点 + 拆大文档**
