@@ -187,3 +187,46 @@ can_wake: bool = False   # 声明"我能当喊人专员"
 2. 拿本机 8 条真实记录跑一遍能力页：**每条都显示来源**（declared / probed / verified），无一条凭空显示 verified；
 3. L0 探测（进程/端口/路径）前后，该 harness 的收件/发件计数**不变**（可断言"零侵入"）；
 4. 词表统一后：`shell`/`bash`/`exec_command` 不会同时出现在同一份能力清单里。
+
+---
+
+## 9.1 已实现（v4.15.11，2026-10-21）——后端只读视图 + 契约
+
+按 §9 的第 1~3 项落地了**后端那一半**（界面归前端，本节末尾是给前端的契约）：
+
+| 落点 | 内容 |
+|---|---|
+| `platform/harness_capability.py` | 纯函数 `build_provenance(info) -> dict`：三段状态 + 能力清单（逐条 `source`）+ 工具单列 + `notes`（声明自相矛盾时如实说） |
+| `platform/routers/harness_capability.py` | `GET /api/harness/{harness_id}/capability`（只读、无副作用；404 带 `how_to_fix`） |
+| `routers/harness.py` | 新子 router 加进聚合器（`routes.extend`，保持路由自省可见） |
+| `tests/test_harness_capability.py` | **9 条守卫**：三段分离、verified 必须带范围原话、标签归一、去重、矛盾进 notes、probe/tools 来源、端点 200/404 |
+
+**真实数据实测**（本机 8 条记录，重启后真打端点）：能力条目由"带重复"变成 **3 条**（`coding`/`file_ops`/`web_search`，
+`shell`/`bash`/`exec_command` 归一并保留 `raw` 列表）、工具 **4 条单列**、`verified=1`（只有桥配置）、
+`connected=false` 且 `verdict_text` 明说"没有证据证明 agent 能回话"，
+并抓到一条真实矛盾：**声明了 `web_search`，但 `ai.can_browse=false`**。
+
+### 给前端的契约（通道 226）
+
+```
+GET /api/harness/{harness_id}/capability     （只读，不要 POST）
+{
+  connected: bool,                  // 只有 agent_can_reply == ok 才可能为 true
+  verdict_text: "配置可行，但**没有证据证明 agent 能回话**",
+  segments: {
+    bridge_config:          {state: ok|failed|unknown|unverified, why, evidence_scope?, bridge_test?, last_verified?},
+    harness_running_bridge: {state, why},
+    agent_can_reply:        {state, why}
+  },
+  capabilities: [{name, display, raw: [..], source: declared|probed|verified|failed, evidence, also_in_tools}],
+  tools: [{name, canonical, display, params_known}],
+  probed: [{kind: process_hint|port_hint|path_hint, value, source: "probed"}],
+  counts: {declared, probed, verified, tools},
+  notes: ["自相矛盾：…"]              // **原样显示**，别替它圆场
+}
+```
+
+显示要求（三条硬的）：
+1. **三段分开显示**；前两段绿只写"配置可行"，**`connected=false` 时不许出现"已接上/可用"**；
+2. 每条能力挂**来源徽标**（声明 / 探到 / 已验证 / 失败），颜色语义与 `source` 一一对应；
+3. `notes` **原样显示**（这是"声明自相矛盾"的如实提示，不要过滤）。

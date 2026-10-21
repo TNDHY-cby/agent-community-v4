@@ -6,9 +6,10 @@
     harness_messaging.py   消息与任务回报（message/task-result/pending-*/auto-connect）
     harness_bridge.py      桥与激活（bridge-test/generate/path/verify/prefill/activate/peer-route）
     harness_common.py      共享辅助 + /ws/harness WebSocket
+    harness_capability.py  能力与证据来源（V73 §9，只读判读视图）
 
 拆分依据：拆分前实测「无跨组调用」——三个业务组只依赖 harness_common。
-本文件只负责把四个子 router 聚合成一个，server.py 的
+本文件只负责把五个子 router 聚合成一个，server.py 的
 `from .routers.harness import router as _harness_router` 保持不变。
 """
 from fastapi import APIRouter
@@ -17,6 +18,7 @@ from .harness_register import router as _register_router
 from .harness_messaging import router as _messaging_router
 from .harness_bridge import router as _bridge_router
 from .harness_common import router as _common_router
+from .harness_capability import router as _capability_router
 
 router = APIRouter()
 
@@ -24,5 +26,6 @@ router = APIRouter()
 # _IncludedRouter 懒包含对象，router.routes 里看不到真实路径 —— 会让
 # test_routers_smoke 与任何路由自省（含 app.routes）误判为「没有 harness 路由」。
 # 直接 extend 子 router 的 route 对象，等价于拆分前逐条注册，HTTP 行为与自省均不变。
-for _sub in (_register_router, _messaging_router, _bridge_router, _common_router):
+for _sub in (_register_router, _messaging_router, _bridge_router, _common_router,
+             _capability_router):
     router.routes.extend(_sub.routes)

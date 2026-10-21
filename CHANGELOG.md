@@ -2,6 +2,59 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.15.11] - 2026-10-21
+
+**V73 §9 落地（后端那一半）：能力与证据来源只读视图 —— 三段分离 + 每条能力标来源**
+
+按 `V73`（按本机 8 条真实记录写的建模稿）§9 的第 1~3 项，先把**后端与契约**做出来；界面归前端（契约已发通道 **226**）。
+
+### 一、新增只读端点
+
+```
+GET /api/harness/{harness_id}/capability
+```
+
+- **只读、无副作用**：不探活、不写记录、不发任何外网请求（`probed` 读的是登记时落下的 `metadata.probe_hints`）；
+- 404 给 `error` + `how_to_fix`；
+- 实现在 `platform/harness_capability.py`（纯函数 `build_provenance`）+ `routers/harness_capability.py`（端点），
+  已加进 `routers/harness.py` 聚合器（`routes.extend`，保持路由自省可见）。
+
+### 二、三段分开（这是老板在意的"看起来成功"的解药）
+
+| 段 | 谁能证明 | 本机真值 |
+|---|---|---|
+| `bridge_config` 桥能连平台/领件/回报 | 平台（验证间里**平台自己起桥**） | 6/8 记录 `ok` |
+| `harness_running_bridge` harness 侧真在跑那只桥 | **没人证明** | 8/8 `unverified` |
+| `agent_can_reply` agent 真能回话 | **没人证明** | 8/8 `unverified` |
+
+⇒ `connected` 只在第三段有证据时才为 true；`verdict_text` 现在如实写
+「**配置可行，但**没有证据证明 agent 能回话**」。`verified` 的范围原话（"仅桥配置…本次未验证"）随结果一起返回。
+
+### 三、能力条目的来源与去重（来自真实数据的两个问题）
+
+- **来源**：`declared`（它说的）/ `probed`（宿主探到的）/ `verified`（真跑通）/ `failed`；界面据此挂徽标；
+- **归一**：`shell` / `bash` / `exec_command` 归成一条（`raw` 数组保留原写法）；**去重后本机首条记录从 6 条变 3 条**；
+- **工具单列**：`tools[]` 不再混进能力清单，且 `parameters` 为空时返回 `params_known:false`
+  （**不许画成可填表单**）；
+- **矛盾如实说**：声明与 `ai.can_code/can_file_ops/can_browse/can_see` 打架时写进 `notes`。
+  真机抓到一条：**声明了 `web_search`，但 `ai.can_browse=false`**。
+
+### 四、判据
+
+`agent_community/tests/test_harness_capability.py` **9 条**（全部真跑/真读）：
+三段分离（只有桥段可能 ok）/ verified 必须带范围原话 / failed 不许当 unknown /
+标签归一与 `raw` 保留 / 去重后不出现重复能力 / 矛盾进 notes / probe 与 tools 来源 /
+端点 404 说人话 / 端点 200 形状（真起 app、真打请求）。
+
+真机：重启 18920 后对**真实注册记录**打端点 —— 8 条可查，首条返回 3 条能力 + 4 个工具 +
+`verified=1`（仅桥配置）+ `connected=false` + 一条矛盾提示；不存在的 id 返回 404 且带 `how_to_fix`。
+
+### 五、没做的（明确）
+
+- 界面（能力页/徽标/三段展示）**归前端**，契约已发通道 226，等对方落地后我按三条硬要求抽查；
+- V73 §9 第 4 项（把 `verified_scope` 变成"所有验证都必须回填范围"的模板）**下一版**做——
+  那要动 `verify_sandbox` 的落盘结构，得先看现有 6 条真实记录怎么兼容。
+
 ## [4.15.10] - 2026-10-21
 
 **外部审查报告（v4.15.9）逐条落地：版本行漂移已修 + 补 2 条守卫 + 反代鉴权硬警告 + 去 BOM**
