@@ -256,7 +256,13 @@ app.include_router(_rooms_discuss_router)
 from .routers.assistant import router as _assistant_router
 app.include_router(_assistant_router)
 from .routers.reply_probe import router as _reply_probe_router
-app.include_router(_reply_probe_router)  # V74 回话探针：验一次「发消息给它、它回了」并落证据  # 助手会话一族（2026-10-21 从 server.py 整块搬出）
+from .routers.artifacts import router as _artifacts_router
+from .routers.approval import router as _approval_router
+from .routers.snapshots import router as _snapshots_router
+app.include_router(_reply_probe_router)
+app.include_router(_artifacts_router)
+app.include_router(_approval_router)
+app.include_router(_snapshots_router)  # V76 运行快照回放 + 流程导入导出  # V76 人工审批闸门（默认关）  # V75 P1-4 产物统一出口  # V74 回话探针：验一次「发消息给它、它回了」并落证据  # 助手会话一族（2026-10-21 从 server.py 整块搬出）
 from .routers.agents_registry import router as _agents_registry_router
 app.include_router(_agents_registry_router)  # Agent 注册与在线列表（2026-10-21 从 server.py 整块搬出）
 from .routers.legacy_misc import router as _legacy_misc_router
@@ -400,7 +406,9 @@ EXTERNAL_READONLY_EXACT = frozenset({
     "/api/harness/list", "/api/docking/overview",
 })
 #: 外部只读档允许的 GET 前缀（详情类）
-EXTERNAL_READONLY_PREFIX = ("/api/workshop/", "/api/peers/", "/api/peer-tasks/")
+EXTERNAL_READONLY_PREFIX = ("/api/workshop/", "/api/peers/", "/api/peer-tasks/",
+    "/api/artifact",        # V75 P1-4：产物统一出口（只读，远端只读档可用）
+)
 #: 外部只读档允许的静态页（界面本身可以看）
 EXTERNAL_READONLY_PAGES = frozenset({
     "/", "/index.html", "/workshop.html", "/docking.html", "/hub.html",

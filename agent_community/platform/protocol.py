@@ -312,6 +312,8 @@ class Message(BaseModel):
     content: str = ""
     payload: dict = Field(default_factory=dict)
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+    #: 这一轮的用量（token / 缓存命中 / 费用 / 耗时）——**有就带，没有就是 {}**（V75 P1-1）
+    usage: dict = Field(default_factory=dict)
 
 
 # ── 任务状态机 ─────────────────────────────────────────────────
@@ -325,6 +327,7 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     ARCHIVED = "archived"               # V-18 卡死回收归档（终态）
+    WAITING_APPROVAL = "waiting_approval"   # V76：人工审批闸门（等人点确认，默认不开）
 
 class Task(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex[:8])
@@ -341,6 +344,12 @@ class Task(BaseModel):
     result: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    #: 累计用量（V75 P1-1）：各轮 token/费用求和 + 轮次 + 最后耗时
+    usage: dict = Field(default_factory=dict)
+    #: V76 人工审批闸门：{required, waiting, resume_to, at, reason}（空字典=没开闸门）
+    approval: dict = Field(default_factory=dict)
+    #: V76 运行快照：按任务冻结的只追加记录（回放用）
+    snapshots: list = Field(default_factory=list)
     completed_at: Optional[str] = None
 
 

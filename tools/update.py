@@ -103,28 +103,72 @@ def remote_url() -> str:
     return ""
 
 
-# ── 查最新版（两条路：git / Releases API；都能失败要说话）──
-def latest_tag() -> tuple:
+#: 更新源列表（`AC_UPDATE_SOURCES="名字=地址,名字=地址"`，不配就用本地 git 远端）
+def _candidate_sources() -> list:
+    """返回 [(显示名, 地址)]。**顺序即优先级**；配了 env 就只用 env 里的（用户说了算）。"""
+    raw = (os.environ.get("AC_UPDATE_SOURCES") or "").strip()
+    out = []
+    if raw:
+        for item in raw.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            if "=" in item:
+                name, url = item.split("=", 1)
+                out.append((name.strip() or url.strip(), url.strip()))
+            else:
+                out.append((item, item))
+        return out
+    # 没配：退回本仓库的 git 远端（gitee 优先，其它兜底）
+    r = subprocess.run(["git", "remote", "-v"], cwd=str(ROOT), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    seen, gitee_first = set(), []
+    for line in (r.stdout or "").splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] not in seen:
+            seen.add(parts[1])
+            gitee_first.append((parts[0], parts[1]))
+    gitee_first.sort(key=lambda x: 0 if x[0].startswith("gitee") else 1)
+    return gitee_first
+
+
+# ── 查最新版（多源回退：逐个试，全失败要逐条说原因）──
+def latest_tag(probe=None) -> tuple:
     """返回 (版本号不带 v, **git 里那条 tag 的真实名字**, 来源)。
 
     ⚠️ 两个都要：`9.9.9` 用来比大小，`v9.9.9` 才是 git 认的名字 ——
     本机实测踩过：只留"去掉 v"的版本号去 `git merge --ff-only 9.9.9` ⇒
     `merge: 9.9.9 - not something we can merge`（工具把自己的活干砸了）。
     """
-    url = remote_url()
-    if url:
+    def _probe(name: str, url: str):
+        """真探一个源：返回 (tags, 错误说明)。可被测试注入（`probe` 参数）。"""
         r = subprocess.run(["git", "ls-remote", "--tags", url], capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=60)
         tags = [ln.split("refs/tags/")[-1].replace("^{}", "")
                 for ln in (r.stdout or "").splitlines() if "refs/tags/" in ln]
-        tags = sorted({t for t in tags if re.match(r"^v?\d+\.\d+\.\d+$", t)}, key=_ver_tuple)
+        tags = sorted({x for x in tags if re.match(r"^v?\d+\.\d+\.\d+$", x)}, key=_ver_tuple)
+        if tags:
+            return tags, ""
+        err = (r.stderr or "").strip()[:120] or ("没查到任何版本 tag（HTTP/网络或仓库为空）")
+        return [], err
+
+    srcs = _candidate_sources()
+    tried = []
+    for name, url in srcs:
+        try:
+            tags, err = (probe or _probe)(name, url)
+        except Exception as e:                                # noqa: BLE001
+            tags, err = [], "%s: %s" % (type(e).__name__, str(e)[:100])
         if tags:
             ref = tags[-1]
+            if tried:                                        # 前面有失败的源，要让用户知道
+                print("  · 已回退到可用源「%s」；此前失败：%s"
+                      % (name, "；".join("%s(%s)" % (n, e) for n, e in tried)))
             return (ref.lstrip("v"),
                     ref if ref.startswith("v") else "v" + ref,
-                    "git ls-remote")
-        if r.returncode != 0:
-            print("  · 从远端查 tag 失败：%s" % (r.stderr or "").strip()[:120])
+                    "git ls-remote @ %s" % name)
+        tried.append((name, err))
+        print("  · 源「%s」没拿到版本：%s" % (name, err))
     api = (channel() or {}).get("releases_api")
     if api:
         try:
@@ -136,7 +180,8 @@ def latest_tag() -> tuple:
                 return raw.lstrip("v"), ref, "Gitee Releases API"
         except Exception as e:                                   # noqa: BLE001
             print("  · 查 Releases API 失败：%s: %s" % (type(e).__name__, str(e)[:80]))
-    return "", "", "两条路都没拿到（可能离线）"
+    detail = "；".join("%s(%s)" % (n, e) for n, e in (tried or [])) or "没有可用更新源"
+    return "", "", "所有更新源都没拿到版本：%s" % detail
 
 
 # ── 安全检查 ───────────────────────────────────────────────────

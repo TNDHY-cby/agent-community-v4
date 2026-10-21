@@ -551,3 +551,34 @@ async def api_ai_reply(request: Request):
     if not result.get("ok"):
         return Utf8JSONResponse(result, status_code=404)
     return result
+
+@router.get("/api/ai/usage")
+async def ai_usage_summary():
+    """AI 用量汇总（只读）：给界面画趋势/分布图用（V75 P2-2 的数据源）。
+
+    只报**平台自己记账的部分**（`ai_usage` 落盘记录），拿不到就说 `available: false`，不编数。
+    """
+    from .. import ai_usage as _au
+
+    u = _au.get_default_usage()
+    try:
+        today = float(u.spent_daily() or 0)
+        month = float(u.spent_monthly() or 0)
+        out = {
+            "available": True,
+            "today": {"cost": today, "budget": float(getattr(u, "daily_budget", 0) or 0)},
+            "month": {"cost": month, "budget": float(getattr(u, "monthly_budget", 0) or 0)},
+            "price_per_1k": float(getattr(u, "price_per_1k", 0) or 0),
+        }
+        # 按模型汇总（有就报，没有就空表）
+        try:
+            rows = u.summary_by_model(days=30)          # 可选实现
+            if rows:
+                out["by_model_30d"] = rows
+        except Exception:                              # noqa: BLE001 — 没有这个方法就不报
+            pass
+        return out
+    except Exception as e:                             # noqa: BLE001
+        return {"available": False, "why": "%s: %s" % (type(e).__name__, str(e)[:120]),
+                "how_to_fix": "确认 AC_DATA_DIR 可写（用量记录落在那下面）"}
+

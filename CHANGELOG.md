@@ -2,6 +2,57 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.19.0] - 2026-10-22
+
+**V76 落地（大型功能）：人工审批闸门 + 运行快照回放** —— 这是"可视化编排画布"缺的三样后端能力。
+
+### 一、人工审批闸门（默认关）
+
+- 新状态 `TaskStatus.WAITING_APPROVAL`；`Task.approval` 记录待批信息；
+- 三个端点：
+  `GET /api/tasks/{id}/approval`（当前待批什么，没有就说没有）、
+  `POST /api/tasks/{id}/approval`（`approve` / `reject` / `cancel`）、
+  `POST /api/workshops/{wid}/approval-policy`（开/关这个工作间的闸门）；
+- **默认关**：不设策略时流程完全不变（旧行为零影响，守卫第一条就查这个）；
+- `reject` **必须写理由**（空理由 400 —— 被打回的人要知道改什么）；
+- 非待批任务上调用 → 400 并**说清它现在是什么状态**；
+- 每个决策写审计 + 写一条运行快照。
+
+### 二、运行快照回放（只追加）
+
+- `platform/run_snapshot.py`：派活/回执/审批/完成/失败各留一条 `snap_id` 记录，
+  **只追加不改写**；上限 `AC_SNAPSHOT_MAX`（默认 200）—— 超了丢最旧并**留一条 `truncated` 记录写明累计丢了多少**（不静默）；
+- 两个只读端点：`GET /api/tasks/{id}/snapshots?limit=`（正序回放）、`GET /api/tasks/{id}/snapshot?snap_id=`；
+- 已接挂点：**回执**（`reply`）、**审批**（`approval`）。
+
+### 三、流程定义导入导出（画布的存/取）
+
+- `GET /api/workshops/{wid}/workflow`：导出 `{nodes, edges}`，**用现有 `task_tree`**，edges 由 `parent_id` 推出；
+- `POST /api/workshops/{wid}/workflow`：**只新增节点**，已存在的跳过（**不改既有节点，防误毁**）；
+  未知字段 / 未知 `kind` → 400 并列出支持值（`task/subtask/review/approval/note`）。
+
+### 四、判据
+
+| 项 | 结果 |
+|---|---|
+| `test_approval_gate.py` | **6/6**（默认关不改变旧行为 / 开闸门后停住 / approve 回到 resume_to / reject 无理由 400 / 非待批 400 带状态 / cancel 终止并留痕） |
+| `test_run_snapshot.py` | **5/5**（只追加有序 / 超限截断留痕 / 导出与 task_tree 一致 / 导入只新增并校验 / 单条快照 404 说清） |
+| 全量 | **1893 passed / 3 skipped**（含半程检验后修的 3 处文档漂移） |
+| 反私人定制 | `check_portability` fail=0；`check_productization` fail=0 |
+| 环境变量 | 75 → **76**（新增 `AC_SNAPSHOT_MAX`）；静默基线仍 37（无新增） |
+
+### 五、半程复盘记下的一条
+
+半程检验跑出 **3 处红，全是文档漂移**（索引没加 V76、路由/文件数没同步），业务代码零失败。
+⇒ 说明"加状态/加端点"本身没伤到现有流程，但**文档守卫是真的在工作**；已把 `gen_design_index` + 数字同步
+固化成每半程收尾的固定动作。
+
+### 六、没做的（如实）
+
+- 画布 UI、拖拽、节点样式 —— 前端（ZCode）的活；本版只给数据与判据；
+- `dispatch` / `complete` 两个快照挂点：`run_snapshot.append()` 已可用，等画布那段一起接（避免现在到处插钩子）；
+- 自动审批 —— 人工闸门就是人工，不做自动放行。
+
 ## [4.18.0] - 2026-10-22
 
 **首屏改造（针对"1 star 不是架构不行，是没人看得见"）+ 探针诚实性补完**

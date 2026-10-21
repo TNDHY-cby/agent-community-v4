@@ -144,6 +144,52 @@ class AIUsage:
 _default_usage: Optional[AIUsage] = None
 
 
+#: 各家桥回报里用量字段的**别名**（认多种写法；认不出就不猜）
+_USAGE_ALIASES = {
+    "prompt_tokens": ("prompt_tokens", "input_tokens", "promptTokenCount", "in"),
+    "completion_tokens": ("completion_tokens", "output_tokens", "candidatesTokenCount", "out"),
+    "total_tokens": ("total_tokens", "totalTokenCount", "tokens", "total"),
+    "cached_tokens": ("cached_tokens", "cache_hit_tokens", "cachedTokenCount", "cache_hits"),
+    "cost": ("cost", "total_cost", "price", "cost_usd"),
+    "elapsed_ms": ("elapsed_ms", "latency_ms", "duration_ms", "elapsed"),
+    "model": ("model", "model_name"),
+}
+
+
+def extract_usage(raw) -> dict:
+    """把一份桥回报里的用量**归一**成界面能直接显示的字段；**没有就返回 {}**（不编数）。
+
+    `raw` 可以是整个回报 body，也可以是 body["usage"]；两种都能认。
+    """
+    if not isinstance(raw, dict) or not raw:
+        return {}
+    src = raw.get("usage") if isinstance(raw.get("usage"), dict) else raw
+    if not isinstance(src, dict):
+        return {}
+    out: dict = {}
+    for canon, keys in _USAGE_ALIASES.items():
+        for k in keys:
+            if k in src and src[k] not in (None, ""):
+                out[canon] = src[k]
+                break
+    # 只保留看得懂的数值/字符串，别把整包塞进消息（消息是要落盘的）
+    if not out:
+        return {}
+    for k in ("prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "cost", "elapsed_ms"):
+        if k in out:
+            try:
+                out[k] = float(out[k])
+                if out[k].is_integer():
+                    out[k] = int(out[k])
+            except (TypeError, ValueError):
+                out.pop(k, None)
+    if "model" in out:
+        out["model"] = str(out["model"])[:60]
+    if "total_tokens" not in out and ("prompt_tokens" in out or "completion_tokens" in out):
+        out["total_tokens"] = int(out.get("prompt_tokens", 0)) + int(out.get("completion_tokens", 0))
+    return out
+
+
 def get_default_usage() -> AIUsage:
     """全局默认用量器（惰性创建，data_dir/usage 优先）。"""
     global _default_usage

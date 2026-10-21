@@ -292,6 +292,40 @@ TOOLS: list[dict] = [
     },
 ]
 
+# ── 工具分面（V75 P1-3）：默认只挂 `api`，按需加挂，减少上下文污染 ─────────
+#: 组名 → 该组包含的工具名。**每一只工具都必须落在某一组里**（守卫会查孤儿）。
+#: `browser` / `devices` / `plan` 目前**还没有工具** —— 如实留空组，不编占位工具。
+TOOLSETS: dict = {
+    "api": ['status', 'list_harnesses', 'list_agents'],
+    "task": ['list_tasks', 'get_task', 'create_workshop', 'workshop_discuss', 'workshop_review', 'workshop_continue', 'workshop_interject', 'submit_task_result'],
+    "bridge": [],
+    "browser": [],
+    "devices": [],
+    "plan": [],
+}
+
+
+def enabled_toolset_names() -> list:
+    """本进程启用的组：`AC_MCP_TOOLSETS`（逗号分隔，默认 `api`；`all` = 全部）。"""
+    # 默认 api,task = 当前全部现有工具（**不回归**）；以后加工具时再让用户按需收窄
+    raw = (os.environ.get("AC_MCP_TOOLSETS") or "api,task").strip()
+    if raw.lower() in ("all", "*"):
+        return [k for k, v in TOOLSETS.items() if v]
+    picked = [x.strip() for x in raw.split(",") if x.strip()]
+    return [x for x in picked if TOOLSETS.get(x)] or ["api", "task"]
+
+
+def active_tools() -> list:
+    """只回启用组里的工具（顺序按 TOOLSETS 定义，稳定）。"""
+    want = set()
+    for name in enabled_toolset_names():
+        want.update(TOOLSETS.get(name) or [])
+    return [t for t in TOOLS if t["name"] in want]
+
+
+def tool_enabled(name: str) -> bool:
+    return any(t["name"] == name for t in active_tools())
+
 _TOOL_MAP = {t["name"]: t for t in TOOLS}
 
 
@@ -327,7 +361,8 @@ def _handle(msg: dict) -> dict | None:
     if method == "ping":
         return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
     if method == "tools/list":
-        tools = [{k: v for k, v in t.items() if k != "fn"} for t in TOOLS]
+        # P1-3：只回**本进程启用的组**（默认 api），减少上下文污染
+        tools = [{k: v for k, v in t.items() if k != "fn"} for t in active_tools()]
         return {"jsonrpc": "2.0", "id": msg_id, "result": {"tools": tools}}
     if method == "tools/call":
         name = params.get("name", "")

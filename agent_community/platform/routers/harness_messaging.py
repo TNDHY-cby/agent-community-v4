@@ -13,7 +13,8 @@ from datetime import datetime
 from ..harness_adapter import harness_manager
 from ..api_wakeup import probe_http_api
 from ..api_wakeup import send_http_api_message
-from ..state import _bridge_tests_inflight, agents, assistant_history, assistant_history_max, pending_activations, pending_bridge_tests, pending_pre_register, pending_tasks, workshops
+from ..ai_usage import extract_usage as _extract_usage
+from ..state import tasks, _bridge_tests_inflight, agents, assistant_history, assistant_history_max, pending_activations, pending_bridge_tests, pending_pre_register, pending_tasks, workshops
 from ..audit import audit_log as _audit_log
 
 router = APIRouter()
@@ -63,6 +64,30 @@ async def harness_pending_tasks(harness_id: str):
     """harness 桥轮询：领取该 harness 名下的待执行任务。"""
     tasks = pending_tasks.pop(harness_id, [])
     return {"tasks": tasks}
+
+def _accumulate_task_usage(task, u: dict) -> None:
+    """把一轮用量累加进任务（前端 `GET /api/task/{id}` 直接能读）。
+
+    只累加**已知的数值**；缺字段就不加（不编）。`elapsed_ms` 记**最后一轮**（不是求和，它才有意义）。
+    """
+    if task is None or not isinstance(u, dict) or not u:
+        return
+    cur = dict(getattr(task, "usage", None) or {})
+    cur["rounds"] = int(cur.get("rounds", 0)) + 1
+    for k in ("prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens"):
+        if u.get(k) is not None:
+            cur[k] = float(cur.get(k, 0)) + float(u[k])
+    if u.get("cost") is not None:
+        cur["cost"] = round(float(cur.get("cost", 0)) + float(u["cost"]), 6)
+    if u.get("elapsed_ms") is not None:
+        cur["elapsed_ms"] = u["elapsed_ms"]
+    if u.get("model"):
+        cur["model"] = u["model"]
+    for k in ("prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens"):
+        if k in cur and float(cur[k]).is_integer():
+            cur[k] = int(cur[k])
+    task.usage = cur
+
 
 @router.post("/api/harness/task-result")
 async def harness_task_result(request: Request):
@@ -123,7 +148,41 @@ async def harness_task_result(request: Request):
                 delegation_id=_did,
                 payload={"ok": bool(body.get("ok", True)), "raw": body},
             )
+            _u = _extract_usage(_reply_msg.payload.get("raw") or {})
+            if _u:                       # 有就带上（没有就是 {}，不编数）
+                _reply_msg.payload["usage"] = _u
+                _tid = str(body.get("task_id") or "")
+                if _tid and _tid in tasks:
+                    _accumulate_task_usage(tasks.get(_tid), _u)
             harness_manager.handle_reply(_reply_msg)
+            try:                                      # V76：回执也进运行快照（回放用）
+                _tid_s = str(body.get("task_id") or "")
+                _task_s = tasks.get(_tid_s) if _tid_s else None
+                if _task_s is not None:
+                    from .. import run_snapshot as _rs
+
+                    _rs.append(_task_s, "reply",
+                               summary=("回执：%s" % ("成功" if body.get("ok", True) else "失败")),
+                               detail={"ok": bool(body.get("ok", True)),
+                                       "echo": str(body.get("result") or "")[:200]},
+                               actor="harness:%s" % _hid)
+            except Exception as _es:                  # noqa: BLE001 — 快照失败不影响主流程，但要留痕
+                print("[snapshot] 回执快照失败：%s" % _es, flush=True)
+            # V76：回执（ok）且该工作间开了审批闸门 ⇒ 停下来等人点确认（默认关，不影响旧行为）
+            try:
+                _tid_g = str(body.get("task_id") or "")
+                _task_g = tasks.get(_tid_g) if _tid_g else None
+                if _task_g is not None and bool(body.get("ok", True)):
+                    from .. import approval as _ap
+
+                    if _ap.maybe_gate(_task_g):
+                        # `Task.status` 就是普通枚举字段（状态机那层是另一套 ACT/EV 粗状态，别混）
+                        from ..protocol import TaskStatus
+
+                        _task_g.status = TaskStatus.WAITING_APPROVAL
+                        print("[approval] %s 停在审批闸门（等人点确认）" % _tid_g, flush=True)
+            except Exception as _eg:                    # noqa: BLE001 — 闸门不该影响回报主流程，但要留痕
+                print("[approval] 闸门判定失败（不影响回执）：%s" % _eg, flush=True)
             print(
                 f"[harness_reply] 回报路由: harness={_hid} delegation={_did or '-'} ok={body.get('ok', True)}",
                 flush=True,

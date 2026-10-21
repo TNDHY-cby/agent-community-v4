@@ -105,6 +105,8 @@ class Workshop:
     # ── V52：三级讨论区的「辩论模式」（可开可关）─────────────────────────────
     # **默认关**（对齐老板既定优先级「自动兜底默认关」）：开关是"允许"，触发阈值是"该不该"，
     # 两者都要满足才真跑。判定逻辑全在 `platform/debate.py`（纯函数内核），这里只存状态。
+    #: V76 人工审批闸门（默认关）：{"approval_required": true/false}
+    approval_policy: dict = field(default_factory=dict)
     debate_enabled: bool = False
     # 落盘口径（重启不丢，这是本项目反复吃过的亏）：
     #   statements —— 已收到的**结构化陈述**（观点→证据→推理），有上限，防无限增长；
