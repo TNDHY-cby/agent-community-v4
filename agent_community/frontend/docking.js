@@ -149,9 +149,9 @@ function dockRender(d){
   body.innerHTML = html;
 }
 
-/* ── 写请求白名单（FE-26 §5：页面里非 GET 的请求只能落在这 17 条上）──────
+/* ── 写请求白名单（FE-26 §5：页面里非 GET 的请求只能落在这 27 条上）──────
  * `*` = 一个路径段（容纳 ws/member/harness id）。
- * 守卫核对：这张表必须**正好**是设计稿那 17 条 —— 多一条是偷偷扩权，少一条按钮点不动。
+ * 守卫核对：这张表必须**正好**是设计稿那 27 条 —— 多一条是偷偷扩权，少一条按钮点不动。
  */
 const DOCK_WRITE_WHITELIST = [
   '/api/harness/pre-register',
@@ -177,13 +177,17 @@ const DOCK_WRITE_WHITELIST = [
   '/api/docking/run-script',
   '/api/docking/harness/*',
   // ★对端公司管理 + 对外任务（FE-26 §5 增补 / V62 V63，2026-10-20 由 DSH 加，
-  //   与判据 test_docking_ui_static 的 25 条一一对应；前端同学改界面时**保留这 6 行**）
+  //   与判据 test_docking_ui_static 的 27 条一一对应；前端同学改界面时**保留这 6 行**）
   '/api/peers',
   '/api/peers/*',
   '/api/peers/*/verify',
   '/api/peers/*/dispatch',
   '/api/peers/*/enabled',
   '/api/peer-tasks/*/refresh',
+  // ★跨端中转两笔（FE-26 §5 增补二 / V66 V67，2026-10-21 由 DSH 加，MiMo 224 申请，
+  //   与判据 test_docking_ui_static 的 27 条一一对应；前端同学改界面时**保留这 2 行**）
+  '/api/relay/send',
+  '/api/relay/dispatch',
 ];
 
 /** 路径模板（**字面量、唯一来源**）：界面上的每个动作都从这里取路径。 */
@@ -293,6 +297,7 @@ function dockMountPeers(){
   dockLoadPeers();
   dockLoadPeerTasks();
   dockLoadTunnelAdvice();
+  dockLoadRelay();
 }
 async function dockLoadPeers(){
   const box = document.getElementById('peersList');
@@ -434,9 +439,10 @@ async function dockLoadPeerTasks(){
       return '<div class="pt-row" data-pt="' + esc(t.peer_task_id||t.id||'') + '">' +
         '<b>' + esc(t.title || '(无标题)') + '</b>' +
         '<span class="sub">投给 ' + esc(t.peer_display_name || t.peer_id || '?') + '</span>' +
+        (t.via ? '<span class="pt-via ' + esc(t.via) + '">' + (t.via==='hub'?'经中转':'点对点') + '</span>' : '') +
         '<span class="pt-status ' + esc(st) + '">' + esc(stText) + '</span>' +
         '<span class="sub">' + esc(t.dispatched_at || t.created_at || '') + (t.receipt_at || t.updated_at ? (' · 回执 ' + esc(t.receipt_at || t.updated_at)) : '') + '</span>' +
-        '<button class="btn mini" onclick="dockPtRefresh(\'' + esc(t.peer_task_id||t.id||'') + '\')">刷新回执</button>' +
+        '<button class="btn mini" onclick="dockPtRefresh(\'' + esc(t.peer_task_id||t.id||'') + '\')" title="点对点的那条路才需要手动核对；经中转的回执会自动回来">手动核对</button>' +
         (st==='unreachable' ? '<span class="sub" style="color:var(--red,#FF0000)">我们查不到对端（隧道断/服务停/令牌失效）</span>' : '') +
         arts +
         '</div>';
@@ -464,6 +470,42 @@ async function dockLoadTunnelAdvice(){
       (sug.length ? sug.map(s=>'<p class="lead">· ' + esc(typeof s==='string'?s:JSON.stringify(s)) + '</p>').join('') : '<p class="sub">（后端暂无建议）</p>') +
       (bad.length ? '<p class="lead" style="color:var(--red,#FF0000)">绝对不能暴露：' + bad.map(b=>esc(typeof b==='string'?b:JSON.stringify(b))).join('；') + '</p>' : '');
   }catch(e){ box.innerHTML = '<p class="sub">加载失败：' + esc(e.message) + '</p>'; }
+}
+
+/* ── 跨端中转（V63 之后的本地优先架构，DSH 221/222/223）──
+ * 只读展示（状态+收件箱）；send/dispatch 表单等 /api/relay/* 进白名单后另行添加。
+ * 口径：configured=false 是"本机照常、跨端不可用"，不是错误态；
+ * 在线与否只有 online=true 才算投到；handled.ok=false 是对端处理失败，detail 要显示。 */
+async function dockLoadRelay(){
+  const sbox = document.getElementById('relayStatus');
+  const ibox = document.getElementById('relayInbox');
+  if (!sbox || !ibox) return;
+  try{
+    const st = await (await fetch('/api/relay/status')).json();
+    if (st.configured){
+      sbox.innerHTML = '<p class="lead">' + (st.connected?'<span class="dotv ok"></span> 已连接中转 <code>' + esc(st.hub_url||'') + '</code>（终端 <code>' + esc(st.terminal_id||'') + '</code>）' : '<span class="dotv bad"></span> 未连接中转：' + esc(st.last_error || st.note || '')) +
+        ' · 收 ' + esc(String(st.received!=null?st.received:'-')) + ' / 发 ' + esc(String(st.sent!=null?st.sent:'-')) + '</p>';
+    } else {
+      sbox.innerHTML = '<p class="sub">' + esc(st.note || '没配置中转——本机一切照常，跨端不可用。') + '</p>';
+    }
+  }catch(e){ sbox.innerHTML = '<p class="sub">状态加载失败：' + esc(e.message) + '</p>'; }
+  try{
+    const r = await (await fetch('/api/relay/inbox?limit=50')).json();
+    const msgs = (r.messages || []).slice().sort((a,b)=>(a.seq||0)-(b.seq||0));   /* 按 seq 升序 */
+    if (msgs.length === 0){ ibox.innerHTML = '<p class="sub">收件箱为空。</p>'; return; }
+    ibox.innerHTML = msgs.map(m => {
+      let h = '';
+      if (m.handled && typeof m.handled === 'object'){
+        h = m.handled.ok ? '<span class="sub" style="color:var(--green,#8FB39B)">已处理</span>'
+                         : '<span class="sub" style="color:var(--red,#FF0000)">对端处理失败：' + esc(m.handled.detail||'') + '</span>';
+      }
+      const pay = typeof m.payload === 'string' ? m.payload : JSON.stringify(m.payload||'');
+      return '<div class="pt-row"><span class="sub">#' + esc(String(m.seq||'')) + '</span><b>' + esc(m.from||'?') + '</b>' +
+        '<span class="pt-status sent">' + esc(m.kind||'text') + '</span>' +
+        '<span class="sub" style="word-break:break-all">' + esc(pay.slice(0,120)) + '</span>' +
+        '<span class="sub">' + esc(m.at!=null?new Date(m.at*1000).toLocaleString('zh-CN',{hour12:false}):'') + '</span>' + h + '</div>';
+    }).join('');
+  }catch(e){ ibox.innerHTML = '<p class="sub">收件箱加载失败：' + esc(e.message) + '</p>'; }
 }
 
 function dockOpenModal(svc){

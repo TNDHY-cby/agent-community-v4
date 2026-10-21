@@ -288,3 +288,5 @@ body.app-bg-dock .card:after{content:"";position:absolute;bottom:7px;left:7px;wi
 .dock-form label{display:block;color:var(--dk-dim);font-size:11px;margin-top:4px}
 .dock-form label input{width:100%;margin-top:2px}
 .pt-arts{width:100%;font-size:11px;color:var(--dk-dim);border-top:1px dashed var(--dk-line);padding-top:4px;word-break:break-all}
+.pt-via{font-size:11px;font-weight:800;padding:1px 8px;border:1px solid var(--dk-line-hi);color:var(--dk-dim)}
+.pt-via.hub{color:var(--dk-glow,#FF3527);border-color:var(--dk-glow,#FF3527)}

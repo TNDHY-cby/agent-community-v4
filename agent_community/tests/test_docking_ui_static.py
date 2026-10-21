@@ -56,7 +56,7 @@ def test_page_and_script_exist_with_the_frontdesk_contract():
 
 
 def test_write_whitelist_matches_the_design_contract():
-    """★写请求白名单必须**正好**是 FE-26 §5 那一份（25 条）。
+    """★写请求白名单必须**正好**是 FE-26 §5 那一份（27 条）。
 
     对接中心能调的写端点是有明确清单的：多一条就是"偷偷扩大了权限面"，
     少一条就是"界面上的按钮会点不动"。
@@ -87,6 +87,10 @@ def test_write_whitelist_matches_the_design_contract():
         #   **不豁免**（"走 dockPost 但豁免"等于开后门，判据就白设了）。
         "/api/peers", "/api/peers/*", "/api/peers/*/verify",
         "/api/peers/*/dispatch", "/api/peers/*/enabled", "/api/peer-tasks/*/refresh",
+        # ★2026-10-21（FE-26 §5 增补二，V66/V67 中转两笔，MiMo 224 申请）：
+        #   「发给另一台终端」「经中转派活」都是**真的把内容/任务送出本机**的写请求，
+        #   同样**不豁免**。
+        "/api/relay/send", "/api/relay/dispatch",
     }
     assert got == expect, "白名单与 FE-26 §5 不一致：多=%s 少=%s" % (sorted(got - expect), sorted(expect - got))
 

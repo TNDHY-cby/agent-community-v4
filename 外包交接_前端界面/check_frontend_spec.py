@@ -56,6 +56,9 @@ WHITELIST_EXPECT = {
     #   （真往对方公司投任务、真删登记）⇒ 必须进白名单，**不豁免**
     "/api/peers", "/api/peers/*", "/api/peers/*/verify",
     "/api/peers/*/dispatch", "/api/peers/*/enabled", "/api/peer-tasks/*/refresh",
+    # ★2026-10-21 FE-26 §5 增补二（V66/V67 中转）：这两条会**真的把内容/任务送出本机**
+    #   ⇒ 必须进白名单，**不豁免**
+    "/api/relay/send", "/api/relay/dispatch",
 }
 
 #: `FE-26` §2a：第一屏的功能模块（每块＝一件能当场办的事）。`data-dock-service` 用这些 id。

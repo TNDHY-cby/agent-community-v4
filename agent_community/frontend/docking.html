@@ -144,6 +144,10 @@
               </div>
               <h3 style="margin-top:14px">隧道建议 <button class="btn mini" style="float:right" onclick="dockLoadTunnelAdvice()">⟳</button></h3>
               <div id="peerAdvice" class="peers-list"><p class="sub">加载中...</p></div>
+              <h3 style="margin-top:14px">跨端中转 <button class="btn mini" style="float:right" onclick="dockLoadRelay()">⟳</button></h3>
+              <!-- 只读展示：状态 + 收件箱。发送/派活表单等 /api/relay/* 进白名单后再加（DSH 224） -->
+              <div id="relayStatus" class="peers-list"><p class="sub">加载中...</p></div>
+              <div id="relayInbox" class="peers-list" style="margin-top:8px"><p class="sub">加载中...</p></div>
             </div>
           </div>
         </section>
