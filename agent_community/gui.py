@@ -32,6 +32,20 @@ def _find_free_port(start: int = 9103, max_attempts: int = 20) -> int:
     return start
 
 
+import logging
+
+logger = logging.getLogger("ac.gui")
+
+#: 同一类失败**每进程只喊一次**：不刷屏，但不许静默（用户对着白窗口等最难受）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
 class AgentCommunityApp:
     """外端Agent生产合作社（External Agent Community） 桌面应用（AI 配置在窗口内完成）"""
 
@@ -62,8 +76,8 @@ class AgentCommunityApp:
             s.close()
             self._server_proc = None  # 复用已有服务，不由本窗口管理
             return
-        except OSError:
-            pass  # 端口空闲，需要启动
+        except OSError:            # noqa: BLE001 — 有意静默：探端口连不上＝端口空闲＝正是“需要我们自己启动服务”的信号，不是错误
+            pass
 
         env = os.environ.copy()
         env["AC_PORT"] = str(self.port)
@@ -96,8 +110,10 @@ class AgentCommunityApp:
                 r = httpx.get(f"http://127.0.0.1:{self.port}/api/status", timeout=1.0)
                 if r.status_code == 200:
                     return
-            except Exception:
-                pass
+            except Exception as _e:
+                _warn_once("wait_status_failed",
+                           "等待后端就绪时状态接口不可达（窗口可能白屏）：%s: %s"
+                           % (type(_e).__name__, str(_e)[:120]), _e)
             time.sleep(0.3)
         raise TimeoutError(f"Server 启动超时 (端口 {self.port})")
 
@@ -136,8 +152,10 @@ class AgentCommunityApp:
             except Exception:
                 try:
                     self._server_proc.kill()
-                except Exception:
-                    pass
+                except Exception as _e:
+                    _warn_once("kill_failed",
+                               "关窗时结束后端进程失败（下次可能端口被占）：%s: %s"
+                               % (type(_e).__name__, str(_e)[:120]), _e)
             self._server_proc = None
 
 

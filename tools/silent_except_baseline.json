@@ -1,9 +1,8 @@
 {
-  "total": 94,
+  "total": 83,
   "files": {
     "agent_community/a2a_server.py": 1,
     "agent_community/cli.py": 1,
-    "agent_community/gui.py": 3,
     "agent_community/sdk.py": 2,
     "agent_community/agents/ollama_agent.py": 1,
     "agent_community/agents/pipe_agent.py": 1,
@@ -16,7 +15,6 @@
     "agent_community/platform/adapters.py": 2,
     "agent_community/platform/ai_cache.py": 2,
     "agent_community/platform/ai_external.py": 1,
-    "agent_community/platform/ai_provider.py": 4,
     "agent_community/platform/ai_usage.py": 2,
     "agent_community/platform/ai_verify.py": 2,
     "agent_community/platform/api_wakeup.py": 1,
@@ -29,7 +27,6 @@
     "agent_community/platform/identity.py": 1,
     "agent_community/platform/local_ai.py": 2,
     "agent_community/platform/mcp_client.py": 1,
-    "agent_community/platform/orchestrator.py": 4,
     "agent_community/platform/policy.py": 1,
     "agent_community/platform/procprobe.py": 1,
     "agent_community/platform/rule_gate.py": 1,

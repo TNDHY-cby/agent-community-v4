@@ -53,6 +53,21 @@ AI_ERROR_PREFIX = "[Error:"
 AI_FAILURE_PREFIXES = (AI_ERROR_PREFIX, "[AI 讨论失败:", "[AI 降级]")
 
 
+import logging
+
+logger = logging.getLogger("ac.ai")
+
+#: 同一类失败**每进程只喊一次**：既不刷屏，也不许静默（老板准则⑤「失败要说话」）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    """第一次遇到这类失败时记一条 warning；之后同类不再重复（进程内）。"""
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
 def ai_error_text(reply) -> str:
     """`reply` 是错误文本则原样返回（供如实显示）；正常回复返回空串。"""
     s = reply if isinstance(reply, str) else ""
@@ -410,8 +425,9 @@ class OpenAICompatibleProvider(AIProvider):
                     "selected": data.get("selected", []),
                     "reason": data.get("reason", reply[:100]),
                 }
-        except (json.JSONDecodeError, Exception):
-            pass
+        except (json.JSONDecodeError, Exception) as _e:
+            # AI 回的文本不是合法 JSON ⇒ 下面就是"解析失败"的返回；喊一次，别静默
+            _warn_once("reply_not_json", "AI 回复不是合法 JSON：%s" % str(_e)[:120], _e)
 
         return {"selected": [], "reason": f"无法解析 AI 回复: {reply[:100]}"}
 
@@ -569,8 +585,9 @@ class OllamaProvider(AIProvider):
                     "selected": data.get("selected", []),
                     "reason": data.get("reason", reply[:100]),
                 }
-        except (json.JSONDecodeError, Exception):
-            pass
+        except (json.JSONDecodeError, Exception) as _e:
+            # AI 回的文本不是合法 JSON ⇒ 下面就是"解析失败"的返回；喊一次，别静默
+            _warn_once("reply_not_json", "AI 回复不是合法 JSON：%s" % str(_e)[:120], _e)
 
         return {"selected": [], "reason": f"无法解析 AI 回复: {reply[:100]}"}
 
@@ -678,8 +695,8 @@ class HTTPCallbackProvider(AIProvider):
                         "selected": data.get("selected", []),
                         "reason": data.get("reason", reply[:100]),
                     }
-            except (json.JSONDecodeError, Exception):
-                pass
+            except (json.JSONDecodeError, Exception) as _e:
+                _warn_once("reply_not_json_alt", "AI 回复不是合法 JSON：%s" % str(_e)[:120], _e)
 
             return {"selected": [], "reason": reply[:100]}
         except Exception as e:
@@ -1037,8 +1054,8 @@ def create_ai_provider(
         _cfg = _lc()
         cache_enabled = bool(_cfg.get("ai_cache_enabled", True))
         usage_enabled = bool(_cfg.get("ai_usage_enabled", True))
-    except Exception:
-        pass
+    except Exception as _e:                      # 读配置失败 ⇒ 用默认开关（下面会被环境变量覆盖）
+        _warn_once("cfg_read_failed", "读平台配置失败，AI 缓存/用量开关按默认值走：%s" % str(_e)[:120], _e)
     cache_enabled = os.environ.get("AC_AI_CACHE_ENABLED", "1" if cache_enabled else "0") == "1"
     usage_enabled = os.environ.get("AC_AI_USAGE_ENABLED", "1" if usage_enabled else "0") == "1"
 

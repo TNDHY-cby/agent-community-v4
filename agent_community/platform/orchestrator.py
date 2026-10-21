@@ -32,6 +32,21 @@ from .protocol import (
 )
 
 
+import logging
+
+logger = logging.getLogger("ac.orchestrator")
+
+#: 同一类失败**每进程只喊一次**：既不刷屏，也不许静默（老板准则⑤「失败要说话」）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    """第一次遇到这类失败时记一条 warning；之后同类不再重复（进程内）。"""
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
 class Orchestrator:
     """平台内置调度大脑（v4 收敛驱动）。
 
@@ -197,8 +212,10 @@ class Orchestrator:
                                     content = json.dumps(inner, ensure_ascii=False)
                                     if "confidence" in inner:
                                         confidence = float(inner["confidence"])
-                            except (json.JSONDecodeError, Exception):
-                                pass
+                            except (json.JSONDecodeError, Exception) as _e:
+                                # 直连回的正文里没有可解析的 JSON 内层 ⇒ 按原文用；喊一次，别静默
+                                _warn_once("direct_reply_inner_not_json",
+                                           "直连回执内层不是合法 JSON：%s" % str(_e)[:120], _e)
                             return ER(
                                 delegation_id=exec_msg.delegation.id,
                                 from_agent=from_agent,
@@ -214,8 +231,9 @@ class Orchestrator:
                             error=f"直连失败 HTTP {r.status_code}", confidence=0.0,
                         )
                     except Exception as e:
-                        # 直连失败回退到桥接路径
-                        pass
+                        # 直连失败回退到桥接路径（**但要说出来**：谁失败、为什么）
+                        _warn_once("direct_exec_failed",
+                                   "直连派活失败，改走桥接：%s: %s" % (type(e).__name__, str(e)[:120]), e)
 
             bridge = harness_mgr.get_bridge_by_agent(agent_id)
             if bridge:
@@ -234,8 +252,9 @@ class Orchestrator:
                                 error = data["error"]
                             if "confidence" in data:
                                 confidence = float(data["confidence"])
-                    except (json.JSONDecodeError, Exception):
-                        pass
+                    except (json.JSONDecodeError, Exception) as _e:
+                        # 桥回的正文不是 JSON ⇒ 按纯文本结果用；喊一次，别静默
+                        _warn_once("bridge_reply_not_json", "桥回执不是合法 JSON：%s" % str(_e)[:120], _e)
                     return ER(
                         delegation_id=exec_msg.delegation.id,
                         from_agent=exec_msg.delegation.from_agent,
@@ -323,8 +342,9 @@ class Orchestrator:
                                     from_agent=reviewer_id, verdict="pass",
                                     feedback=content[:200] or "直连审查返回格式异常", score=0.5,
                                 )
-                    except Exception:
-                        pass  # 直连失败回退到桥接路径
+                    except Exception as e:          # 直连审查失败 ⇒ 回退桥接；同样要说出来
+                        _warn_once("direct_review_failed",
+                                   "直连审查失败，改走桥接：%s: %s" % (type(e).__name__, str(e)[:120]), e)
 
             bridge = harness_mgr.get_bridge_by_agent(reviewer_id)
             if bridge:
