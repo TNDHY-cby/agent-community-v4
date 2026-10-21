@@ -70,11 +70,11 @@ CAPABILITY_LABEL = {
     "vision": "看图",
 }
 
-#: 验证范围原话（照 `metadata.bridge_template_verified[].evidence.verified_scope` 收紧后的一句）
-SCOPE_BRIDGE_ONLY = ("仅桥配置：桥能连平台/领件/回报，且这只桥是**平台在验证间里启动的**；"
-                    "harness 侧是否在跑那只桥、agent 能否回话，**本次未验证**")
-SCOPE_UNVERIFIED = ("没有任何验证证据（本记录里既没有 bridge_test，也没有 bridge_template_verified）"
-                    "——harness 是否在跑桥、agent 能否回话，**均未验证**")
+#: 验证范围原话 **不再自带一份**：唯一实现在 `platform/evidence_scope.py`
+#: （写入侧 `verify_sandbox` 与读取侧本模块共用，避免两处各写一套）。
+from . import evidence_scope as _scope
+SCOPE_BRIDGE_ONLY = _scope.SCOPE_BRIDGE_ONLY
+SCOPE_UNVERIFIED = _scope.SCOPE_NONE
 
 
 def _now_iso() -> str:

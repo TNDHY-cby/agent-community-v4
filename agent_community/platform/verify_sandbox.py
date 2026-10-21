@@ -619,11 +619,12 @@ def commit_verified(workshops: dict, harness_id: str, *, evidence: dict | None =
     #   面向接入方的 `sent_via` 用 `inbox` / `pending_queue`，
     #   而这里落盘用 `file_mailbox` / `bridge_test_queue` —— 同一份数据两种词，
     #   谁读谁要猜。⇒ 落盘统一成**面向接入方那套**；读的时候两套都认（历史记录不失效）。
-    _ch = {"file_mailbox": "inbox", "bridge_test_queue": "pending_queue"}.get(_ch, _ch)
-    _scope = ("完整链路：平台 → 桥 → 你的 agent → 回报"
-              if _ch in ("file_mailbox", "inbox") else
-              "**仅桥配置**（桥能连平台/领件/回报；且这只桥是**平台在验证间里启动的**）——"
-              "**harness 侧是否运行该桥、agent 能否回话，本次未验证**")
+    # ★2026-10-21（V73 §9 第 4 项）：映射与「本次证明了什么/没证明什么」的**文案**
+    #   都收进 `evidence_scope`（读取侧 `harness_capability` 用的是同一份，别在这里再抄一遍）。
+    from . import evidence_scope as _scope_mod
+
+    _ch = _scope_mod.normalize_channel(_ch)
+    _scope = _scope_mod.scope_for_channel(_ch)
     ev = dict(evidence or {})
     ev["channel"] = _ch
     ev["verified_scope"] = _scope

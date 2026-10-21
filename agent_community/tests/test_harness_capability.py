@@ -161,3 +161,34 @@ def test_endpoint_shape_for_a_real_session(monkeypatch):
     for key in ("segments", "capabilities", "counts", "verdict_text", "connected"):
         assert key in body, body
     assert body["segments"]["agent_can_reply"]["state"] == "unverified"
+
+
+# ── ⑦ 验证范围文案只有一处真相（写入侧与读取侧共用 evidence_scope）──────
+def test_scope_texts_are_single_sourced():
+    from agent_community.platform import evidence_scope as es
+
+    # 读取侧的常量必须是写入侧那一份（不是各写一遍）
+    assert hc.SCOPE_BRIDGE_ONLY is es.SCOPE_BRIDGE_ONLY
+    assert hc.SCOPE_UNVERIFIED is es.SCOPE_NONE
+    # 写入侧不许再抄一句同样的文案（抄了就会两处漂）
+    src = (_ROOT / "agent_community" / "platform" / "verify_sandbox.py").read_text(
+        encoding="utf-8", errors="replace")
+    assert "仅桥配置" not in src, "verify_sandbox 里又硬写了一遍范围文案（应 import evidence_scope）"
+
+
+def test_scope_for_channel_and_interpretation():
+    from agent_community.platform import evidence_scope as es
+
+    bridge = es.scope_for_channel("pending_queue")
+    assert "仅桥配置" in bridge and "agent 能否回话" in bridge
+    full = es.scope_for_channel("inbox")
+    assert "完整链路" in full
+    # 通道名两套写法都认
+    assert es.scope_for_channel("file_mailbox") == full
+    assert es.scope_for_channel("bridge_test_queue") == bridge
+
+    info = es.interpret_scope(bridge)
+    assert info["kind"] == "bridge_only"
+    assert any("agent 能否回话" in x for x in info["does_not_prove"]), info
+    assert es.interpret_scope("")["kind"] == "none"
+    assert es.interpret_scope("这段我没见过")["kind"] == "unknown", "认不出来要如实说，不猜"

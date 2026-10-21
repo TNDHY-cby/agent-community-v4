@@ -2,6 +2,42 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.15.12] - 2026-10-21
+
+**V73 §9 第 4 项落地：验证范围文案收成一处真相（`evidence_scope`）**
+
+### 一、问题
+
+"这次验证到底证明了什么、没证明什么"这句话，原来**两处各写一遍**：
+- 写入侧 `platform/verify_sandbox.py` 落盘 `evidence.verified_scope`（真源头）；
+- 读取侧（我上一版新加的 `harness_capability.py`）又抄了一个常量给"没有证据"的记录用。
+两处只要有一处改字，界面和人看到的范围就会不一致（规则 20）。
+
+### 二、落点
+
+新增 `platform/evidence_scope.py`（纯标准库、无依赖）：
+
+| 提供 | 内容 |
+|---|---|
+| `SCOPE_FULL_CHAIN` / `SCOPE_BRIDGE_ONLY` / `SCOPE_NONE` | 三类范围**唯一**文案 |
+| `CHANNEL_ALIASES` + `normalize_channel()` | 通道名只留一套（`file_mailbox→inbox`、`bridge_test_queue→pending_queue`，历史旧名也认） |
+| `scope_for_channel(ch)` | 按通道给范围原话（写入侧调它） |
+| `interpret_scope(scope)` | 把已落盘的范围读成 `{kind, proves[], does_not_prove[], text}`；**认不出来就说 `unknown`，不猜** |
+
+`verify_sandbox.py`（写入侧）与 `harness_capability.py`（读取侧）都改成 import 这个模块，
+**不再各写一份文案**。
+
+### 三、判据
+
+`test_harness_capability.py` 从 9 条加到 **11 条**，新增：
+1. `test_scope_texts_are_single_sourced`：读取侧常量必须**就是** `evidence_scope` 的那一份（`is` 相等），
+   且 `verify_sandbox.py` 里**不许再出现**「仅桥配置」这串字（抄了就会漂）；
+2. `test_scope_for_channel_and_interpretation`：`pending_queue→仅桥配置`、`inbox→完整链路`、
+   两套通道旧名都认、`interpret_scope` 对空串/认不出的文本**如实返回 `none` / `unknown`**。
+
+- 本轮相关：`test_harness_capability` + `test_verify_sandbox` = **26 passed**；
+- **双平台全量 1904 × 2 全绿**（Windows 0 失败 / Linux 0 失败；比上一轮 1887 多 17 条，全是本轮新增守卫）。
+
 ## [4.15.11] - 2026-10-21
 
 **V73 §9 落地（后端那一半）：能力与证据来源只读视图 —— 三段分离 + 每条能力标来源**
