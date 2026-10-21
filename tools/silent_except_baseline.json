@@ -1,5 +1,5 @@
 {
-  "total": 83,
+  "total": 68,
   "files": {
     "agent_community/a2a_server.py": 1,
     "agent_community/cli.py": 1,
@@ -30,7 +30,6 @@
     "agent_community/platform/policy.py": 1,
     "agent_community/platform/procprobe.py": 1,
     "agent_community/platform/rule_gate.py": 1,
-    "agent_community/platform/server.py": 15,
     "agent_community/platform/session_registry.py": 1,
     "agent_community/platform/waker_protocol.py": 1,
     "agent_community/platform/wakeup_bridge.py": 1,

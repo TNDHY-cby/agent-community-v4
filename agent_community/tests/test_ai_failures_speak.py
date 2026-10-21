@@ -29,12 +29,16 @@ from agent_community.platform import ai_provider as aip  # noqa: E402
 AI_PATH = _ROOT / "agent_community" / "platform" / "ai_provider.py"
 ORCH_PATH = _ROOT / "agent_community" / "platform" / "orchestrator.py"
 GUI_PATH = _ROOT / "agent_community" / "gui.py"
+SERVER_PATH = _ROOT / "agent_community" / "platform" / "server.py"
 
 #: 防回退：这些 key 必须真的在对应文件里被调用
 REQUIRED_KEYS = {
     AI_PATH: ["reply_not_json", "cfg_read_failed"],
     ORCH_PATH: ["direct_exec_failed", "direct_review_failed"],
     GUI_PATH: ["wait_status_failed", "kill_failed"],
+    # server.py：15 处逐条判定后保留的"必须喊"（其余 5 处标了有意静默）
+    SERVER_PATH: ["plugin_modes_read_failed", "pipe_poll_failed", "offline_hint_failed",
+                  "save_state_failed", "member_spoke_check_failed", "decision_mode_read_failed"],
 }
 
 
@@ -62,7 +66,7 @@ def test_warn_once_carries_exception_detail(caplog):
 
 def test_no_bare_silent_except_left_in_ai_paths():
     bad = []
-    for p in (AI_PATH, ORCH_PATH, GUI_PATH):
+    for p in (AI_PATH, ORCH_PATH, GUI_PATH, SERVER_PATH):
         src = io.open(p, encoding="utf-8").read()
         lines = src.splitlines()
         for node in ast.walk(ast.parse(src)):

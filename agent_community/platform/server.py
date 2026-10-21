@@ -192,6 +192,21 @@ try:
 except Exception:  # noqa: BLE001
     _PKG_VERSION = "0.0.0+unknown"
 
+import logging
+
+logger = logging.getLogger("ac.server")
+
+#: 同一类失败**每进程只喊一次**：不刷屏，但不许静默（准则⑤「失败要说话」）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
+
 app = FastAPI(title="外端Agent生产合作社（External Agent Community） Platform v4", default_response_class=Utf8JSONResponse, lifespan=_app_lifespan)
 
 
@@ -1673,7 +1688,7 @@ async def client_ws(ws: WebSocket):
             raw = await ws.receive_text()
             if raw == "ping":
                 await ws.send_text("pong")
-    except WebSocketDisconnect:
+    except WebSocketDisconnect:      # noqa: BLE001 — 有意静默：客户端正常断连，不是故障
         pass
     finally:
         ws_clients.discard(ws)
@@ -1812,8 +1827,9 @@ def _load_workshop_modes() -> dict:
     try:
         if PLUGIN_MODES_FILE.exists():
             return json.loads(PLUGIN_MODES_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        pass
+    except Exception as _e:            # 读不出＝按“全默认”，但要让用户知道是自己的文件坏了
+        _warn_once("plugin_modes_read_failed",
+                   "读插件开关文件失败，按默认当作用户没改过：%s: %s" % (type(_e).__name__, str(_e)[:120]), _e)
     return {}
 
 def _workshop_mode(ws_id: str) -> str:
@@ -2963,8 +2979,9 @@ async def _execute_harness_delegation(
         parsed = json.loads(reply.content)
         ok = parsed.get("ok", True)
         result = json.dumps(parsed, ensure_ascii=False, indent=2)
-    except (json.JSONDecodeError, TypeError):
-        pass
+    except (json.JSONDecodeError, TypeError) as _e:
+        _warn_once("delegation_reply_not_json",
+                   "回执不是合法 JSON，按原文用：%s" % str(_e)[:120], _e)
     task = tasks.get(del_req.task_id)
     # 广播结果
     result_msg = Message(
@@ -3107,7 +3124,7 @@ async def agent_ws(ws: WebSocket, agent_id: str):
                     tasks[msg.task_id].messages.append(msg)
                 _append_hall(msg)
                 await bcast_to_clients(msg)
-    except WebSocketDisconnect:
+    except WebSocketDisconnect:      # noqa: BLE001 — 有意静默：客户端正常断连，不是故障
         pass
     finally:
         ws_agents.pop(agent_id, None)
@@ -3149,8 +3166,9 @@ async def _poll_pipe_internal():
             _append_hall(msg)
             await bcast_to_clients(msg)
             replies.append(resp.model_dump())
-        except Exception:
-            pass
+        except Exception as _e:        # 一条消息处理失败不该打断整批，但必须喊出来
+            _warn_once("pipe_msg_failed",
+                       "处理管消息失败（该条被跳过）：%s: %s" % (type(_e).__name__, str(_e)[:120]), _e)
     # v4.1: 轮询各 Harness 的 from_harness/ 目录，
     # 将 Harness 写入的回复文件路由到对应的 bridge pending Future
     for hid, bridge in harness_manager.bridges.items():
@@ -3162,8 +3180,10 @@ async def _pipe_poll_loop():
     while True:
         try:
             await _poll_pipe_internal()
-        except Exception:
-            pass
+        except Exception as _e:        # 后台循环坏掉最容易被忽略 ⇒ 一定要喊
+            _warn_once("pipe_poll_failed",
+                       "pipe 轮询失败（每 3 秒一轮，本进程只报第一次）：%s: %s"
+                       % (type(_e).__name__, str(_e)[:120]), _e)
         await asyncio.sleep(3)
 async def _api_outbox_poll_loop():
     """后台轮询：读取 http_api 类 harness 的 outbox 回报，接入对应工作间讨论区。
@@ -4603,8 +4623,9 @@ def _get_decision_mode(ws_id: str) -> str:
             dm = str(raw2.get("decision_mode", "")).strip().lower()
             if dm in DECISION_MODES:
                 return dm
-    except Exception:
-        pass
+    except Exception as _e:
+        _warn_once("decision_mode_read_failed",
+                   "读决策模式失败，按默认 user 走：%s: %s" % (type(_e).__name__, str(_e)[:120]), _e)
     return "user"
 
 def _set_decision_mode(ws_id: str, mode: str) -> str:
@@ -5128,8 +5149,10 @@ def _r2_member_offline_note(m: WorkshopMember) -> str:
             return ""
         if _r2_session_status(hid) == HarnessStatus.OFFLINE:
             return f"（⚠ 该员工 harness「{hid}」已掉线，任务未领取/未回报，可考虑换人）"
-    except Exception:
-        pass
+    except Exception as _e:            # 生成失败就少一句提醒 ⇒ 不能静默，否则用户以为一切正常
+        _warn_once("offline_hint_failed",
+                   "生成'员工已掉线'提示失败（这条提醒缺失）：%s: %s"
+                   % (type(_e).__name__, str(_e)[:120]), _e)
     return ""
 
 def _r2_collect_orphan_pending(hid: str) -> int:
@@ -5196,7 +5219,7 @@ def _r2_sweep_once() -> dict:
                 leader.status = "pending"   # 置回未激活态，让既有补激活函数重新派发
                 try:
                     ws._leader_activating_at = 0
-                except Exception:
+                except Exception:      # noqa: BLE001 — 有意静默：只是清个私有时间戳，对象上没这个属性也无害
                     pass
                 _reply, _ok, _leader = _activate_leader_if_needed(ws)
                 stats["leader_reactivated"].append(hid)
@@ -5450,7 +5473,7 @@ def _build_experience_pack(sess, task_text: str) -> Optional[str]:
                 lines.append(f"- 历史经验「{title}」：{desc}")
                 if sum(1 for _ in lines) >= 12:
                     break
-        except Exception:
+        except Exception:            # noqa: BLE001 — 有意静默：只影响“历史经验”这段提示文案，不影响派活
             pass
         # 信誉提示：取该 harness 全部 capability 中历史信誉最高者
         try:
@@ -5469,7 +5492,7 @@ def _build_experience_pack(sess, task_text: str) -> Optional[str]:
                         best = (cap, rep)
             if best and best[1] > 0:
                 lines.append(f"- 信誉提示：你的能力标签「{best[0]}」历史信誉 {best[1]:.2f}，可优先复用同类成功经验")
-        except Exception:
+        except Exception:            # noqa: BLE001 — 有意静默：只影响“信誉提示”这段文案
             pass
         if not lines:
             return None
@@ -5579,8 +5602,10 @@ async def _simulate_member_reply(harness_id, payload, kind, reason):
         mem.status = "working" if kind == "task" else mem.status
     try:
         save_state()
-    except Exception:
-        pass
+    except Exception as _e:            # 落盘失败＝刚写的东西可能丢 ⇒ 必须喊
+        _warn_once("save_state_failed",
+                   "平台状态落盘失败（刚才的改动可能没存下）：%s: %s"
+                   % (type(_e).__name__, str(_e)[:120]), _e)
     print(f"[manual-sim] 已模拟 {role}「{name}」在 {wid} 发言（zone={zone}, {len(text)}字）", flush=True)
     return True
 
@@ -5603,7 +5628,7 @@ def _schedule_manual_sim(harness_id, payload, kind, reason):
                 print(f"[manual-sim] 调度执行异常: {_e}", flush=True)
 
         asyncio.create_task(_run())
-    except RuntimeError:
+    except RuntimeError:               # noqa: BLE001 — 有意静默：CLI 直调时没有事件循环，本就该跳过
         pass  # 无运行中事件循环（CLI 直调等场景）跳过
 
 
@@ -5623,8 +5648,10 @@ def _member_replied_since(ws, member_id, seq0) -> bool:
                 continue
             if mm.get("from_member") == member_id:
                 return True
-    except Exception:
-        pass
+    except Exception as _e:
+        _warn_once("member_spoke_check_failed",
+                   "检查'成员是否发过言'失败，先当作没发过：%s: %s"
+                   % (type(_e).__name__, str(_e)[:120]), _e)
     return False
 
 
@@ -5659,7 +5686,7 @@ def _mark_sim_watch(harness_id, payload, kind):
             "harness_id": harness_id, "done": False,
             "role": payload.get("role") or (mem.role or "成员"),
         }
-    except Exception:
+    except Exception:                # noqa: BLE001 — 有意静默：只影响“模拟发言”这条调试记录的元数据
         pass
 
 
