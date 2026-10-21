@@ -34,7 +34,7 @@ INDEX = DOCS / "索引.md"
 
 #: 先读这三份（顺序就是读的顺序）
 ENTRY = [
-    ("项目完整模型.md", "**现行真相的总图**：角色表 / 九步 / 端点 / §11 欠账表（要看「现在到底有什么」，读它）"),
+    ("项目完整模型.md", "**现行真相的主索引**：五分钟版 + 12 个分册（角色/状态机/主流程/接口面/诚实性/判据…）；细节都在分册里"),
     ("平台设计总纲.md", "顶层蓝图：平台定位、协作层模型、分层与边界"),
     ("前端工作手册.md", "给前端实现方的现行状态与写域（MiMo 的第一入口）"),
 ]
@@ -138,7 +138,7 @@ def _title_of(path: Path, text: str) -> str:
 
 
 def collect() -> dict:
-    items = {"entry": [], "V": [], "FE": [], "other": []}
+    items = {"entry": [], "V": [], "FE": [], "model": [], "other": []}
     for p in sorted(DOCS.glob("*.md")):
         if ".bak" in p.name or p.name == INDEX.name:
             continue
@@ -156,6 +156,14 @@ def collect() -> dict:
             items["FE"].append(rec)
         else:
             items["other"].append(rec)
+    # ★2026-10-21（老板「上下文过长，得分文件、做索引」）：`design-docs/model/` 下的
+    #   **项目完整模型分册**也进索引——否则拆完之后没人找得到它们。
+    for p in sorted((DOCS / "model").glob("*.md")):
+        if ".bak" in p.name:
+            continue
+        text = p.read_text(encoding="utf-8", errors="replace")
+        items["model"].append({"file": "model/" + p.name, "title": _title_of(p, text),
+                               "status": _status_of(text), "size": p.stat().st_size})
     items["V"].sort(key=lambda r: r["no"])
     items["FE"].sort(key=lambda r: r["no"])
     order = {f: i for i, (f, _) in enumerate(ENTRY)}
@@ -165,7 +173,7 @@ def collect() -> dict:
 
 
 def render(items: dict) -> str:
-    all_recs = items["entry"] + items["V"] + items["FE"] + items["other"]
+    all_recs = items["entry"] + items["V"] + items["FE"] + items["model"] + items["other"]
     stat = {}
     for r in all_recs:
         stat[r["status"]] = stat.get(r["status"], 0) + 1
@@ -202,7 +210,17 @@ def render(items: dict) -> str:
         L.append("| FE-%d | %s | %s | %s | [`%s`](%s) |"
                  % (r["no"], r["title"][:60], r["status"], _evidence(r), r["file"], r["file"]))
     L.append("")
-    L.append("## ④ 其它（RUNBOOK / 契约 / 清单 / 说明）")
+    L.append("## ④ 项目完整模型分册（`design-docs/model/`，2026-10-21 拆分）")
+    L.append("")
+    L.append("> 老板要求「上下文过长，得分文件、做索引」＋「模型里不许有旧数据」。**主索引**："
+             "[`项目完整模型.md`](项目完整模型.md)（五分钟版 + 分册表）。")
+    L.append("")
+    L.append("| 分册 | 标题 | 状态 |")
+    L.append("|---|---|---|")
+    for r in items["model"]:
+        L.append("| [`%s`](%s) | %s | %s |" % (r["file"], r["file"], r["title"][:60], r["status"]))
+    L.append("")
+    L.append("## ⑤ 其它（RUNBOOK / 契约 / 清单 / 说明）")
     L.append("")
     L.append("| 文件 | 标题 | 状态 |")
     L.append("|---|---|---|")
@@ -213,7 +231,7 @@ def render(items: dict) -> str:
     L.append("")
     L.append("## 怎么用这份索引")
     L.append("")
-    L.append("1. **想知道「现在到底有什么」** ⇒ 读 ① 的 [`项目完整模型.md`](项目完整模型.md)（含 §11 欠账表）；")
+    L.append("1. **想知道「现在到底有什么」** ⇒ 读 ① 的 [`项目完整模型.md`](项目完整模型.md)（五分钟版 + 分册索引）；")
     L.append("2. **想找某个功能的来龙去脉** ⇒ 在 ② 里按编号找（V55＝信息搜索者/防信息污染、V56＝巡逻员…）；")
     L.append("3. **想知道还有多少没拍板** ⇒ 看「文档状态」列，`待拍板` 就是排队等老板的；")
     L.append("4. **两列别混**：**文档状态**是**文档自己写的**（我不替它改口径）；**我核**是我这边查到的证据")
