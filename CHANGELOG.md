@@ -2,6 +2,48 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.15.14] - 2026-10-21
+
+**清结构债第一批：`server.py` 里 6 组重复注册 + 3 个"永远成功"的老桩 —— 端点数 51 → 42**
+
+### 一、删了什么、为什么删得动
+
+**A. 6 组重复注册**（同一 `method+path` 挂了两遍；FastAPI **只认第一个**，后面那些永远不可达）：
+
+| 端点 | 第一次（保留） | 第二次（删除，死代码） |
+|---|---|---|
+| `GET /api/tasks` | `list_tasks` | `list_tasks`（**同名**！） |
+| `GET /api/bus/stats` | `bus_stats` | `api_bus_stats` |
+| `POST /api/session/save` | `session_save` | `api_session_save` |
+| `GET /api/session/restore` | `session_restore` | `api_session_restore` |
+| `GET /api/events` | `list_events` | `api_events` |
+| `GET /api/budget/{task_id}` | `task_budget` | `api_budget` |
+
+⚠️ 第一版脚本按"函数名不同"判重复，`list_tasks` 那组因为**两次同名**被漏掉——改成按**出现次数**判才补齐。
+
+**B. 3 个老桩**（全仓 grep **0 处调用**，且无条件返回成功）：
+`GET /api/bridge/pending` → `{"pending": []}`、
+`POST /api/bridge/{id}/response` → `{"success": True}`、
+`POST /api/bridge/{id}/cancel` → `{"success": True}`。
+**这类"永远成功"比死代码更危险**（会让人以为桥接流程可用），删掉比留着诚实。
+
+### 二、规模与行为
+
+- `server.py`：**6618 → 6573 行**、`@app.*` 端点 **51 → 42**、重复注册 **6 组 → 0**；
+- 行为**不变**：被删的都是不可达或无人调用的；保留下来的第一次注册全部还在。
+
+### 三、判据
+
+新增 `agent_community/tests/test_route_uniqueness.py`（**3 条**，真读 `app.routes`，含展开 `_IncludedRouter`）：
+1. **任何 `method+path` 不许注册两次**（这条直接防"重复注册"回来）；
+2. 那 3 个老桩**不许回来**（要恢复必须先有真实实现）；
+3. **真打一次**：3 个老桩现在必须 404/405（防"代码删了但路由还在"）。
+
+真机（重启后逐条打）：
+`/api/tasks` `/api/events` `/api/bus/stats` `/api/session/restore` `/api/status` `/api/agents` 全 **200**；
+`/api/budget/不存在` **404**（保留的那份说"任务不存在"）；
+`/api/bridge/pending` → **404**、`/api/bridge/demo/{response,cancel}` → **405**。
+
 ## [4.15.13] - 2026-10-21
 
 **双平台判据里两处假红（都跟"守卫写法"有关）—— 已修；1906 × 2 全绿**

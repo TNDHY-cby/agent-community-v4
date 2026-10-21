@@ -3334,9 +3334,6 @@ async def set_task_parent(task_id: str, request: Request):
     tasks[task_id].updated_at = datetime.now().isoformat()
     save_state()
     return {"success": True, "task_id": task_id, "parent_id": parent_id}
-@app.get("/api/tasks")
-async def list_tasks():
-    return {"tasks": [t.model_dump() for t in tasks.values()]}
 # ═══════════════════════════════════════════════════════════════
 # Agent WS 接入点
 # ═══════════════════════════════════════════════════════════════
@@ -3899,48 +3896,6 @@ async def api_task_discuss(task_id: str, request: Request):
         await bcast_to_clients(m)
         return {"success": True}
     return Utf8JSONResponse({"error": "任务不存在"}, status_code=404)
-@app.get("/api/bus/stats")
-async def api_bus_stats():
-    """旧前端：业务统计"""
-    return {
-        "total_tasks": len(tasks),
-        "total_agents": len(agents),
-        "online_agents": sum(1 for a in agents if a in ws_agents),
-        "total_messages": sum(len(t.messages) for t in tasks.values()),
-        "active_rooms": len(discussion_rooms),
-    }
-@app.get("/api/session/restore")
-async def api_session_restore():
-    """旧前端：恢复会话"""
-    return {"success": True, "tasks": [t.model_dump() for t in tasks.values()]}
-@app.post("/api/session/save")
-async def api_session_save():
-    """旧前端：保存会话"""
-    return {"success": True, "saved_at": datetime.now().isoformat()}
-@app.get("/api/events")
-async def api_events(limit: int = 50):
-    """旧前端：获取事件流"""
-    hall_msgs = list(hall_messages)[-limit:]
-    return {
-        "events": [m.model_dump() for m in hall_msgs],
-        "count": len(hall_msgs),
-    }
-@app.get("/api/bridge/pending")
-async def api_bridge_pending():
-    """旧前端：待处理的桥接请求"""
-    return {"pending": []}
-@app.post("/api/bridge/{bridge_id}/response")
-async def api_bridge_response(bridge_id: str, request: Request):
-    """旧前端：响应桥接请求"""
-    return {"success": True}
-@app.post("/api/bridge/{bridge_id}/cancel")
-async def api_bridge_cancel(bridge_id: str):
-    """旧前端：取消桥接请求"""
-    return {"success": True}
-@app.get("/api/budget/{task_id}")
-async def api_budget(task_id: str):
-    """旧前端：任务预算查询"""
-    return {"task_id": task_id, "budget": 0, "spent": 0, "remaining": 0}
 # ═══════════════════════════════════════════════════════════════
 # 工作间（V5 最小竖切）
 # ═══════════════════════════════════════════════════════════════
