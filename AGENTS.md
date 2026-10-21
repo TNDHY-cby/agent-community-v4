@@ -8,6 +8,8 @@
 > —— 当前进度、未提交改动清单、待拍板事项、关键文件地图、高频坑与汇报约定，全在那里。
 > ⚠️ **`HANDOVER.md` 是开发副本独有、公开仓库里没有**（它含真实本机坐标）；外部读者想看项目现状，
 > 读 [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) 与 [`CHANGELOG.md`](CHANGELOG.md)。
+> 同理**公开树不含**：`publish_acv4.ps1`（发布工具）、`deploy/`（部署脚本，含 `watchdog_all.py`）、
+> `temp/`（各项突变检验/诊断脚本）、`dsh-tooling/`。下文提到它们时，指的是**开发副本里的东西**。
 
 > ⚠️ **2026-10-05 实测警告**：本机 fastapi 0.141.1 / starlette 1.7.0，
 > `app.include_router()` 往 `app.routes` 放的是 **`_IncludedRouter`（`.path is None`）**，

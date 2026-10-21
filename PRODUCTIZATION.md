@@ -84,7 +84,7 @@ clone → `cli start --no-gui`（**换端口 + 换数据目录**）→ `cli task
 
 | 欠账 | 还法 | 守卫 |
 |---|---|---|
-| ~~看门狗的进程发现是 Windows 专属~~（2026-10-15 还清） | 把"零第三方依赖的本机事实探测"收成**一处真相** `platform/procprobe.py`：Windows 走本机命令、Linux 走 `/proc`、其它 POSIX 走 `ps`/`lsof`/`ss`；`tools/watchdog.py` 与 `deploy/watchdog_all.py` **按文件路径**加载它（保住"能单独跑"），`sysprobe` 没有 psutil 时**整层转向它**。设计稿 `V50` | `tests/test_procprobe.py`（真进程 / 真端口 / 真子进程 / **按生产调用方式真跑一次看门狗**；"纯标准库"用 `sys.stdlib_module_names` 真判）、`tests/test_sysprobe.py::TestStdlibTierWithoutPsutil`（把 psutil 打成 None 后仍须答对） |
+| ~~看门狗的进程发现是 Windows 专属~~（2026-10-15 还清） | 把"零第三方依赖的本机事实探测"收成**一处真相** `platform/procprobe.py`：Windows 走本机命令、Linux 走 `/proc`、其它 POSIX 走 `ps`/`lsof`/`ss`；`tools/watchdog.py` 与 `deploy/watchdog_all.py`（**dev-only，公开树不含**） **按文件路径**加载它（保住"能单独跑"），`sysprobe` 没有 psutil 时**整层转向它**。设计稿 `V50` | `tests/test_procprobe.py`（真进程 / 真端口 / 真子进程 / **按生产调用方式真跑一次看门狗**；"纯标准库"用 `sys.stdlib_module_names` 真判）、`tests/test_sysprobe.py::TestStdlibTierWithoutPsutil`（把 psutil 打成 None 后仍须答对） |
 | ~~容器（docker）路线未在真机验证~~（2026-10-15 还清） | **本机 Docker Desktop 起 daemon → `docker compose build` → 两阶段真走查**：阶段 A（配了 `AC4_TOKEN`）不带令牌 **401 有原因** / 带对令牌 **200 running**；阶段 B（完全不配）**403、文案就是「服务未配置访问 Token」**。容器内再跑一次 `procprobe` 自检（`backend=procfs`，证明 V50 新模块在**干净 Linux 镜像**里能跑）＋ 两条守卫文件 **21 条全绿**。脚本 `temp/verify_container.py`（两阶段都真起容器，不读源码下结论） | 这两档真结果就是 `test_procprobe.py` + `test_ac4_token_env.py` 的端到端证据 |
 | ~~`AC4_TOKEN` 是"设了也没用"的令牌~~（2026-10-15，**走查期间抓出的新缺陷**） | 见 [`PORTABILITY.md`](./PORTABILITY.md) §5.1 **条 C**：README / `env_spec` / `docker-compose.yml` 三处承诺、实现只读 `--token` ⇒ 容器与 `cli start` 里设了令牌完全无效 | `tests/test_ac4_token_env.py`（9 条）+ `temp/ac4token_mutation_check.py` **2/2 KILLED** |
 | ~~平台专属 `skipif` 1 条（DPAPI）~~（2026-10-15 还清，**当前 0 条**） | 那条 skip 背后其实藏着一个真缺陷：`save_config()` **无条件**说"已加密保存"，而非 Windows 是**明文回退** ⇒ 真 Linux 上「屏幕说加密、磁盘是原文」。见 [`PORTABILITY.md`](./PORTABILITY.md) §5.1 **条 D**。修法：按实际落盘形态分档说 + README 口径同步；并把那条 skip **撤掉**（往返两平台都验、差异如实断言） | `tests/test_security.py::test_save_config_message_matches_disk`、`test_secret_storage_roundtrip_on_every_platform` + `temp/dpapi_mutation_check.py`（两平台各跑）|
@@ -102,6 +102,10 @@ clone → `cli start --no-gui`（**换端口 + 换数据目录**）→ `cli task
 > **禁止针对我这台机器**：不许写死端口/路径/用户名/真实 harness 名/平台专属命令。
 > 做完跑：`check_portability` → `check_productization` → `pytest` →（涉及入口时）`first_run_check`。
 > 验收：**换目录 + 换端口 + 换数据目录、不改一行代码**能走通；做不到就**如实说没做到**。
+
+> ⚠️ **本文引用的这些是「开发副本独有」、公开仓库不含**：`temp/*.py`（突变检验/容器验证等脚本）、
+> `deploy/`（含 `watchdog_all.py`）、`publish_acv4.ps1`、`HANDOVER.md`。
+> 结论可复核的部分在 `tools/*.py` 与 `tests/`；本文件只保留「当时怎么验的」的说法。
 
 ---
 

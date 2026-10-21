@@ -104,3 +104,41 @@ def test_agents_md_does_not_relatively_link_dev_only_handover():
     """`AGENTS.md` 公开可用 ⇒ 不许用相对链接指向只在开发副本里存在的 HANDOVER.md。"""
     text = AGENTS.read_text(encoding="utf-8", errors="replace")
     assert "](./HANDOVER.md)" not in text, "AGENTS.md 里有指向 HANDOVER.md 的相对链接（公开树会 404）"
+
+
+# ── ⑦ README 首屏的「当前版本」行必须等于 __version__ ─────────────────────
+def test_readme_version_line_matches_version():
+    """README 里「当前版本：`x.y.z`」必须等于 `__version__`。
+
+    ★2026-10-21（外部审查 P1）：v4.15.9 发版时改了代码/CHANGELOG，**唯独忘了这一行**，
+      6 条守卫全绿却让用户第一眼看到错版本 —— 典型的"守卫全绿但事实是错的"。
+    """
+    import agent_community
+
+    text = README.read_text(encoding="utf-8", errors="replace")
+    m = re.search(r"当前版本[:：]\s*`?(\d+\.\d+\.\d+)`?", text)
+    assert m, "README 里找不到「当前版本：`x.y.z`」这一行（它是读者判断版本的第一入口）"
+    assert m.group(1) == agent_community.__version__, \
+        "README 版本行 %s ≠ __version__ %s（发版时忘了回改）" % (m.group(1), agent_community.__version__)
+
+
+# ── ⑧ Python 源码不许带 UTF-8 BOM（requirements.txt 早有这条纪律）──────────
+def test_python_sources_have_no_bom():
+    """`agent_community/**/*.py`、`tools/*.py`、`tests/*.py` 首字节不许是 BOM。
+
+    起因：`test_ai_error_speaks.py` 带 `EF BB BF`，`ast.parse` 直接报
+    `invalid non-printable character U+FEFF`（扫描器/静态审查全被它绊住）。
+    项目对 `requirements.txt` 早有同样的纪律，**源码也该一样**。
+    """
+    bad = []
+    for root in (agent_community_pkg := _ROOT / "agent_community", _ROOT / "tools", _ROOT / "tests"):
+        for p in root.rglob("*.py"):
+            if ".bak" in p.name or "__pycache__" in p.parts:
+                continue
+            try:
+                with p.open("rb") as f:
+                    if f.read(3) == b"\xef\xbb\xbf":
+                        bad.append(str(p.relative_to(_ROOT)))
+            except Exception:                                 # noqa: BLE001
+                continue
+    assert not bad, "这些 .py 带 BOM（去掉它）：%s" % bad[:8]

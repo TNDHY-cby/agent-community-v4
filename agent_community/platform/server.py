@@ -297,8 +297,30 @@ def collect_allowed_tokens(cli_tokens: "list[str] | None" = None) -> list[str]:
         out.append(env_token)
     return out
 
+#: 「发现代理头」只在**每个进程**告警一次（避免刷日志）
+_PROXY_HEADER_WARNED = [False]
+
+
 def _is_localhost(request: Request) -> bool:
-    """判断请求是否来自本地"""
+    """判断请求是否来自本地。
+
+    ⚠️ 2026-10-21（外部审查报告 P3-8）：这是鉴权与"外部只读档"的**唯一前提之一**，
+    而它只看 **TCP 对端地址**。前面挂 nginx / Caddy / 隧道反代时，对端会全部变成 127.0.0.1
+    ⇒ Token 校验与只读档**同时失效**，管理面会对外可达。
+
+    这里**不改变判定**（改判定＝改安全策略，得先出设计稿），只在**看到代理头时大声告警一次**，
+    并把「不要把管理端口反代出去」写进 README 安全说明。
+    """
+    try:
+        headers = getattr(request, "headers", None) or {}
+        if (headers.get("x-forwarded-for") or headers.get("forwarded")
+                or headers.get("x-real-ip")) and not _PROXY_HEADER_WARNED[0]:
+            _PROXY_HEADER_WARNED[0] = True
+            print("[WARN] 检测到代理头（X-Forwarded-For / Forwarded / X-Real-IP）："
+                  "有代理在转发请求。平台用『对端是否回环』判本机来源，经代理后该判断会失真 ⇒ "
+                  "鉴权与外部只读档可能被绕过。**不要把管理端口反代出去**（README「安全说明」第 2 条）。")
+    except Exception:                                        # noqa: BLE001
+        pass
     host = request.client.host if request.client else ""
     return host in ("127.0.0.1", "::1", "localhost")
 def _extract_token(request: Request) -> str:

@@ -4,6 +4,10 @@
 > 起因（老板 2026-10-14 原话）：「**本地网址不应该引入**」「**本地端口因人而异**」。
 > 判据一句话：**当前电脑能跑不算合格；陌生环境只改配置就能跑才算合格。**
 
+> ⚠️ **本文引用的这些是「开发副本独有」、公开仓库不含**：`temp/*.py`（各项突变检验/诊断脚本）、
+> `deploy/`（部署脚本，含 `watchdog_all.py`）、`publish_acv4.ps1`（发布工具）、`HANDOVER.md`。
+> 它们是**开发侧证据与工具**；公开读者要复核结论，请看仓库里的 `tests/` 与 `tools/`。
+
 ---
 
 ## 1. 硬规则（违反即不合格，扫描器会拦）
@@ -228,7 +232,7 @@ pid 是否存活 / 谁在监听某端口 / 结束进程——**一律走 `agent_
 | 命令执行工具 | `platform/tools/shell_tool.py`（POSIX 走 `/bin/sh -c`） |
 | 桥的启动 / 结束 | `platform/spawn.py`、`platform/examples/*_bridge.py` |
 | **进程/端口事实**（桥在不在跑、端口归属、pid 存活、结束进程） | `platform/sysprobe.py`（psutil）+ **`platform/procprobe.py`**（纯标准库兜底） |
-| **看门狗**（健康判定 / 查出端口归属 / 杀掉僵死进程 / 按原命令行拉起） | `tools/watchdog.py`、`deploy/watchdog_all.py`（**全程标准库**，走 `procprobe`） |
+| **看门狗**（健康判定 / 查出端口归属 / 杀掉僵死进程 / 按原命令行拉起） | `tools/watchdog.py`（公开）＋ `deploy/watchdog_all.py`（**dev-only，公开树不含**；**全程标准库**，走 `procprobe`） |
 | 主动探测外端 agent（进程/端口/HTTP/文件） | `platform/harness_probe.py` |
 | 「退出并关闭」的整条链路 | `platform/routers/system.py` |
 | 剪贴板型唤醒 | `platform/wakeup_bridge.py`（非 Windows 走 `xclip`/`xsel`/`pbcopy`） |

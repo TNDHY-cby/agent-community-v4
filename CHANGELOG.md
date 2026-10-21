@@ -2,6 +2,61 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.15.10] - 2026-10-21
+
+**外部审查报告（v4.15.9）逐条落地：版本行漂移已修 + 补 2 条守卫 + 反代鉴权硬警告 + 去 BOM**
+
+第二份外部审查报告的 8 条，**逐条复核后全部属实**（其中 P1 一条正是我自己上一轮漏的）。
+本轮修 P1 + P2 + 两项低成本的 P3，另两项（`server.py` 拆分、78 处静默 `except` 加注）记为欠账。
+
+### 一、P1：README「当前版本」写着 4.15.8，代码已是 4.15.9
+
+上一轮我把「加版本行」当口径对齐项加上去，**这一轮发版改了代码/CHANGELOG，唯独没回改这一行**；
+6 条守卫全绿，但读者第一眼看到的版本号是错的——典型的"守卫全绿≠事实正确"。
+**修**：改成 `4.15.10`；并补**第 7 条守卫** `test_readme_version_line_matches_version`
+（正则取 README 的版本行，断言等于 `__version__`）。
+
+### 二、P2：三处"引用公开树里没有的文件"
+
+1. `deploy/watchdog_all.py`（PORTABILITY / PRODUCTIZATION 当作已还清的证据）——公开树**没有 `deploy/`**；
+2. `publish_acv4.ps1`（AGENTS 当作公开可读的行为契约）——公开树**没有这个文件**；
+3. 一批 `temp/*.py` 突变检验脚本（被当作"我们做过突变检验"的证据）——公开树没有 `temp/`。
+
+**修**：`PORTABILITY.md` / `PRODUCTIZATION.md` 顶部各加一段**显式声明**——
+"本文引用的 `temp/*.py`、`deploy/`、`publish_acv4.ps1`、`HANDOVER.md` 都是**开发副本独有**、
+公开树不含；要复核结论请看 `tests/` 与 `tools/`"；并在 `deploy/watchdog_all.py` 的两处引用上就地标注
+「dev-only，公开树不含」；`AGENTS.md` 顶部把 `publish_acv4.ps1` / `deploy/` / `temp/` / `dsh-tooling/`
+一并列入"公开树不含"。
+
+### 三、P3-8（安全，低成本两项）
+
+**认证只看「对端地址是否回环」**，挂反代（nginx / Caddy / 隧道）后对端全变 `127.0.0.1`
+⇒ Token 校验与只读档**同时失效**，管理面对外可达；平台**不解析** `X-Forwarded-For` / `Forwarded`。
+
+**修**（不改变既有判定，只让它说话）：
+1. README「安全说明」新增**第 2 条硬警告**：不要把管理端口反代出去；跨机访问用中转（`V66`）；
+2. `server.py::_is_localhost` 发现代理头时**每个进程告警一次**（不刷日志），点明"经代理后该判断会失真"。
+
+> 真正的修复（信任代理头 / `AC_TRUST_PROXY` 开关）属于**安全策略变更**，要出设计稿再动，本轮不做。
+
+### 四、P3-5：一个测试文件带 UTF-8 BOM
+
+`agent_community/tests/test_ai_error_speaks.py` 首字节 `EF BB BF`（`ast.parse` 会报 `U+FEFF`）。
+**修**：去掉 BOM；并补**第 8 条守卫** `test_python_sources_have_no_bom`
+（扫 `agent_community/**.py` / `tools/*.py` / `tests/*.py`，一个都不许带 BOM）。
+
+### 五、P3-6 / P3-7：记为欠账（本轮不动）
+
+- `server.py` 6597 行仍是超级文件（`routers/` 已有 33 个模块）⇒ 按 `@app.*` 分组继续外移；
+- 78 处 `except ... : pass` 静默吞异常 ⇒ 至少 `logger.debug(..., exc_info=True)` 或加
+  `# noqa: BLE001 — 有意静默：<理由>`，便于下次审查区分"故意"与"漏写"。
+
+### 判据
+
+- 文档一致性守卫 **8 条**：开发副本 7 通过 / 1 跳过（CHANGELOG 不在 dev），发布副本 **8/8 通过**；
+- `test_ai_error_speaks` / `test_security` / `test_policy_wiring` / `test_api_config_fixes` 全过；
+- `pre_release_check --fast` 9 项全过（含发布面 `check_portability` fail=0）。
+
 ## [4.15.9] - 2026-10-21
 
 **外部审查报告（v4.15.8）逐条落地：README/CLI 文案/CHANGELOG 三处硬伤已修，并加了 6 条守卫防回归**
