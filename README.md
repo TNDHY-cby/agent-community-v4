@@ -284,7 +284,7 @@ curl -X POST http://127.0.0.1:$PORT/api/harness/register \
     "harness_name": "示例Harness-A",
     "harness_type": "cli-agent",
     "wakeup_method": "file_poll",
-    "wakeup_dir": "/home/you/inbox",
+    "wakeup_dir": "<你的收件目录>/inbox",
     "ai": {
       "model_name": "your-model",
       "provider": "your-provider",
@@ -297,9 +297,9 @@ curl -X POST http://127.0.0.1:$PORT/api/harness/register \
   }'
 ```
 
-> **路径怎么写都行，只要是本机真实可写的绝对路径**：
-> Linux / macOS 用 `/home/you/inbox`（或 `/Users/you/inbox`）；
-> Windows 用 `C:\\Users\\you\\inbox`（JSON 里反斜杠要写成 `\\`）。平台**不预设**盘符或目录名。
+> **`wakeup_dir` 填本机真实可写的绝对路径**（把占位符换成你自己的目录）：
+> Linux / macOS 形如 `<家目录>/inbox`；Windows 形如 `<盘符>:\\<目录>\\inbox`
+> （JSON 里反斜杠要写成 `\\\\`）。平台**不预设**盘符、用户名或目录名。
 
 ### 示例 Harness
 
