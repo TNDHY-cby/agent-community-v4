@@ -46,6 +46,22 @@ async def list_tasks(limit: int = None):
 
 @router.post("/api/task/{task_id}/start")
 async def task_start(task_id: str):
+    # V77：启动前先过预算/超时闸（超了不许再花）
+    try:
+        from .. import approval as _ap
+        from .. import run_budget as _rb
+        from ..state import tasks as _tasks
+
+        _t_obj = _tasks.get(task_id)
+        if _t_obj is not None:
+            _chk = _rb.check(_t_obj, _ap.workshop_of_task(_t_obj))
+            if _chk["state"] != "ok":
+                from ..server import Utf8JSONResponse
+
+                return Utf8JSONResponse({"error": _chk["why"], "state": _chk["state"],
+                                         "how_to_fix": _chk["how_to_fix"]}, status_code=409)
+    except Exception as _e:                                  # noqa: BLE001 — 闸门本身坏了不该挡住启动，但要留痕
+        print("[budget] 启动闸判定失败（放行）：%s" % _e, flush=True)
     """启动任务 — v4：AI 分析拆解 → 创建讨论室 → 拓扑执行 + 审查"""
     from ..server import TaskStatus, Utf8JSONResponse, agents, discussion_engine, discussion_rooms, orchestrator, task_to_room, tasks
     task = tasks.get(task_id)

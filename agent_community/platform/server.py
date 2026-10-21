@@ -259,10 +259,12 @@ from .routers.reply_probe import router as _reply_probe_router
 from .routers.artifacts import router as _artifacts_router
 from .routers.approval import router as _approval_router
 from .routers.snapshots import router as _snapshots_router
+from .routers.budget import router as _budget_router
 app.include_router(_reply_probe_router)
 app.include_router(_artifacts_router)
 app.include_router(_approval_router)
-app.include_router(_snapshots_router)  # V76 运行快照回放 + 流程导入导出  # V76 人工审批闸门（默认关）  # V75 P1-4 产物统一出口  # V74 回话探针：验一次「发消息给它、它回了」并落证据  # 助手会话一族（2026-10-21 从 server.py 整块搬出）
+app.include_router(_snapshots_router)
+app.include_router(_budget_router)  # V77 执行预算与超时闸  # V76 运行快照回放 + 流程导入导出  # V76 人工审批闸门（默认关）  # V75 P1-4 产物统一出口  # V74 回话探针：验一次「发消息给它、它回了」并落证据  # 助手会话一族（2026-10-21 从 server.py 整块搬出）
 from .routers.agents_registry import router as _agents_registry_router
 app.include_router(_agents_registry_router)  # Agent 注册与在线列表（2026-10-21 从 server.py 整块搬出）
 from .routers.legacy_misc import router as _legacy_misc_router

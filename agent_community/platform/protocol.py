@@ -350,6 +350,8 @@ class Task(BaseModel):
     approval: dict = Field(default_factory=dict)
     #: V76 运行快照：按任务冻结的只追加记录（回放用）
     snapshots: list = Field(default_factory=list)
+    #: V77 执行预算：{max_cost, max_rounds, max_minutes}（空=不限，可继承工作间默认）
+    budget: dict = Field(default_factory=dict)
     completed_at: Optional[str] = None
 
 
