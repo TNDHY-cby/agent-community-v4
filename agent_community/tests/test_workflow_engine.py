@@ -44,7 +44,8 @@ def test_topology_blocks_until_parent_done():
     assert we.next_node(ws)["node_id"] == "b"
 
 
-def test_idempotent_advance():
+def test_idempotent_advance(monkeypatch):
+    monkeypatch.setenv("AC_WORKFLOW_BATCH", "1")   # V79：默认并行 3，这里只验"一次一步"
     _ws("wf-2", [{"node_id": "a", "label": "步一", "kind": "task", "status": "planned"},
                  {"node_id": "b", "label": "步二", "kind": "task", "status": "planned"}])
     r1 = C.post("/api/workshops/wf-2/workflow/run").json()
@@ -57,10 +58,10 @@ def test_idempotent_advance():
 
 def test_failure_retries_once_then_blocked():
     ws = _ws("wf-3", [{"node_id": "a", "label": "会失败的", "kind": "task", "status": "running"}])
-    first = we.on_fail(ws.task_tree[0])
-    assert first == "retry" and ws.task_tree[0]["retry_count"] == 1, ws.task_tree[0]
-    second = we.on_fail(ws.task_tree[0])
-    assert second == "blocked", ws.task_tree[0]
+    first = we.on_fail(ws, ws.task_tree[0])
+    assert first["state"] == "retry" and ws.task_tree[0]["retry_count"] == 1, (first, ws.task_tree[0])
+    second = we.on_fail(ws, ws.task_tree[0])
+    assert second["state"] == "blocked", (second, ws.task_tree[0])
     st = we.status(ws)
     assert st["state"] == "blocked" and st["blocked"] == ["a"], st
     assert "卡在节点 a" in st["why"], st["why"]
@@ -91,3 +92,64 @@ def test_reset_blocked_nodes():
     r = C.post("/api/workshops/wf-6/workflow/reset").json()
     assert r["reset"] == ["a"], r
     assert ws.task_tree[0]["status"] == "planned" and ws.task_tree[0]["retry_count"] == 0, ws.task_tree[0]
+
+# ── V79：并行与失败重路由 ──────────────────────────────────────
+
+def test_parallel_batch_respects_limit(monkeypatch):
+    """同层多个可跑节点：一次最多推 AC_WORKFLOW_BATCH 个，且**不跨父子**。"""
+    monkeypatch.setenv("AC_WORKFLOW_BATCH", "2")
+    ws = _ws("wf-7", [{"node_id": "p1", "label": "甲", "kind": "task", "status": "planned"},
+                      {"node_id": "p2", "label": "乙", "kind": "task", "status": "planned"},
+                      {"node_id": "p3", "label": "丙", "kind": "task", "status": "planned"},
+                      {"node_id": "c1", "label": "子", "kind": "task", "status": "planned",
+                       "parent_id": "p1"}])
+    batch = we.next_nodes(ws)
+    ids = [str(n["node_id"]) for n in batch]
+    assert len(ids) == 2, ids
+    assert "c1" not in ids, "父节点没跑完时子节点不能进同一批：%r" % ids
+
+    r = C.post("/api/workshops/wf-7/workflow/run").json()
+    assert r["advanced"] is True and len(r["advanced_nodes"]) == 2, r
+
+
+def test_fallback_routing_on_failure():
+    """失败两次后有备选节点 ⇒ 重路由到它，而不是整棵树 blocked。"""
+    ws = _ws("wf-8", [{"node_id": "f1", "label": "主", "kind": "task", "status": "running",
+                       "retry_count": 1, "fallback_to": "f2"},
+                      {"node_id": "f2", "label": "备选", "kind": "task", "status": "planned"}])
+    out = we.on_fail(ws, ws.task_tree[0])
+    assert out["state"] == "routed" and out["routed_to"] == "f2", out
+    assert ws.task_tree[0]["status"] == "failed", ws.task_tree[0]
+    assert we.next_node(ws)["node_id"] == "f2", "重路由后下一个应能跑备选节点"
+
+
+def test_no_fallback_blocks():
+    ws = _ws("wf-9", [{"node_id": "g1", "label": "孤", "kind": "task", "status": "running",
+                       "retry_count": 1}])
+    out = we.on_fail(ws, ws.task_tree[0])
+    assert out["state"] == "blocked" and out["routed_to"] == "", out
+    assert we.status(ws)["state"] == "blocked", we.status(ws)
+
+
+def test_failed_node_not_rerun():
+    """被重路由后留下的 failed 节点不再被派（避免死循环）。"""
+    ws = _ws("wf-10", [{"node_id": "h1", "label": "坏", "kind": "task", "status": "failed"},
+                       {"node_id": "h2", "label": "备", "kind": "task", "status": "planned"}])
+    assert we.next_node(ws)["node_id"] == "h2", we.next_node(ws)
+
+
+def test_done_endpoint_reports_routed(monkeypatch):
+    """端点：节点失败且带备选 ⇒ 返回 routed_to，并把备选放出来。"""
+    ws = _ws("wf-11", [{"node_id": "i1", "label": "主", "kind": "task", "status": "running",
+                        "retry_count": 1, "fallback_to": "i2"},
+                       {"node_id": "i2", "label": "备", "kind": "task", "status": "planned"}])
+    srv.workshops["wf-11"] = ws
+    r = C.post("/api/tasks/i1/workflow-node/done", json={"ok": False}).json()
+    assert r["state"] == "routed" and r["routed_to"] == "i2", r
+
+
+def test_batch_env_default_is_three(monkeypatch):
+    monkeypatch.delenv("AC_WORKFLOW_BATCH", raising=False)
+    ws = _ws("wf-12", [{"node_id": "j%d" % i, "label": str(i), "kind": "task", "status": "planned"}
+                       for i in range(5)])
+    assert len(we.next_nodes(ws)) == 3, "默认并行上限应为 3"

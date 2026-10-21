@@ -20,9 +20,7 @@ def _node_of_task(task_id: str):
     """按任务反查它对应的流程节点（节点的 node_id 与任务 id 可能不同，用 label/node_id 兜）。"""
     from ..state import tasks, workshops
 
-    task = tasks.get(task_id)
-    if task is None:
-        return None, None
+    # 先按节点找（节点不一定有对应任务对象；没有任务也要能标完成）
     for ws in workshops.values():
         for node in (getattr(ws, "task_tree", None) or []):
             if isinstance(node, dict) and str(node.get("node_id") or "") == task_id:
@@ -59,10 +57,12 @@ async def workflow_run_step(wid: str, request: Request):
         body = {}
     body = body if isinstance(body, dict) else {}
 
-    node = we.next_node(ws)
-    if node is None:
+    batch = we.next_nodes(ws)          # V79：同层可并行（上限 AC_WORKFLOW_BATCH）
+    if not batch:
         st = we.status(ws)
-        return {"advanced": False, "state": st["state"], "why": st["why"], "next": None}
+        return {"advanced": False, "advanced_nodes": [], "state": st["state"],
+                "why": st["why"], "next": None}
+    node = batch[0]
 
     node_id = str(node["node_id"])
     kind = str(node.get("kind") or "task")
@@ -96,11 +96,25 @@ async def workflow_run_step(wid: str, request: Request):
         rs.append(task, "dispatch", summary="流程推进：%s" % (node.get("label") or node_id),
                   detail={"node_id": node_id, "kind": kind}, actor=str(body.get("by") or "user"))
         node["task_id"] = task.id
+    advanced = [{"node_id": node_id, "kind": kind}]
+    for extra in batch[1:]:                          # 同层其它可跑节点：一起派
+        eid = str(extra["node_id"])
+        if str(extra.get("kind") or "task") == "approval":
+            continue                                 # 审批节点不批量推，逐个等人批
+        we.mark(extra, "running")
+        et = tasks.get(eid)
+        if et is not None:
+            rs.append(et, "dispatch", summary="流程推进（并行）：%s" % (extra.get("label") or eid),
+                      detail={"node_id": eid, "batch": [a["node_id"] for a in advanced]},
+                      actor=str(body.get("by") or "user"))
+        advanced.append({"node_id": eid, "kind": str(extra.get("kind") or "task")})
+
     _audit_log.record("workshop.workflow.run", actor="user", target=wid,
-                      detail="推进节点 %s（kind=%s）" % (node_id, kind))
+                      detail="推进 %d 个节点：%s" % (len(advanced),
+                                                    ",".join(a["node_id"] for a in advanced)[:140]))
     save_state()
-    return {"advanced": True, "node_id": node_id, "kind": kind, "state": "running",
-            "next": (we.status(ws)["next"] or {})}
+    return {"advanced": True, "advanced_nodes": advanced, "node_id": node_id, "kind": kind,
+            "state": "running", "next": (we.status(ws)["next"] or {})}
 
 
 @router.post("/api/workshops/{wid}/workflow/reset")
@@ -135,15 +149,18 @@ async def mark_node_done(task_id: str, request: Request):
         body = {}
     body = body if isinstance(body, dict) else {}
 
+    routed_to = ""
     if bool(body.get("ok", True)):
         we.mark(node, "done")
         state = "done"
     else:
-        state = we.on_fail(node)                 # retry 一次后 blocked
+        out = we.on_fail(ws, node)               # V79：retry → 有备选就重路由 → 否则 blocked
+        state, routed_to = out["state"], out["routed_to"]
     task = tasks.get(task_id)
     if task is not None:
         rs.append(task, "complete" if state == "done" else "fail",
                   summary="节点 %s：%s" % (str(node.get("node_id")), state),
                   actor=str(body.get("by") or "harness"))
     save_state()
-    return {"success": True, "node_id": str(node.get("node_id")), "state": state}
+    return {"success": True, "node_id": str(node.get("node_id")), "state": state,
+            "routed_to": routed_to}

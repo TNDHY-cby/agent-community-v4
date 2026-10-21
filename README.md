@@ -1,7 +1,7 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.21.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.22.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
@@ -216,6 +216,7 @@ python -m agent_community.cli agents list
 | `AC_AI_CACHE_MAX` | 缓存容量上限（LRU） | `512` | 否 |
 | `AC_AI_CACHE_DIR` | 缓存落盘目录（默认随 AC_DATA_DIR） | `（空）` | 否 |
 | `AC_AI_USAGE_ENABLED` | 用量/预算统计开关 | `1` | 否 |
+| `AC_WORKFLOW_BATCH` | 工作流一次最多并行推进几个节点 | `3` | 否 |
 | `AC_SNAPSHOT_MAX` | 每个任务保留多少条运行快照（超了丢最旧并留一条截断记录） | `200` | 否 |
 | `AC_MCP_TOOLSETS` | MCP 挂载哪些工具组（逗号分隔：api/task/bridge/browser/devices/plan；all=全量） | `api,task` | 否 |
 | `AC_UPDATE_SOURCES` | 更新源列表（逗号分隔，`名字=地址` 或只写地址）；不配则用本仓库 git 远端 | `（空）` | 否 |
