@@ -77,10 +77,12 @@ python tools/gen_env_docs.py --check   # 环境变量文档是否漂移
 python -m pytest -q                    # 回归
 ```
 
-### 4.1 判据怎么跑（★2026-10-17 起：**本机双平台真跑**替代 CI）
+### 4.1 判据怎么跑（★2026-10-21 起：**本机双平台真跑**是硬判据，GitHub Actions 是额外证据）
 
-> 老板 2026-10-16/17 拍板：「**GitHub CI 停更**」「更新 Gitee」「**本机双平台真跑替代**」。
-> ⇒ **现行判据＝一条命令**（Gitee 侧没有免费 CI；GitHub Actions 不再跟随新提交）：
+> 历史（**2026-10-21 已恢复更新 GitHub**）：老板 2026-10-16/17 曾拍板「**GitHub CI 停更**」「更新 Gitee」「本机双平台真跑替代」；
+> **2026-10-21 老板指示恢复更新 GitHub** ⇒ 现在 **Gitee 与 GitHub 都推**（`publish_acv4.ps1` 默认两边推），
+> GitHub Actions 随推送重新运行，但**它只是额外证据**；
+> ⇒ **硬判据仍是一条命令**（本机能跑、不依赖任何云端 CI）：
 
 ```bash
 python tools/dual_platform_check.py            # 两侧都真跑 + 一张表 + 结论
@@ -116,7 +118,7 @@ Windows 侧＝本机 `pytest`；Linux 侧＝**WSL 里跑 `tools/run_suite_in_rep
 >    ⇒ `test_workshops_session` **4 条假失败**（Windows 绿、Linux 红，看着像真 bug）。
 >    这条已固化在 `tools/run_suite_in_repo.sh` 里，**别删那行**。
 
-#### 4.1.1 `.github/workflows/ci.yml`（**已停更，仅归档**）
+#### 4.1.1 `.github/workflows/ci.yml`（2026-10-21 起**随推送恢复运行**；判据地位＝额外证据）
 
 GitHub 那边的工作流文件**保留**（谁要重启用照着跑即可），但**不再跟随新提交、不再是判据**。
 （历史：曾短暂放在 `ci/ci.yml` 绕过令牌限制，老板 2026-10-14 在网页端建好标准位置那份之后 `ci/` 已删除 ——

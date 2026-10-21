@@ -88,10 +88,12 @@ python -m pytest -q                     # 全部回归（含双平台守卫）
 python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 ```
 
-> ★**2026-10-17 老板拍板：GitHub CI 停更、只用 Gitee**（Gitee 侧没有免费 CI）⇒ **双平台判据＝
-> `python tools/dual_platform_check.py`**：Windows 侧 `pytest` ＋ WSL Linux 侧 `tools/run_suite_in_repo.sh`。
-> **退出码 2 ＝只跑成了一侧 ＝不算通过**（如实报"部分"）；本机适配只改 `.env`
-> （`AC_LINUX_WSL_DISTRO` / `AC_LINUX_PYTHON`），**不改源码**。详见 `PORTABILITY.md` §4.1。
+> ★**2026-10-21 老板指示：恢复更新 GitHub**（此前 2026-10-16 曾停更）⇒ **发布 = Gitee + GitHub 两边都推**，
+> 远端 sha 必须与本地 HEAD 一致（`tools/github_push.py` 负责"令牌不出命令行/关凭据助手/指定可达 IP/硬超时"）。
+> **但验收判据仍是本机双平台真跑**：`python tools/dual_platform_check.py`（Windows 侧 `pytest` ＋
+> WSL Linux 侧 `tools/run_suite_in_repo.sh`；**退出码 2 ＝只跑成了一侧 ＝不算通过**），
+> GitHub Actions 只是**额外证据**（推送会自动触发，红了要看，但不能替代本机判据）；
+> 本机适配只改 `.env`（`AC_LINUX_WSL_DISTRO` / `AC_LINUX_PYTHON`），**不改源码**。详见 `PORTABILITY.md` §4.1。
 
 **两条最容易犯的**：
 1. **平台专属实现不许冒充通用能力**：要拿本机事实（进程/命令行/pid/端口/结束进程）一律走
@@ -150,7 +152,7 @@ python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 | 副本 | 路径 | git | 说明 |
 |---|---|---|---|
 | **开发副本（这里）** | `<开发副本根目录>`（真实路径只写在 dev-only 的 HANDOVER.md 与项目技能手册里，**不进公开仓库**） | 有（本地，**无 remote**） | 实际开发在这里 |
-| **发布副本（开源）** | `<发布副本根目录>`（同上，真实路径 dev-only） | **只有 `gitee` 一个有效远端**（`https://gitee.com/TNDHY-cby/external-agents-community.git`，下载与协作看它）。★**GitHub 已于 2026-10-16 停止更新**（仅历史归档，别再从那儿拉/推）。**以 `git ls-remote` 实测为准**，别信本文档里的旧 sha | 只由 `publish_acv4.ps1` 单向推入（默认推 Gitee）；`-MirrorGithub` 保留只为**应急**，正式流程不用（老板 2026-10-16：「GitHub 不用更新了」） |
+| **发布副本（开源）** | `<发布副本根目录>`（同上，真实路径 dev-only） | **两个远端，都推**：`gitee`（`https://gitee.com/TNDHY-cby/external-agents-community.git`，国内下载与协作看它）＋ `origin`（`https://github.com/TNDHY-cby/agent-community-v4.git`）。★**2026-10-21 老板指示恢复更新 GitHub**（此前 2026-10-16 曾停更）。**以 `git ls-remote` 实测为准**，别信本文档里的旧 sha | 只由 `publish_acv4.ps1` 单向推入（默认 Gitee **和** GitHub 都推；GitHub 失败会**明说**，不静默）；推送统一走 `tools/gitee_push.py` / `tools/github_push.py`（令牌不进命令行） |
 | ⚠️ 已退休副本 | `<退休副本根目录>`（同上，真实路径 dev-only） | 无 | 2026-10-02 退休，架构停在 V-9 拆包之前。**P0/P1/P2 成果已由 V-10 回收入主线**，此副本仅存档 |
 | 另一条线 | `<另一条线根目录>`（同上，真实路径 dev-only） | — | 独立项目线（**代码零回收价值**，dev 是超集；仅 2 份全盘唯一文档可捞），勿混 |
 

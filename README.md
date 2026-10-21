@@ -9,7 +9,8 @@
 > **仓库地址（Gitee，主仓库）**：<https://gitee.com/TNDHY-cby/external-agents-community>
 > 下载：`git clone https://gitee.com/TNDHY-cby/external-agents-community.git`，
 > 或打开上面地址点「克隆/下载」→「下载 ZIP」。
-> ⚠️ **GitHub 那一份已停止更新**（2026-10-16 起）—— 那边是历史归档，**不要再从 GitHub 拉代码**。
+> ★ **两个远端都在更新**（2026-10-21 起）：Gitee 是主站（国内下载最快），GitHub 同步镜像。
+> 两边内容一致；如果只看到其中一边落后，那是同步还没跑完，**以远端 `ls-remote` 的 sha 为准**。
 > 代码、发行版、下载都在上面这个 Gitee 地址。
 
 ## 协议矩阵（多接口多选择）

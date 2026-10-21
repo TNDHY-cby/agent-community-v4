@@ -4,6 +4,46 @@
 
 # 4.8.26
 
+## [4.15.6] - 2026-10-21
+
+**恢复更新 GitHub（老板指示）：发布＝Gitee + GitHub 两边都推；口径全仓对齐（含判据反转）**
+
+### 一、为什么改
+
+老板 2026-10-21：「**更新Github**，然后继续开发」。
+此前（2026-10-16/17）的口径是「GitHub 停更，只推 Gitee、只靠本机双平台判据」——
+本轮**反转**：GitHub 恢复为**正式远端之一**，发布时两边都推。
+
+### 二、做了什么
+
+1. **新增 `tools/github_push.py`**（正式工具，进仓库）：令牌不进命令行（`--token-file` 或 `AC_GH_TOKEN`）、
+   关凭据助手（GCM 无人值守会**卡住 20 分钟**）、指定可达 IP（`http.curloptResolve`）、
+   **进程级硬超时**、判据只认 **远端 sha == 本地 HEAD**；
+2. **`publish_acv4.ps1` 默认两边都推**：Gitee 成功后再推 GitHub；**GitHub 失败会明说**并让本次发布
+   以**退出码 2** 结束（不许"看起来成功"）；只想推 Gitee 时加 `-NoGithub`；
+3. **口径整体同步（规则 20，一次全改）**：`AGENTS.md`、`README.md`、`PORTABILITY.md`、`PRODUCTIZATION.md`、
+   `HANDOVER.md`、`design-docs/项目完整模型.md`、`design-docs/前端工作手册.md`、`交接书_20261007.md`、
+   `协作书_…_20261007.md`、`agent_community/platform/routers/version.py` 注释、
+   `tools/run_suite_in_repo.sh` 注释、`dsh-tooling` 里的 preset 与技能副本、以及**本机已安装的技能**
+   （两处副本一起改，避免下个会话读到旧口径）；
+4. **判据反转**：`tools/check_stale_github.py` 从"禁止推 GitHub 的旧指令"改成
+   "**禁止'GitHub 已停更/仅归档'这类旧结论**"（历史沿革允许保留，但同句必须标"已恢复"）；
+   `pre_release_check.py` 的条目名随之改为「仓库的 GitHub 口径已对齐」。
+
+### 三、实测
+
+- 推送：GitHub `703abb5..041b679 → master`（109 个提交），`ls-remote` 与本地 HEAD 一致；
+  tag `v4.15.0~v4.15.5` 全部已在 GitHub 上（`v4.15.5^{}` = `041b679`）；
+- 口径扫描：`check_stale_github.py` **0 处**过时说法；
+- `pre_release_check.py --fast`：**9 项全过**；
+- 受影响的守卫（`test_version_endpoint` / `test_dual_platform_judgement`）全过。
+
+### 四、口径提醒（下一个人别再搞反）
+
+- **两个远端都推**，但**更新下载渠道**仍指 Gitee（`routers/version.py` 的 `CHANNEL`）；
+- **硬判据仍是本机双平台真跑**（`tools/dual_platform_check.py`）；GitHub Actions 恢复运行，
+  但地位是**额外证据**，红了要看，不能替代本机判据。
+
 ## [4.15.5] - 2026-10-21
 
 **建模补课（第二版）：按本机 8 条真实记录重写「外端 Agent 的能力与自检」——第一版是臆想，已作废**

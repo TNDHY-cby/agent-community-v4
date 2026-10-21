@@ -2,7 +2,7 @@
 # 在**这个仓库里**跑全量回归，并把计数打出来（Linux 侧判据的落点）。
 #
 # 为什么单独有这个脚本（2026-10-16/17 老板拍板）：
-#   「GitHub CI 停更」⇒ 双平台判据改由**本机真跑**承担：Windows 侧 `pytest`，
+#   「GitHub CI 恢复随推送运行，但只算额外证据」⇒ **硬判据仍是本机真跑**：Windows 侧 `pytest`，
 #   Linux 侧就是本脚本（由 `tools/dual_platform_check.py` 在 WSL 里调用）。
 #
 # 用法（POSIX）：

@@ -26,7 +26,7 @@ from fastapi import APIRouter
 
 router = APIRouter(tags=["version"])
 
-#: 更新渠道（Gitee 是唯一有效远端；GitHub 已于 2026-10-16 停更）
+#: 更新渠道（面向国内用户，自动更新的下载地址指向 Gitee；**2026-10-21 起 GitHub 也同步更新**）
 CHANNEL = {
     "repo": "https://gitee.com/TNDHY-cby/external-agents-community",
     "releases_api": "https://gitee.com/api/v5/repos/TNDHY-cby/external-agents-community/releases/latest",
