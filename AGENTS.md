@@ -87,6 +87,9 @@ python tools/check_watchdog.py          # 判据：看门狗真能救活服务�
 python tools/launcher_check.py          # 判据（V72）：双击到大厅——先出过场页 / 并行拉起 / 就绪进大厅 / 端口被占或缺解释器都要说人话
 python tools/gen_entry.py               # 由模板生成双击入口（启动合作社.vbs / .cmd，GBK+CRLF）；--check 防漂移
 python tools/make_shortcut.py --check    # 桌面快捷方式必须**指向本仓库**（指到别的副本 = 起错数据）
+python tools/move_endpoints.py --module x.py --title "某族" --paths /api/a,/api/b --dry-run  # 把一组 @app 端点搬进 routers/（惰性 import 自动算；拒绝搬带 global 的）
+python tools/fix_doc_split.py --src design-docs/某大文档.md --out-dir design-docs/model --dry-run  # 大文档拆「主索引 + 分册」
+python tools/silent_except_report.py     # 静默吞异常的存量与"只减不增"闸门（--check / --write）
 python -m pytest -q                     # 全部回归（含双平台守卫）
 python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 ```
