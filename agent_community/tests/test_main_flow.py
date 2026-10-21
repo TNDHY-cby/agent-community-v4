@@ -129,12 +129,14 @@ class TestLookup:
 
 class TestTaskWorkshopEndpoint:
     def test_404_when_no_room(self, srv):
-        from agent_community.platform.server import api_task_workshop
+        from agent_community.tests.conftest import resolve_handler
+        api_task_workshop = resolve_handler("api_task_workshop")
         resp = run(api_task_workshop("no-such-task"))
         assert resp.status_code == 404
 
     def test_200_reports_room_and_next_step(self, srv):
-        from agent_community.platform.server import api_task_workshop
+        from agent_community.tests.conftest import resolve_handler
+        api_task_workshop = resolve_handler("api_task_workshop")
         t = _task()
         ws = srv._auto_create_workshop_for_task(t, "x")
         out = run(api_task_workshop(t.id))
@@ -144,7 +146,8 @@ class TestTaskWorkshopEndpoint:
         assert "select-members" in out["next_step"], "空房间应把下一步指到选成员"
 
     def test_next_step_changes_once_members_exist(self, srv):
-        from agent_community.platform.server import api_task_workshop
+        from agent_community.tests.conftest import resolve_handler
+        api_task_workshop = resolve_handler("api_task_workshop")
         t = _task()
         ws = srv._auto_create_workshop_for_task(t, "x")
         ws.members.append(WorkshopMember(member_id="m0", role="组长",

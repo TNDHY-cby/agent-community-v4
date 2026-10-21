@@ -67,7 +67,8 @@ def test_cli_task_result_reads_fields_the_api_really_returns(srv):
     task_id = out.get("task_id")
     assert task_id, "没建成任务，本用例的前提不成立：%r" % (out,)
 
-    got = asyncio.run(srv.get_task(task_id))
+    from agent_community.tests.conftest import resolve_handler
+    got = asyncio.run(resolve_handler("get_task")(task_id))
     assert isinstance(got, dict), "GET /api/task/{id} 应回任务字典：%r" % (got,)
     # ⚠️这里必须列 **CLI 真正读的**字段。实测教训：原 CLI 读 `agent_ids`，
     #   而 Task 模型里**没有这个字段** ⇒ 它那句"Agent: N 个参与"永远是 0

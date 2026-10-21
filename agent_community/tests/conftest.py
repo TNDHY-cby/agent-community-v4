@@ -8,7 +8,6 @@
 - dev 根存在 platform\\ 包目录，若置于 sys.path 前部会遮蔽标准库 platform 模块，
   导致 pytest 自身 import platform 即崩溃；
 - 标准库 types 同名冲突已通过 types.py -> shared_types.py 重命名解决。
-
 ────────────────────────────────────────────────────────────────────
 数据隔离（事故记录，务必保留）
 ────────────────────────────────────────────────────────────────────
@@ -277,3 +276,40 @@ def isolate_data_dirs(tmp_path, monkeypatch):
                                     raising=False)
 
     return tmp
+
+
+# ── 端点搬运期的共享工具（2026-10-21）────────────────────────────────
+def resolve_handler(name: str, *, required: bool = True):
+    """按名字找一个 handler：**先在 `server` 找，再去 `routers/*` 找**。
+
+    背景：`server.py` 里的端点在持续往 `routers/` 搬（讨论室 9 → 唤醒心跳 7 → 任务 11 …）。
+    判据如果写死 `from ...server import api_task_workshop`，**每搬一次就红一次**，
+    久而久之大家就会去改测试而不是查真相。⇒ 统一用这个函数取，
+    **判据跟着"它现在在哪"走**，搬家不再需要改测试。
+
+    `required=False` 时找不到返回 None（调用方可自行 SKIP 并说明原因）。
+    """
+    import importlib
+    import pkgutil
+    import warnings
+
+    from agent_community.platform import server as _srv
+
+    fn = getattr(_srv, name, None)
+    if fn is not None:
+        return fn
+
+    import agent_community.platform.routers as _rpkg
+    for mod in pkgutil.iter_modules(_rpkg.__path__):
+        try:
+            m = importlib.import_module("agent_community.platform.routers." + mod.name)
+        except Exception as exc:                                  # noqa: BLE001
+            warnings.warn("导入 routers.%s 失败（找 %s 时跳过）：%s" % (mod.name, name, exc))
+            continue
+        fn = getattr(m, name, None)
+        if fn is not None:
+            return fn
+
+    if required:
+        raise LookupError("找不到 handler %r（server 与 routers/ 都没有；改名了？请同步调用方）" % name)
+    return None

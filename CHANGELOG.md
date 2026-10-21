@@ -2,6 +2,57 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.15.21] - 2026-10-21
+
+**结构债第四批：任务一族 **11 个端点**搬到 `routers/tasks_group.py` —— `@app.*` 端点 26 → 15**
+（累计：51 → 42 → 33 → 26 → **15**）
+
+### 一、搬了什么
+
+```
+GET  /api/tasks                        GET  /api/tasks/{task_id}/workshop
+GET  /api/tasks/tree                   GET  /api/tasks/stale
+POST /api/tasks/recover-stale          GET  /api/task/{task_id}
+GET  /api/task/{task_id}/tree          POST /api/task/{task_id}/start
+POST /api/task/{task_id}/parent        POST /api/task/{task_id}/discuss
+POST /api/task/{task_id}/recover
+```
+
+`server.py` **6076 → 5846 行**（**303 KB**），`routers/` **36 → 37 个文件**；业务路由 **233 条不变**。
+用 `tools/move_endpoints.py` 搬的（含状态机那三条 `start` / `recover` / `recover-stale`，函数体原样）。
+
+### 二、判据（真跑，用真实数据）
+
+**9/9 步符合预期**：
+
+| 步骤 | 结果 |
+|---|---|
+| `GET /api/tasks` | 200，返回 **5 条**真实任务 |
+| `GET /api/tasks/tree` / `GET /api/task/{id}/tree` | 200，树结构正常 |
+| `GET /api/tasks/stale` | 200，`stale_count: 0` |
+| `GET /api/tasks/{id}/workshop` | 200，真给出 `workshop_id=e0328978` |
+| `POST /api/task/{id}/recover` | **409**「任务已是终态 completed，无需回收」——状态机自己说不行，**说得清** |
+| `POST /api/tasks/recover-stale` | 200，`recycled_count: 0` |
+| `GET /api/task/nope` | **404**「task not found」 |
+
+全量：`agent_community/tests` **1850 passed / 3 skipped**；根 `tests` 66 passed。
+
+### 三、测试搬家也一并收口（这是第 3 次踩同一个坑）
+
+搬完立刻红了 4 条：`test_main_flow`（3 条 `from ...server import api_task_workshop`）、
+`test_cli_contract`（`srv.get_task`）。这次不再逐个打补丁，而是在 **`tests/conftest.py` 里加
+`resolve_handler(name)`**：先在 `server` 找，再去 `routers/*` 找（`pkgutil` 遍历），找不到才报错并说明。
+
+> **为什么值得单独写一条**：端点在持续搬家，"函数在哪个文件"是**会变的实现细节**。
+> 判据写死位置 ⇒ 每次搬家都红 ⇒ 大家会开始改测试而不是查真相。
+> 现在两条测试都改成 `resolve_handler("api_task_workshop")` / `resolve_handler("get_task")`，
+> **以后再搬不用再改**。
+
+### 四、规模口径同步
+
+模型主文件第 4 条与 `AGENTS.md` 规模行改成实测值：**303 KB / 5846 行 / 15 个 `@app.*`**、
+`routers/` **37 个文件**（`test_model_docs` 会盯这一致性）。
+
 ## [4.15.20] - 2026-10-21
 
 **结构债第三批：唤醒 4 + 心跳 3 共 **7 个端点**搬到 `routers/wakeup_heartbeat.py`；
