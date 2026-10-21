@@ -4,6 +4,34 @@
 
 # 4.8.26
 
+## [4.15.7] - 2026-10-21
+
+**恢复 GitHub 后 CI 真跑，抓出 3 处"只在我这台机器成立"的测试 —— 已修**
+
+### 一、为什么会红
+
+2026-10-21 恢复推送 GitHub 后，Actions **立刻开始跑**（run `39534877909`，提交 `041b679`）：
+`portability` 绿，`test-windows` 与 `test-linux` 都红。看日志，三处失败**都不是产品坏了**，
+而是**测试假设了"我这台机器/我这个副本"才有的东西**——正是 `PRODUCTIZATION.md` 第 5 类。
+
+| 用例 | 在 CI 上为什么红 | 修法 |
+|---|---|---|
+| `test_version_consistency::test_publish_script_checks_version` | 断言 `publish_acv4.ps1` 存在，而它是**开发副本独有的发布工具、不在发布面** ⇒ 公开仓库/CI 里必然没有 | 文件不在时**带原因跳过**（在开发副本里仍强制检查） |
+| `test_launcher::test_publish_ships_the_launcher_entries` | 同上（我上一轮新写的守卫，同样踩了） | 改成：模板与生成物在不在**都要查**；只有读发布脚本那一步在缺文件时跳过 |
+| `test_autostart::test_enable_then_disable_is_clean` | GitHub 的 Windows runner **没有桌面/COM**，`WScript.Shell.Save()` 抛 `FileNotFoundException` | 先做**能力探测**（真建一个临时 `.lnk`），建不出来就**带原因跳过**——不假绿、也不冤枉产品 |
+
+### 二、判据
+
+- 本机：三条用例 **16 passed / 2 skipped**（跳过的是平台无关项）；
+- 修复后推送，CI 重跑（结果见提交后的 run）；
+- `pre_release_check --fast` 9 项全过。
+
+### 三、教训（写进继承书）
+
+**"我这台机器绿"和"公开仓库/CI 绿"是两件事**：本地有 `publish_acv4.ps1`、有桌面、有 COM，
+发布面和 runner 上都没有。凡是用例里出现"开发副本独有的文件/桌面能力"，
+必须**先探测、再跳过并说明原因**，不许用"本地能过"当通过。
+
 ## [4.15.6] - 2026-10-21
 
 **恢复更新 GitHub（老板指示）：发布＝Gitee + GitHub 两边都推；口径全仓对齐（含判据反转）**

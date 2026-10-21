@@ -61,9 +61,15 @@ def test_changelog_versions_are_descending_and_unique():
 
 
 def test_publish_script_checks_version(monkeypatch=None):
-    """发布脚本必须**自己**核对版本号（不能只靠人记得改）——没有这一条就还会重犯。"""
+    """发布脚本必须**自己**核对版本号（不能只靠人记得改）——没有这一条就还会重犯。
+
+    ⚠️ 2026-10-21（恢复 GitHub 后 CI 真跑才发现）：`publish_acv4.ps1` 是**开发副本独有的发布工具**，
+    **不在发布面**（公开仓库里没有它）⇒ 在 CI / 陌生人 clone 里这条要**跳过**，而不是报"缺文件"。
+    在开发副本里它必须存在且带版本号闸门（这道检查仍然有效）。
+    """
     ps1 = _ROOT / "publish_acv4.ps1"
-    assert ps1.exists(), "缺 publish_acv4.ps1"
+    if not ps1.exists():
+        pytest.skip("本副本没有 publish_acv4.ps1（发布副本/CI）；版本闸门在开发副本里生效")
     src = ps1.read_text(encoding="utf-8", errors="replace")
     assert "CHANGELOG" in src and "__version__" in src, \
         "发布脚本没有核对 `__version__` 与 CHANGELOG 版本号（应加一道闸）"

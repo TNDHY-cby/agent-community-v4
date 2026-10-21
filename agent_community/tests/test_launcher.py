@@ -162,11 +162,20 @@ def test_over_page_polls_state_and_redirects_to_hall():
 
 # ── ③b 发布面：双击入口必须一起发出去 ─────────────────────────────────
 def test_publish_ships_the_launcher_entries():
-    """别人 clone 下来也得有双击入口 —— 否则"双击进大厅"只存在于开发机。"""
-    src = _read(_ROOT / "publish_acv4.ps1")
-    assert "启动合作社.vbs" in src and "启动合作社.cmd" in src, "发布脚本的 $rootDocs 少了双击入口"
+    """别人 clone 下来也得有双击入口 —— 否则"双击进大厅"只存在于开发机。
+
+    ⚠️ 2026-10-21（CI 真跑才暴露）：`publish_acv4.ps1` 是**开发副本独有**的发布工具、**不在发布面**
+    ⇒ 在发布副本/CI 里只检查"模板与生成物都在"，不读那个脚本；在开发副本里再要求它同步入口。
+    """
     assert (TOOLS / "launcher" / "entry.vbs.tmpl").exists(), "缺 vbs 模板"
     assert (TOOLS / "launcher" / "entry-console.cmd.tmpl").exists(), "缺 cmd 模板"
+    assert (_ROOT / "启动合作社.vbs").exists() and (_ROOT / "启动合作社.cmd").exists(), \
+        "仓库根缺双击入口（别人 clone 下来就没有入口）"
+    publish = _ROOT / "publish_acv4.ps1"
+    if not publish.exists():
+        pytest.skip("本副本没有 publish_acv4.ps1（发布副本/CI）；同步面检查在开发副本里生效")
+    src = _read(publish)
+    assert "启动合作社.vbs" in src and "启动合作社.cmd" in src, "发布脚本的 $rootDocs 少了双击入口"
 
 
 def test_entry_files_match_templates():

@@ -38,6 +38,32 @@ def _run(*args, env_extra=None):
                           text=True, encoding="utf-8", errors="replace", timeout=180, env=env)
 
 
+def _can_create_shortcut():
+    """这台机器能不能建 .lnk（**能力探测**，不是猜）。
+
+    ★2026-10-21（恢复 GitHub 后 CI 真跑才发现）：GitHub 的 Windows runner **没有桌面/COM 环境**，
+      `WScript.Shell.Save()` 直接抛 `FileNotFoundException` ⇒ 与产品无关，
+      但会把 CI 弄红、还会让人误以为"开机自启坏了"。⇒ 先探一下：探不到就**带原因跳过**。
+    """
+    if os.name != "nt":
+        return False, "非 Windows，没有 .lnk"
+    tmp = tempfile.mkdtemp(prefix="ac_lnk_probe_")
+    probe = Path(tmp) / "probe.lnk"
+    ps = (
+        "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%s');"
+        "$s.TargetPath='%%COMSPEC%%';$s.Save()" % str(probe).replace("'", "''")
+    )
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=60)
+    except Exception as e:                                   # noqa: BLE001
+        return False, "探测失败：%s" % e
+    if probe.exists():
+        return True, ""
+    return False, ((r.stdout or "") + (r.stderr or "")).strip()[:200] or "建不出来（无原因输出）"
+
+
 def test_status_json_is_parseable_and_honest():
     r = _run("status", "--json")
     assert r.returncode == 0, r.stdout + r.stderr
@@ -72,6 +98,9 @@ def test_task_mode_dry_run_only_prints_the_scheduled_task_command():
 
 @pytest.mark.skipif(os.name != "nt" and not sys.platform.startswith("linux"), reason="只支持 Windows/Linux")
 def test_enable_then_disable_is_clean():
+    ok, why = _can_create_shortcut()
+    if not ok:
+        pytest.skip("这台机器建不了快捷方式（CI runner 无桌面 COM）：%s" % why)
     data = tempfile.mkdtemp(prefix="ac_as_data2_")
     startup = tempfile.mkdtemp(prefix="ac_as_start2_")
     # ⚠️ 必须显式 `--mode startup`：默认 `both` 会去建**计划任务**，而建"登录时运行"的计划任务
