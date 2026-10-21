@@ -30,6 +30,9 @@ AI_PATH = _ROOT / "agent_community" / "platform" / "ai_provider.py"
 ORCH_PATH = _ROOT / "agent_community" / "platform" / "orchestrator.py"
 GUI_PATH = _ROOT / "agent_community" / "gui.py"
 SERVER_PATH = _ROOT / "agent_community" / "platform" / "server.py"
+BRIDGE_PATH = _ROOT / "agent_community" / "bridges" / "_" / "bridge.py"
+ACP_PATH = _ROOT / "agent_community" / "platform" / "acp_harness_bridge.py"
+HARNESS_PATH = _ROOT / "agent_community" / "platform" / "harness_adapter.py"
 
 #: 防回退：这些 key 必须真的在对应文件里被调用
 REQUIRED_KEYS = {
@@ -39,6 +42,9 @@ REQUIRED_KEYS = {
     # server.py：15 处逐条判定后保留的"必须喊"（其余 5 处标了有意静默）
     SERVER_PATH: ["plugin_modes_read_failed", "pipe_poll_failed", "offline_hint_failed",
                   "save_state_failed", "member_spoke_check_failed", "decision_mode_read_failed"],
+    BRIDGE_PATH: ["pid_write_failed", "log_open_failed", "log_rotate_failed"],
+    ACP_PATH: ["acp_update_parse_failed", "proc_kill_failed"],
+    HARNESS_PATH: ["temp_unlink_failed", "heartbeat_time_parse_failed"],
 }
 
 
@@ -66,7 +72,7 @@ def test_warn_once_carries_exception_detail(caplog):
 
 def test_no_bare_silent_except_left_in_ai_paths():
     bad = []
-    for p in (AI_PATH, ORCH_PATH, GUI_PATH, SERVER_PATH):
+    for p in (AI_PATH, ORCH_PATH, GUI_PATH, SERVER_PATH, BRIDGE_PATH, ACP_PATH, HARNESS_PATH):
         src = io.open(p, encoding="utf-8").read()
         lines = src.splitlines()
         for node in ast.walk(ast.parse(src)):

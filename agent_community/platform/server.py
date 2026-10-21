@@ -253,6 +253,12 @@ from .routers.docking import router as _docking_router
 app.include_router(_docking_router)  # V34 对接中心：GET /api/docking/overview（只读跨间总览；老板 2026-10-15 拍板「做对接中心」）
 from .routers.rooms_discuss import router as _rooms_discuss_router
 app.include_router(_rooms_discuss_router)
+from .routers.assistant import router as _assistant_router
+app.include_router(_assistant_router)  # 助手会话一族（2026-10-21 从 server.py 整块搬出）
+from .routers.agents_registry import router as _agents_registry_router
+app.include_router(_agents_registry_router)  # Agent 注册与在线列表（2026-10-21 从 server.py 整块搬出）
+from .routers.legacy_misc import router as _legacy_misc_router
+app.include_router(_legacy_misc_router)  # 旧前端兼容与杂项一族（2026-10-21 从 server.py 整块搬出）
 from .routers.tasks_group import router as _tasks_group_router
 app.include_router(_tasks_group_router)  # 任务一族（2026-10-21 从 server.py 整块搬出）
 from .routers.wakeup_heartbeat import router as _wakeup_heartbeat_router
@@ -849,18 +855,6 @@ async def _try_bcast(msg: Message):
 # ═══════════════════════════════════════════════════════════════
 # Agent 注册
 # ═══════════════════════════════════════════════════════════════
-@app.post("/api/agents/register")
-async def register_agent(card: AgentCard):
-    agents[card.agent_id] = card
-    sys_msg = Message(
-        type=MessageType.SYSTEM,
-        from_agent="system",
-        content=f"Agent「{card.name}」已注册",
-        payload={"agent": card.model_dump()},
-    )
-    _append_hall(sys_msg)
-    await bcast_to_clients(sys_msg)
-    return {"success": True, "agent_id": card.agent_id}
 # ★"harness 框架特点"的**单一真相**（2026-10-11 老板要求：列表要能看出是什么框架、适配什么大模型）。
 #   ⚠️ 与 `/api/bridge-catalog` 分工不同、不要合并：
 #     · 这里回答「**这个框架本身是什么**」（它住在哪、怎么被驱动、典型形态）；
@@ -875,92 +869,8 @@ FRAMEWORK_NOTES = {
 }
 
 
-@app.get("/api/agents")
-async def list_agents(online_only: bool = False):
-    result = []
-    for aid, card in agents.items():
-        online = aid in ws_agents or harness_manager.is_harness_agent(aid) or aid == orchestrator.AGENT_ID
-        is_harness = harness_manager.is_harness_agent(aid)
-        hid = harness_manager.id_to_harness.get(aid, "")
-        hs = harness_manager.sessions.get(hid)
-        status = "online" if (online or card.endpoints) else "offline"
-        if online_only and status != "online":
-            continue
-        sw = card.software
-        sw_name = sw.get("name", "") if sw else ""
-        sw_ver = sw.get("version", "") if sw else ""
-        software_context = f"{sw_name} {sw_ver}".strip() if (sw_name or sw_ver) else card.description or ""
-        # ★2026-10-11（老板要求）：列表要能看出**这个 harness 是什么框架、适配什么大模型**
-        #   —— 此前只显示软件名，用户点进去才知道接的是什么。
-        #   数据来源就是 harness 自己的注册信息（`harness_type` / `ai.model_name` / `ai.provider`），
-        #   不做二次推断，取到什么显示什么；取不到就如实留空（界面不编）。
-        _info = getattr(hs, "info", None) if hs else None
-        _ai = (getattr(_info, "ai", None) or {}) if _info else {}
-        _framework = str(getattr(_info, "harness_type", "") or "") if _info else ""
-        _model = str((_ai.get("model_name") if isinstance(_ai, dict) else getattr(_ai, "model_name", "")) or "")
-        _provider = str((_ai.get("provider") if isinstance(_ai, dict) else getattr(_ai, "provider", "")) or "")
-        _model_ver = str((_ai.get("version") if isinstance(_ai, dict) else getattr(_ai, "version", "")) or "")
-        result.append({
-            "agent_id": aid, "name": card.name,
-            "capabilities": card.capabilities,
-            "description": card.description,
-            "status": status,
-            "software": card.software,
-            "software_context": software_context,
-            # 框架特点（harness_type）+ 适配大模型（provider/model/version），给"harness 列表"显示
-            "framework": _framework,
-            "framework_note": FRAMEWORK_NOTES.get(_framework, ""),
-            "model": _model,
-            "model_provider": _provider,
-            "model_version": _model_ver,
-            "agent_card": {
-                "capabilities": card.capabilities,
-                "description": card.description,
-                "software": card.software,
-            },
-            "is_harness": is_harness,
-            "harness_id": hid if is_harness else None,
-            "harness_status": hs.status.value if hs else None,
-        })
-    return {"agents": result}
-@app.get("/api/rooms")
-async def list_rooms():
-    return {"rooms": [r.model_dump() for r in discussion_rooms.values()]}
-@app.post("/api/auth/logout")
-async def api_auth_logout():
-    """退出外部访问（V65）：清掉 `?token=` 种的同源 cookie。
-
-    只影响**携带方式**，不吊销令牌本身（要吊销请改 `AC4_TOKEN` 并重启）。
-    """
-    from fastapi.responses import JSONResponse
-    r = JSONResponse({"success": True, "note": "已清掉外部访问 cookie；令牌本身未吊销"})
-    r.delete_cookie(EXT_TOKEN_COOKIE, path="/")
-    return r
 
 
-@app.get("/api/status")
-async def api_status():
-    """服务状态检查接口 — CLI start 自检用
-
-    ★V60（2026-10-20，前端通道 201 申请）：增加 `ai` 段，让界面**不用猜 agent id**
-    就能如实显示"当前配置的平台 AI 通不通"。
-    ⚠️ **零成本铁律**：本端点被界面/看门狗/CLI 高频轮询 ⇒ **绝不在里面主动探活**，
-    `reachable` 只来自 V-16 自检的缓存结论；没验过就如实给 `null`（未知），不猜。
-    """
-    online_agents = sum(1 for aid in agents if (
-        aid in ws_agents or harness_manager.is_harness_agent(aid) or aid == orchestrator.AGENT_ID
-    ))
-    return {
-        "status": "running",
-        "version": _PKG_VERSION,
-        "agents_registered": len(agents),
-        "agents_online": online_agents,
-        "tasks_total": len(tasks),
-        "tasks_active": sum(1 for t in tasks.values() if t.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.ARCHIVED)),
-        "harnesses": len(harness_manager.sessions),
-        "pipe_dir": str(PIPE_DIR),
-        "ai": _ai_health_snapshot(),
-    }
 
 
 def _ai_health_snapshot() -> dict:
@@ -1017,56 +927,6 @@ def _ai_health_snapshot() -> dict:
 # ═══════════════════════════════════════════════════════════════
 # 旧版前端兼容 API
 # ═══════════════════════════════════════════════════════════════
-@app.get("/api/bus/stats")
-async def bus_stats():
-    """业务统计 — 旧版前端兼容"""
-    total_msgs = sum(len(t.messages) for t in tasks.values())
-    return {
-        "tasks_total": len(tasks),
-        "tasks_active": sum(1 for t in tasks.values() if t.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.ARCHIVED)),
-        "total_messages": total_msgs,
-        "rooms_total": len(discussion_rooms),
-        "rooms_active": sum(1 for r in discussion_rooms.values() if r.status == DiscussionRoomStatus.NEGOTIATING),
-        "harnesses_total": len(harness_manager.sessions),
-        "harnesses_online": sum(1 for s in harness_manager.sessions.values() if s.status.value == "online"),
-    }
-@app.post("/api/session/save")
-async def session_save():
-    """保存会话 — 旧版前端兼容（当前为无操作占位）"""
-    return {"ok": True, "saved_at": datetime.now().isoformat()}
-@app.get("/api/session/restore")
-async def session_restore():
-    """恢复会话 — 旧版前端兼容"""
-    return {"ok": True, "restored": False, "last_saved": None}
-@app.get("/api/events")
-async def list_events(limit: int = 50):
-    """全局事件流 — 旧版前端兼容"""
-    events = []
-    for t in tasks.values():
-        for msg in t.messages[-20:]:
-            events.append({
-                "event_id": str(uuid4()),
-                "type": msg.type.value,
-                "from_agent": msg.from_agent,
-                "content": msg.content[:200],
-                "task_id": t.id,
-                "created_at": msg.created_at or t.created_at,
-            })
-    events.sort(key=lambda e: e.get("created_at", ""), reverse=True)
-    if limit:
-        events = events[:limit]
-    return {"events": events, "total": len(events)}
-@app.get("/api/budget/{task_id}")
-async def task_budget(task_id: str):
-    """任务预算信息 — 旧版前端兼容"""
-    task = tasks.get(task_id)
-    if not task:
-        return Utf8JSONResponse({"error": "任务不存在"}, status_code=404)
-    return {
-        "task_id": task_id,
-        "budget": getattr(task, "budget", None),
-        "agent_bids": getattr(task, "agent_bids", []),
-    }
 # ═══════════════════════════════════════════════════════════════
 # Harness API（v3.2 新增）
 # ═══════════════════════════════════════════════════════════════
@@ -1119,100 +979,6 @@ def _merge_experience_index(body: dict, info: "HarnessInfo") -> dict:
         info.metadata = meta
     return merged
 
-@app.post("/api/assistant/chat")
-async def api_assistant_chat(request: Request):
-    """平台助手持续会话：用户在 register 页直聊窗口与平台 Agent 对话。
-    body: {"message": "..."}
-    维护 assistant_history 全局上下文（含 system 注入的 harness 接入通知），
-    复用 ReActLoop + ToolRegistry，工具集含通用文件/网页工具及
-    list_harness / launch_harness / bridge_test 三个 Harness 运维工具。
-    返回 {"reply": "...", "steps": [...]}。
-    """
-    body = await request.json()
-    # V-14 修正：兼容 content 别名。
-    # 2026-10-03 实测发现：V-12 的 protocol_brief.py 与 register.html 第二通道示例
-    # 把入参写成了 {"content": "..."}，而本端点只认 message —— 外部 AI 照着平台
-    # 自己发的简报调用会直接 400。既有对外文档已发布，故此处**兼容两种键名**，
-    # 而不是只改文档（避免已按旧文档接入的一方踩坑）。
-    message = (body.get("message") or body.get("content") or "").strip()
-    if not message:
-        # 2026-10-15：原来是英文 `message required` —— 与 register 那两处同一个毛病
-        #（V34 §9.2：错误一律中文；第一次接入的人看不懂英文报错就卡住）。
-        return Utf8JSONResponse({"error": "缺少必填字段 message（你想问平台助手的问题）"}, status_code=400)
-    from .react_loop import ReActLoop
-    from .tool_registry import ToolRegistry
-    from .tools import (
-        ReadFileTool, WriteFileTool, ShellExecTool, WebFetchTool,
-        GenerateBridgeTool, ListBridgeTemplatesTool,
-        ListHarnessTool, LaunchHarnessTool, BridgeTestTool, ProbeHarnessTool,
-        FindWindowTool,
-    )
-    tr = ToolRegistry()
-    tr.register_many([
-        ReadFileTool(), WriteFileTool(), ShellExecTool(), WebFetchTool(),
-        GenerateBridgeTool(), ListBridgeTemplatesTool(),
-        ListHarnessTool(), LaunchHarnessTool(), BridgeTestTool(), ProbeHarnessTool(),
-        FindWindowTool(),
-    ])
-    system_prompt = (
-        "你是 外端Agent生产合作社（External Agent Community） 平台的内置 AI 助手（平台 Agent）。"
-        "当前处于与用户直聊的持续会话窗口，用户可能是想与你沟通外部 Harness 的接入与架桥。"
-        "你可以调用工具来完成用户的任务：读取/写入文件、执行命令、抓取网页、"
-        "生成桥脚本、列出/启动 Harness、对桥做实时测试、探测外部对象接入方式等。"
-        "对话历史中带有 [系统] 前缀的消息是平台注入的 Harness 接入通知，说明有哪些外部 Agent 已接入，"
-        "请据此掌握目标信息并配合用户完成沟通与架桥。"
-        "当用户要接入一个新的外部 Agent 但说不清技术细节时，用 probe_harness 工具探测它"
-        "（给进程名/端口/路径线索即可），摸清它是 HTTP API 型、文件型还是 ACP 型，"
-        "然后给出推荐的注册配置（wakeup_method + api_base_url 等），帮助用户完成接入。"
-        # ★2026-10-15（FE-26 §3.4）：视觉激活的"定位"这一步 —— 与上一条同一个写法（规则 20）
-        "当用户要**视觉激活**某个 agent（把它从桌面上叫起来）时：先向他确认几个**会出现在那个窗口标题里**"
-        "的关键词，用 find_window 工具去定位，把候选窗口（标题/进程/匹配命中）如实报给他，"
-        "让他在界面上点选；**不要自己注入、不要替他点** —— 试投与保存都由他在界面上按按钮完成。"
-        "定位不到就把关键词放宽一点重试，或让他先把那个 agent 的窗口打开再找你。"
-        "优先使用工具获取信息，然后给出准确回答，使用中文回复。"
-    )
-    # 每步工具调用推送给前端（前端已连 /ws，走 message 事件）
-    async def on_step(step):
-        for tc in step.tool_calls:
-            evt = Message(
-                type=MessageType.EVENT, from_agent="orchestrator",
-                content=f"🔧 调用工具: {tc['name']}",
-                agent_name="平台助手",
-                payload={"event": "assistant_tool_call", "tool_name": tc["name"],
-                         "tool_args": tc.get("arguments", {})},
-            )
-            await bcast_to_clients(evt)
-    try:
-        loop = ReActLoop(tr, ai_provider, max_steps=10, on_step=on_step)
-        result = await loop.run(system_prompt, message, history=list(assistant_history))
-    except Exception as e:
-        return Utf8JSONResponse({"error": f"平台助手调用失败: {e}"}, status_code=500)
-    # 写入持续会话历史
-    assistant_history.append({"role": "user", "content": message})
-    assistant_history.append({"role": "assistant", "content": result.final_answer})
-    if len(assistant_history) > assistant_history_max:
-        del assistant_history[:-assistant_history_max]
-    steps_summary = []
-    for st in result.steps:
-        for tc in st.tool_calls:
-            steps_summary.append({
-                "step": st.step,
-                "tool": tc["name"],
-                "args": tc.get("arguments", {}),
-            })
-    return Utf8JSONResponse({
-        "success": True,
-        "reply": result.final_answer,
-        "steps": steps_summary,
-        "history_len": len(assistant_history),
-    })
-@app.get("/api/assistant/history")
-async def api_assistant_history():
-    """返回平台助手持续会话历史（含系统注入的 harness 接入通知）。"""
-    return Utf8JSONResponse({
-        "success": True,
-        "history": list(assistant_history),
-    })
 # ── 桥测试与桥坐标登记 ─────────────────────────────────────────
 def _find_bridge_processes(harness_id: str, bridge_dir: str = ""):
     """查找匹配 harness 的桥进程（只查不杀）。
@@ -1522,48 +1288,6 @@ def _auto_create_workshop_for_task(task, command: str) -> Optional[Workshop]:
         return None
 
 
-@app.post("/api/command")
-async def api_command(request: Request):
-    body = await request.json()
-    # 兼容旧前端 {input: text} 和 WebSocket {command: text} 两种格式
-    command = (body.get("input") or body.get("command", "")).strip()
-    if not command:
-        return Utf8JSONResponse({"error": "command 不能为空"}, status_code=400)
-    title = command[:30] + ("..." if len(command) > 30 else "")
-    task = Task(
-        title=title, description=command,
-        status=TaskStatus.BROADCASTING,
-    )
-    # V-12 修复：任务总数上限，防无限创建耗尽内存/磁盘
-    if len(tasks) >= MAX_TASKS:
-        return Utf8JSONResponse({"error": f"任务总数已达上限 {MAX_TASKS}，请清理历史任务后再试"}, status_code=429)
-    tasks[task.id] = task
-    save_state()
-    # 广播任务创建
-    create_msg = Message(
-        type=MessageType.EVENT,
-        from_agent="user", content=command,
-        task_id=task.id,
-        payload={"event": "task_created", "task": task.model_dump()},
-    )
-    _append_hall(create_msg)
-    await bcast_to_clients(create_msg)
-    # 老板主流程 ②：广播即**自动新建工作间**（幂等；失败不影响广播）。
-    # ③ 一级讨论就在这个房间里进行；④ 选成员由用户在房间里点选（AI 初选）。
-    _auto_ws = _auto_create_workshop_for_task(task, command)
-    if _auto_ws is not None:
-        create_msg.payload["workshop_id"] = _auto_ws.workshop_id
-    # v7: 有 AI Provider 时走 Orchestrator 智能调度
-    if ai_provider:
-        print(f"[api_command] 调度 {task.id}, ws_agents={list(ws_agents)}", flush=True)
-        asyncio.create_task(_orchestrated_flow(task, command))
-    else:
-        # 无 AI 时回退到传统全局广播
-        asyncio.create_task(_broadcast_and_collect(task.id, command))
-        asyncio.create_task(_trigger_wakeup(task.id, command))
-    return {"success": True, "task_id": task.id, "title": task.title,
-            "workshop_id": (_auto_ws.workshop_id if _auto_ws is not None else ""),
-            "task": task.model_dump()}
 
 
 

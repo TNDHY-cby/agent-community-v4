@@ -26,6 +26,22 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger("ac.harness")
+
+#: 同一类失败**每进程只喊一次**：不刷屏，但不许静默（准则⑤「失败要说话」）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
+
+
 import asyncio
 
 import json
@@ -537,9 +553,10 @@ class HarnessBridge:
 
                 f.unlink()
 
-            except Exception:
-
-                pass
+            except Exception as _e:        # 临时文件删不掉：垃圾会累积，也可能是权限问题
+                _warn_once("temp_unlink_failed",
+                           "删除临时文件失败（%s）：%s: %s"
+                           % (f, type(_e).__name__, str(_e)[:100]), _e)
 
         return results
 
@@ -565,9 +582,10 @@ class HarnessBridge:
 
                 f.unlink()
 
-            except Exception:
-
-                pass
+            except Exception as _e:        # 临时文件删不掉：垃圾会累积，也可能是权限问题
+                _warn_once("temp_unlink_failed",
+                           "删除临时文件失败（%s）：%s: %s"
+                           % (f, type(_e).__name__, str(_e)[:100]), _e)
 
         return results
 
@@ -1353,9 +1371,10 @@ class HarnessSessionManager:
 
                     timeout_ids.append(hid)
 
-            except Exception:
-
-                pass
+            except Exception as _e:        # ★解析不了心跳时间 ⇒ 这个 harness 永远不会被判超时
+                _warn_once("heartbeat_time_parse_failed",
+                           "解析 %s 的心跳时间失败（该 harness 不会被判超时，掉线可能显示在线）：%s: %s"
+                           % (hid, type(_e).__name__, str(_e)[:100]), _e)
 
         return timeout_ids
 

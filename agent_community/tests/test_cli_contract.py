@@ -22,6 +22,10 @@ import asyncio
 
 import pytest
 
+# ★2026-10-21：端点持续搬家（`api_command` 已进 `routers/legacy_misc.py`），
+#   判据用 `resolve_handler` 取，别再写死 `server.api_command`。
+from agent_community.tests.conftest import resolve_handler
+
 
 class _Req:
     """最小请求替身（`api_command` 只用 `.json()`）。"""
@@ -48,7 +52,7 @@ def test_cli_task_payload_is_accepted_by_the_real_endpoint(srv):
     from agent_community import cli
 
     payload = cli._task_payload("契约守卫：写一个排序函数")
-    out = asyncio.run(srv.api_command(_Req(payload)))
+    out = asyncio.run(resolve_handler("api_command")(_Req(payload)))
 
     body = getattr(out, "body", None)
     if body is not None:                     # Utf8JSONResponse = 出错分支
@@ -63,11 +67,12 @@ def test_cli_task_result_reads_fields_the_api_really_returns(srv):
     """CLI 的 `task-result` 依赖的字段，必须在真返回里 —— 少一个就是"静默少显示"。"""
     from agent_community import cli
 
-    out = asyncio.run(srv.api_command(_Req(cli._task_payload("契约守卫：字段核对"))))
+    out = asyncio.run(resolve_handler("api_command")(_Req(cli._task_payload("契约守卫：字段核对"))))
     task_id = out.get("task_id")
     assert task_id, "没建成任务，本用例的前提不成立：%r" % (out,)
 
-    from agent_community.tests.conftest import resolve_handler
+    # ⚠️ 函数内又 `import resolve_handler` 会让它变成**局部变量**，
+    #   上面第 70 行就报 UnboundLocalError（本文件真踩过）。模块级已导入，这里不再重复导入。
     got = asyncio.run(resolve_handler("get_task")(task_id))
     assert isinstance(got, dict), "GET /api/task/{id} 应回任务字典：%r" % (got,)
     # ⚠️这里必须列 **CLI 真正读的**字段。实测教训：原 CLI 读 `agent_ids`，

@@ -16,6 +16,22 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger("ac.acp")
+
+#: 同一类失败**每进程只喊一次**：不刷屏，但不许静默（准则⑤「失败要说话」）。
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg, exc_info=exc is not None)
+
+
+
 import json
 import os
 import subprocess
@@ -124,7 +140,7 @@ class AcpHarnessBridge:
         if self.proc:
             try:
                 self.proc.stdin.close()
-            except Exception:
+            except Exception:      # noqa: BLE001 — 有意静默：进程可能已退出/管道已断，关不掉不影响收尾
                 pass
             try:
                 self.proc.terminate()
@@ -132,8 +148,10 @@ class AcpHarnessBridge:
             except Exception:
                 try:
                     self.proc.kill()
-                except Exception:
-                    pass
+                except Exception as _e:    # 杀不掉 ⇒ 可能留僵尸进程，要说
+                    _warn_once("proc_kill_failed",
+                               "结束 ACP 子进程失败（可能留僵尸）：%s: %s"
+                               % (type(_e).__name__, str(_e)[:120]), _e)
         self.proc = None
 
     def stderr_tail(self) -> str:
@@ -208,8 +226,10 @@ class AcpHarnessBridge:
                     content = upd.get("content", {})
                     if content.get("type") == "text" and sess:
                         sess.text_parts.append(content.get("text", ""))
-            except Exception:
-                pass
+            except Exception as _e:        # 解析不了 ⇒ agent 说的话会丢，必须说
+                _warn_once("acp_update_parse_failed",
+                           "ACP 更新事件解析失败（该段回复可能丢失）：%s: %s"
+                           % (type(_e).__name__, str(_e)[:120]), _e)
         return stop, sess.committed_text() if sess else ""
 
 

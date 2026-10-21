@@ -319,8 +319,9 @@ class TestVersionSingleSource:
 
         from agent_community import __version__
         from agent_community.platform import server
+        from agent_community.tests.conftest import resolve_handler
 
-        data = asyncio.run(server.api_status())
+        data = asyncio.run(resolve_handler("api_status")())
         assert data["version"] == __version__, (
             f"/api/status 报的版本 {data['version']!r} 与包元数据 {__version__!r} 不一致 —— "
             "版本号必须单一真源（读 agent_community.__version__）"

@@ -2,6 +2,76 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.16.0] - 2026-10-21
+
+**结构债收尾批次：`server.py` 的 `@app.*` 端点从 51 收到 **2**（只剩两条 WebSocket）；
+静默吞异常 94 → 59；修掉一个真实的 `/api/events` 500；工作模式与发版节奏写进"合作社开发模式"。**
+
+> 老板 2026-10-21 晚：「**不用改一点就发布，改到4.16再发**」⇒ 本版是**攒起来的一批**：
+> 结构债 + 失败要说话 + 判据收口 + 模式文档，一次发。
+
+### 一、端点搬迁（本批 4 个模块、13 个端点）
+
+| 模块 | 端点 | 说明 |
+|---|---|---|
+| `routers/legacy_misc.py` | `/api/rooms` `/api/auth/logout` `/api/status` `/api/bus/stats` `/api/session/save` `/api/session/restore` `/api/events` `/api/budget/{task_id}` `/api/command` | 旧前端兼容与杂项；`/api/command` 是 CLI 提交任务那条主链路 |
+| `routers/agents_registry.py` | `/api/agents/register` `/api/agents` | AgentCard 注册与在线列表 |
+| `routers/assistant.py` | `/api/assistant/chat` `/api/assistant/history` | 平台助手会话 |
+
+累计（今天）：**51 → 42 → 33 → 26 → 15 → 2**；`server.py` **6618 → 5662 行**；
+`routers/` **33 → 40 个文件**；**业务路由始终 233 条不变**。
+剩下 2 条是 `/ws` 与 `/ws/agent/{id}` —— **故意不搬**（WebSocket 生命周期与 `ws_clients`/`ws_agents`
+两块全局状态强耦合，搬出去只会更难查）。
+
+### 二、真请求抓到并修掉的**真实 500**（本批最值钱的一条）
+
+`GET /api/events` 在**服务跑着、且任务里有消息**时返回 **500**（之前探测时 tasks 没消息，所以一直是 `{"events":[],"total":0}`
+——典型的"看起来能用"）。根因两条，都属**搬家前就有的缺陷**：
+
+1. `list_events` 写的是 `msg.created_at`，而 `Message` 模型**没有**这个字段（它叫 `timestamp`）
+   ⇒ `AttributeError` ⇒ 500；
+2. 同一条链路上时间**可能是 datetime 也可能是 str**（新版用 datetime、兜底用任务字符串）
+   ⇒ 直接 `sort()` 会抛 `TypeError`。
+
+修法：改取**真实存在的字段**（`msg.timestamp` 兜底 `task.created_at`），排序前统一归一成字符串。
+判据：新增 `agent_community/tests/test_events_endpoint.py`（2 条，造真 `Message`/`Task` 对象跑真 handler，
+其中一条专门喂"datetime 与 str 混排"）。
+
+### 三、静默吞异常：94 → 59（本批 9 处：桥与适配器）
+
+| 位置 | 场景 | 判 |
+|---|---|---|
+| `bridges/_/bridge.py` ×3 | 桥 PID 写不下 / 日志打不开 / 轮转失败 | **喊**（PID 写不下 ⇒ 单实例保护失效；日志没了排查全靠猜） |
+| `acp_harness_bridge.py` ×2 | 解析 ACP 更新事件失败 / kill 子进程失败 | **喊**（丢回复 / 留僵尸） |
+| `acp_harness_bridge.py` ×1 | 关 stdin 失败 | **有意静默**（进程已退、管道已断，关不掉无害） |
+| `harness_adapter.py` ×2 | 删临时文件失败 | **喊**（垃圾累积，也可能是权限问题） |
+| `harness_adapter.py` ×1 | **心跳时间解析失败** | **喊**（★最伤：解析失败 ⇒ 永不判超时 ⇒ 掉线仍显示在线） |
+
+守卫扫描面从 4 个文件扩到 **7 个**（+ bridge / acp_harness_bridge / harness_adapter），
+并新增 7 个 key 的防回退断言；基线同步下调到 **59 处 / 46 文件**。
+
+### 四、判据收口（第 4 次踩同一个坑后的彻底办法）
+
+`api_command` / `api_status` 搬走后，`test_cli_contract`（2 条）与 `test_foundation_base`（1 条）红了。
+已全部改成 `resolve_handler(name)`；顺带记一条坑：**函数内再 `import resolve_handler` 会让它变局部变量**，
+同一函数前面的调用就报 `UnboundLocalError`（真踩过，注释已写在代码里）。
+
+### 五、模式文档：工作模式 + 发版节奏（三处口径一致）
+
+- 老板 2026-10-21：「以后都把连续的任务放的任务列表里（插件），**不要停下来，除非遇到分岔口**」
+  ⇒ 七条工作模式写进 ① preset「合作社开发模式」persona ② 技能 `ac-project-dev`（摘要 + `references/workmode.md` 详细版）
+  ③ 仓库 `AGENTS.md`；守卫 `test_workmode_doc.py`（3 条）盯 ③ 不许被删。
+- 同日再定：「**不用改一点就发布，改到4.16再发**」⇒ 三处同步加上"**发版按批次**"，
+  ⑥ 那条从"每版收尾"改成"**按批次发版**，每批收尾固定动作"。
+
+### 六、判据
+
+- 真请求：13/13（`/api/status` `/api/bus/stats` `/api/events` `/api/rooms` `/api/budget/{id}`
+  `/api/session/save` `/api/session/restore` `/api/auth/logout` `/api/command` `/api/agents`
+  `/api/agents/register` `/api/assistant/history` `/api/assistant/chat`，全无 500）；
+- 全量回归：`agent_community/tests` **1855 passed / 3 skipped**；根 `tests` **66 passed**（用例 1924）；
+- 服务重启后冒烟：`/api/status` 200 且 `version` 为新版本。
+
 ## [4.15.23] - 2026-10-21
 
 **把这轮的工作模式写进「合作社开发模式」（preset）+ 技能 + `AGENTS.md`，并加守卫**
