@@ -2,6 +2,43 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.21.0] - 2026-10-22
+
+**V78 落地（大型功能）：工作流执行引擎** —— 把 V76 的流程定义、V77 的预算闸、V76 的审批闸门接成"真能跑"。
+
+### 一、执行语义（只三条，不发明 DSL）
+
+1. **拓扑即依赖**：父节点没 `done` ⇒ 子节点不可跑；同层按 `task_tree` 原顺序（稳定可复现）；
+2. **一次推进一步 + 幂等**：`POST /api/workshops/{wid}/workflow/run` 每次只推进一个可跑节点，
+   `running/done/waiting_approval` 一律跳过（重复调用不会重复派）；
+3. **收口**：失败先 `retry` 一次（`retry_count`）再 `blocked`；整棵树没可跑且有 blocked ⇒ 整体 `blocked` 并说清卡在哪个节点。
+
+### 二、端点（4 个）
+
+```
+GET  /api/workshops/{wid}/workflow/run     执行状态（节点状态表 + 卡在哪 + 下一步能跑什么）
+POST /api/workshops/{wid}/workflow/run     推进一步
+POST /api/workshops/{wid}/workflow/reset   把 blocked/running 复位（人工干预后重跑，留痕）
+POST /api/tasks/{id}/workflow-node/done    回执方标记节点完成/失败（引擎据此放行子节点）
+```
+
+### 三、与既有能力的接线
+
+- **预算闸（V77）**：推进前判该节点关联任务的预算，超了 **409 + 原话 + 两条出路**，且**不把节点标成 running**；
+- **审批闸门（V76）**：`kind=approval` 的节点推进即进 `waiting_approval` 并停住，等审批端点放行；
+- **运行快照（V76）**：每次推进/完成/失败都写一条快照（回放可查）。
+
+### 四、判据（6/6 真跑）
+
+拓扑阻塞 / 幂等（第二次推进下一个而不是重复派）/ 失败 retry→blocked 且状态里"卡在节点 X" /
+预算超 409 且节点仍 planned / 审批节点 waiting_approval 且不再推进 / reset 复位并清 `retry_count`。
+
+### 五、判据汇总
+
+- V76+V77+V78 域测试合计 **24 passed**；全量 **1903 passed / 3 skipped**
+- 业务路由 251 → **255**；`routers/` **46 个文件**；`server.py` 5584 行 / `@app` 仍 2 个
+- 设计索引 116 份；静默基线仍 37；环境变量仍 76
+
 ## [4.20.0] - 2026-10-22
 
 **V77 落地（大型功能）：执行预算与超时闸 + 停止/重跑** —— 画布能"跑"之前的成本闸门。

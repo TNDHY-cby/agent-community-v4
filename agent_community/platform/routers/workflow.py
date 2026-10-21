@@ -1,0 +1,149 @@
+# -*- coding: utf-8 -*-
+"""工作流执行端点（V78）：一次推进一步 / 看状态 / 复位。逻辑全在 `platform/workflow_engine.py`。"""
+from __future__ import annotations
+
+from fastapi import APIRouter, Request
+
+from .. import workflow_engine as we
+from ..audit import audit_log as _audit_log
+
+router = APIRouter()
+
+
+def _ws(wid: str):
+    from ..state import workshops
+
+    return workshops.get(wid)
+
+
+def _node_of_task(task_id: str):
+    """按任务反查它对应的流程节点（节点的 node_id 与任务 id 可能不同，用 label/node_id 兜）。"""
+    from ..state import tasks, workshops
+
+    task = tasks.get(task_id)
+    if task is None:
+        return None, None
+    for ws in workshops.values():
+        for node in (getattr(ws, "task_tree", None) or []):
+            if isinstance(node, dict) and str(node.get("node_id") or "") == task_id:
+                return ws, node
+    return None, None
+
+
+@router.get("/api/workshops/{wid}/workflow/run")
+async def workflow_run_status(wid: str):
+    from ..server import Utf8JSONResponse
+
+    ws = _ws(wid)
+    if ws is None:
+        return Utf8JSONResponse({"error": "没有这个工作间：%s" % wid}, status_code=404)
+    return {"workshop_id": wid, **we.status(ws)}
+
+
+@router.post("/api/workshops/{wid}/workflow/run")
+async def workflow_run_step(wid: str, request: Request):
+    """推进一步（幂等）：派下一个可跑节点；预算超了 409；审批型节点停住等人批。"""
+    from .. import approval as ap
+    from .. import run_budget as rb
+    from .. import run_snapshot as rs
+    from ..server import Utf8JSONResponse, save_state
+    from ..state import tasks
+
+    ws = _ws(wid)
+    if ws is None:
+        return Utf8JSONResponse({"error": "没有这个工作间：%s" % wid}, status_code=404)
+
+    try:
+        body = await request.json()
+    except Exception:                                        # noqa: BLE001
+        body = {}
+    body = body if isinstance(body, dict) else {}
+
+    node = we.next_node(ws)
+    if node is None:
+        st = we.status(ws)
+        return {"advanced": False, "state": st["state"], "why": st["why"], "next": None}
+
+    node_id = str(node["node_id"])
+    kind = str(node.get("kind") or "task")
+
+    # 预算闸（V77）：按节点关联的任务判；没有关联任务就不能判，如实说明但不拦
+    task = tasks.get(node_id)
+    chk = rb.check(task, ws) if task is not None else {"state": "ok", "why": "", "how_to_fix": ""}
+    if chk["state"] != "ok":
+        return Utf8JSONResponse({"advanced": False, "node_id": node_id, "state": chk["state"],
+                                 "error": chk["why"], "how_to_fix": chk["how_to_fix"]},
+                                status_code=409)
+
+    # 审批型节点：进闸门后**不推进**
+    if kind == "approval":
+        we.mark(node, "waiting_approval")
+        if task is not None:
+            task.approval = ap.enter(task, required=True,
+                                     reason="流程节点 %s 需要人工确认" % node_id,
+                                     resume_to=str(getattr(task.status, "value", task.status) or ""))
+            from ..protocol import TaskStatus
+
+            task.status = TaskStatus.WAITING_APPROVAL
+        _audit_log.record("workshop.workflow.run", actor="user", target=wid,
+                          detail="节点 %s 需审批，已停下" % node_id)
+        save_state()
+        return {"advanced": False, "node_id": node_id, "state": "waiting_approval",
+                "why": "这个节点需要人工确认（V76 审批闸门），批完再调用本端点继续"}
+
+    we.mark(node, "running")
+    if task is not None:
+        rs.append(task, "dispatch", summary="流程推进：%s" % (node.get("label") or node_id),
+                  detail={"node_id": node_id, "kind": kind}, actor=str(body.get("by") or "user"))
+        node["task_id"] = task.id
+    _audit_log.record("workshop.workflow.run", actor="user", target=wid,
+                      detail="推进节点 %s（kind=%s）" % (node_id, kind))
+    save_state()
+    return {"advanced": True, "node_id": node_id, "kind": kind, "state": "running",
+            "next": (we.status(ws)["next"] or {})}
+
+
+@router.post("/api/workshops/{wid}/workflow/reset")
+async def workflow_reset(wid: str):
+    """把 blocked / running 复位成 planned（人工干预后重跑），留痕。"""
+    from ..server import Utf8JSONResponse, save_state
+
+    ws = _ws(wid)
+    if ws is None:
+        return Utf8JSONResponse({"error": "没有这个工作间：%s" % wid}, status_code=404)
+    touched = we.reset_blocked(ws)
+    _audit_log.record("workshop.workflow.reset", actor="user", target=wid,
+                      detail="复位 %d 个节点：%s" % (len(touched), ",".join(touched)[:120]))
+    save_state()
+    return {"success": True, "workshop_id": wid, "reset": touched}
+
+
+@router.post("/api/tasks/{task_id}/workflow-node/done")
+async def mark_node_done(task_id: str, request: Request):
+    """回执方/人把某个节点标完成（引擎据此放行子节点）。"""
+    from .. import run_snapshot as rs
+    from ..server import Utf8JSONResponse, save_state
+    from ..state import tasks
+
+    ws, node = _node_of_task(task_id)
+    if node is None:
+        return Utf8JSONResponse({"error": "没有找到这个任务对应的流程节点：%s" % task_id},
+                                status_code=404)
+    try:
+        body = await request.json()
+    except Exception:                                        # noqa: BLE001
+        body = {}
+    body = body if isinstance(body, dict) else {}
+
+    if bool(body.get("ok", True)):
+        we.mark(node, "done")
+        state = "done"
+    else:
+        state = we.on_fail(node)                 # retry 一次后 blocked
+    task = tasks.get(task_id)
+    if task is not None:
+        rs.append(task, "complete" if state == "done" else "fail",
+                  summary="节点 %s：%s" % (str(node.get("node_id")), state),
+                  actor=str(body.get("by") or "harness"))
+    save_state()
+    return {"success": True, "node_id": str(node.get("node_id")), "state": state}
