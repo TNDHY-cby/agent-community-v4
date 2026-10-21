@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>生产合作社 · 启动中</title>
+<!-- 只读引用前端过场样式与美术（美术/样式归前端，启动器不复制一份） -->
+<link rel="stylesheet" href="/boot.css">
+<style>
+  /* 启动器专用：失败面板（只在 failed 时出现；不改前端任何类名） */
+  .lp-fail{position:fixed;inset:auto 0 0 0;z-index:2100;display:none;
+    background:rgba(20,8,8,.96);border-top:2px solid #E5332C;padding:18px 26px 22px;
+    font:13px/1.7 "Cascadia Code",Consolas,monospace;color:#F2E9E4}
+  .lp-fail h2{margin:0 0 8px;font:900 18px/1.4 "YouYuan","幼圆",serif;color:#FF6B62;letter-spacing:.06em}
+  .lp-fail .lp-hint{color:#E6D5C8;white-space:pre-wrap;margin:6px 0}
+  .lp-fail .lp-log{color:#9A9AA3;font-size:12px;word-break:break-all}
+  .lp-fail button{margin-top:12px;background:#E5332C;border:0;color:#fff;padding:8px 18px;
+    font:700 13px/1 "Cascadia Code",Consolas,monospace;letter-spacing:.08em;cursor:pointer}
+  .lp-fail button:hover{background:#FF6B62}
+  #lp-wait{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:2100;
+    font:11px/1.6 "Cascadia Code",Consolas,monospace;color:#9A9AA3;letter-spacing:.1em;display:none}
+</style>
+</head>
+<body>
+<div id="boot">
+  <div class="boot-scan"></div>
+  <div class="brand-plate">
+    <h1>生产合作社</h1>
+    <div class="en">PRODUCTION COOPERATIVE</div>
+    <div class="sys">SYSTEM: INTEGRATING HETEROGENEOUS AGENTS…</div>
+    <div class="rev-badge">LAUNCHER PROFILE
+      <div class="ticks"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+    </div>
+  </div>
+  <div class="boot-hud tr" id="lp-skip">[ 跳过 SKIP ]</div>
+  <div class="boot-core">
+    <div class="hs-wrap"><img src="/boot_emblem.png" alt="徽记"></div>
+    <div class="boot-brand">生 产 合 作 社</div>
+    <div class="boot-brand-en">PRODUCTION COOPERATIVE</div>
+    <div class="radar">
+      <svg class="rings" viewBox="0 0 280 280">
+        <circle class="dial-outer" cx="140" cy="140" r="126"/>
+        <circle cx="140" cy="140" r="118" fill="none" stroke="#6A655D" stroke-width="2" stroke-dasharray="2 10"/>
+      </svg>
+      <div class="gear-g"><img class="gear-img" src="/boot_gear.png" alt=""></div>
+    </div>
+    <div class="boot-stage">
+      <div class="boot-line" id="lp-line">准备启动</div>
+      <div class="boot-sub" id="lp-en">LAUNCHER STARTING</div>
+      <div class="boot-tag" id="lp-tag"></div>
+    </div>
+  </div>
+  <div class="boot-foot">
+    <div><span class="code" id="lp-code">[00/06]</span> BOOT</div>
+    <div>
+      <div class="pct-row"><span id="lp-pctl">[ INIT ]</span><span id="lp-pct">0%</span></div>
+      <div class="track"><div class="fill" id="lp-fill"></div></div>
+    </div>
+    <div class="br">Powered By 生产合作社 <span class="rd">▌</span></div>
+  </div>
+</div>
+
+<div id="lp-wait">仍在启动…（页面会自动进入大厅，不用点任何东西）</div>
+
+<div class="lp-fail" id="lp-fail">
+  <h2 id="lp-fail-title">启动失败</h2>
+  <div class="lp-hint" id="lp-fail-hint"></div>
+  <div class="lp-log" id="lp-fail-log"></div>
+  <button onclick="location.reload()">重试</button>
+</div>
+
+<script>
+/* 启动器过场页：进度**全部来自 /state**（启动器给的真实阶段），不假装进度。
+ * 就绪 ⇒ 自动跳大厅；失败 ⇒ 底部弹出原因/怎么办/日志，并给「重试」。 */
+(function () {
+  var EN = ['READ CONFIG', 'PICK INTERPRETER', 'START PLATFORM', 'WAIT PORT',
+            'WAIT HEALTH', 'ENTER HALL', 'FAILED'];
+  var line = document.getElementById('lp-line'), en = document.getElementById('lp-en');
+  var code = document.getElementById('lp-code'), pct = document.getElementById('lp-pct');
+  var pctl = document.getElementById('lp-pctl'), fill = document.getElementById('lp-fill');
+  var tag = document.getElementById('lp-tag');
+  var wait = document.getElementById('lp-wait');
+  var failBox = document.getElementById('lp-fail');
+  var boot = document.getElementById('boot');
+  var jumped = false, lastStep = -1;
+
+  function paint(s) {
+    var step = Math.max(0, Math.min(6, s.step | 0));
+    code.textContent = '[' + String(step).padStart(2, '0') + '/06]';
+    if (step !== lastStep) { en.textContent = EN[step]; lastStep = step; }
+    line.textContent = s.text || '正在启动';
+    var p = Math.min(96, step * 16);
+    if (s.phase === 'ready') { p = 100; pctl.textContent = '[ READY ]'; }
+    pct.textContent = p + '%'; fill.style.width = p + '%';
+    tag.textContent = s.phase === 'ready' ? 'PLATFORM / READY' : '';
+    wait.style.display = (step >= 2 && s.phase === 'starting') ? 'block' : 'none';
+  }
+
+  function showFail(s) {
+    boot.style.display = 'none';
+    wait.style.display = 'none';
+    document.getElementById('lp-fail-title').textContent = '启动失败：' + (s.text || '未知原因');
+    document.getElementById('lp-fail-hint').textContent = s.hint || '';
+    document.getElementById('lp-fail-log').textContent = s.log_path ? ('日志：' + s.log_path) : '';
+    failBox.style.display = 'block';
+  }
+
+  function poll() {
+    fetch('/state', {cache: 'no-store'}).then(function (r) { return r.json(); }).then(function (s) {
+      if (jumped) return;
+      paint(s);
+      if (s.phase === 'ready' && s.platform_url) {
+        jumped = true;
+        pctl.textContent = '[ DOCK ]';
+        setTimeout(function () { location.replace(s.platform_url); }, 700);  /* 大厅 */
+        return;
+      }
+      if (s.phase === 'failed') { showFail(s); return; }
+      setTimeout(poll, 400);
+    }).catch(function () { setTimeout(poll, 800); });
+  }
+
+  document.getElementById('lp-skip').addEventListener('click', function () {
+    /* 跳过动画 ≠ 跳过等待：直接看真实状态（还在起就显示失败面板的等待文案） */
+    fetch('/state', {cache: 'no-store'}).then(function (r) { return r.json(); }).then(function (s) {
+      if (s.phase === 'ready' && s.platform_url) { location.replace(s.platform_url); }
+      else if (s.phase === 'failed') { showFail(s); }
+      else { document.getElementById('lp-fail-title').textContent = '还在启动'; 
+             document.getElementById('lp-fail-hint').textContent = '服务正在拉起，等一会儿会自动进大厅。';
+             document.getElementById('lp-fail-log').textContent = '';
+             failBox.style.display = 'block'; }
+    }).catch(function () {});
+  });
+
+  poll();
+})();
+</script>
+</body>
+</html>

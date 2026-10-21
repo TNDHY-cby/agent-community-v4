@@ -87,6 +87,16 @@ SPEC: dict[str, Var] = {v.name: v for v in [
     Var("AC4_SHUTDOWN_PIN", "关停口令（空=关停端点仅允许本机来源 + 二次确认）",
         default="", kind="core", example="your-pin"),
 
+    # ── 启动器（V72：双击到大厅）──────────────────────────────────────────
+    Var("AC_LAUNCHER_BROWSER",
+        "启动器用哪个浏览器打开过场页/大厅（如 `firefox`；空=系统默认浏览器）。"
+        "写可执行文件名或绝对路径，**不绑定任何一家浏览器**",
+        default="", kind="core", example="firefox"),
+    Var("AC_LAUNCHER_PYTHON",
+        "启动器强制使用的解释器（排障用；空=自动挑一个装好依赖的解释器）。"
+        "与部署层的 `AC4_PYTHON` 分开：那个是部署配置，这个是启动器临时指定",
+        default="", kind="core", example=""),
+
     # ── AI Provider（可选：不配也能跑，走规则兜底）────────────────────────
     Var("AC_AI_PROVIDER", "AI 后端：`openai`（OpenAI 兼容）/`ollama`/`http_callback`；空=不接 AI",
         default="", kind="core", example="openai"),

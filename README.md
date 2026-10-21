@@ -135,6 +135,8 @@ python -m agent_community.cli agents list
 | `AC4_TOKEN` | 平台访问令牌（跨机/对外访问时必设；空=仅本机可用） | `（空）` | 条件必需（对外暴露平台（AC_HOST 非回环）时） |
 | `AC_EXTERNAL_READONLY` | 外部访问只读档：=1 时**非本地**请求只放行查看类 GET，写操作一律 403（默认 0） | `0` | 否 |
 | `AC4_SHUTDOWN_PIN` | 关停口令（空=关停端点仅允许本机来源 + 二次确认） | `（空）` | 否 |
+| `AC_LAUNCHER_BROWSER` | 启动器用哪个浏览器打开过场页/大厅（如 `firefox`；空=系统默认浏览器）。写可执行文件名或绝对路径，**不绑定任何一家浏览器** | `（空）` | 否 |
+| `AC_LAUNCHER_PYTHON` | 启动器强制使用的解释器（排障用；空=自动挑一个装好依赖的解释器）。与部署层的 `AC4_PYTHON` 分开：那个是部署配置，这个是启动器临时指定 | `（空）` | 否 |
 | `AC_AI_PROVIDER` | AI 后端：`openai`（OpenAI 兼容）/`ollama`/`http_callback`；空=不接 AI | `（空）` | 否 |
 | `AC_AI_BASE_URL` | OpenAI 兼容基址（**按你的服务商填**，别照抄示例） | `（空）` | 条件必需（AC_AI_PROVIDER=openai 时） |
 | `AC_AI_API_KEY` | AI 服务密钥（**绝不入库**；本地配置里保存时：**Windows 走 DPAPI 加密**（绑定当前用户），其它系统**明文**保存并**打告警**提示改用本环境变量） | `（空）` | 条件必需（AC_AI_PROVIDER=openai（或需要鉴权的服务）时） |

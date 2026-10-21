@@ -1,0 +1,39 @@
+@echo off
+setlocal EnableExtensions
+REM ============================================================
+REM  启动合作社.cmd —— 控制台/排障入口（V72）
+REM  正常双击请用桌面快捷方式（它走 启动合作社.vbs：无窗口、先播过场）
+REM  ?? 本文件由 tools\gen_entry.py 从 tools\launcher\entry-console.cmd.tmpl 生成（GBK+CRLF），别手改
+REM ============================================================
+cd /d "%~dp0"
+
+set "PY="
+if defined AC4_PYTHON if exist "%AC4_PYTHON%" set "PY=%AC4_PYTHON%"
+if not defined PY (
+  for %%P in (py.exe python.exe python3.exe) do (
+    if not defined PY (
+      for /f "delims=" %%Q in ('where %%P 2^>nul') do (
+        if not defined PY "%%Q" -c "import sys" >nul 2>&1 && set "PY=%%Q"
+      )
+    )
+  )
+)
+
+if not defined PY (
+  echo ============================================================
+  echo   [启动失败] 这台机器上没找到能用的 Python
+  echo.
+  echo   怎么办：
+  echo     1^) 装 Python 3.11+（安装时勾选 Add python.exe to PATH）
+  echo     2^) 在本目录执行：python -m pip install -r requirements.txt
+  echo     3^) 再双击一次
+  echo ============================================================
+  pause
+  exit /b 1
+)
+
+"%PY%" "%~dp0tools\launcher.py" %*
+echo.
+echo （启动器已退出。上面若有报错，照提示处理；日志在 data\logs\launcher_*.log）
+pause
+exit /b 0

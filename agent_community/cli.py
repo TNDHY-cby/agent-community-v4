@@ -67,21 +67,13 @@ def _cli_port() -> int:
       实测：`~/.agent_community/server.pid` 留着上次的 `{"port": 18926}`（进程早没了），
       于是 CLI 永远探死端口 —— **不管用户怎么设 `AC_PORT`、服务明明开在默认端口，都报"服务未运行"**。
       现在：PID 里的端口**必须探得通才采用**，否则回到端口的唯一解析点。
+
+    ★2026-10-21（V72）：这套判断被**启动器**（`tools/launcher.py`）同样需要 ⇒ 抽到
+      `agent_community/port_resolve.py`（全程标准库），本函数只做转调，**不再自己写一份**。
     """
-    from .platform_address import resolve_port as _resolve_port
-    explicit = str(os.environ.get("AC_PORT") or "").strip()
-    if explicit:
-        return int(_resolve_port())
-    default_port = int(_resolve_port())
-    data = _read_pid()
-    if data and data.get("port"):
-        try:
-            p = int(data["port"])
-        except Exception:                                    # noqa: BLE001
-            p = 0
-        if p and p != default_port and _probe(p):
-            return p
-    return default_port
+    from .port_resolve import cli_port
+
+    return cli_port(PID_FILE)
 
 
 def _get_base_url() -> str:

@@ -1,0 +1,91 @@
+' 启动合作社.vbs —— 双击即用（V72：先播过场 · 并行加载 · 自动进大厅）
+' ?? 本文件是**模板**（UTF-8）；仓库根目录的 `启动合作社.vbs` 由 `python tools/gen_entry.py` 生成，
+'    生成时转成 **GBK + CRLF**（wscript 按系统 ANSI 代码页读脚本，UTF-8 中文会乱码）。
+' 作用：找一个**真能跑的** Python，用 pythonw 起 tools\launcher.py（无窗口），然后退出。
+Option Explicit
+Dim sh, fso, repo, py, script, cmd, i, cands, ok
+Set sh  = CreateObject("WScript.Shell")
+Set fso = CreateObject("Scripting.FileSystemObject")
+repo = fso.GetParentFolderName(WScript.ScriptFullName)
+sh.CurrentDirectory = repo
+
+script = repo & "\tools\launcher.py"
+If Not fso.FileExists(script) Then
+  MsgBox "找不到启动器：" & vbCrLf & script & vbCrLf & vbCrLf & _
+         "说明这个快捷方式指向的目录不完整，请重新解压/克隆完整仓库。", _
+         16, "生产合作社 · 启动失败"
+  WScript.Quit 1
+End If
+
+' 候选解释器：deploy\.env 里指定的、py 启动器、PATH 上的 python
+py = ReadEnv("AC4_PYTHON")
+cands = Array(py, "py -3", "python", "python3")
+
+ok = ""
+For i = 0 To UBound(cands)
+  If ok = "" And Len(cands(i)) > 0 Then
+    If Probe(cands(i)) Then ok = cands(i)
+  End If
+Next
+
+If ok = "" Then
+  MsgBox "这台机器上没找到能用的 Python。" & vbCrLf & vbCrLf & _
+         "怎么办：" & vbCrLf & _
+         "  1) 装 Python 3.11+（安装时勾选 Add python.exe to PATH）" & vbCrLf & _
+         "  2) 在本目录执行：python -m pip install -r requirements.txt" & vbCrLf & _
+         "  3) 再双击一次", _
+         16, "生产合作社 · 启动失败"
+  WScript.Quit 1
+End If
+
+cmd = QuoteIfPath(ok) & " """ & script & """"
+sh.Run cmd, 0, False
+WScript.Quit 0
+
+' 路径里有空格就要加引号；`py -3` 这种"命令 + 参数"不能加引号（否则变成找名为 "py -3" 的程序）
+Function QuoteIfPath(c)
+  If InStr(c, " ") > 0 And fso.FileExists(c) Then
+    QuoteIfPath = """" & c & """"
+  Else
+    QuoteIfPath = c
+  End If
+End Function
+
+' 试一个候选：能 `import sys` 才算数（退出码 0）。试不到就返回 False。
+Function Probe(c)
+  Dim rc
+  On Error Resume Next
+  rc = sh.Run(QuoteIfPath(c) & " -c ""import sys""", 0, True)
+  If Err.Number <> 0 Then
+    Err.Clear
+    Probe = False
+    Exit Function
+  End If
+  On Error GoTo 0
+  Probe = (rc = 0)
+End Function
+
+' 从 deploy\.env / 仓库根 .env 读一个键（找不到返回空串）
+Function ReadEnv(key)
+  Dim p, ts, line, k, v, i
+  ReadEnv = ""
+  p = repo & "\deploy\.env"
+  If Not fso.FileExists(p) Then p = repo & "\.env"
+  If Not fso.FileExists(p) Then Exit Function
+  Set ts = fso.OpenTextFile(p, 1, False)
+  Do While Not ts.AtEndOfStream
+    line = Trim(ts.ReadLine)
+    i = InStr(line, "=")
+    If i > 0 And Left(line, 1) <> "#" Then
+      k = Trim(Left(line, i - 1))
+      v = Trim(Mid(line, i + 1))
+      If k = key Then
+        If Left(v, 1) = """" Then v = Mid(v, 2, Len(v) - 2)
+        ReadEnv = v
+        ts.Close
+        Exit Function
+      End If
+    End If
+  Loop
+  ts.Close
+End Function

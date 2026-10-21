@@ -81,6 +81,9 @@ python tools/channel_chain_check.py     # 通道生命周期 V28：停用后不�
 python tools/watchdog.py --check        # 服务活没活（exit 0=活 / 1=挂）；--daemon 常驻守护（零第三方依赖）
 python tools/autostart.py enable        # 让平台随登录自启（Windows 启动文件夹 / Linux systemd user unit）
 python tools/check_watchdog.py          # 判据：看门狗真能救活服务（能起 + 崩了能再起 + 有日志）
+python tools/launcher_check.py          # 判据（V72）：双击到大厅——先出过场页 / 并行拉起 / 就绪进大厅 / 端口被占或缺解释器都要说人话
+python tools/gen_entry.py               # 由模板生成双击入口（启动合作社.vbs / .cmd，GBK+CRLF）；--check 防漂移
+python tools/make_shortcut.py --check    # 桌面快捷方式必须**指向本仓库**（指到别的副本 = 起错数据）
 python -m pytest -q                     # 全部回归（含双平台守卫）
 python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 ```
