@@ -45,7 +45,13 @@ REAL_USER_CONFIG = Path.home() / ".agent_community" / "config.json"
 
 # ── 第二层：真实数据目录指纹守卫（会话级）──────────────────────────
 def _fingerprint(root: Path) -> dict:
-    """记录 data/ 下所有文件的 (大小, mtime_ns)，忽略日志子目录。"""
+    """记录 data/ 下所有**业务文件**的 (大小, mtime_ns)；日志与自动启动日志不算。
+
+    ★2026-10-21（真事故，假红）：原来只忽略 `logs/` 目录，而看门狗会把启动日志写到
+    `data/autostart/ac_watchdog.log` —— **平台服务在跑的时候**每写一行，跑完整测试就会撞见
+    "测试污染真实数据"（实测：`autostart\\ac_watchdog.log` 6845→7139 字节被判红）。
+    日志本来就是**边跑边写**的，与"测试有没有偷写真实数据"无关 ⇒ 一律忽略 `*.log`。
+    """
     fp = {}
     if not root.exists():
         return fp
@@ -53,7 +59,9 @@ def _fingerprint(root: Path) -> dict:
         if not p.is_file():
             continue
         rel = str(p.relative_to(root))
-        if rel.startswith("logs"):          # 日志本来就在写，不纳入
+        if rel.startswith("logs"):          # 日志目录：本来就在写，不纳入
+            continue
+        if p.suffix.lower() == ".log":      # 任何位置的日志文件（如 data/autostart/ac_watchdog.log）
             continue
         try:
             st = p.stat()

@@ -217,12 +217,23 @@ def test_commit_verified_records_what_was_actually_verified():
     import inspect
 
     from agent_community.platform import verify_sandbox as vs
+    from agent_community.platform import evidence_scope as es
 
     src = inspect.getsource(vs.commit_verified)
     assert "verified_scope" in src, "回写结果里必须有 verified_scope"
-    assert "完整链路" in src and "仅桥配置" in src, "两种范围要分别写明"
-    assert "平台在验证间里启动" in src, \
+    # ★2026-10-21（V73 §9.4）：范围文案收进 `evidence_scope`（一处真相）——
+    #   本条判据原来查的是 `commit_verified` 源码里有没有那两串文案，
+    #   文案一搬家它就假红。改成**查接线 + 查真实产出**，文案搬哪儿都有效。
+    assert "scope_for_channel" in src, \
+        "commit_verified 应调用 evidence_scope.scope_for_channel（范围文案一处真相）"
+    full = es.scope_for_channel("inbox")
+    bridge = es.scope_for_channel("pending_queue")
+    assert "完整链路" in full, "邮箱通道要写明验的是完整链路：%r" % full
+    assert "仅桥配置" in bridge, "非邮箱型要写明只验了桥配置：%r" % bridge
+    assert "平台在验证间里启动" in bridge, \
         "非邮箱型要点明'桥是平台启动的'（否则会被读成 harness 侧也跑通了）"
+    assert "agent 能否回话" in bridge and "未验证" in bridge, \
+        "非邮箱型必须点明'agent 能否回话本次未验证'"
     # 路由层要把通道信息传进去，否则 commit 分不出范围
     rs = inspect.getsource(__import__(
         "agent_community.platform.routers.harness_bridge", fromlist=["x"]))
