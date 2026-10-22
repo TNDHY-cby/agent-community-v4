@@ -437,7 +437,20 @@ async def api_save_config(request: Request):
     # 下拉停在"请选择模型"时提交的是空值，此时虽有默认兜底，也该告诉用户
     # 「你没选，实际用的是 XXX」，而不是让他以为自己选上了。
     _model_selected = bool(str(body.get("ai_model") or "").strip())
+        # ★EXT-20261022-01（A）：占位符不拦截，但**必须提醒**（黄条），别让用户以为配好了
+    _warns = []
+    try:
+        from ..ai_provider import PLACEHOLDER_HINTS as _ph
+    except Exception:                                # noqa: BLE001
+        _ph = ()
+    _base = str((body or {}).get("ai_base_url") or "")
+    _model = str((body or {}).get("ai_model") or "")
+    if any(x and x in _base for x in _ph) or any(x and x in _model for x in _ph) \
+            or "example.com" in _base or _model.startswith("example-model"):
+        _warns.append("这是示例占位地址/模型：保存成功了，但 AI 一定连不上。请填你自己的 base_url 与模型名。")
+    _out_warn = {"placeholder_warning": _warns} if _warns else {}
     return {
+        **_out_warn,
         "success": True,
         "configured": bool(provider_type and api_key),
         "provider_type": provider_type,

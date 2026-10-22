@@ -93,7 +93,7 @@ async def import_workflow(wid: str, request: Request):
     if not isinstance(nodes, list) or not nodes:
         return Utf8JSONResponse({"error": "要传 nodes: [...]（至少一个节点）"}, status_code=400)
 
-    allowed = {"node_id", "label", "kind", "status", "parent_id", "note"}
+    allowed = {"node_id", "label", "kind", "status", "parent_id", "parents", "note"}
     existing = {str(n.get("node_id")) for n in (getattr(ws, "task_tree", None) or [])
                 if isinstance(n, dict)}
     added, skipped = [], []

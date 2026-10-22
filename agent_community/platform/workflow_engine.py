@@ -26,16 +26,34 @@ def state_of(node: dict) -> str:
     return str(node.get("status") or "planned")
 
 
+def parents_of(node: dict) -> list:
+    """一个节点的全部父节点（D4：支持 `parents: [...]`；只有 `parent_id` 时当单父）。
+
+    菱形依赖（A→B、A→C、B→D、C→D）必须两个父都完成才能跑 D，否则执行顺序与画布所见不符。
+    """
+    out = []
+    multi = node.get("parents")
+    if isinstance(multi, list):
+        out.extend(str(x) for x in multi if str(x or ""))
+    single = str(node.get("parent_id") or "")
+    if single and single not in out:
+        out.append(single)
+    return out
+
+
 def deps_done(ws, node: dict) -> bool:
-    """父节点（依赖）是否都完成了。没有父 ⇒ 直接可跑。"""
-    pid = str(node.get("parent_id") or "")
-    if not pid:
+    """**所有**父节点都完成了才算可跑。没有父 ⇒ 直接可跑。"""
+    pids = parents_of(node)
+    if not pids:
         return True
     m = _by_id(ws)
-    parent = m.get(pid)
-    if parent is None:                       # 父节点被删了：当作依赖满足（不因此永久卡死）
-        return True
-    return state_of(parent) in DONE
+    for pid in pids:
+        parent = m.get(pid)
+        if parent is None:                   # 父节点被删了：当作这一条依赖满足（不永久卡死）
+            continue
+        if state_of(parent) not in DONE:
+            return False
+    return True
 
 
 def next_node(ws):
@@ -117,9 +135,8 @@ def next_nodes(ws, limit: int = 0) -> list:
         if not deps_done(ws, node):
             continue
         nid = str(node["node_id"])
-        pid = str(node.get("parent_id") or "")
-        if pid and pid in picked_ids:      # 同一批里不放父子（父没跑完，子不能同时跑）
-            continue
+        if any(p in picked_ids for p in parents_of(node)):
+            continue                       # 同一批里不放父子（父没跑完，子不能同时跑）
         picked.append(node)
         picked_ids.add(nid)
     return picked

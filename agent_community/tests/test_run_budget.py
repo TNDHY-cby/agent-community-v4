@@ -73,7 +73,9 @@ def test_set_budget_validation_and_clear():
         rb.set_budget(t, {"max_cost": "不是数字"})
     with pytest.raises(ValueError):
         rb.set_budget(t, {"max_rounds": -1})
-    assert "max_cost" not in rb.set_budget(t, {"max_cost": 0}), "传 0 应当取消该项限制"
+    # ★D2：0 现在是**合法值**（零花费）；取消限制要用 None / 空字符串
+    assert rb.set_budget(t, {"max_cost": 0})["max_cost"] == 0
+    assert "max_cost" not in rb.set_budget(t, {"max_cost": None})
 
 def test_start_blocked_by_budget_and_endpoints():
     """启动闸 + 停止/重跑（真跑 HTTP）：超预算 409，停止留痕，重跑在预算内才允许。"""

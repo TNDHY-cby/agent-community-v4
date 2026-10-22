@@ -10,6 +10,16 @@ from ..audit import audit_log as _audit_log
 router = APIRouter()
 
 
+class _NodeAsTask:
+    """节点在"还没有任务对象"时的替身：让 `run_budget.check` 能用统一口径判。"""
+
+    def __init__(self, node_id: str):
+        self.id = node_id
+        self.usage = {}
+        self.budget = {}
+        self.created_at = ""
+
+
 def _ws(wid: str):
     from ..state import workshops
 
@@ -69,7 +79,14 @@ async def workflow_run_step(wid: str, request: Request):
 
     # 预算闸（V77）：按节点关联的任务判；没有关联任务就不能判，如实说明但不拦
     task = tasks.get(node_id)
-    chk = rb.check(task, ws) if task is not None else {"state": "ok", "why": "", "how_to_fix": ""}
+    if task is not None:
+        chk = rb.check(task, ws)
+    else:
+        # ★D3：节点没有对应任务时，**不能再默认 ok**（那是"静默放行"）。
+        #   改为按工作间默认预算判一次；仍判不出 ⇒ 明确说"判不了"，并在响应里带 note。
+        chk = rb.check(_NodeAsTask(node_id), ws)
+        chk["note"] = ("这个节点没有对应任务（node_id=%s），预算按工作间默认口径估算；"
+                       "要精确控制请给节点建任务" % node_id)
     if chk["state"] != "ok":
         return Utf8JSONResponse({"advanced": False, "node_id": node_id, "state": chk["state"],
                                  "error": chk["why"], "how_to_fix": chk["how_to_fix"]},
@@ -97,10 +114,19 @@ async def workflow_run_step(wid: str, request: Request):
                   detail={"node_id": node_id, "kind": kind}, actor=str(body.get("by") or "user"))
         node["task_id"] = task.id
     advanced = [{"node_id": node_id, "kind": kind}]
+    blocked_now = []
     for extra in batch[1:]:                          # 同层其它可跑节点：一起派
         eid = str(extra["node_id"])
         if str(extra.get("kind") or "task") == "approval":
             continue                                 # 审批节点不批量推，逐个等人批
+        # ★D1：同批**每个节点都要过预算闸**（原来只判了 batch[0]，等于三份并发只记一份）
+        _et_chk = tasks.get(eid)
+        _echk = rb.check(_et_chk if _et_chk is not None else _NodeAsTask(eid), ws)
+        if _echk["state"] != "ok":
+            we.mark(extra, "blocked")
+            blocked_now.append({"node_id": eid, "why": _echk.get("why") or "",
+                                "how_to_fix": _echk.get("how_to_fix") or ""})
+            continue
         we.mark(extra, "running")
         et = tasks.get(eid)
         if et is not None:
@@ -114,7 +140,8 @@ async def workflow_run_step(wid: str, request: Request):
                                                     ",".join(a["node_id"] for a in advanced)[:140]))
     save_state()
     return {"advanced": True, "advanced_nodes": advanced, "node_id": node_id, "kind": kind,
-            "state": "running", "next": (we.status(ws)["next"] or {})}
+            "state": "running", "blocked_nodes": blocked_now,
+            "next": (we.status(ws)["next"] or {})}
 
 
 @router.post("/api/workshops/{wid}/workflow/reset")

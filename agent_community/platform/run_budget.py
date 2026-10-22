@@ -47,7 +47,9 @@ def check(task, workshop=None, now: datetime | None = None) -> dict:
     if not b:
         return {**base, "state": "ok", "why": "", "how_to_fix": ""}
 
-    if "max_cost" in b and s["cost"] > _num(b["max_cost"]):
+    # ★D2：`max_cost=0` 表示"**一分钱都不许花**"（不是不限）；想不限就别设这个字段
+    if "max_cost" in b and (s["cost"] > _num(b["max_cost"]) or
+                            (_num(b["max_cost"]) == 0 and s["cost"] > 0)):
         return {**base, "state": "over_budget",
                 "why": "已花 %.4f 超过上限 %.4f%s"
                        % (s["cost"], _num(b["max_cost"]),
@@ -81,15 +83,17 @@ def set_budget(task, body: dict) -> dict:
     for k in FIELDS:
         if k not in body:
             continue
-        if body[k] in (None, "", 0, "0"):
-            cur.pop(k, None)                 # 0/空 = 取消这一项限制
+        if body[k] in (None, ""):
+            cur.pop(k, None)                 # None/空 = 取消这一项限制
             continue
+        # ★D2：0 是**合法值**（零花费/零轮次/零分钟），不再被当成"取消限制"
+
         try:
             v = float(body[k])
         except (TypeError, ValueError):
             raise ValueError("%s 必须是数字" % k)
-        if v <= 0:
-            raise ValueError("%s 必须大于 0（想去掉限制就传 0 或空）" % k)
+        if v < 0:
+            raise ValueError("%s 不能是负数（想去掉限制就传 null 或空字符串；0 表示不允许任何消费）" % k)
         cur[k] = v
     task.budget = cur
     return cur

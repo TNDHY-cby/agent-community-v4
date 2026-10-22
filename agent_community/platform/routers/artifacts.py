@@ -17,11 +17,25 @@ router = APIRouter()
 MAX_BYTES = 64 * 1024 * 1024
 
 
+#: ★D5：只放行**产物子树**。数据目录下的 `tasks.json` / `config` / `policy.json` / `audit.json`
+#: 这些是**平台状态**，不属于"产物"，任何外部可达的读口都不该能取它们。
+ARTIFACT_SUBDIRS = ("workshops", "output", "temp", "artifacts", "bridges")
+
+
+def _is_under(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
 def _roots() -> list:
-    """允许的根目录（**唯一来源**：数据目录）。"""
+    """允许的根目录：数据目录下的产物子树（**唯一来源**：数据目录 + 上表）。"""
     from ..env_spec import data_dir
 
-    return [Path(data_dir()).resolve()]
+    root = Path(data_dir()).resolve()
+    return [root / sub for sub in ARTIFACT_SUBDIRS]
 
 
 @router.get("/api/artifact")
@@ -35,25 +49,47 @@ async def get_artifact(request: Request, path: str = ""):
                                 status_code=400)
 
     try:
-        target = Path(raw).expanduser()
-        if not target.is_absolute():
-            target = _roots()[0] / target
-        target = target.resolve()
+        given = Path(raw).expanduser()
+        # 相对路径：在**每个产物子树**里都试着找一次（`workshops/x.md` 与 `output/x.md` 都合法）
+        if given.is_absolute():
+            candidates = [given.resolve()]
+        else:
+            # 先按"数据目录相对"找（`workshops/x.md` ⇒ `data/workshops/x.md`），
+            # 再按各产物子树找（允许写 `output/x.md` 这种"子树内相对"）
+            from ..env_spec import data_dir as _dd
+
+            candidates = [(Path(_dd()).resolve() / given).resolve()]
+            candidates += [(root / given).resolve() for root in _roots()]
     except Exception as e:                                  # noqa: BLE001
         return Utf8JSONResponse({"error": "路径解析失败：%s" % str(e)[:120]}, status_code=400)
 
-    inside = False
-    for root in _roots():
-        try:
-            target.relative_to(root)
+    # ★D5：**存在但不在产物子树**的文件（tasks.json / config/ / policy.json…）⇒ 403，
+    #   而不是 404 —— 404 会让人以为"平台没这个文件"，其实是我们**拒绝**给。
+    for cand in candidates:
+        if cand.exists() and not any(_is_under(cand, root) for root in _roots()):
+            return Utf8JSONResponse(
+                {"error": "这个文件不属于产物（它在平台状态/配置区，不在产物子树里）",
+                 "how_to_fix": "产物只放 workshops/ output/ temp/ artifacts/ bridges/ 下；"
+                               "平台状态请查对应 API（如 /api/tasks、/api/config-status）"},
+                status_code=403)
+
+    inside, target = False, None
+    for cand in candidates:
+        for root in _roots():
+            try:
+                cand.relative_to(root)
+            except ValueError:
+                continue
             inside = True
+            if target is None or cand.exists():
+                target = cand
             break
-        except ValueError:
-            continue
-    if not inside:
+        if target is not None and target.exists():
+            break
+    if not inside or target is None:
         return Utf8JSONResponse(
-            {"error": "路径不在允许的目录内（只允许数据目录下的文件）",
-             "how_to_fix": "传数据目录内的相对路径，例如 workshops/<间>/结果.md"},
+            {"error": "路径不在允许的目录内（只允许产物子树：%s）" % "、".join(ARTIFACT_SUBDIRS),
+             "how_to_fix": "传产物子树内的相对路径，例如 workshops/<间>/结果.md 或 output/x.txt"},
             status_code=403)
 
     if not target.exists():

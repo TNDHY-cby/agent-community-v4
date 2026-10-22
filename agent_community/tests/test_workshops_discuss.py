@@ -109,12 +109,21 @@ def mkws(tmp_path):
 
     def _mk(ws_id="ws_t", status="draft", members=None,
             hall="把这段文本写成一个单元测试。", name="测试工作间"):
+        # ★EXT-20261022-01：讨论要有"已接上"的成员才放行（新闸门）。
+        #   本文件验的是讨论逻辑，所以默认塞一个已进入的成员；闸门本身在 test_workshop_start_gate.py 里测。
+        if members is None:
+            members = []
+        if not members and status in ("draft", "discussing"):
+            _default = WorkshopMember(member_id="m-ok", role="农夫", display_name="示例成员")
+            _default.entry_state = "entered"
+            _default.status = "entered"
+            members = [_default]
         ws = Workshop(
             workshop_id=ws_id,
             name=name,
             workspace_dir=str(tmp_path / ws_id),
             hall_content=hall,
-            members=list(members or []),
+            members=list(members),
             status=status,
         )
         state_mod.workshops[ws_id] = ws

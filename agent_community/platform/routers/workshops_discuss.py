@@ -86,6 +86,14 @@ async def workshop_discuss(ws_id: str, request: Request):
             {"error": f"检测到敏感数据（{_kind}），已拒绝上传工作间", "success": False},
             status_code=400,
         )
+    # ★EXT-20261022-01（B/C）：动手前先判"能不能真的开工" —— 空成员 / 全员未接上就别假装在讨论
+    from .. import workshop_gate as _gate
+
+    _g = _gate.check(ws)
+    if not _g["ok"]:
+        return Utf8JSONResponse({"success": False, "error": _g["why"],
+                                 "next_step": _g["next_step"], "gate": _g["state"]},
+                                status_code=409)
     if ws.status not in ("division", "review", "running"):
         ws.status = "discussing"
     _u = _append_msg(ws, "user", user_msg)

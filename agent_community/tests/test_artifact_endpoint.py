@@ -51,7 +51,7 @@ def test_traversal_refused(monkeypatch, tmp_path):
     (tmp_path / "secret.txt").write_text("根外秘密", encoding="utf-8")
     r = _client().get("/api/artifact", params={"path": "../secret.txt"})
     assert r.status_code == 403, r.text
-    assert "允许的目录" in r.text
+    assert ("不属于产物" in r.text) or ("允许的目录" in r.text), r.text
 
 
 def test_absolute_outside_refused(monkeypatch, tmp_path):
@@ -66,9 +66,12 @@ def test_missing_404_and_dir_400(monkeypatch, tmp_path):
     monkeypatch.setenv("AC_DATA_DIR", str(tmp_path))
     c = _client()
     assert c.get("/api/artifact", params={"path": "nope.txt"}).status_code == 404
-    (tmp_path / "sub").mkdir(exist_ok=True)
-    r = c.get("/api/artifact", params={"path": "sub"})
+    (tmp_path / "workshops" / "sub").mkdir(parents=True, exist_ok=True)
+    r = c.get("/api/artifact", params={"path": "workshops/sub"})
     assert r.status_code == 400 and "目录" in r.text, r.text
+    (tmp_path / "outside_dir").mkdir(exist_ok=True)
+    r2 = c.get("/api/artifact", params={"path": "outside_dir"})
+    assert r2.status_code == 403, "平台状态/配置区的目录不属于产物：%s" % r2.text
 
 
 def test_remote_goes_through_platform_auth(monkeypatch, tmp_path):

@@ -116,8 +116,18 @@ class Workshop:
     debate_state: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        """序列化为 dict（持久化 + 列表 API 用）。"""
+        """序列化为 dict（持久化 + 列表 API 用）。
+
+        带 `gate`（EXT-20261022-01）：界面据此显示"还没人接上 / 没有成员"的横幅，别让用户以为在讨论。
+        """
+        try:
+            from . import workshop_gate as _gate
+
+            _gate_info = _gate.info(self)
+        except Exception:                                    # noqa: BLE001 — 闸门坏不该让序列化失败
+            _gate_info = {}
         return {
+            "gate": _gate_info,
             "workshop_id": self.workshop_id,
             "name": self.name,
             "workspace_dir": self.workspace_dir,

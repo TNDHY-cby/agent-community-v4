@@ -2,6 +2,46 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.27.0] - 2026-10-22
+
+**按《合作社 v4.25.0 借鉴与完善总清单》§三 修完 D1–D6 + 落地最高性价比借鉴项**
+
+> 清单结论来源是静态审读（环境缺 fastapi，1927 条测试未实跑）。我按"先核实再改"逐条对代码验过，
+> 核实结果与修法都写在下面；**有一条（D5 的现象描述）与当前代码不符**，也如实标了。
+
+### 一、缺陷修复（逐条核实 → 真跑判据）
+
+| 条 | 清单说法 | 核实结果 | 修法 | 判据 |
+|---|---|---|---|---|
+| **D1** 并行派发绕过预算 | 只对 `batch[0]` 判预算 | **成立** | 同批**逐节点**过闸，超限的置 `blocked` 并在 `blocked_nodes` 里返回原因（不整批失败） | `test_v426_defect_fixes::test_parallel_batch_checks_every_node` |
+| **D2** `max_cost=0` 等于不限 | `0 > 0` 恒 False | **成立** | `0` = **零花费**（合法值）；取消限制改用 `null`/空；负数报错 | `test_zero_budget_means_no_spending` |
+| **D3** `node_id`/`task_id` 混用静默放行 | 取不到 task 传 None → ok | **成立** | 取不到任务时用 `_NodeAsTask` 按工作间默认口径判，并在响应带 `note` 说明"这是估算、要精确就给节点建任务"；**绝不默认 ok** | `test_missing_task_is_not_silently_ok` |
+| **D4** 菱形依赖丢边 | 引擎只读单父 `parent_id` | **成立** | 引擎支持 `parents: [...]`（`parents_of()` 合并两者），导入白名单接受 `parents`，同批也不放父子 | `test_workflow_multiparent`（3 条：双父都要完成 / 单父不退化 / 首层只跑 A） |
+| **D5** 外部只读可读数据目录任意文件 | "`_is_localhost()` 豁免 + 反代可冒充" | **部分不成立**：`_is_localhost` 当前**已不存在**；但**真实风险仍在**——数据目录下**任何**文件都能取（含 `tasks.json`/`config`/`policy.json`） | 收紧为**只放行产物子树**（`workshops/ output/ temp/ artifacts/ bridges/`）；**存在但不在子树 ⇒ 403**（不是 404，避免"以为没这文件"） | `test_artifact_only_serves_artifact_subtrees` + 既有产物用例已对齐 |
+| **D6** `upgrade` 阻塞事件循环 | install 走线程、upgrade 没走 | **成立** | `upgrade` 也走 `asyncio.to_thread` | `test_upgrade_is_threaded`（源码断言 + 该端点已有真跑用例） |
+
+### 二、借鉴项落地（清单 §四 里性价比最高的两条）
+
+- **`tools/seed_demo.py`**：clone 完立刻有东西可看——3 个示例 agent（`示例Harness-A/B/C`）+ 1 个演示工作间
+  + 一条 3 节点流程（含 1 个 `approval` 节点）。**只走公开 HTTP 接口**，不直接改数据文件；
+  `--dry-run` 只打印；播完告诉用户"下一步点哪儿"，并注明哪些是演示数据。
+  判据 `test_seed_demo`（2 条：干跑可跑且输出 3 个示例名 / 源码里不许出现 `save_state`、`data_dir(` 这类直写）。
+- **`parents[]`（D4 的引擎侧）** 同时把"画布能画多父"这件事在执行侧补上了。
+
+### 三、判据与状态
+
+- 全量 **1942 passed / 3 skipped**（比上一版 +10：D 系列 8 条 + 多父 3 条 + seed 2 条，减去并入的重复）
+- `check_portability` fail=0、`check_productization` fail=0、`pre_release_check --fast` 9 项全过
+- 服务 18920 = **4.27.0**；环境变量仍 89；`routers/` 48 文件
+
+### 四、没做的（如实）
+
+- 清单 §四 里"agent 三态""`wait-until-blocked`""权限矩阵""模板库""移动只读页""CI 干净环境"
+  等**未做**——它们是**新功能/基建**，按本项目规矩要**先出设计稿 + 老板拍板**；
+- 清单 §七 的"CI 在干净环境跑 1942 条"：目前判据是 `tools/dual_platform_check.py`（Windows + WSL 两侧真跑），
+  已等价覆盖"干净环境"，但没有独立 CI 服务（Gitee 无免费 CI，老板 10-17 已定）；
+- `README 首屏 GIF`：需要录屏素材，属前端/素材事，我没动。
+
 ## [4.25.0] - 2026-10-22
 
 **并入前端 6 笔（227 档案⑤ / 228 探针界面 / 大厅水印磨砂 4 笔）+ 通道 234/235**

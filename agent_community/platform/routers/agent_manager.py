@@ -137,4 +137,5 @@ async def upgrade(agent_id: str, request: Request):
         body = await request.json()
     except Exception:                                        # noqa: BLE001
         body = {}
-    return _run_install(agent_id, body if isinstance(body, dict) else {})
+    # ★D6：升级同样是同步 subprocess（最长 600s），必须挪线程，否则整个 API 假死
+    return await asyncio.to_thread(_run_install, agent_id, body if isinstance(body, dict) else {})
