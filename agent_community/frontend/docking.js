@@ -194,6 +194,13 @@ const DOCK_WRITE_WHITELIST = [
   '/api/agents/*/detect',
   '/api/agents/*/install',
   '/api/agents/*/upgrade',
+  // V85 名册健康（隐藏/申诉）：隐藏要理由，申诉即恢复并留痕
+  '/api/harness/*/hide',
+  '/api/harness/*/appeal',
+  // V83 附属记录（存证：签名/扫描/审计；verify 吃整条记录）与 V84 可发现开关
+  '/api/attest/*',
+  '/api/attest/*/*',
+  '/api/workshops/*/discoverable',
 ];
 
 /** 路径模板（**字面量、唯一来源**）：界面上的每个动作都从这里取路径。 */
@@ -486,6 +493,27 @@ async function dockLoadTunnelAdvice(){
 
 /* ══ Agent 安装器（V80 / DSH 234）════════════════════════════
  * 四种返回分样式：403 开关关（中性灰，不是失败）/ 400 要确认 / 真失败（红，exit_code+tail 原样）/ dry_run（显示 cmd + 确认执行）。 */
+
+/* ══ V85 名册健康：隐藏（要理由）/ 申诉（要说明，申诉即恢复并留痕）════════ */
+async function dockHarnessHideAsk(id){
+  const reason = prompt('隐藏「' + id + '」的理由（必填，会留痕）：');
+  if (reason === null) return;
+  if (!reason.trim()){ alert('理由必填。'); return; }
+  const res = await dockPost('/api/harness/' + encodeURIComponent(id) + '/hide', {on: true, reason: reason.trim()});
+  const d = res.data || {};
+  alert((res.ok && d.success!==false) ? '已隐藏（数据未删，可申诉恢复）' : '隐藏未成功：' + ((d.error||d.reason) || ('HTTP ' + res.status)) + (d.how_to_fix ? (' · ' + d.how_to_fix) : ''));
+  dockLoadArchive();
+}
+async function dockHarnessAppeal(id){
+  const note = prompt('申诉说明（必填，为什么应该恢复）：');
+  if (note === null) return;
+  if (!note.trim()){ alert('说明必填。'); return; }
+  const res = await dockPost('/api/harness/' + encodeURIComponent(id) + '/appeal', {note: note.trim()});
+  const d = res.data || {};
+  alert((res.ok && d.success!==false) ? '申诉已提交——名册已恢复（留痕）' : '申诉未成功：' + ((d.error||d.reason) || ('HTTP ' + res.status)) + (d.how_to_fix ? (' · ' + d.how_to_fix) : ''));
+  dockLoadArchive();
+}
+
 async function dockLoadAgents(){
   const box=document.getElementById('agentsList');
   if(!box) return;
@@ -1196,6 +1224,8 @@ async function dockLoadArchive(){
   const wrap = document.getElementById('dockArchiveWrap');
   if (!wrap) return;
   const hs = (DOCK_LAST_OVERVIEW && DOCK_LAST_OVERVIEW.harnesses) || [];
+  let health = {};
+  try{ const hd = await (await fetch('/api/registry/health')).json(); (hd.agents||[]).forEach(a=>{health[a.harness_id]=a;}); }catch(e){}
   if (!hs.length){
     wrap.innerHTML = '<div class="card"><h3>员工档案</h3>' +
       '<p class="lead">还没有员工 —— 从「登记一位新员工」开始。</p>' +
@@ -1208,8 +1238,14 @@ async function dockLoadArchive(){
       '<b>' + esc(h.harness_name || h.harness_id) + '</b> <span class="sub">(' + esc(h.harness_id) + ')</span><br>' +
       '<span class="sub">' + (h.online ? '在线' : '离线') + ' · 唤醒方式 <code>' + esc(h.wakeup_method || '—') +
       '</code>' + (h.interface_class_label ? (' · ' + esc(h.interface_class_label)) : '') + '</span><br>' +
+      '<span class="sub">名册健康：样本 ' + esc(String((health[h.harness_id]||{}).samples!=null?health[h.harness_id].samples:'—')) +
+      ' · 连续全失败 ' + esc(String((health[h.harness_id]||{}).days_all_failing!=null?health[h.harness_id].days_all_failing:'—')) + ' 天</span>' +
+      ((health[h.harness_id]||{}).candidate ? '<span class="cap-src src-probed" style="color:#FFB000;border-color:#FFB000">建议隐藏</span>' : '') +
+      ((health[h.harness_id]||{}).hidden ? '<span class="sub" style="color:var(--red,#FF0000)">· 已隐藏（数据仍在，可申诉恢复）</span>' : '') + '<br>' +
       '<div class="dock-form-actions" style="margin-top:5px">' +
       '<button class="dock-detail-btn" onclick="dockOpenArchive(\'' + esc(h.harness_id) + '\')">详情</button>' +
+      '<button class="dock-detail-btn" onclick="dockHarnessHideAsk(\'' + esc(h.harness_id) + '\')">隐藏</button>' +
+      '<button class="dock-detail-btn" onclick="dockHarnessAppeal(\'' + esc(h.harness_id) + '\')">申诉</button>' +
       '</div></div>').join('') +
     '</div><div id="dkArchiveDrawer"></div>';
 }
@@ -1233,7 +1269,8 @@ async function dockOpenArchive(hid){
   DOCK_SCRIPT.hid = hid;
   box.innerHTML = dockDrawerHtml(d);
   const _wake = (d.archive && d.archive.wakeup_method) || (d.harness && d.harness.wakeup_method) || '';
-  dockLoadCapability(hid, _wake === 'clipboard');   /* ⑤ 能力与证据：抽屉打开即异步加载；clipboard=人工中转，只给「我确认它回了」 */
+  dockLoadCapability(hid, _wake === 'clipboard');
+  dockLoadAttest(hid);   /* ⑤ 能力与证据：抽屉打开即异步加载；clipboard=人工中转，只给「我确认它回了」 */
   _dockScrollTo('dkArchiveDrawer');
 }
 
@@ -1302,6 +1339,7 @@ function dockDrawerHtml(d){
       : '<p class="sub">还没存过脚本 —— 去「脚本激活」工作台做一份（填关键词 → 让平台去找 → 试投 → 保存）。</p>') +
     '</details>' +
     '<details id="dkCapBlock-' + esc(d.harness_id) + '"><summary>⑤ 能力与证据（三段分离：配置 ≠ 在跑 ≠ 会回话）</summary><p class="sub">加载中…（只读端点，不探活不发外网）</p></details>' +
+    '<details id="dkAttestBlock-' + esc(d.harness_id) + '"><summary>⑥ 附属记录（存证：签名 / 扫描 / 审计）</summary><p class="sub">加载中…</p></details>' +
     '<div class="dock-facts">平台刚判定的档位事实（只读）：档位 <b>' + esc(f.interface_class || '—') +
     '</b> · 平台能叫醒：<b>' + (f.can_be_woken_by_platform ? '能' : '不能') +
     '</b> · 导出候选与脚本的真相都在档案里。</div>' +
@@ -1311,6 +1349,68 @@ function dockDrawerHtml(d){
     '<div id="dkArcOut"></div></div>';
 }
 
+/* ══ 档案 ⑥ 附属记录（V83 存证，DSH 237）════════════════════════
+ * 硬口径：每条 trust=platform-self（平台自签）必须原样显示，绝不写成「已认证/已背书」；
+ * 验签调 POST /api/attest/verify（吃整条记录），绿=valid、红=不匹配+why；scan 的 items 逐条列出。 */
+async function dockLoadAttest(hid){
+  const box = document.getElementById('dkAttestBlock-' + hid);
+  if (!box) return;
+  try{
+    const d = await (await fetch('/api/attest/harness/' + encodeURIComponent(hid))).json();
+    const rows = d.records || d.items || [];
+    if (!rows.length){ box.innerHTML = '<p class="sub">还没有附属记录——下面可记一条审计。</p>'; }
+    else {
+      box.innerHTML = '<div class="peers-list">' + rows.map(r => {
+        const rid = String(r.att_id || r.id || '').replace(/'/g, '');
+        let scan = '';
+        if (r.kind === 'scan' && r.result && r.result.items){
+          scan = '<div class="pr-sub">' + r.result.items.map(it =>
+            '· ' + esc(it.item || '') + '：' + (it.passed ? '通过' : '未通过——' + esc(it.why || ''))).join('<br>') + '</div>';
+        }
+        return '<div class="peer-row"><div class="pr-top"><b>' + esc(r.kind || '?') + '</b>' +
+          '<span class="sub">' + esc(r.at || '') + '</span>' +
+          '<span class="cap-src src-declared">trust: ' + esc(r.trust || 'platform-self') + '</span></div>' +
+          (r.note ? '<div class="pr-sub">' + esc(r.note) + '</div>' : '') + scan +
+          '<div class="pr-acts"><button class="btn mini" onclick="dockAttestVerify(\'' + esc(hid) + '\',\'' + rid + '\')">验签</button>' +
+          '<span class="dock-msg" id="capAttestMsg-' + esc(rid) + '"></span></div></div>';
+      }).join('') + '</div>';
+    }
+    box.innerHTML += '<div class="dock-form-actions" style="margin-top:8px">' +
+      '<button class="btn mini" onclick="dockAttestAudit(\'' + esc(hid) + '\')">记一条审计</button>' +
+      '<span class="dock-msg" id="capAttestAdd-' + esc(hid) + '"></span></div>';
+    box.dataset.records = JSON.stringify(rows);
+  }catch(e){ box.innerHTML = '<p class="sub">加载失败：' + esc(e.message) + '</p>'; }
+}
+async function dockAttestVerify(hid, attId){
+  const msg = document.getElementById('capAttestMsg-' + attId);
+  const box = document.getElementById('dkAttestBlock-' + hid);
+  if (!msg || !box) return;
+  let rec = null;
+  try{ rec = (JSON.parse(box.dataset.records || '[]') || []).find(r => String(r.att_id || r.id || '') === String(attId)); }catch(e){}
+  if (!rec){ msg.textContent = '找不到这条记录'; msg.style.color = 'var(--red,#FF0000)'; return; }
+  msg.textContent = '验签中…';
+  const res = await dockPost('/api/attest/verify', rec);
+  const d = res.data || {};
+  if (d.valid === true){ msg.textContent = '✓ 验签通过（trust: ' + esc(rec.trust || 'platform-self') + '）'; msg.style.color = 'var(--green,#8FB39B)'; }
+  else { msg.textContent = '✗ 不匹配：' + (d.why || ('HTTP ' + res.status)); msg.style.color = 'var(--red,#FF0000)'; }
+}
+async function dockAttestAudit(hid){
+  const note = prompt('审计内容（必填）：');
+  if (note === null) return;
+  if (!note.trim()){ alert('内容必填。'); return; }
+  const msg = document.getElementById('capAttestAdd-' + hid);
+  if (msg) msg.textContent = '记录中…';
+  const res = await dockPost('/api/attest/harness/' + encodeURIComponent(hid), {kind: 'audit', note: note.trim()});
+  const d = res.data || {};
+  if (res.ok && d.success !== false){
+    if (msg) msg.textContent = '已记录（trust: ' + esc(d.trust || 'platform-self') + '，平台自签）';
+    dockLoadAttest(hid);
+  } else if (msg){
+    msg.textContent = '记录未成功：' + ((d.error || d.reason) || ('HTTP ' + res.status)) + (d.how_to_fix ? (' · ' + d.how_to_fix) : '');
+    msg.style.color = 'var(--red,#FF0000)';
+  }
+}
+
 /* ══ 档案 ⑤ 能力与证据（V73，DSH 226）════════════════════════
  * 三条硬要求：三段分开显示；connected=false 绝不出现「已接上/可用/已就绪」；
  * 能力挂来源徽标（declared灰/probed黄/verified绿/failed红）；notes 原样显示。
@@ -1318,7 +1418,7 @@ function dockDrawerHtml(d){
 const CAP_STATE_TEXT = {ok:'已验证', failed:'失败', unknown:'未知', unverified:'未验证'};
 const CAP_SRC_TEXT = {declared:'声明', probed:'已探到', verified:'已验证', failed:'失败'};
 const CAP_SRC_CLS = {declared:'src-declared', probed:'src-probed', verified:'src-verified', failed:'src-failed'};
-/* ③ agent 能回话的状态文案（DSH 228 映射：source 必须区分，人工确认绝不冒充自动验证） */
+/* ④ agent 能回话的状态文案（DSH 228 映射：source 必须区分，人工确认绝不冒充自动验证） */
 function capReplyText(o){
   const st = String((o||{}).state||'unverified');
   if (st==='ok') return (o.source==='human_confirm') ? '人工确认（用户说它回了）' : '已验：投递后它回了带回执的消息';
@@ -1387,14 +1487,14 @@ async function dockLoadCapability(hid, humanRelay){
           ? '<button class="btn mini" onclick="dockProbeReply(\'' + esc(hid) + '\',true)">我确认它回了</button>'
           : '<button class="btn mini" onclick="dockProbeReply(\'' + esc(hid) + '\',false)">验一次</button>';
         const badge = (st==='ok' && o.source==='human_confirm') ? '<span class="cap-src src-probed">人工确认</span>' : '';
-        return '<div class="peer-row"><div class="pr-top"><span class="' + cls + '"></span><b>③ agent 能回话</b>' +
+        return '<div class="peer-row"><div class="pr-top"><span class="' + cls + '"></span><b>④ agent 能回话</b>' +
           '<span class="pt-status ' + (st==='ok'?'done':st==='failed'?'failed':'sent') + '">' + esc(CAP_STATE_TEXT[st]||st) + '</span>' + badge + '</div>' +
           '<div class="pr-sub">' + esc(capReplyText(o)) + '</div>' +
           (o.why && st==='failed' ? '<div class="pr-sub">' + esc(o.why) + '</div>' : '') +
           '<div class="pr-acts">' + btn + '<span class="dock-msg" id="capProbeMsg-' + esc(hid) + '"></span></div></div>';
       }
       return '<div class="peer-row"><div class="pr-top"><span class="' + cls + '"></span><b>' +
-        ({bridge_config:'① 桥配置', harness_running_bridge:'② 桥在跑', agent_can_reply:'③ agent 能回话'}[k]||esc(k)) +
+        ({card_conformance:'① 声明合规', bridge_config:'② 配置能连', harness_running_bridge:'③ 桥在跑', agent_can_reply:'④ agent 能回话'}[k]||esc(k)) +
         '</b><span class="pt-status ' + (st==='ok'?'done':st==='failed'?'failed':'sent') + '">' + esc(CAP_STATE_TEXT[st]||st) + '</span></div>' +
         (o.why ? '<div class="pr-sub">' + esc(o.why) + '</div>' : '') +
         (o.evidence_scope ? '<div class="pr-sub">' + esc(o.evidence_scope) + '</div>' : '') +

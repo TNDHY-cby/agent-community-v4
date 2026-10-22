@@ -64,6 +64,10 @@ WHITELIST_EXPECT = {
     #   ⇒ 都是"用户点按钮才调"，必须进白名单，**不豁免**
     "/api/harness/*/probe-reply",
     "/api/agents/*/detect", "/api/agents/*/install", "/api/agents/*/upgrade",
+    # ★2026-10-22 FE-26 §5 增补四（V82–V85 的界面落地）：名册健康、附属记录存证、工作间发现开关
+    "/api/harness/*/hide", "/api/harness/*/appeal",
+    "/api/attest/*", "/api/attest/*/*",
+    "/api/workshops/*/discoverable",
 }
 
 #: `FE-26` §2a：第一屏的功能模块（每块＝一件能当场办的事）。`data-dock-service` 用这些 id。

@@ -331,3 +331,14 @@ def _isolate_registry_health(tmp_path, monkeypatch):
     except Exception:                                        # noqa: BLE001 — 有意静默：模块没装也不该挡住别的测试
         pass
 
+
+@pytest.fixture(autouse=True)
+def _isolate_credentials(tmp_path, monkeypatch):
+    """V86：凭据账本也指到 tmp（否则任何调 `/api/credentials` 的测试会往真实数据目录写账本）。"""
+    try:
+        from agent_community.platform import credentials as _cred
+
+        monkeypatch.setattr(_cred, "LEDGER_DIR", tmp_path / "cred_keys", raising=True)
+    except Exception:                                        # noqa: BLE001 — 有意静默：模块没装也不该挡住别的测试
+        pass
+

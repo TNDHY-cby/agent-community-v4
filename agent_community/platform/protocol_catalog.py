@@ -142,6 +142,45 @@ def _runtime_status(entry: dict) -> str:
     return str(entry.get("status", ""))
 
 
+# ── 开箱形态与对外图标（2026-10-22 加；起因见下方注释）────────────────────
+#
+# ★事故：README 曾写「8 种协议」，把 WS（部分）、SSE（规划中）、gRPC（要另装 grpcio）
+#   都算成"已通"。懂行的人一眼看穿，**对外夸大一次，信任就没了**。
+# 根因：README 的矩阵是**手写**的，而真实状态在代码里 —— 两处必然漂移。
+# 解法：把"对外该显示什么"也做成代码里的**派生结果**，README 矩阵由守卫逐行比对。
+#
+#: 每份协议"开箱即用"的形态：
+#:   builtin      —— 平台进程自带，起服务就能用
+#:   sidecar      —— 需**另起一个进程**，但依赖已在 requirements.txt 里（MCP / A2A）
+#:   optional_dep —— 需**另装可选依赖**（gRPC 的 grpcio），未装即 `disabled`
+_OPENBOX_MODE: dict[str, str] = {
+    "http": "builtin", "ws": "builtin", "pipe": "builtin", "acp": "builtin",
+    "mcp": "sidecar", "a2a": "sidecar", "sse": "builtin", "grpc": "optional_dep",
+}
+
+
+def openbox_mark(entry: dict) -> str:
+    """对外该用什么说法：`ready` / `partial` / `optional` / `planned` / `absent`。
+
+    README 的协议矩阵、`/api/protocols` 的展示都只认这一个派生结果（一处真相）。
+    """
+    status = _runtime_status(entry)
+    mode = entry.get("mode") or _OPENBOX_MODE.get(entry.get("id", ""), "builtin")
+    if status == "available":
+        return "optional" if mode == "optional_dep" else "ready"
+    if status == "partial":
+        return "partial"
+    if status == "not_implemented":
+        return "planned"
+    return "absent"          # disabled（如未装 grpcio 的 gRPC）
+
+
+#: 图标与短词：README 矩阵必须与之逐行一致（守卫见 test_doc_credibility）
+OPENBOX_ICON = {"ready": "✅", "partial": "⚠️", "optional": "🔒", "planned": "🔒", "absent": "🔒"}
+OPENBOX_TEXT = {"ready": "已通", "partial": "部分", "optional": "可选",
+                "planned": "规划中", "absent": "未安装"}
+
+
 def get_protocol_catalog(host: str = "", http_port: int = 0) -> list[dict[str, Any]]:
     """返回完整协议目录（含运行时端点坐标）。
 
@@ -163,6 +202,9 @@ def get_protocol_catalog(host: str = "", http_port: int = 0) -> list[dict[str, A
         entry = dict(p)
         pid = entry["id"]
         entry["status"] = _runtime_status(entry)      # 随环境变化的状态在调用时算
+        # 开箱形态 + 对外口径（README 矩阵与本接口共用，避免两处手写漂移）
+        entry["mode"] = _OPENBOX_MODE.get(pid, "builtin")
+        entry["openbox"] = openbox_mark(entry)
         # 填充运行时端点
         if pid == "http":
             entry["endpoint"] = f"http://{host}:{http_port}/api"

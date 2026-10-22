@@ -266,6 +266,7 @@ from .routers.notify import router as _notify_router
 from .routers.attestations import router as _attest_router
 from .routers.discovery import router as _discovery_router
 from .routers.registry_health import router as _registry_health_router
+from .routers.credentials import router as _credentials_router
 app.include_router(_reply_probe_router)
 app.include_router(_artifacts_router)
 app.include_router(_approval_router)
@@ -277,6 +278,7 @@ app.include_router(_notify_router)
 app.include_router(_attest_router)
 app.include_router(_discovery_router)
 app.include_router(_registry_health_router)  # V85 名册健康（隐藏/申诉）  # V84 工作间可发现（/.well-known）  # V83 可验证附属记录（签名/扫描/审计）  # V80 通知渠道（webhook / smtp）  # V80 Agent Manager（安装默认关）  # V78 工作流执行引擎  # V77 执行预算与超时闸  # V76 运行快照回放 + 流程导入导出  # V76 人工审批闸门（默认关）  # V75 P1-4 产物统一出口  # V74 回话探针：验一次「发消息给它、它回了」并落证据  # 助手会话一族（2026-10-21 从 server.py 整块搬出）
+app.include_router(_credentials_router)  # V86 凭据体检（只读视图 + 手动体检；永不进外部只读档）
 from .routers.agents_registry import router as _agents_registry_router
 app.include_router(_agents_registry_router)  # Agent 注册与在线列表（2026-10-21 从 server.py 整块搬出）
 from .routers.legacy_misc import router as _legacy_misc_router
@@ -440,7 +442,9 @@ EXTERNAL_READONLY_SUFFIX = (
     ("/api/harness/", ("/capability", "/probe-reply")),
 )
 
-EXTERNAL_READONLY_DENY = ("/api/config", "/api/admin/", "/api/logs/", "/api/plugins", "/api/policy")
+EXTERNAL_READONLY_DENY = ("/api/config", "/api/admin/", "/api/logs/", "/api/plugins", "/api/policy",
+                          # V86：凭据体检会暴露"密钥在哪、多弱"——自己对内看，**永不对公网**
+                          "/api/credentials")
 
 
 def external_readonly_enabled() -> bool:

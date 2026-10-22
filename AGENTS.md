@@ -90,6 +90,7 @@ python tools/make_shortcut.py --check    # 桌面快捷方式必须**指向本�
 python tools/move_endpoints.py --module x.py --title "某族" --paths /api/a,/api/b --dry-run  # 把一组 @app 端点搬进 routers/（惰性 import 自动算；拒绝搬带 global 的）
 python tools/fix_doc_split.py --src design-docs/某大文档.md --out-dir design-docs/model --dry-run  # 大文档拆「主索引 + 分册」
 python tools/silent_except_report.py     # 静默吞异常的存量与"只减不增"闸门（--check / --write）
+python tools/credential_check.py         # 凭据体检（V86）：只给位置/指纹/弱值/桥产物明文，**绝不打印明文**；exit 1＝有问题
 python -m pytest -q                     # 全部回归（含双平台守卫）
 python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 ```
@@ -212,7 +213,7 @@ python tools/gen_env_docs.py --check # 环境变量文档不许漂移
 > 规模数字**以实测为准**，别照抄历史文档（旧版写"269 KB / 5498 行 / 46 端点"，早已失真）。
 > ⚠️ 本文件旧版曾写「已不含任何路由（只剩 `include_router` 与编排）」—— **实测为误**，`server.py` 自己的路由一直都在。
 > **「新端点加到 `routers/` 对应端点组」这条规矩不变**，只是别再当作"server 已经没有路由"来理解。
-> HTTP 业务端点在 `platform/routers/`（**51 个文件**）：
+> HTTP 业务端点在 `platform/routers/`（**52 个文件**）：
 
 | 端点组 | 结构（V-13 拆分后，每个 ≤500 行） |
 |---|---|

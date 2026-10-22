@@ -228,6 +228,66 @@ async function fcReset(){
   fcLoad();
 }
 
+/* ══ V84 工作间可被外部发现（DSH 237）════════════════════
+ * 默认关；开启后显示可复制的 /.well-known/workshop/<id>.json 链接；
+ * 单卡只含 name/status/members 数/nodes 计数/next/gate/trust——不含成员姓名/路径/任务正文（如实转述后端口径）。 */
+async function fcDiscoverToggle(){
+  const btn = document.getElementById('fcDiscBtn');
+  const cur = btn ? btn.textContent : '';
+  const on = cur.indexOf('已开启') >= 0;
+  if (!confirm(on ? '关闭外部发现？（外部将查不到这张卡）' : '允许外部发现本工作间？（只读卡片：不含成员姓名/路径/任务正文）')) return;
+  try{
+    const res = await fetch('/api/workshops/' + encodeURIComponent(fcWsId()) + '/discoverable',
+      {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({on: !on})});
+    const d = await res.json().catch(()=>({}));
+    if (!res.ok || d.error){ alert('设置未成功：' + (d.error || ('HTTP ' + res.status)) + (d.how_to_fix ? (' · ' + d.how_to_fix) : '')); return; }
+    fcDiscoverRender(!on);
+  }catch(e){ alert('失败：' + e.message); }
+}
+async function fcDiscoverRender(on){
+  const btn = document.getElementById('fcDiscBtn');
+  if (btn) btn.textContent = on ? '发现：已开启' : '发现：未开启';
+  let old = document.getElementById('fcDiscLink');
+  if (old) old.remove();
+  if (!on) return;
+  const link = location.origin + '/.well-known/workshop/' + fcWsId() + '.json';
+  const bar = document.createElement('div');
+  bar.id = 'fcDiscLink';
+  bar.style.cssText = 'padding:6px 12px;border-bottom:1px solid var(--rule);font-size:11.5px;color:var(--muted);word-break:break-all';
+  bar.innerHTML = '外部只读卡（含 trust，不含成员姓名/路径/正文）：<code>' + link.replace(/</g,'&lt;') + '</code> ' +
+    '<button class="btn mini ghost" onclick="fcCopyDiscover()">复制链接</button>';
+  const panel = document.getElementById('flowCanvasPanel');
+  const head = panel && panel.firstElementChild;
+  if (head && head.nextSibling) head.parentNode.insertBefore(bar, head.nextSibling);
+  else if (panel) panel.appendChild(bar);
+  try{ const card = await (await fetch('/.well-known/workshop/' + fcWsId() + '.json')).json();
+    bar.title = '单卡字段：' + Object.keys(card).join(', ') + '（trust 如实显示）';
+  }catch(e){}
+}
+function fcCopyDiscover(){
+  const link = location.origin + '/.well-known/workshop/' + fcWsId() + '.json';
+  navigator.clipboard.writeText(link).then(()=>{ alert('已复制：' + link); }).catch(()=>{ prompt('复制下面的链接：', link); });
+}
+/* 打开画布时如实同步开关状态 */
+(function(){
+  const _load = fcLoad;
+  fcLoad = async function(){
+    await _load();
+    try{
+      const st = await (await fetch('/api/workshops/' + encodeURIComponent(fcWsId()) + '/discoverable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({on:null})}));
+      void st;
+    }catch(e){}
+    /* 用 well-known 是否列出本间来判定（后端只列开启的）——不做假状态 */
+    try{
+      const list = await (await fetch('/.well-known/workshops.json')).json();
+      const wid = fcWsId();
+      const items = (list && (list.workshops || list.items)) || [];
+      const on = items.some(w => String(w.workshop_id || w.id || '') === String(wid));
+      fcDiscoverRender(on);
+    }catch(e){ fcDiscoverRender(false); }
+  };
+})();
+
 function fcToggleReplay(){
   const p = document.getElementById('fcReplay'); if (!p) return;
   const show = p.style.display === 'none';

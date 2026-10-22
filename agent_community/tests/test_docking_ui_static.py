@@ -41,7 +41,8 @@ def _js_code(src: str) -> str:
     """
     src = re.sub(r"(?m)^\s*/\*.*?\*/\s*$", "", src, flags=re.S)   # 整行块注释
     src = re.sub(r"(?m)^\s*\*.*$", "", src)                       # JSDoc 续行
-    src = re.sub(r"(?m)//.*$", "", src)                           # 行注释
+    # `//` 行注释：**前面是 `:` 的不算**（`http://…` 会被吃掉整行剩余，2026-10-22 同类误判修过一次）
+    src = re.sub(r"(?m)(?<!:)//.*$", "", src)
     return src
 
 
@@ -87,18 +88,52 @@ def test_write_whitelist_matches_the_design_contract():
                 real.add((meth.upper(), p))
 
     missing = []
-    for spec in entries:
-        parts = spec.strip().split(" ", 1)
-        if len(parts) != 2:
-            continue
-        meth, path = parts[0].upper(), parts[1]
-        # 白名单里可能写 {id} 或 *；两种都按"段数 + 静态段"比
-        cands = [p for (mm, p) in real if mm == meth]
-        def norm(x):
-            return [s for s in x.split("/") if s and not s.startswith("{")]
-        fx = norm(path)
-        if not any(norm(p)[:len(fx)] == fx for p in cands):
-            missing.append(spec)
+
+    def segs(x):
+        return [s for s in x.split("/") if s]
+
+    def matches(spec_segs, route_path):
+        rs = segs(route_path)
+        if len(rs) != len(spec_segs):
+            return False
+        for a, b in zip(spec_segs, rs):
+            if a == "*":
+                continue
+            if b.startswith("{"):      # 后端声明的路径参数
+                continue
+            if a != b:
+                return False
+        return True
+
+    # ★2026-10-22 修（真事故）：原实现只认 `"POST /api/…"` 这种带方法前缀的写法，
+    #   而 `docking.js` 的白名单**只写路径**（方法由 `dockPost` 固定为 POST）⇒
+    #   循环里每一条都被 `len(parts) != 2: continue` 跳过，**这个守卫等于什么都没查**（纸老虎）。
+    #   现在：不带方法前缀 ⇒ 按"任一写方法"比；带前缀 ⇒ 方法也要对上。
+    WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
+
+    def missing_of(specs):
+        out = []
+        for spec in specs:
+            spec = spec.strip()
+            head, _, tail = spec.partition(" ")
+            if head.upper() in WRITE_METHODS and tail.strip():
+                method, path = head.upper(), tail.strip()
+            else:
+                method, path = None, spec
+            cands = [p for (mm, p) in real
+                     if (method is None and mm in WRITE_METHODS) or mm == method]
+            fs = segs(path)
+            if not any(matches(fs, p) for p in cands):
+                out.append(spec)
+        return out
+
+    # 判据自证：先证明它**真能抓错**（拿两条后端没有的路径喂进去，必须被抓到）——
+    # 否则"没报缺"可能只是"它什么都没查"（上一版就是这么瞎了半年）。
+    bogus = ["/api/attest-nope/*", "/api/workshops/*/discoverable-nope"]
+    caught = missing_of(bogus)
+    assert set(caught) == set(bogus), "守卫抓不住不存在的端点（判据是摆设）：只抓到 %s" % caught
+
+    missing = missing_of(entries)
     assert not missing, "前端写入白名单里有后端不存在的端点：%s" % missing
 
 def test_every_action_path_is_inside_the_whitelist():

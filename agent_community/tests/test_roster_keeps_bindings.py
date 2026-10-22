@@ -102,7 +102,7 @@ def test_new_member_still_gets_activated(monkeypatch, tmp_path):
     ws, _ = _mk_ws("h1", ws_dir=str(tmp_path / "ws1"))
     st.workshops["ws1"] = ws
     monkeypatch.setattr(wa, "save_state", lambda: None, raising=False)
-    # ⚠️ _activate_single 是在函数体内 rom ..server import ... 进来的
+    # ⚠️ _activate_single 是在函数体内 from ..server import ... 进来的
     #   ⇒ 补 router 模块没用，必须补 **server 模块的属性**（我第一版补错了，
     #     于是真的去跑激活、AI 未配置 ⇒ 静默 blocked、activated 为空）。
     import agent_community.platform.server as srv

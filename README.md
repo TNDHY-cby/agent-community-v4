@@ -1,7 +1,7 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.32.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.33.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
@@ -42,7 +42,7 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 
 | | 本仓库 | 典型前端编排工具（如 Ekko / LobeChat 这类） |
 |---|---|---|
-| 强在哪 | **协议标准与协作治理**：8 种协议（HTTP/WS/PIPE/ACP/MCP/**A2A**/SSE/gRPC）、组长选举、三级讨论、能力匹配派活、可验证的判据体系 | **产品化与分发**：安装包、可视化画布、IM 渠道、移动端 |
+| 强在哪 | **协议标准与协作治理**：**5 种协议已通**（HTTP/PIPE/ACP/MCP/**A2A**）＋ gRPC 可选 ＋ WS 部分 ＋ SSE 规划中（逐条状态见下方「协议矩阵」，别信口头数字）、组长选举、三级讨论、能力匹配派活、可验证的判据体系 | **产品化与分发**：安装包、可视化画布、IM 渠道、移动端 |
 | 缺在哪 | **包装**：没有可视化画布、没有安装包、截图少（正在补） | 协议层通常只有 MCP，**没有 A2A**、没有协作治理、没有评测闭环 |
 
 ⇒ 我们的位置是**它们缺的后端 runtime 层**：你要"看得见的画布"，我们提供"画布背后的协议与治理"。
@@ -65,7 +65,7 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 | 想看什么 | 去这里 |
 |---|---|
 | **项目到底在做什么、边界在哪** | [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) |
-| **全部设计稿（100 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
+| **全部设计稿（123 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
 | **本地优先 + 中心中转**（当前架构方向） | [`design-docs/V66_本地优先与中心中转架构设计.md`](design-docs/V66_本地优先与中心中转架构设计.md) |
 | **派活与回执走中转 / 一个 Hub 服务多家公司** | [`V67`](design-docs/V67_派活与回执走中转_M2设计.md) · [`V68`](design-docs/V68_一个Hub服务多家公司_公司隔离设计.md) |
 | **没有公网服务器怎么当中转**（三条路） | [`design-docs/RUNBOOK_没有公网服务器怎么当中转.md`](design-docs/RUNBOOK_没有公网服务器怎么当中转.md) |
@@ -73,7 +73,7 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 | **前端交接件（对外契约 + 可执行预检）** | [`外包交接_前端界面/`](外包交接_前端界面/) |
 | **这个平台怎么被验证的（判据清单）** | [`AGENTS.md`](AGENTS.md) 的「产品化硬规则」段 |
 | **每个版本改了什么** | [`CHANGELOG.md`](CHANGELOG.md) |
-| **许可证** | **双许可**：[`LICENSE`](LICENSE)（AGPL-3.0，可自由使用/修改/自部署）· [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md)（闭源嵌入或对外托管服务时购买） |
+| **许可证** | **双许可**：[`LICENSE`](LICENSE)（**AGPL-3.0**，可自由使用/修改/自部署）· [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md)（闭源嵌入或对外托管服务时购买）。⚠️ 直白说清：AGPL 下**把它当对外服务托管给第三方用**会触发"提供源码"的义务（不只是"分发安装包"才算）；要把本平台嵌进闭源产品、或不打算开源你的改动 ⇒ 走商业许可。 |
 
 
 ## 协议矩阵（多接口多选择）
@@ -82,14 +82,14 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 
 | 协议 | 方向 | 适用场景 | 状态 |
 |---|---|---|---|
-| **HTTP** | 双向 | 通用默认；注册/心跳/消息回报 | ✅ |
+| **HTTP** | 双向 | 通用默认；注册/心跳/消息回报 | ✅ 已通 |
 | **WS** | 出站 | 长连接实时通信 | ⚠️ 部分 |
-| **PIPE** | 出站 | 本地进程间通信 | ✅ |
-| **ACP** | 出站 | CLI / 桌面 Agent（拉起子进程 JSON-RPC stdio） | ✅ |
-| **MCP** | 双向 | Claude Code / Cursor 等 MCP 客户端挂载；平台也可调外部 MCP 工具 | ✅ |
-| **A2A** | 双向 | Agent-to-Agent 标准协作（外部生态 Agent 发现与派发） | ✅ |
+| **PIPE** | 出站 | 本地进程间通信 | ✅ 已通 |
+| **ACP** | 出站 | CLI / 桌面 Agent（拉起子进程 JSON-RPC stdio） | ✅ 已通 |
+| **MCP** | 双向 | Claude Code / Cursor 等 MCP 客户端挂载；平台也可调外部 MCP 工具（需另起 mcp_server 进程） | ✅ 已通 |
+| **A2A** | 双向 | Agent-to-Agent 标准协作（外部生态 Agent 发现与派发；需另起 a2a_server 进程） | ✅ 已通 |
 | **SSE** | 出站 | 单向事件流 | 🔒 规划中 |
-| **gRPC** | 出站 | 高性能二进制传输（A2A 第二绑定） | 🔒 可选（需 grpcio） |
+| **gRPC** | 出站 | 高性能二进制传输（A2A 第二绑定） | 🔒 可选（需另装 grpcio + 另起网关进程） |
 
 MCP 挂载：`claude --mcp-config '{"servers":{"ac4":{"command":"python","args":["-m","agent_community.mcp_server"]}}}'`
 A2A 发现：`GET http://<host>:9104/.well-known/agent-card.json`
@@ -455,7 +455,7 @@ curl -X POST http://127.0.0.1:$PORT/api/harness/task-result \
 
 ## 当前能力（2026-10）
 
-- **多协议接入**：HTTP / WS / PIPE / ACP / MCP / A2A 六种协议并存，harness 按 `transports` 声明 + `preferred_transport` 自选；未实现协议（SSE/GRPC）自动从选择池剔除。
+- **多协议接入**：**5 种已通**（HTTP / PIPE / ACP / MCP / A2A）并存，harness 按 `transports` 声明 + `preferred_transport` 自选；**WS 部分实现、SSE 规划中、gRPC 可选**（需 grpcio，且是独立进程），未通/未装的协议会自动从选择池剔除。逐条状态看上面的「协议矩阵」，那是唯一口径（代码里的真源是 `platform/protocol_catalog.py`）。
 - **工作间模式**：三级讨论（任务理解 → 分工 → 确认名单）+ 工作循环；任务经「回字形车间」UI 全程可视化（任务树 / 讨论区 / 插话抽屉 / 全屏放大视图）。
 - **合作社治理**：经验/信誉记录 + 能力匹配选人 + 组长选举 + 三种决策模式（用户决定/组长独裁/举手投票）+ 评估闭环。
 - ⚠️ **暂停项（如实标注，别当已实现）**：**信誉机制**（含"按信誉加权选人"与"能力指纹"）——负责人 2026-10-08 决定暂停推进，**身份定位方案仍在设计中**；既有数据记录代码予以保留。
@@ -474,11 +474,11 @@ curl -X POST http://127.0.0.1:$PORT/api/harness/task-result \
 所以本平台**不做网关、不做代理**，也**不补** OAuth/RBAC/SSO 全家桶：
 
 - **鉴权请前置**（nginx / oauth2-proxy / 反向代理都可以），合作社只负责 policy + 
-ule_gate 这一层治理规则；
-- 我们真正独有的是**一条链**：pproval（审批封驳，拒绝必填理由）→ 
-un_budget（按节点算钱，超限拦下）
+rule_gate 这一层治理规则；
+- 我们真正独有的是**一条链**：approval（审批封驳，拒绝必填理由）→ 
+run_budget（按节点算钱，超限拦下）
   → workflow_engine（拓扑/幂等/失败重路由）→ 
-un_snapshot + rtifacts（可回放、可交付）；
-- 我们还是少数**管进程而不只协议**的实现：能拉起、探活、唤醒外部 agent（8 种协议 + 桥模板 + 回话探针）。
+run_snapshot + artifacts（可回放、可交付）；
+- 我们还是少数**管进程而不只协议**的实现：能拉起、探活、唤醒外部 agent（协议状态见上方「协议矩阵」、桥模板、回话探针）。
 
 第三方代码借鉴与许可登记见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
