@@ -508,6 +508,43 @@ async function dockLoadRelay(){
   }catch(e){ ibox.innerHTML = '<p class="sub">收件箱加载失败：' + esc(e.message) + '</p>'; }
 }
 
+/* 发送/跨端派活（白名单 27 条已含 /api/relay/*，走 dockPost 单通道）。
+ * 口径：online=false 也是 200 —— 说「已投递，等它上线来取」，绝不说「已送达」；
+ * dispatch 失败 success=false 时 pt_id 照给（本地外部任务不假成功），error+how_to_fix 原话显示。 */
+async function dockRelaySend(){
+  const msg = document.getElementById('relaySendMsg');
+  const to = document.getElementById('relayTo').value.trim();
+  const payload = document.getElementById('relayText').value;
+  if (!to || !payload.trim()){ msg.textContent = '终端 id 与内容都必填'; msg.style.color='var(--red,#FF0000)'; return; }
+  msg.textContent = '发送中...'; msg.style.color='';
+  const res = await dockPost('/api/relay/send', {to_terminal: to, payload: payload, kind: 'text'});
+  if (res.ok && res.data && res.data.success){
+    msg.textContent = (res.data.online ? '对方在线，已投递' : '对方不在线：已暂存在中转，等它上线来取') + (res.data.note ? (' · ' + res.data.note) : '');
+    document.getElementById('relayText').value = '';
+  } else {
+    msg.style.color = 'var(--red,#FF0000)';
+    msg.textContent = '发送未成功：' + ((res.data && (res.data.error || res.data.reason)) || ('HTTP ' + res.status)) + ((res.data && res.data.how_to_fix) ? (' · ' + res.data.how_to_fix) : '');
+  }
+}
+async function dockRelayDispatch(){
+  const msg = document.getElementById('relayDispMsg');
+  const to = document.getElementById('relayDispTo').value.trim();
+  const title = document.getElementById('relayDispTitle').value.trim();
+  if (!to || !title){ msg.textContent = '终端 id 与任务标题都必填'; msg.style.color='var(--red,#FF0000)'; return; }
+  msg.textContent = '派活中...'; msg.style.color='';
+  const res = await dockPost('/api/relay/dispatch', {to_terminal: to, title: title});
+  if (res.ok && res.data && res.data.success){
+    msg.textContent = (res.data.online ? '对方在线，已投递' : '对方不在线：已暂存在中转，等它上线来取') +
+      (res.data.pt_id ? (' · 对外任务 ' + res.data.pt_id + '（可在下方列表看进度）') : '');
+    document.getElementById('relayDispTitle').value = '';
+    dockLoadPeerTasks();
+  } else {
+    msg.style.color = 'var(--red,#FF0000)';
+    msg.textContent = '派活未成功：' + ((res.data && (res.data.error || res.data.reason)) || ('HTTP ' + res.status)) + ((res.data && res.data.how_to_fix) ? (' · ' + res.data.how_to_fix) : '') +
+      (res.data && res.data.pt_id ? (' · 本地外部任务 ' + res.data.pt_id + ' 已留记录（未成功不算成功）') : '');
+  }
+}
+
 function dockOpenModal(svc){
   const meta = DOCK_SVC[svc] || (DOCK_WS_TILES.indexOf(svc) >= 0 ? DOCK_SVC.ws_ops : null);
   if (!meta) return;
@@ -1132,6 +1169,8 @@ async function dockOpenArchive(hid){
   }
   DOCK_SCRIPT.hid = hid;
   box.innerHTML = dockDrawerHtml(d);
+  const _wake = (d.archive && d.archive.wakeup_method) || (d.harness && d.harness.wakeup_method) || '';
+  dockLoadCapability(hid, _wake === 'clipboard');   /* ⑤ 能力与证据：抽屉打开即异步加载；clipboard=人工中转，只给「我确认它回了」 */
   _dockScrollTo('dkArchiveDrawer');
 }
 
@@ -1199,6 +1238,7 @@ function dockDrawerHtml(d){
       (sc.method ? (' · 注入方式 ' + esc(sc.method)) : '') + '</p>')
       : '<p class="sub">还没存过脚本 —— 去「脚本激活」工作台做一份（填关键词 → 让平台去找 → 试投 → 保存）。</p>') +
     '</details>' +
+    '<details id="dkCapBlock-' + esc(d.harness_id) + '"><summary>⑤ 能力与证据（三段分离：配置 ≠ 在跑 ≠ 会回话）</summary><p class="sub">加载中…（只读端点，不探活不发外网）</p></details>' +
     '<div class="dock-facts">平台刚判定的档位事实（只读）：档位 <b>' + esc(f.interface_class || '—') +
     '</b> · 平台能叫醒：<b>' + (f.can_be_woken_by_platform ? '能' : '不能') +
     '</b> · 导出候选与脚本的真相都在档案里。</div>' +
@@ -1206,6 +1246,119 @@ function dockDrawerHtml(d){
     '<button class="btn primary" onclick="dockSaveArchive(\'' + esc(d.harness_id) + '\')">保存档案改动</button>' +
     '<span class="dock-msg" id="dkArcMsg"></span></div>' +
     '<div id="dkArcOut"></div></div>';
+}
+
+/* ══ 档案 ⑤ 能力与证据（V73，DSH 226）════════════════════════
+ * 三条硬要求：三段分开显示；connected=false 绝不出现「已接上/可用/已就绪」；
+ * 能力挂来源徽标（declared灰/probed黄/verified绿/failed红）；notes 原样显示。
+ * verified 只证明"桥能连平台/领件/回报"，不代表 agent 能干这事——照显示。 */
+const CAP_STATE_TEXT = {ok:'已验证', failed:'失败', unknown:'未知', unverified:'未验证'};
+const CAP_SRC_TEXT = {declared:'声明', probed:'已探到', verified:'已验证', failed:'失败'};
+const CAP_SRC_CLS = {declared:'src-declared', probed:'src-probed', verified:'src-verified', failed:'src-failed'};
+/* ③ agent 能回话的状态文案（DSH 228 映射：source 必须区分，人工确认绝不冒充自动验证） */
+function capReplyText(o){
+  const st = String((o||{}).state||'unverified');
+  if (st==='ok') return (o.source==='human_confirm') ? '人工确认（用户说它回了）' : '已验：投递后它回了带回执的消息';
+  if (st==='failed') return '验过但失败：' + (o.why||'探针超时（没收到回执）');
+  if (st==='pending') return '探针进行中…（等它回话，最长 120 秒）';
+  return '没验过——不代表接上了';
+}
+/* 回话探针（V74）：默认关（409 显示"还没开探针"不是失败）；人工中转型只给「我确认它回了」；
+ * 不在页面加载时自动发探针——只在用户点按钮时发。 */
+async function dockProbeReply(hid, humanRelay){
+  const msgBox = document.getElementById('capProbeMsg-' + hid);
+  const setMsg = (t, bad) => { const e=document.getElementById('capProbeMsg-' + hid); if(e){e.textContent=t; e.style.color = bad?'var(--red,#FF0000)':'';} };
+  if (!msgBox) return;
+  if (humanRelay){
+    setMsg('确认中...');
+    const res = await dockPost('/api/harness/' + encodeURIComponent(hid) + '/probe-reply', {mode:'human_confirm'});
+    if (res.ok && res.data && res.data.ok!==false){ setMsg('已记录：人工确认它回了（徽标为「人工确认」，与自动验证分开）'); dockLoadCapability(hid, true); }
+    else setMsg('确认未成功：' + ((res.data && (res.data.error||res.data.reason)) || ('HTTP ' + res.status)) + ((res.data && res.data.how_to_fix)?(' · '+res.data.how_to_fix):''), true);
+    return;
+  }
+  /* 先看当前探针状态（GET 只读） */
+  try{
+    const gs = await (await fetch('/api/harness/' + encodeURIComponent(hid) + '/probe-reply')).json();
+    if (gs.state === 'pending'){ setMsg('上一次探针还在进行中…'); await dockProbeWait(hid, gs); return; }
+  }catch(e){}
+  setMsg('探针发起中…（给它发一条消息，等它回话）');
+  const res = await dockPost('/api/harness/' + encodeURIComponent(hid) + '/probe-reply', {mode:'auto'});
+  if (!res.ok || (res.data && res.data.ok === false)){
+    const code = res.status;
+    if (code === 409){ setMsg('还没开探针（' + ((res.data&&(res.data.error||res.data.how_to_fix))||'需要 AC_REPLY_PROBE_ENABLED=1') + '）——这不是失败，开了才能自动验', false); return; }
+    if (code === 400){ setMsg('这台是人工中转型，自动验不了：' + ((res.data && (res.data.error||res.data.reason)) || '') + '——请用「我确认它回了」', true); return; }
+    setMsg('发起未成功：' + ((res.data && (res.data.error||res.data.reason)) || ('HTTP ' + code)) + ((res.data && res.data.how_to_fix)?(' · '+res.data.how_to_fix):''), true);
+    return;
+  }
+  await dockProbeWait(hid, res.data);
+}
+async function dockProbeWait(hid, start){
+  const setMsg = (t, bad) => { const e=document.getElementById('capProbeMsg-' + hid); if(e){e.textContent=t; e.style.color = bad?'var(--red,#FF0000)':'';} };
+  const deadline = Date.now() + 120000;
+  setMsg('探针进行中…（每 5 秒看一眼，最长 120 秒）');
+  while (Date.now() < deadline){
+    await new Promise(r=>setTimeout(r,5000));
+    let d;
+    try{ d = await (await fetch('/api/harness/' + encodeURIComponent(hid) + '/probe-reply')).json(); }catch(e){ continue; }
+    if (d.state === 'ok'){ setMsg('✓ ' + capReplyText(d)); dockLoadCapability(hid, false); return; }
+    if (d.state === 'failed'){ setMsg('✗ 验过但失败：' + (d.why||'探针超时（没收到回执）'), true); dockLoadCapability(hid, false); return; }
+  }
+  setMsg('✗ 探针超时（没收到回执）', true);
+  dockLoadCapability(hid, false);
+}
+async function dockLoadCapability(hid, humanRelay){
+  const box = document.getElementById('dkCapBlock-' + hid);
+  if (!box) return;
+  try{
+    const r = await fetch('/api/harness/' + encodeURIComponent(hid) + '/capability');
+    const d = await r.json();
+    if (!r.ok) { box.innerHTML = '<p class="sub">✗ ' + esc(d.error || ('HTTP ' + r.status)) + ((d.how_to_fix)?(' · ' + d.how_to_fix):'') + '</p>'; return; }
+    const seg = d.segments || {};
+    const segCard = (k, obj) => {
+      const o = obj || {};
+      const st = String(o.state||'unknown');
+      const cls = st==='ok' ? 'dotv ok' : st==='failed' ? 'dotv bad' : 'dotv unknown';
+      if (k === 'agent_can_reply'){
+        /* 第三段单独处理：状态文案按 228 映射（source 区分），旁挂「验一次/我确认它回了」按钮 */
+        const btn = humanRelay
+          ? '<button class="btn mini" onclick="dockProbeReply(\'' + esc(hid) + '\',true)">我确认它回了</button>'
+          : '<button class="btn mini" onclick="dockProbeReply(\'' + esc(hid) + '\',false)">验一次</button>';
+        const badge = (st==='ok' && o.source==='human_confirm') ? '<span class="cap-src src-probed">人工确认</span>' : '';
+        return '<div class="peer-row"><div class="pr-top"><span class="' + cls + '"></span><b>③ agent 能回话</b>' +
+          '<span class="pt-status ' + (st==='ok'?'done':st==='failed'?'failed':'sent') + '">' + esc(CAP_STATE_TEXT[st]||st) + '</span>' + badge + '</div>' +
+          '<div class="pr-sub">' + esc(capReplyText(o)) + '</div>' +
+          (o.why && st==='failed' ? '<div class="pr-sub">' + esc(o.why) + '</div>' : '') +
+          '<div class="pr-acts">' + btn + '<span class="dock-msg" id="capProbeMsg-' + esc(hid) + '"></span></div></div>';
+      }
+      return '<div class="peer-row"><div class="pr-top"><span class="' + cls + '"></span><b>' +
+        ({bridge_config:'① 桥配置', harness_running_bridge:'② 桥在跑', agent_can_reply:'③ agent 能回话'}[k]||esc(k)) +
+        '</b><span class="pt-status ' + (st==='ok'?'done':st==='failed'?'failed':'sent') + '">' + esc(CAP_STATE_TEXT[st]||st) + '</span></div>' +
+        (o.why ? '<div class="pr-sub">' + esc(o.why) + '</div>' : '') +
+        (o.evidence_scope ? '<div class="pr-sub">' + esc(o.evidence_scope) + '</div>' : '') +
+        '</div>';
+    };
+    const caps = (d.capabilities||[]).map(c =>
+      '<div class="pt-row"><b>' + esc(c.display||c.name||'?') + '</b>' +
+      '<span class="cap-src ' + esc(CAP_SRC_CLS[c.source]||'src-declared') + '">' + esc(CAP_SRC_TEXT[c.source]||c.source||'声明') + '</span>' +
+      '<span class="sub">证据：' + esc(c.evidence||'—') + '</span>' +
+      (c.also_in_tools ? '<span class="sub">· 也在工具表</span>' : '') +
+      ((c.raw&&c.raw.length>1) ? '<span class="sub">（原始声明：' + esc(c.raw.join(', ')) + '）</span>' : '') +
+      '</div>').join('');
+    const tools = (d.tools||[]).map(t =>
+      '<div class="pt-row"><b>' + esc(t.display||t.name||'?') + '</b>' +
+      '<span class="sub"><code>' + esc(t.name||'') + '</code></span>' +
+      (t.params_known===false ? '<span class="sub">参数未知（记录里没有，别画成可填表单）</span>' : '') +
+      '</div>').join('');
+    const probed = (d.probed||[]).map(p => '<span class="sub">· ' + esc(p.kind||'') + ': ' + esc(p.value||'') + '</span>').join(' ');
+    box.innerHTML =
+      '<p class="lead"><b>' + esc(d.verdict_text||'') + '</b>' +
+      (d.connected===true ? '' : '　<span class="sub" style="color:var(--red,#FF0000)">（connected=false——下面的能力与证据<b>不代表已接上、可用、已就绪</b>）</span>') + '</p>' +
+      '<div class="peers-list" style="margin:6px 0">' + segCard('bridge_config',seg.bridge_config) + segCard('harness_running_bridge',seg.harness_running_bridge) + segCard('agent_can_reply',seg.agent_can_reply) + '</div>' +
+      '<p class="sub" style="margin-top:8px">能力（带来源徽标）</p><div class="peers-list">' + (caps||'<p class="sub">（无）</p>') + '</div>' +
+      '<p class="sub" style="margin-top:8px">工具</p><div class="peers-list">' + (tools||'<p class="sub">（无）</p>') + '</div>' +
+      (probed ? '<p class="sub" style="margin-top:8px">探测线索</p><p class="sub">' + probed + '</p>' : '') +
+      ((d.notes&&d.notes.length) ? '<p class="lead" style="color:var(--red,#FF0000);margin-top:8px">平台注意到的矛盾（原样）</p>' + d.notes.map(n=>'<p class="sub" style="color:var(--red,#FF0000)">· ' + esc(n) + '</p>').join('') : '');
+  }catch(e){ box.innerHTML = '<p class="sub">加载失败：' + esc(e.message) + '</p>'; }
 }
 
 /** 换唤醒方式后立刻重拉档案（回显平台重算的档位事实 —— 不等保存，先让用户看见会变成什么）。 */

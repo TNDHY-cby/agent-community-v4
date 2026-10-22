@@ -109,3 +109,20 @@ a:hover{text-shadow:0 0 8px rgba(0,255,255,.6)}
 /* ── 窄屏守卫：顶栏按钮不折字（横排换行代替竖排叠字） ── */
 .topbar{flex-wrap:wrap;height:auto;min-height:52px;padding:6px 12px}
 .topbar .btn,.topbar .logo,.topbar .tb-status{white-space:nowrap;flex-shrink:0}
+
+/* ── 大厅：镰刀锤子改消息区背景水印 + 消息磨砂玻璃（老板 2026-10-22 裁定）──
+ * 水印挂在滚动容器自身（background 不随内容滚，常驻居中）；消息半透明+backdrop-blur，
+ * 能透出图标轮廓。空态的内嵌徽记图隐藏（避免与水印重叠双显）。 */
+.hall-messages{
+  background-image:linear-gradient(rgba(10,10,10,.72),rgba(10,10,10,.72)),url("/boot_emblem.png");
+  background-repeat:no-repeat;
+  background-position:center 42%;
+  background-size:240px auto;
+}
+.hall-messages .hmsg{
+  background:rgba(26,26,26,.55);
+  backdrop-filter:blur(6px) saturate(1.05);
+  -webkit-backdrop-filter:blur(6px) saturate(1.05);
+}
+.hall-messages .hmsg.notice{background:rgba(26,26,26,.35)}
+.hall-empty .he-emblem{display:none}

@@ -145,9 +145,24 @@
               <h3 style="margin-top:14px">隧道建议 <button class="btn mini" style="float:right" onclick="dockLoadTunnelAdvice()">⟳</button></h3>
               <div id="peerAdvice" class="peers-list"><p class="sub">加载中...</p></div>
               <h3 style="margin-top:14px">跨端中转 <button class="btn mini" style="float:right" onclick="dockLoadRelay()">⟳</button></h3>
-              <!-- 只读展示：状态 + 收件箱。发送/派活表单等 /api/relay/* 进白名单后再加（DSH 224） -->
               <div id="relayStatus" class="peers-list"><p class="sub">加载中...</p></div>
               <div id="relayInbox" class="peers-list" style="margin-top:8px"><p class="sub">加载中...</p></div>
+              <!-- 发送/派活（白名单 27 条已含 /api/relay/*，走 dockPost） -->
+              <div class="dock-form" style="margin-top:10px">
+                <label>发给另一台终端（terminal_id + 文本）</label>
+                <div style="display:flex;gap:6px">
+                  <input id="relayTo" placeholder="对方 terminal_id" style="width:140px;flex:none">
+                  <input id="relayText" placeholder="要发的内容">
+                </div>
+                <div class="dock-form-actions"><button class="btn mini" onclick="dockRelaySend()">发送</button><span class="dock-msg" id="relaySendMsg"></span></div>
+                <label style="margin-top:8px">跨端派活（terminal_id + 任务标题）</label>
+                <div style="display:flex;gap:6px">
+                  <input id="relayDispTo" placeholder="对方 terminal_id" style="width:140px;flex:none">
+                  <input id="relayDispTitle" placeholder="任务标题">
+                </div>
+                <div class="dock-form-actions"><button class="btn mini" onclick="dockRelayDispatch()">派活</button><span class="dock-msg" id="relayDispMsg"></span></div>
+                <p class="sub" style="margin:4px 0 0">口径：对方不在线时消息只是<b>暂存</b>在中转（等它上线来取）——不说「已送达」。</p>
+              </div>
             </div>
           </div>
         </section>
