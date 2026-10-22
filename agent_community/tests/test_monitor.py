@@ -158,12 +158,22 @@ def test_frame_is_403_when_agent_not_watched(client):
     assert r.status_code in (403, 404)
 
 
-def test_stream_is_501_without_pillow(client):
-    if mn.jpeg_available():                              # 装了 Pillow 就跳过这条
-        pytest.skip("本机装了 Pillow")
+def test_stream_is_501_with_an_honest_reason(client):
+    """连续流本版**永远 501**，而且原因必须如实、按平台说清。
+
+    ⚠️ 2026-10-22 双平台真跑抓到的自己的错：这条原来断言"文本必须含 Pillow"，
+    在 Linux 上就红了 —— 因为 Linux 侧的真实原因是"窗口抓取只支持 Windows"。
+    判据要钉**契约**（501 + 有原因 + 原因与技术事实一致），不是钉某一句文案。
+    """
     r = client.get("/api/monitor/x/stream")
     assert r.status_code == 501, r.text
-    assert "Pillow" in r.text, "要告诉用户装什么：%s" % r.text
+    body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+    why = str(body.get("error") or "")
+    assert why, "501 必须说清为什么：%s" % r.text
+    if not mn.IS_WINDOWS:
+        assert "Windows" in why, "非 Windows 就该直说只支持 Windows：%s" % why
+    else:
+        assert "快照墙" in why or "Pillow" in why, "Windows 上要说清本版只做快照墙：%s" % why
 
 
 def test_monitor_is_never_exposed_to_external_readonly():
