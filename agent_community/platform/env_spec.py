@@ -134,6 +134,7 @@ SPEC: dict[str, Var] = {v.name: v for v in [
     Var("AC_AGENT_INSTALL_TIMEOUT", "安装命令超时秒数", default="600", kind="feature", example="900"),
     Var("AC_AGENT_CATALOG_EXTRA", "自定义 agent 清单 JSON 路径（换机器不用改代码）", default="", kind="feature", example="D:/ac/agents.json"),
     Var("AC_WORKFLOW_BATCH", "工作流一次最多并行推进几个节点", default="3", kind="feature", example="1"),
+    Var("AC_ATTEST_KEY", "附属记录签名密钥（平台自签 HMAC；不设则自动生成到数据目录 keys/attest.key）", default="", kind="secret", example="长随机串"),
     Var("AC_SINGLETON_UNAVAILABLE", "同一数据目录已有实例时的行为：fail_closed（拒起，默认）或 degraded（起但标记降级）", default="fail_closed", kind="feature", example="degraded"),
     Var("AC_PROBE_STALENESS_HOURS", "回话探针结果多少小时算过期（超时后 capability 显示 stale）", default="24", kind="feature", example="72"),
     Var("AC_SNAPSHOT_MAX", "每个任务保留多少条运行快照（超了丢最旧并留一条截断记录）", default="200", kind="feature", example="500"),

@@ -176,15 +176,6 @@ def main():
 def start(port, wakeup, gui):
     """启动 外端Agent生产合作社（External Agent Community） 服务（AI 配置在桌面窗口内完成）"""
     # ★V82：单实例守卫 —— 同一 AC_DATA_DIR 只允许一个平台进程写
-    try:
-        from .platform.singleton import SingletonBusy, acquire as _acq
-
-        _singleton_lease = _acq()
-        if getattr(_singleton_lease, "degraded", False):
-            print("[singleton] 降级启动：另一个实例持有数据目录（写操作可能互相覆盖，仅用于看一眼）")
-    except SingletonBusy as _e:
-        print("[singleton] 拒绝启动：%s" % _e)
-        return 3
 
     # ★2026-10-15：`--port` 的默认值原来是**常量 18920** ⇒ 用户设了 `AC_PORT` 再用
     #   `cli start` 起服务，拿到的还是 18920（"端口因人而异"这条要求形同虚设）。
@@ -232,6 +223,20 @@ def start(port, wakeup, gui):
 
     # 后台启动（用 -m 模块方式避免相对导入问题）
     if sys.platform == "win32":
+        # ★V82：真正要起服务了，才检查"同一数据目录是否已有实例"
+        #   （只做预检、拿完立刻放：锁由服务进程自己持有；cli 拉完子进程就退出了）
+        try:
+            from .platform.singleton import SingletonBusy, acquire as _acq
+
+            _probe = _acq()
+            _probe_ok = not getattr(_probe, "degraded", False)
+            _probe.release()
+            if not _probe_ok:
+                print("[singleton] 注意：另一个实例正持有数据目录"
+                      "（服务会按 AC_SINGLETON_UNAVAILABLE 策略处理）")
+        except SingletonBusy as _e:
+            print("[singleton] 拒绝启动：%s" % _e)
+            sys.exit(3)      # click 命令里 `return 3` 不生效（实测恒 0），必须 sys.exit
         proc = subprocess.Popen(
             [sys.executable, "-m", "agent_community.platform.server"],
             env=env,

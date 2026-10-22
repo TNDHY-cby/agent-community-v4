@@ -263,6 +263,9 @@ from .routers.budget import router as _budget_router
 from .routers.workflow import router as _workflow_router
 from .routers.agent_manager import router as _agent_manager_router
 from .routers.notify import router as _notify_router
+from .routers.attestations import router as _attest_router
+from .routers.discovery import router as _discovery_router
+from .routers.registry_health import router as _registry_health_router
 app.include_router(_reply_probe_router)
 app.include_router(_artifacts_router)
 app.include_router(_approval_router)
@@ -270,7 +273,10 @@ app.include_router(_snapshots_router)
 app.include_router(_budget_router)
 app.include_router(_workflow_router)
 app.include_router(_agent_manager_router)
-app.include_router(_notify_router)  # V80 通知渠道（webhook / smtp）  # V80 Agent Manager（安装默认关）  # V78 工作流执行引擎  # V77 执行预算与超时闸  # V76 运行快照回放 + 流程导入导出  # V76 人工审批闸门（默认关）  # V75 P1-4 产物统一出口  # V74 回话探针：验一次「发消息给它、它回了」并落证据  # 助手会话一族（2026-10-21 从 server.py 整块搬出）
+app.include_router(_notify_router)
+app.include_router(_attest_router)
+app.include_router(_discovery_router)
+app.include_router(_registry_health_router)  # V85 名册健康（隐藏/申诉）  # V84 工作间可发现（/.well-known）  # V83 可验证附属记录（签名/扫描/审计）  # V80 通知渠道（webhook / smtp）  # V80 Agent Manager（安装默认关）  # V78 工作流执行引擎  # V77 执行预算与超时闸  # V76 运行快照回放 + 流程导入导出  # V76 人工审批闸门（默认关）  # V75 P1-4 产物统一出口  # V74 回话探针：验一次「发消息给它、它回了」并落证据  # 助手会话一族（2026-10-21 从 server.py 整块搬出）
 from .routers.agents_registry import router as _agents_registry_router
 app.include_router(_agents_registry_router)  # Agent 注册与在线列表（2026-10-21 从 server.py 整块搬出）
 from .routers.legacy_misc import router as _legacy_misc_router
@@ -414,7 +420,8 @@ EXTERNAL_READONLY_EXACT = frozenset({
     "/api/harness/list", "/api/docking/overview",
 })
 #: 外部只读档允许的 GET 前缀（详情类）
-EXTERNAL_READONLY_PREFIX = ("/api/workshop/", "/api/peers/", "/api/peer-tasks/",
+EXTERNAL_READONLY_PREFIX = ("/.well-known",   # V84 可发现清单（只读，本来就该公开）
+    "/api/workshop/", "/api/peers/", "/api/peer-tasks/",
     "/api/artifact",        # V75 P1-4：产物统一出口（只读，远端只读档可用）
 )
 #: 外部只读档允许的静态页（界面本身可以看）
@@ -5599,4 +5606,17 @@ if __name__ == "__main__":
     #      在 `__main__` 里赋值 `BOUND_PORT` 另一边看不见（实测踩到：一直是 0）。
     BOUND_PORT = int(port)
     os.environ["AC_BOUND_PORT"] = str(int(port))
+
+    # ★V82 修正：单实例锁必须由**服务进程本身**持有（原来放在 cli 父进程里，
+    #   父进程一退出锁就没了 ⇒ 守卫形同虚设，还会显示"别人持有、degraded=true"的假象）。
+    from .singleton import SingletonBusy as _SB, acquire as _acq
+
+    try:
+        _lease = _acq()
+        if getattr(_lease, "degraded", False):
+            print("[singleton] 降级启动：另一个实例持有数据目录（写操作可能互相覆盖）", flush=True)
+    except _SB as _e:
+        print("[singleton] 拒绝启动：%s" % _e, flush=True)
+        raise SystemExit(3)
+
     uvicorn.run(app, host=host, port=port, log_level="info")

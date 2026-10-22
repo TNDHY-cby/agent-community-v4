@@ -33,6 +33,11 @@ def lock_path(create: bool = True) -> Path:
     return d / "platform.lock"
 
 
+def lease_info_path(create: bool = True) -> Path:
+    """持有者信息（旁挂文件）：锁文件被独占打开时读不了，所以信息单独放这里。"""
+    return lock_path(create=create).with_name("platform.lease.json")
+
+
 def _try_lock(fh) -> bool:
     """非阻塞拿排它锁。POSIX 用 fcntl.flock，Windows 用 msvcrt.locking。"""
     try:
@@ -75,6 +80,10 @@ class Lease:
         if self._fh is None:
             return
         try:
+            lease_info_path().unlink(missing_ok=True)
+        except Exception:                                    # noqa: BLE001 — 删不掉不影响释放锁
+            pass
+        try:
             _unlock(self._fh)
             self._fh.close()
         finally:
@@ -88,8 +97,8 @@ def policy() -> str:
 
 
 def who() -> dict:
-    """锁文件里记的持有者信息（人话用；锁本身靠操作系统）。**只读，不建目录。**"""
-    p = lock_path(create=False)
+    """持有者信息（读旁挂文件；锁文件本身被独占打开，读不了）。**只读，不建目录。**"""
+    p = lease_info_path(create=False)
     try:
         raw = p.read_text(encoding="utf-8", errors="replace").strip()
         return json.loads(raw) if raw else {}
@@ -109,6 +118,12 @@ def acquire(strict: bool = True) -> Lease:
                                  "python": sys.executable}, ensure_ascii=False))
             fh.flush()
         except Exception:                                    # noqa: BLE001 — 写说明失败不影响锁本身
+            pass
+        try:
+            lease_info_path().write_text(
+                json.dumps({"pid": os.getpid(), "at": datetime.now().isoformat(timespec="seconds"),
+                            "python": sys.executable}, ensure_ascii=False), encoding="utf-8")
+        except Exception:                                    # noqa: BLE001 — 旁挂写不了不影响锁
             pass
         return Lease(fh, p)
 

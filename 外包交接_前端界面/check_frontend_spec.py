@@ -59,6 +59,11 @@ WHITELIST_EXPECT = {
     # ★2026-10-21 FE-26 §5 增补二（V66/V67 中转）：这两条会**真的把内容/任务送出本机**
     #   ⇒ 必须进白名单，**不豁免**
     "/api/relay/send", "/api/relay/dispatch",
+    # ★2026-10-22 FE-26 §5 增补三（V82–V85 落地后的新写端点，前端已实现）
+    #   回话探针：真向对端 agent 发一次消息；安装器三件：真跑命令/真装/真升级
+    #   ⇒ 都是"用户点按钮才调"，必须进白名单，**不豁免**
+    "/api/harness/*/probe-reply",
+    "/api/agents/*/detect", "/api/agents/*/install", "/api/agents/*/upgrade",
 }
 
 #: `FE-26` §2a：第一屏的功能模块（每块＝一件能当场办的事）。`data-dock-service` 用这些 id。
@@ -91,7 +96,8 @@ def _js_code(src: str) -> str:
     """
     src = re.sub(r"(?m)^\s*/\*.*?\*/\s*$", "", src, flags=re.S)
     src = re.sub(r"(?m)^\s*\*.*$", "", src)
-    src = re.sub(r"(?m)//.*$", "", src)
+    # `//` 行注释：**前面是 `:` 的不算**（`http://…` 会被吃掉整行剩余部分 —— 2026-10-22 实测踩过）
+    src = re.sub(r"(?m)(?<!:)//.*$", "", src)
     return src
 
 
@@ -102,15 +108,74 @@ def _whitelist_of(js_code: str) -> set:
     return set(re.findall(r"['\"]([^'\"]+)['\"]", m.group(1)))
 
 
+def _arg_list(code: str, start: int) -> tuple:
+    """从 `(` 之后取 `(第一个实参原文, 该调用剩下的原文)`。
+
+    第二个值**截到本调用的右括号为止** —— 否则 `method:'POST'` 会串到后面另一个 fetch 上去
+    （2026-10-22 实测：GET 会被误判成写请求）。
+    """
+    depth, i, quote = 0, start, ""
+    first_end = None
+    while i < len(code):
+        ch = code[i]
+        if quote:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = ""
+        elif ch in "'\"`":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            if depth == 0:
+                return (code[start:i if first_end is None else first_end], code[(i if first_end is None else first_end):i])
+            depth -= 1
+        elif ch == "," and depth == 0 and first_end is None:
+            first_end = i
+        i += 1
+    return (code[start:], "")
+
+
+def _first_arg(code: str, start: int) -> str:
+    """从 `(` 之后取**第一个实参**的原文（到同层的 `,` 或 `)` 为止，跳过字符串里的逗号）。"""
+    return _arg_list(code, start)[0]
+
+
+def _norm_path_expr(expr: str):
+    """把**字面量打头**的路径表达式规整成白名单口径；不是字面量打头 ⇒ `None`（静态看不了）。
+
+    `'/api/agents/' + encodeURIComponent(id) + '/detect'` → `/api/agents/*/detect`
+    （2026-10-22 修：旧实现只认 `fetch('一个整串'`，拼接写法会被截成 `/api/agents/` 而误报）
+    """
+    parts = re.split(r"\+", expr)
+    out, first = [], True
+    for part in parts:
+        part = part.strip()
+        m = re.fullmatch(r"['\"`](.*)['\"`]", part, re.S)
+        if m:
+            out.append(re.sub(r"\$\{[^}]+\}", "*", m.group(1)))
+        else:
+            if first:
+                return None
+            out.append("*")
+        first = False
+    return "".join(out)
+
+
 def _write_fetches(code: str) -> list:
     """代码里**非 GET** 的 fetch 路径（GET 不限，所以必须先判方法再谈白名单）。"""
     out = []
-    for m in re.finditer(r"""fetch\(\s*[`'"]([^`'"]+)[`'"]""", code):
-        tail = code[m.end():m.end() + 400]
-        mm = re.search(r"""method\s*:\s*[`'"](\w+)[`'"]""", tail)
+    for m in re.finditer(r"fetch\s*\(", code):
+        expr, rest = _arg_list(code, m.end())
+        path = _norm_path_expr(expr)
+        if not path:
+            continue
+        mm = re.search(r"""method\s*:\s*[`'"](\w+)[`'"]""", rest)
         method = (mm.group(1).upper() if mm else "GET")
         if method != "GET":
-            out.append((m.group(1), method))
+            out.append((path, method))
     return out
 
 
@@ -137,8 +202,7 @@ def checks(html: str, js: str) -> list:
         "共 %d 条，与设计稿一致" % len(wl))
 
     writes = _write_fetches(code)
-    outside = [p for p, _m in writes
-               if re.sub(r"\$\{[^}]+\}", "*", p) not in WHITELIST_EXPECT and p not in WHITELIST_EXPECT]
+    outside = [p for p, _m in writes if p not in WHITELIST_EXPECT]
     add("W2", "每个**写**请求都落在白名单里", not outside,
         "白名单外的写请求：%s" % outside[:6],
         "共 %d 个写请求，全部在白名单内（GET 不限）" % len(writes))
@@ -252,12 +316,16 @@ const s1 = '/api/docking/keyword-suggestions', s2 = '/api/docking/locate', s3 = 
 const s4 = '/api/docking/harness/H-1', s5 = 'export.ps1';
 const s6 = '/api/docking/compose-script', s7 = '/api/docking/run-script';
 const err = d.error;   // 失败要说清
+const w1 = await fetch('/api/agents/'+encodeURIComponent(id)+'/detect',{method:'POST'});
 """ % ",".join("'%s'" % p for p in sorted(WHITELIST_EXPECT))
 
 _BAD_HTML = "<h2>对接中心使用说明</h2><p>第一步：三步骨架；自测题见下</p>"
 # ⚠️ 违规夹具里**故意**放一个"带端口的绝对地址"（用 TEST-NET-1 文档地址，不是任何人的真机地址）——
 #    它既能让 P1 判据真的被抓到，又不会让"交接区不许出现本机坐标"那条守卫误报。
-_BAD_JS = "fetch('/api/docking/locate'); fetch('http://192.0.2.10:8080/api/workshop/x');"
+#    ★2026-10-22 再加一条**拼接写法**的写请求（不在白名单）——证明 W2 认得 `'/api/x/'+id+'/y'`
+#      （旧实现只认整串字面量，拼接会被截成 `/api/agents/` 而误判；这里钉住它不许退化）。
+_BAD_JS = ("fetch('/api/docking/locate'); fetch('http://192.0.2.10:8080/api/workshop/x');"
+           "fetch('/api/agents/'+encodeURIComponent(id)+'/uninstall',{method:'POST'});")
 
 
 def selftest() -> int:
@@ -274,6 +342,9 @@ def selftest() -> int:
         ok = False
     if not b_fail:
         print("★自检失败：违规夹具一条都没抓到（判据是摆设）")
+        ok = False
+    if "W2" not in b_fail:
+        print("★自检失败：拼接写法的越权请求没被 W2 抓到（`'/api/x/'+id+'/y'` 必须认得）")
         ok = False
     print("OK：判据既能放过合格的、也能抓住违规的" if ok else "自检未通过")
     return 0 if ok else 1

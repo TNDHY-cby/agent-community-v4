@@ -477,6 +477,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
         <div class="setup-menu-item" data-tab="advanced" onclick="switchSettingsTab('advanced')">高级功能</div>
         <div class="setup-menu-item" data-tab="protocol" onclick="switchSettingsTab('protocol')">协议与端点</div>
         <div class="setup-menu-item" data-tab="policy" onclick="switchSettingsTab('policy')">安全策略</div>
+        <div class="setup-menu-item" data-tab="notify" onclick="switchSettingsTab('notify')">通知渠道</div>
         <div class="setup-menu-item" data-tab="about" onclick="switchSettingsTab('about')">关于</div>
       </div>
       <div class="setup-content">
@@ -601,6 +602,29 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
           </div>
           <div style="margin-top:12px;">
             <button class="btn-secondary" onclick="reloadPolicy()" style="font-size:12px;">重读策略配置</button>
+          </div>
+        </div>
+        <!-- 通知渠道面板（V80 / DSH 234）：只显示"已配置/未配置"+why 原话，不回显任何凭据 -->
+        <div class="setup-panel" id="settingsPanelNotify">
+          <h3>通知渠道</h3>
+          <p class="sp-desc">任务/审批事件可推送到外部。凭据只在环境变量里，此处不显示、也无法修改。</p>
+          <div class="notify-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="hb-card" id="notifyWebhook">
+              <h4 style="margin:0 0 6px">Webhook</h4>
+              <div class="notify-state" style="font-size:12px;color:var(--muted)">加载中…</div>
+              <div class="dock-form-actions" style="margin-top:8px">
+                <button class="btn-secondary" style="font-size:12px" onclick="notifyTest('webhook')">发测试</button>
+                <span class="dock-msg" id="notifyTestWebhook"></span>
+              </div>
+            </div>
+            <div class="hb-card" id="notifySmtp">
+              <h4 style="margin:0 0 6px">邮件（SMTP）</h4>
+              <div class="notify-state" style="font-size:12px;color:var(--muted)">加载中…</div>
+              <div class="dock-form-actions" style="margin-top:8px">
+                <button class="btn-secondary" style="font-size:12px" onclick="notifyTest('smtp')">发测试</button>
+                <span class="dock-msg" id="notifyTestSmtp"></span>
+              </div>
+            </div>
           </div>
         </div>
         <!-- 关于面板 -->
@@ -927,6 +951,7 @@ function switchSettingsTab(tabName){
   if(panel) panel.classList.add('active');
   if(tabName==='protocol') loadProtocols();
   if(tabName==='policy') loadPolicy();
+  if(tabName==='notify') loadNotifyChannels();
 }
 
 // ═══ 安全策略与待审批（V-14）═══════════════════════════════════════
@@ -936,6 +961,31 @@ function _esc(s){
   return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+/* ── 通知渠道（V80 / DSH 234）：只显示 configured+why 原话；凭据后端不回显，界面也不显示 ── */
+async function loadNotifyChannels(){
+  try{
+    const d=await (await fetch('/api/notify/channels')).json();
+    const ch=d.channels||{};
+    [['webhook','notifyWebhook'],['smtp','notifySmtp']].forEach(([k,id])=>{
+      const el=document.getElementById(id); if(!el) return;
+      const c=ch[k]||{};
+      const box=el.querySelector('.notify-state');
+      if(c.configured===true){ box.innerHTML='<span style=color:var(--green)>已配置</span>'+(c.why?(' · '+c.why):''); box.style.color=''; }
+      else { box.innerHTML='<span style=color:var(--yellow)>未配置</span>'+(c.why?(' · '+c.why):''); box.style.color=''; }
+    });
+  }catch(e){}
+}
+async function notifyTest(ch){
+  const el=document.getElementById('notifyTest'+(ch==='smtp'?'Smtp':'Webhook'));
+  if(!el) return;
+  el.textContent='发送中…'; el.style.color='';
+  try{
+    const r=await fetch('/api/notify/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:ch})});
+    const d=await r.json().catch(()=>({}));
+    if(d.ok){ el.textContent='✓ 已发出'+(d.status?('（'+d.status+'）'):''); el.style.color='var(--green)'; }
+    else{ el.textContent='✗ '+((d.why||d.error)||('HTTP '+r.status)); el.style.color='var(--red)'; }
+  }catch(e){ el.textContent='✗ '+e.message; el.style.color='var(--red)'; }
+}
 async function loadPolicy(){
   const sum=document.getElementById('policySummary');
   const box=document.getElementById('policyPendingList');

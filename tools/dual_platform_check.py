@@ -162,11 +162,18 @@ def _report(name: str, rc: int, out: str) -> None:
 
 
 def run_local(junit: Path, targets=None) -> tuple:
+    """跑本机（Windows）侧 pytest。
+
+    ⚠️ 输出**重定向到临时文件**，不用管道：真事故（2026-10-22）——用 `capture_output=True`
+    时 Windows 侧长输出会被截断（日志停在 65%、pytest 的总结行丢了），于是判据误判成"有侧红"。
+    """
     argv = [sys.executable, "-m", "pytest", *(targets or PYTEST_TARGETS), "-q",
             "-p", "no:cacheprovider", "--junit-xml=%s" % junit]
-    r = subprocess.run(argv, cwd=str(ROOT), capture_output=True, text=True,
-                       encoding="utf-8", errors="replace")
-    return r.returncode, (r.stdout or "") + (r.stderr or "")
+    out_f = Path(tempfile.mkdtemp(prefix="ac_dual_out_")) / "windows.out"
+    with open(out_f, "wb") as fh:
+        r = subprocess.run(argv, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT)
+    text = out_f.read_text(encoding="utf-8", errors="replace")
+    return r.returncode, text
 
 
 def selftest() -> int:

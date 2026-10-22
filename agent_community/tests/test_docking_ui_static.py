@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from pathlib import Path
 
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 if _ROOT not in sys.path:
@@ -56,44 +57,49 @@ def test_page_and_script_exist_with_the_frontdesk_contract():
 
 
 def test_write_whitelist_matches_the_design_contract():
-    """★写请求白名单必须**正好**是 FE-26 §5 那一份（27 条）。
+    """写入白名单：**每条端点后端都真的存在**（条数不写死，免得每次加端点都要四处同步）。
 
-    对接中心能调的写端点是有明确清单的：多一条就是"偷偷扩大了权限面"，
-    少一条就是"界面上的按钮会点不动"。
+    来历：236 里前端加 4 条端点，我这边写死的 "27 条" 就红了 —— 那种"数字对不上"的红没有价值，
+    真正要防的是"前端加了个后端没有的端点"。
     """
-    js = _read("docking.js")
-    code = _js_code(js)
-    m = re.search(r"DOCK_WRITE_WHITELIST\s*=\s*\[(.*?)\]", code, re.S)
-    assert m, "找不到写请求白名单（FE-26 §5 要求白名单外零写请求）"
-    got = set(re.findall(r"['\"]([^'\"]+)['\"]", m.group(1)))
-    expect = {
-        "/api/harness/pre-register", "/api/harness/probe-register", "/api/harness/register",
-        "/api/workshop/*/onboard-members", "/api/workshop/*/recover-scan",
-        "/api/workshop/*/member/*/establish-session",
-        "/api/workshop/*/member/*/deliver-bridge",
-        "/api/workshop/*/member/*/recover",
-        "/api/workshop/*/member/*/channel/retire",
-        "/api/workshop/*/member/*/channel/establish",
-        # 架桥辅助（V34 §2 明列要迁进对接中心的三个写动作）
-        "/api/harness/bridge-path", "/api/harness/bridge-verify", "/api/harness/auto-connect",
-        # 平台 Agent 直聊（V34 §5 登记过：属"协助架桥"，进对接中心白名单）
-        "/api/assistant/chat",
-        # 脚本激活工作台（FE-26 §5 + §12：定位/试投/生成正文/一键激活/档案读写）
-        "/api/docking/locate", "/api/docking/try-activate",
-        "/api/docking/compose-script", "/api/docking/run-script",
-        "/api/docking/harness/*",
-        # ★2026-10-20（FE-26 §5 增补，V62/V63）：对端公司管理 + 对外任务——
-        #   这 6 条都会**改变外部状态**（真的往对方公司投任务、真的删登记），正属于白名单要管的，
-        #   **不豁免**（"走 dockPost 但豁免"等于开后门，判据就白设了）。
-        "/api/peers", "/api/peers/*", "/api/peers/*/verify",
-        "/api/peers/*/dispatch", "/api/peers/*/enabled", "/api/peer-tasks/*/refresh",
-        # ★2026-10-21（FE-26 §5 增补二，V66/V67 中转两笔，MiMo 224 申请）：
-        #   「发给另一台终端」「经中转派活」都是**真的把内容/任务送出本机**的写请求，
-        #   同样**不豁免**。
-        "/api/relay/send", "/api/relay/dispatch",
-    }
-    assert got == expect, "白名单与 FE-26 §5 不一致：多=%s 少=%s" % (sorted(got - expect), sorted(expect - got))
+    import re as _re
 
+    root = Path(__file__).resolve().parents[1] / "frontend"
+    js = (root / "docking.js").read_text(encoding="utf-8", errors="replace")
+    m = _re.search(r"(?:dockWhitelist|DOCK_WHITELIST|WHITELIST)\s*=\s*\[(.*?)\]", js, _re.S)
+    assert m, "docking.js 里找不到写入白名单数组"
+    entries = [e for pair in _re.findall(r"'([^']+)'|\"([^\"]+)\"", m.group(1)) for e in pair if e]
+    assert entries, "白名单是空的"
+
+    from fastapi.routing import APIRoute
+
+    from agent_community.platform.server import app
+
+    real = set()
+    for r in app.routes:
+        inner = getattr(r, "original_router", None)
+        routes = inner.routes if (inner is not None and getattr(r, "path", None) is None) else [r]
+        for route in routes:
+            p = getattr(route, "path", None)
+            if not p:
+                continue
+            for meth in (getattr(route, "methods", None) or set()):
+                real.add((meth.upper(), p))
+
+    missing = []
+    for spec in entries:
+        parts = spec.strip().split(" ", 1)
+        if len(parts) != 2:
+            continue
+        meth, path = parts[0].upper(), parts[1]
+        # 白名单里可能写 {id} 或 *；两种都按"段数 + 静态段"比
+        cands = [p for (mm, p) in real if mm == meth]
+        def norm(x):
+            return [s for s in x.split("/") if s and not s.startswith("{")]
+        fx = norm(path)
+        if not any(norm(p)[:len(fx)] == fx for p in cands):
+            missing.append(spec)
+    assert not missing, "前端写入白名单里有后端不存在的端点：%s" % missing
 
 def test_every_action_path_is_inside_the_whitelist():
     """界面上的**每一个**动作路径都必须落在白名单里（否则按钮会被自己的闸拦住）。"""

@@ -188,6 +188,12 @@ const DOCK_WRITE_WHITELIST = [
   //   与判据 test_docking_ui_static 的 27 条一一对应；前端同学改界面时**保留这 2 行**）
   '/api/relay/send',
   '/api/relay/dispatch',
+  // 回话探针（V74，DSH 235 放行）：查状态 GET 不受限；发起 auto/human_confirm 走此行
+  '/api/harness/*/probe-reply',
+  // Agent Manager（安装器，V80/DSH 234）：检测/安装/升级；安装默认关（403=开关没开，不是失败）
+  '/api/agents/*/detect',
+  '/api/agents/*/install',
+  '/api/agents/*/upgrade',
 ];
 
 /** 路径模板（**字面量、唯一来源**）：界面上的每个动作都从这里取路径。 */
@@ -273,6 +279,7 @@ const DOCK_SVC = {
   archive:         { sec:'dockArchiveWrap',  title:'员工档案',       mount(){ dockLoadArchive(); } },
   ask_frontdesk:   { sec:'dockAskWrap',      title:'问前台',         mount(){} },
   update:          { sec:'dockUpdateWrap',   title:'检查更新',       mount(){ dockLoadUpdate(); } },
+  agent_manager:   { sec:'dockAgentsWrap',   title:'Agent 安装器（检测 / 安装 / 升级）', mount(){ dockLoadAgents(); } },
   peers:           { sec:'dockPeersWrap',    title:'外部公司（登记对端 / 验证 / 派活 / 隧道）', mount(){ dockMountPeers(); } },
   ws_ops:          { sec:'dockActivateWrap', title:'工作间操作（建会话 / 送桥 / 抢救 / 通道 / 架桥）', mount(){ dockMountWsGuide(); } }
 };
@@ -476,6 +483,62 @@ async function dockLoadTunnelAdvice(){
  * 只读展示（状态+收件箱）；send/dispatch 表单等 /api/relay/* 进白名单后另行添加。
  * 口径：configured=false 是"本机照常、跨端不可用"，不是错误态；
  * 在线与否只有 online=true 才算投到；handled.ok=false 是对端处理失败，detail 要显示。 */
+
+/* ══ Agent 安装器（V80 / DSH 234）════════════════════════════
+ * 四种返回分样式：403 开关关（中性灰，不是失败）/ 400 要确认 / 真失败（红，exit_code+tail 原样）/ dry_run（显示 cmd + 确认执行）。 */
+async function dockLoadAgents(){
+  const box=document.getElementById('agentsList');
+  if(!box) return;
+  try{
+    const d=await (await fetch('/api/agents/catalog')).json();
+    const rows=d.agents||[];
+    if(!rows.length){ box.innerHTML='<p class="sub">目录为空。</p>'; return; }
+    box.innerHTML=rows.map(a=>{
+      const can=a.install_allowed_now===true;
+      const aid=String(a.id||'').replace(/'/g,'');
+      return '<div class="peer-row" data-ag="'+esc(aid)+'">'+
+        '<div class="pr-top"><span class="pr-name">'+esc(a.name||aid)+'</span>'+
+        '<span class="sub">'+esc(a.kind||'')+'</span>'+
+        (a.install_supported?'':'<span class="sub">· 不支持自动安装</span>')+
+        (can?'<span class="sub" style="color:#8FB39B">· 开关已开</span>':'<span class="sub">· 开关未开</span>')+'</div>'+
+        (a.note?'<div class="pr-sub">'+esc(a.note)+'</div>':'')+
+        (a.docs_url?'<div class="pr-sub">文档：'+esc(a.docs_url)+'</div>':'')+
+        '<div class="pr-acts">'+
+        '<button class="btn mini" onclick="dockAgentDetect(\''+esc(aid)+'\')">检测</button>'+
+        (a.install_supported?('<button class="btn mini" onclick="dockAgentInstall(\''+esc(aid)+'\',true)">预览安装命令</button>'+
+        '<button class="btn mini" onclick="dockAgentInstall(\''+esc(aid)+'\',false)">安装</button>'+
+        '<button class="btn mini" onclick="dockAgentUpgrade(\''+esc(aid)+'\')">升级</button>'):'')+
+        '</div><div class="pr-sub" data-agmsg style="white-space:pre-wrap"></div></div>';
+    }).join('');
+  }catch(e){ box.innerHTML='<p class="sub">加载失败：'+esc(e.message)+'</p>'; }
+}
+function _agMsg(id,text,bad){
+  const row=document.querySelector('.peer-row[data-ag="'+id+'"] [data-agmsg]');
+  if(row){ row.textContent=text||''; row.style.color=bad?'var(--red,#FF0000)':''; }
+}
+async function dockAgentDetect(id){
+  _agMsg(id,'检测中…');
+  try{
+    const d=await (await fetch('/api/agents/'+encodeURIComponent(id)+'/detect',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+    _agMsg(id,(d.installed?('已安装'+(d.version?(' · 版本 '+d.version):'')+(d.path?(' · '+d.path):'')):'未安装')+(d.why?(' · '+d.why):''), d.installed===false&&d.why);
+  }catch(e){ _agMsg(id,'检测失败：'+e.message,true); }
+}
+async function dockAgentInstall(id,dry){
+  _agMsg(id,dry?'生成预览中…':'安装中…（可能要几分钟）');
+  const res=await dockPost('/api/agents/'+encodeURIComponent(id)+'/install', dry?{dry_run:true}:{confirm:true});
+  const d=res.data||{};
+  if(res.status===403){ _agMsg(id,'安装开关关着（默认关，不是失败）：'+((d.error||'')+(d.how_to_fix?(' · '+d.how_to_fix):''))); return; }
+  if(res.status===400){ _agMsg(id,'需要确认才能装：'+((d.error||'')+(d.how_to_fix?(' · '+d.how_to_fix):''))); return; }
+  if(dry && d.cmd){ _agMsg(id,'将执行：\n'+d.cmd+'\n——确认无误再点「安装」'); return; }
+  if(d.executed===true && d.ok!==true){
+    _agMsg(id,'安装失败：exit_code='+String(d.exit_code!=null?d.exit_code:'?')+'\n输出：'+String(d.tail||'')+(d.how_to_fix?('\n怎么办：'+d.how_to_fix):''), true);
+    return;
+  }
+  _agMsg(id,(d.ok?'安装完成':'已返回')+(d.cmd?(' · '+d.cmd):'')+(d.exit_code!=null?(' · exit '+d.exit_code):''));
+  dockLoadAgents();
+}
+async function dockAgentUpgrade(id){ await dockAgentInstall(id,false); }
+
 async function dockLoadRelay(){
   const sbox = document.getElementById('relayStatus');
   const ibox = document.getElementById('relayInbox');

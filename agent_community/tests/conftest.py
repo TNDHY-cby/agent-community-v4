@@ -62,6 +62,12 @@ def _fingerprint(root: Path) -> dict:
             continue
         if p.suffix.lower() == ".log":      # 任何位置的日志文件（如 data/autostart/ac_watchdog.log）
             continue
+        # ★2026-10-22（真事故，假红）：V82 给 `cli start` 加了单实例守卫，会在
+        #   `data/run/platform.lock` 写"谁持有锁"。**平台服务在跑的时候**这个文件会被创建/改写，
+        #   于是"跑完整测试"就撞见"测试污染真实数据"（Linux 侧尤其明显：两边挂同一路径）。
+        #   锁文件与 pid 文件都是**运行时租约**，不是业务数据 ⇒ 一律不纳入指纹。
+        if p.suffix.lower() in (".lock", ".pid"):
+            continue
         try:
             st = p.stat()
             fp[rel] = (st.st_size, st.st_mtime_ns)
@@ -313,3 +319,15 @@ def resolve_handler(name: str, *, required: bool = True):
     if required:
         raise LookupError("找不到 handler %r（server 与 routers/ 都没有；改名了？请同步调用方）" % name)
     return None
+
+
+@pytest.fixture(autouse=True)
+def _isolate_registry_health(tmp_path, monkeypatch):
+    """V85：把名册健康库指到 tmp（否则探针/桥测试会往真实数据目录写 registry_health.json）。"""
+    try:
+        from agent_community.platform import registry_health as _rh
+
+        monkeypatch.setattr(_rh, "HEALTH_DIR", tmp_path, raising=True)
+    except Exception:                                        # noqa: BLE001 — 有意静默：模块没装也不该挡住别的测试
+        pass
+

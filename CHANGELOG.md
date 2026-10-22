@@ -2,6 +2,68 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.32.0] - 2026-10-22
+
+**V83 + V84 + V85 落地 + V82 修补：可验证附属记录 / 工作间可被外部发现 / 名册健康接线**
+
+> 老板 2026-10-22：「做，值得做的也做」。设计稿
+> `design-docs/V83_可验证附属记录设计.md`、`V84_工作间可发现设计.md`、`V85_名册生命周期接线设计.md`。
+
+### 一、V83 可验证附属记录（签名 / 扫描 / 审计）
+
+- `platform/attestations.py`：**只追加**的附属记录，每条用 **HMAC-SHA256** 签名
+  （密钥 `AC_ATTEST_KEY`，缺省落 `<AC_DATA_DIR>/keys/attest.key`，首次自动生成、权限收紧）；
+- 每种记录都带 **`trust: platform-self`** —— 平台自签，**不冒充第三方认证**（口径写进接口与文档）；
+- 端点：`POST|GET /api/attest/{harness|task}/{id}`、`GET …/{att_id}`、`POST /api/attest/verify`；
+  同一个 `att_id` 重复提交 ⇒ **409**（不许悄悄覆盖历史）；
+- 判据：改一个字节验签即红；不是本平台签的密钥验签即红；列表**正序**；`trust` 字段不可被入参改写。
+
+### 二、V84 工作间可被外部发现（virtual server 思路）
+
+- `GET /.well-known/workshops.json`（清单）、`GET /.well-known/workshop/{wid}.json`（单卡）、
+  `POST /api/workshops/{wid}/discoverable`（开关，**默认关**）；
+- 单卡只给协作元信息（状态 / 成员**数量** / 节点进度 / 下一步 / 闸门 / `updated_at` / `trust`），
+  **不含成员姓名、路径、任务正文、令牌**——判据用"往成员名/路径里塞哨兵再拉卡片"来查泄露；
+- `.well-known` 走**只读面**白名单（`EXTERNAL_READONLY_PREFIX`），外部读不需要写权限。
+
+### 三、V85 名册健康接线（隐藏 / 申诉）
+
+- `platform/registry_health.py`：样本有上限（`MAX_SAMPLES=200`，溢出计 `trimmed`），
+  **连续 7 天全失败 ⇒ 隐藏候选**；**隐藏不删数据**；**申诉即恢复并留痕**；`purge_detail(90)` 支持 `--dry-run`；
+- 端点：`GET /api/registry/health`、`POST /api/harness/{hid}/hide`、`POST /api/harness/{hid}/appeal`；
+- 与回话探针、桥检测**真实接线**（探针跑一次就写样本，不再只看配置文件猜）。
+
+### 四、V82 修补（上一版遗留，本版收口）
+
+- 单实例锁**改由服务进程持有**（原先 CLI 父进程持有，父进程退出后锁跟着没了，等于没锁）；
+- 持有者信息改走**旁挂 json**（`platform.lease.json`）——锁文件被独占时**读不了**，原来 `who()` 会 PermissionError；
+- 第二实例**真的退出码 3**（原先 `return 3` 被 click 吞成 0）；
+- 预检挪到**真正起服务之前**（原先放在函数开头，把"服务已在跑"这条正常路径也拦了）；
+- 读 `state()`/`who()` **不再顺手建目录**。
+
+### 五、交接区（对外契约）同步
+
+- `外包交接_前端界面/check_frontend_spec.py` 白名单补 4 条（`probe-reply`、`agents detect/install/upgrade`）；
+- 同时修掉它自己的三处误判：① 只认整串字面量（`'/api/x/'+id+'/y'` 拼接会被截断误报）⇒ 按实参解析；
+  ② 注释剥离把 `http://…` 之后整行吃掉 ⇒ 前面是 `:` 的不算注释；
+  ③ `method:'POST'` 的搜索窗会串到下一个 `fetch` ⇒ 截到本调用右括号为止。
+  自检夹具各加一条钉子（合法的拼接写请求必须 PASS、越权的必须被 `W2` 抓到）；
+- 实测 `check_frontend_spec.py`：**PASS 20 / FAIL 0 / 待人工 2**（此前 18/2/2）。
+
+### 六、判据
+
+| 项 | 结果 |
+|---|---|
+| `pytest agent_community/tests` | **全绿（1973 项收集）** |
+| `check_frontend_spec.py` / `--selftest` | PASS 20 / FAIL 0；自检通过 |
+| 新增测试 | `test_attestations`(5) / `test_discovery`(5) / `test_registry_health`(6) / `test_workshop_start_gate`(5) / `test_v81_borrow_guards`(5) / `test_workflow_multiparent`(3) / `test_seed_demo`(2) 等 |
+
+### 七、测试自身的两个洞（已修）
+
+1. V85 一开始把 `registry_health.json` 写进**真实数据目录**，被 conftest 的污染闸门抓到 ⇒
+   加 `HEALTH_DIR` 重定向 + autouse fixture 隔离到 tmp；
+2. 污染指纹把运行时租约 `.lock`/`.pid` 当业务数据 ⇒ 双平台判据一直假红 ⇒ 指纹排除这两类。
+
 ## [4.29.0] - 2026-10-22
 
 **V82 落地（大型功能）：单实例守卫 + 注册卡片静态一致性 + 名册生命周期口径**

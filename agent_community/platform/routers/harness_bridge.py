@@ -207,6 +207,12 @@ async def harness_bridge_test_result(request: Request):
     # 同步到 info.metadata 以便 save_state 持久化（session 层 metadata 不落盘）
     sess.info.metadata = dict(sess.info.metadata or {})
     sess.info.metadata["bridge_test"] = record
+    try:                                                     # V85：桥测试结果也进名册健康
+        from .. import registry_health as _rh
+
+        _rh.record(hid, ok, "桥测试：%s" % ("通" if ok else "不通"))
+    except Exception as _e:                                  # noqa: BLE001 — 有意静默：健康记录失败不影响桥测试结论
+        print("[registry_health] 桥测试记录失败：%s" % _e, flush=True)
     if ok:
         sess.info.bridge_status = "tested"
     print(f"[bridgetest] {hid} 测试结果: ok={ok} echo={body.get('echo','')[:60]}", flush=True)

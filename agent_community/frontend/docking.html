@@ -97,6 +97,11 @@
             <span class="tile-sub">说不清就直接问，平台助手用它自己的工具看现状</span>
             <span class="tile-go">去办 →</span>
           </div>
+          <div class="dock-tile" data-dock-service="agent_manager" role="button" tabindex="0" aria-label="Agent 安装器" onclick="dockGo('agent_manager')" onkeydown="dockTileKey(event,'agent_manager')">
+            <span class="tile-ico">⤓</span><span class="tile-name">Agent 安装器</span>
+            <span class="tile-sub">检测/安装/升级桌面 agent 运行环境（安装默认关）</span>
+            <span class="tile-go">去办 →</span>
+          </div>
           <div class="dock-tile" data-dock-service="peers" role="button" tabindex="0" aria-label="外部公司协作" onclick="dockGo('peers')" onkeydown="dockTileKey(event,'peers')">
             <span class="tile-ico">⇄</span><span class="tile-name">外部公司</span>
             <span class="tile-sub">登记对端 · 验证 · 派活给别的合作社 · 隧道建议</span>
@@ -119,6 +124,14 @@
         <section id="dockActivateWrap"></section>
         <!-- 检查更新（只读展示 + 复制命令；执行升级永远在用户自己的终端） -->
         <section id="dockUpdateWrap"></section>
+        <!-- ★V80：Agent 安装器（四种返回分样式：403 开关关/400 要确认/真失败/dry_run） -->
+        <section id="dockAgentsWrap">
+          <div class="card">
+            <h3>Agent 运行环境目录 <button class="btn mini" style="float:right" onclick="dockLoadAgents()">⟳ 刷新</button></h3>
+            <p class="sub" style="margin:4px 0 10px">安装开关默认关（环境变量 AC_AGENT_INSTALL_ALLOW）；此处只展示与发起，安装是否放行由平台判定。</p>
+            <div id="agentsList" class="peers-list"><p class="sub">加载中...</p></div>
+          </div>
+        </section>
         <!-- ★V62/V63：外部公司（对端管理 + 对外任务）。别做：无公网映射引导；对端不伪装成本地员工；前端不存令牌明文 -->
         <section id="dockPeersWrap">
           <div class="peers-grid">

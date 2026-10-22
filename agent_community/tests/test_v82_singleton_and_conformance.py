@@ -29,9 +29,17 @@ C = TestClient(srv.app, client=("127.0.0.1", 54321))
 
 
 # ── ① 单实例 ──────────────────────────────────────────────────
+def _lock_to(tmp_path, monkeypatch):
+    """把锁文件指到临时目录（**不碰真实数据目录**，否则 conftest 会判"测试污染真实数据"）。"""
+    p = tmp_path / "run"
+    p.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(singleton, "lock_path", lambda create=True: p / "platform.lock")
+    return p / "platform.lock"
+
+
 def test_second_holder_is_refused(monkeypatch, tmp_path):
-    monkeypatch.setenv("AC_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("AC_SINGLETON_UNAVAILABLE", "fail_closed")
+    _lock_to(tmp_path, monkeypatch)
     lease1 = singleton.acquire()
     try:
         with pytest.raises(singleton.SingletonBusy):
@@ -44,8 +52,8 @@ def test_second_holder_is_refused(monkeypatch, tmp_path):
 
 
 def test_degraded_policy_starts_but_flags(monkeypatch, tmp_path, capsys):
-    monkeypatch.setenv("AC_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("AC_SINGLETON_UNAVAILABLE", "degraded")
+    _lock_to(tmp_path, monkeypatch)
     lease1 = singleton.acquire()
     try:
         lease2 = singleton.acquire()

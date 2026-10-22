@@ -107,6 +107,8 @@ class Workshop:
     # 两者都要满足才真跑。判定逻辑全在 `platform/debate.py`（纯函数内核），这里只存状态。
     #: V76 人工审批闸门（默认关）：{"approval_required": true/false}
     approval_policy: dict = field(default_factory=dict)
+    #: V84 是否可被外部发现（**默认关**；开了才出现在 /.well-known 清单）
+    discoverable: bool = False
     #: V77 工作间默认预算（任务没设时继承）
     budget_default: dict = field(default_factory=dict)
     debate_enabled: bool = False

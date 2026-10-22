@@ -77,6 +77,18 @@ def _persist(sess, record: dict) -> None:
     sess.info.metadata["reply_probe"] = record
 
 
+def _mark_health(hid: str, ok: bool, why: str = "") -> None:
+    """把这次真实结果记进名册健康（V85）。**记录失败不挡主流程**，但要留痕。"""
+    if not hid:
+        return
+    try:
+        from . import registry_health as rh
+
+        rh.record(hid, ok, why)
+    except Exception as _e:                                  # noqa: BLE001 — 有意静默：健康记录坏了不该让探针失败，但要能查
+        print("[registry_health] 记录失败：%s" % _e, flush=True)
+
+
 def start(sess) -> dict:
     """发起一次探针。返回 `{ok, probe_id, channel, how_to…}` 或 `{ok: False, error, how_to_fix}`。"""
     # 投递走和真实桥测试同一条路：这三个辅助函数在 `server.py`（`harness_bridge` 也是从那儿拿的）
@@ -140,6 +152,7 @@ def record_result(sess, probe_id: str, echo: str = "") -> dict:
               "probe_id": body_id, "channel": inflight.get("channel", ""),
               "evidence": {"echo": str(echo or "")[:200]}}
     _persist(sess, record)
+    _mark_health(hid, True, "回话探针：拿到带回执的消息")
     return {"ok": True, "harness_id": hid, "state": "ok"}
 
 
@@ -148,6 +161,7 @@ def human_confirm(sess, note: str = "", by: str = "user") -> dict:
     record = {"at": _now(), "mode": "human_confirm", "state": "ok", "source": "human_confirm",
               "confirmed_by": by, "evidence": {"note": str(note or "")[:200]}}
     _persist(sess, record)
+    _mark_health(str(getattr(sess.info, "harness_id", "") or ""), True, "人工确认能回话")
     return {"ok": True, "state": "ok", "source": "human_confirm"}
 
 
