@@ -423,6 +423,16 @@ EXTERNAL_READONLY_PAGES = frozenset({
     "/ops.html", "/booths.html", "/handover.html", "/register.html",
 })
 #: 明确**永不对公网**的端点（即使开了只读档也不给；写进这里的用意是留证据）
+#: 外部只读档**按后缀放行的只读 GET**（V80 追加，前端通道 231 申请）：
+#: 必须**同时**命中下面的前缀，且只对 GET 生效（`_readonly_allows` 里先判方法）。
+#: 为什么不直接放开 `/api/workshops/`、`/api/tasks/`、`/api/harness/` 三个大类：
+#: 那会把"导入流程 / 审批 / 派活"这些**写端点**也放开。
+EXTERNAL_READONLY_SUFFIX = (
+    ("/api/workshops/", ("/workflow", "/workflow/run")),
+    ("/api/tasks/", ("/snapshots", "/snapshot", "/approval", "/budget", "/budget/check")),
+    ("/api/harness/", ("/capability", "/probe-reply")),
+)
+
 EXTERNAL_READONLY_DENY = ("/api/config", "/api/admin/", "/api/logs/", "/api/plugins", "/api/policy")
 
 
@@ -443,6 +453,10 @@ def _readonly_allows(request: Request) -> bool:
         return True
     if any(p.startswith(x) for x in EXTERNAL_READONLY_PREFIX):
         return True
+    # V80：画布/探针的**只读 GET**按后缀放行（写端点不受影响）
+    for _prefix, _suffixes in EXTERNAL_READONLY_SUFFIX:
+        if p.startswith(_prefix) and any(p.endswith(s) or (s + "?") in (p + "?") for s in _suffixes):
+            return True
     if p in EXTERNAL_READONLY_PAGES:
         return True
     # 静态资源（页面自己带的 js/css/字体/图片）：同目录一层内

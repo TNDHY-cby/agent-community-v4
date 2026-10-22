@@ -982,6 +982,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 
         <div class="ws-status"><span class="ws-dot" id="wsDot"></span><span id="wsText">未连接</span><span class="ws-sm" title="自治边界状态机"><span class="ws-dot" id="smDot"></span><span id="smText">-</span></span></div>
+        <button class="btn mini ghost" onclick="fcToggle()" title="流程画布（任务树节点图 · 运行/审批/预算/回放）">🗺 画布</button>
 
 
       </div>
@@ -1179,6 +1180,26 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 
         </div>
+
+        <!-- ── 流程画布（V79/DSH 230）：节点=GET workflow，能跑与否只认后端 next/status ── -->
+        <div id="flowCanvasPanel" style="display:none;margin-top:14px;border:1px solid var(--rule);background:var(--bg2)">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;border-bottom:1px solid var(--rule)">
+            <b style="letter-spacing:2px">流程画布</b>
+            <span id="fcState" class="sub">未加载</span>
+            <span style="flex:1"></span>
+            <button class="btn mini ghost" onclick="fcRefresh()">⟳ 刷新</button>
+            <button class="btn mini" id="fcRunBtn" onclick="fcRun()">▶ 运行一步</button>
+            <button class="btn mini ghost" onclick="fcToggleReplay()">回放时间轴</button>
+            <button class="btn mini ghost" onclick="fcReset()">重置流程</button>
+          </div>
+          <div id="fcWarn" style="display:none;padding:8px 12px;background:rgba(255,176,0,.10);border-bottom:1px solid var(--rule);color:var(--yellow,#FFB000);font-size:12px"></div>
+          <div style="overflow:auto;max-height:480px">
+            <svg id="fcSvg" width="100%" height="440" style="display:block;min-width:600px"></svg>
+          </div>
+          <div id="fcDetail" style="padding:10px 12px;border-top:1px solid var(--rule);font-size:12px;color:var(--muted)">点节点看详情；能跑与否由平台判定（本画布不自己算）。</div>
+          <div id="fcReplay" style="display:none;padding:10px 12px;border-top:1px solid var(--rule);font-size:12px;max-height:220px;overflow:auto"></div>
+        </div>
+        <script src="/flow_canvas.js"></script>
 
 
       </div>
