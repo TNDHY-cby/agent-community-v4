@@ -188,7 +188,20 @@ def build_provenance(info: dict) -> dict:
             "没有任何记录证明这个 agent 收到消息后能回话"
             + ("；本条记录的验证范围原话是：" + str(last.get("scope")) if last.get("scope") else ""))
 
+    # ★V82：**声明层**一致性（静态字段）—— 与"配置能跑""真能回话"分开，互不覆盖
+    from . import card_conformance as _cc
+
+    _card = _cc.check_card(info)
+    card_seg = _segment(
+        _card["conformance"],
+        ("注册卡片字段齐、格式对" if _card["conformance"] == "passed"
+         else "注册卡片有 %d 处不合规：%s" % (
+             len(_card["conformance_errors"]),
+             "；".join("%s %s" % (e["field"], e["why"]) for e in _card["conformance_errors"][:3]))),
+        {"checked_at": _card.get("checked_at"), "errors": _card["conformance_errors"]})
+
     segments = {
+        "card_conformance": card_seg,
         "bridge_config": bridge_cfg,
         "harness_running_bridge": _segment(
             "unverified",

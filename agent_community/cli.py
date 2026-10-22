@@ -175,6 +175,17 @@ def main():
 @click.option("--gui/--no-gui", default=True, help="启用桌面 GUI 窗口（默认: --gui）")
 def start(port, wakeup, gui):
     """启动 外端Agent生产合作社（External Agent Community） 服务（AI 配置在桌面窗口内完成）"""
+    # ★V82：单实例守卫 —— 同一 AC_DATA_DIR 只允许一个平台进程写
+    try:
+        from .platform.singleton import SingletonBusy, acquire as _acq
+
+        _singleton_lease = _acq()
+        if getattr(_singleton_lease, "degraded", False):
+            print("[singleton] 降级启动：另一个实例持有数据目录（写操作可能互相覆盖，仅用于看一眼）")
+    except SingletonBusy as _e:
+        print("[singleton] 拒绝启动：%s" % _e)
+        return 3
+
     # ★2026-10-15：`--port` 的默认值原来是**常量 18920** ⇒ 用户设了 `AC_PORT` 再用
     #   `cli start` 起服务，拿到的还是 18920（"端口因人而异"这条要求形同虚设）。
     #   ⇒ 默认改 None，统一走端口的唯一解析点（命令行 > AC_PORT > 默认），并**回显实际端口**。

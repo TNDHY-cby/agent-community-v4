@@ -2,6 +2,59 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.29.0] - 2026-10-22
+
+**V82 落地（大型功能）：单实例守卫 + 注册卡片静态一致性 + 名册生命周期口径**
+
+> 老板 2026-10-22：「做，值得做的也做」。设计稿 `design-docs/V82_单实例守卫与注册可信性.md`。
+
+### 一、单实例守卫（堵"双写"这个真实风险）
+
+- `platform/singleton.py`：对 `<AC_DATA_DIR>/run/platform.lock` 拿**操作系统文件锁**
+  （POSIX `fcntl.flock` / Windows `msvcrt.locking`）——**进程退出内核自动释放，不会留死锁**
+  （这正是"不写 pid 文件"的理由：pid 文件在进程被杀后要人清）；
+- 拿不到锁时行为**显式配置**，不隐式降级：
+
+| `AC_SINGLETON_UNAVAILABLE` | 行为 |
+|---|---|
+| `fail_closed`（默认） | **拒绝启动**，打印"另一个实例正持有数据目录 X（PID / 起于）"，退出码 **3** |
+| `degraded` | 启动但**明确标记降级**（`/api/status` 里 `singleton` 段 + 日志警告） |
+
+- 接点：`cli.start()`（真正的启动入口）；`/api/status` 新增 `singleton: {policy, held, holder, degraded}`。
+
+### 二、注册卡片静态一致性（与"真能用"分开）
+
+- `platform/card_conformance.py`：逐项校验并**逐条报错**（带字段名与原因）：
+  `harness_name` 必填/≤64、`harness_id` 字符集、`wakeup_method` 必须在允许集合、
+  `wakeup_dir` 若像 URL 必须 `http(s)`、`capabilities` 必须是字符串数组且每项 ≤32；
+- `capability` 视图现在是**四段分开**：`card_conformance`（声明层）/ `bridge_config`（配置）/
+  `harness_running_bridge` / `agent_can_reply`（真回话，含 `stale`）——**互不覆盖**（判据专门查这条）。
+
+### 三、名册生命周期口径（纯函数，先立规矩）
+
+`platform/registry_lifecycle.py`：**7 天全挂 ⇒ 隐藏（不删除）**、**90 天清明细（保汇总）**、
+**48 周期查死号**；`policy()` 给出一处真相，界面/文档直接引用。
+⚠️ 本版**没接线**（接线要健康历史数据模型），已在设计稿写明。
+
+### 四、判据
+
+| 项 | 结果 |
+|---|---|
+| `test_v82_singleton_and_conformance` | **7/7**（第二持有者被拒 / 释放后可再拿 / degraded 起且标记 / status 带 singleton / 卡片逐字段报错 / 四段不互相覆盖 / 生命周期口径） |
+| 全量 | **1954 passed / 3 skipped** |
+| 环境变量 | 90 → **91**（`AC_SINGLETON_UNAVAILABLE`）；设计稿 **119 份** |
+
+### 五、过程中被自己的判据抓到的两处（都已修）
+
+1. **`state()`/`who()` 顺带 mkdir**：`/api/status` 一读就把真实数据目录建出 `run/`，
+   触发 conftest 的"测试污染了真实数据"——改成**只读不建目录**（`lock_path(create=False)`）；
+2. **我方新代码引入 1 处静默 `except OSError: pass`**（释放锁失败），被 `silent_except_report --check` 抓到 ⇒ 已标注理由。
+
+### 六、还没做（如实）
+
+签名/扫描/Referrer 三份附属记录（要定密钥来源）、virtual server（把工作间做成可被外部发现的资源，
+涉及契约变更）、名册生命周期接线（要健康历史）——都按设计先行压着，下一版再谈。
+
 ## [4.28.0] - 2026-10-22
 
 **V81：定位声明 + 探针过期（staleness）+ 第三方代码登记纪律**

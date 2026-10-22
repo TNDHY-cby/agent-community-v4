@@ -1,7 +1,7 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.28.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.29.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
@@ -224,6 +224,7 @@ python -m agent_community.cli agents list
 | `AC_AGENT_INSTALL_TIMEOUT` | 安装命令超时秒数 | `600` | 否 |
 | `AC_AGENT_CATALOG_EXTRA` | 自定义 agent 清单 JSON 路径（换机器不用改代码） | `（空）` | 否 |
 | `AC_WORKFLOW_BATCH` | 工作流一次最多并行推进几个节点 | `3` | 否 |
+| `AC_SINGLETON_UNAVAILABLE` | 同一数据目录已有实例时的行为：fail_closed（拒起，默认）或 degraded（起但标记降级） | `fail_closed` | 否 |
 | `AC_PROBE_STALENESS_HOURS` | 回话探针结果多少小时算过期（超时后 capability 显示 stale） | `24` | 否 |
 | `AC_SNAPSHOT_MAX` | 每个任务保留多少条运行快照（超了丢最旧并留一条截断记录） | `200` | 否 |
 | `AC_MCP_TOOLSETS` | MCP 挂载哪些工具组（逗号分隔：api/task/bridge/browser/devices/plan；all=全量） | `api,task` | 否 |

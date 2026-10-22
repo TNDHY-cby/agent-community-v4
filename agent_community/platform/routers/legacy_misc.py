@@ -64,7 +64,14 @@ async def api_status():
     online_agents = sum(1 for aid in agents if (
         aid in ws_agents or harness_manager.is_harness_agent(aid) or aid == orchestrator.AGENT_ID
     ))
+    try:                                     # ★V82：单实例状态（降级时界面能看出原因）
+        from ..singleton import state as _sstate
+
+        _sing = _sstate()
+    except Exception as _e:                  # noqa: BLE001
+        _sing = {"policy": "unknown", "why": str(_e)[:80]}
     return {
+        "singleton": _sing,
         "status": "running",
         "version": _PKG_VERSION,
         "agents_registered": len(agents),
