@@ -11,23 +11,40 @@ from datetime import datetime
 WAKEUP_METHODS = ("file_poll", "pending_poll", "http_api", "clipboard", "manual", "acp", "pipe", "ws")
 
 
+def _plain(v):
+    """把枚举/其它包装值还原成朴素的字符串（**这是本模块唯一的"取值"口径**）。
+
+    ★2026-10-22 真实缺陷（V87 自检当场抓到的）：
+    `HarnessInfo.model_dump()` 默认**不转 JSON 模式**，`wakeup_method` 出来的是
+    `WakeupMethod.CLIPBOARD` 这个**枚举成员**，`str()` 一下变成字符串 `'WakeupMethod.CLIPBOARD'`
+    ⇒ 卡片一致性判"不认识的叫醒方式"，`/api/harness/{id}/capability` 与自检里的
+    「声明合规」对**所有**这种 harness 都会**假红**（用户看到的是"你卡片填错了"，其实是我们的锅）。
+    """
+    return getattr(v, "value", v)
+
+
 def _err(out, field, why):
     out.append({"field": field, "why": why})
 
 
 def check_card(info) -> dict:
-    """校验一张已注册卡片的静态字段。`info` 可以是对象或 dict。"""
+    """校验一张已注册卡片的静态字段。`info` 可以是对象或 dict（枚举值两种都吃）。"""
     def g(k, default=""):
         if isinstance(info, dict):
             return info.get(k, default)
         return getattr(info, k, default)
 
     errs = []
-    hid = str(g("harness_id") or "")
-    name = str(g("harness_name") or "")
-    method = str(g("wakeup_method") or "")
-    wake_dir = str(g("wakeup_dir") or "")
-    caps = g("capabilities", None) or (g("ai", {}) or {}).get("capabilities") if isinstance(g("ai", {}), dict) else None
+    hid = str(_plain(g("harness_id")) or "")
+    name = str(_plain(g("harness_name")) or "")
+    method = str(_plain(g("wakeup_method")) or "")
+    wake_dir = str(_plain(g("wakeup_dir")) or "")
+    caps = g("capabilities", None)
+    if caps is None:
+        _ai = g("ai", {})
+        caps = (_ai or {}).get("capabilities") if isinstance(_ai, dict) else None
+    if isinstance(caps, tuple):
+        caps = list(caps)
 
     if not name:
         _err(errs, "harness_name", "必填（用户要靠它认人）")

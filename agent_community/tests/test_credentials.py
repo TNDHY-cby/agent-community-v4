@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -126,3 +127,80 @@ def test_credentials_is_never_exposed_to_external_readonly():
     assert denied, "/api/credentials 必须进 EXTERNAL_READONLY_DENY"
     allowed = any("/api/credentials".startswith(x) for x in srv.EXTERNAL_READONLY_PREFIX)
     assert not allowed, "/api/credentials 不许进只读档白名单"
+
+
+# ── 界面能看到（V86 收尾：状态里带体检摘要，但**绝不在轮询里体检**）────────────
+def test_status_carries_credential_summary_without_scanning(sandbox, monkeypatch):
+    """`/api/status` 要能显示"有几处弱值"，但**不许在里面扫磁盘**。
+
+    来历与 V60 同类：`/api/status` 被看门狗/CLI/界面高频轮询，在里面做重活 = 把轮询拖慢。
+    这里直接把 `scan()` 换成"一调用就炸"，证明状态端点根本不会走到它。
+    """
+    from fastapi.testclient import TestClient
+
+    (sandbox["root"] / ".env").write_text("AC_AI_API_KEY=%s\n" % SENTINEL, encoding="utf-8")
+    cred.scan_and_record()                      # 先真的体检一次，落账本
+
+    def _boom(*a, **k):
+        raise AssertionError("/api/status 里不许调用 scan()（轮询端点不许扫磁盘）")
+
+    monkeypatch.setattr(cred, "scan", _boom, raising=True)
+
+    from agent_community.platform.server import app
+
+    r = TestClient(app, client=("127.0.0.1", 54321)).get("/api/status")
+    assert r.status_code == 200, r.text
+    assert SENTINEL not in r.text, "状态响应里出现了明文（不可接受）"
+    d = r.json()
+    assert "credentials" in d, "状态里没有 credentials 段，界面就没法提示"
+    c = d["credentials"]
+    assert c.get("scanned") is True and c.get("total") >= 1, c
+
+
+def test_status_says_unscanned_instead_of_faking_zero(sandbox):
+    """没体检过就如实说"还没体检"，**不许**显示成 `weak: 0`（那等于假绿）。"""
+    out = cred.ledger_summary_light()
+    assert out["scanned"] is False, out
+    assert "体检" in out.get("hint", ""), out
+
+
+def test_startup_notice_speaks_but_never_scans(sandbox):
+    """启动提醒：有问题要说一句；没问题就闭嘴；**只读账本不体检**。"""
+    assert cred.startup_notice(emit=lambda *_: None) == "", "没体检过就不该提醒"
+
+    (sandbox["root"] / ".env").write_text("AC_AI_API_KEY=sk-your-key\n", encoding="utf-8")
+    cred.scan_and_record()
+    said = []
+    msg = cred.startup_notice(emit=lambda k, m: said.append(m))
+    assert msg and "1 处密钥" in msg, msg
+    assert said and said[0] == msg, "提醒必须真的发出去（失败要说话）"
+
+    def _boom(*a, **k):
+        raise AssertionError("启动提醒里不许体检")
+
+    original = cred.scan
+    cred.scan = _boom
+    try:
+        cred.startup_notice(emit=lambda *_: None)
+    finally:
+        cred.scan = original
+
+def test_cli_json_mode_is_machine_readable(sandbox):
+    """`tools/credential_check.py --json` 必须输出**纯 JSON**（末尾不许再跟一行人话）。
+
+    起因（2026-10-22 实测）：第一版在 JSON 后面又打了一行「结论」，
+    把 `first_run_check` 的机器判据坑成 `Extra data: line 12`。
+    """
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[2]
+    cli = root / "tools" / "credential_check.py"
+    assert cli.exists(), "发布面必须有 tools/credential_check.py"
+    r = subprocess.run([sys.executable, str(cli), "--no-record", "--json"],
+                       cwd=str(sandbox["root"]), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=120)
+    assert r.stdout.strip(), "CLI 什么都没输出：%s" % (r.stderr or "")[:200]
+    d = json.loads(r.stdout)                  # 严格解析：多一个字符就会炸
+    assert isinstance(d.get("summary"), dict) and isinstance(d.get("found"), list), sorted(d)
+    assert "conclusion" in d and isinstance(d.get("ok"), bool), "结论要放进 JSON，而不是另起一行"

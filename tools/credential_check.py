@@ -38,9 +38,22 @@ def main(argv=None) -> int:
     weak = [f for f in found if f.get("strength") == "weak"]
     bridge = [f for f in found if f.get("kind") == "bridge"]
 
+    bad = len(weak) + len(bridge)
+
     if a.json:
-        print(json.dumps(out, ensure_ascii=False, indent=2))
-    elif not a.quiet:
+        # ⚠️ `--json` 必须输出**纯 JSON**（能被 `json.loads` 直接吃）：
+        #    第一版在后面又打了一行"结论"，把 `first_run_check` 的机器判据坑成
+        #    `Extra data: line 12`（2026-10-22 实测踩到）。结论放进 JSON 的 `ok`/`conclusion` 里。
+        print(json.dumps({
+            **out,
+            "ok": bad == 0,
+            "conclusion": ("共 %d 处凭据，弱值 %d 处，桥产物明文 %d 处，未扫成 %d 处%s"
+                           % (len(found), len(weak), len(bridge), len(skipped),
+                              "；建议逐条改" if bad else "；没发现问题")),
+        }, ensure_ascii=False, indent=2))
+        return 0 if bad == 0 else 1
+
+    if not a.quiet:
         print("==" * 36)
         print("凭据体检（只显示位置与指纹，**不显示明文**）")
         print("==" * 36)
@@ -56,7 +69,6 @@ def main(argv=None) -> int:
             for s in skipped:
                 print("  - %s —— %s" % (s.get("source", "?"), s.get("why", "")))
 
-    bad = len(weak) + len(bridge)
     print("结论：共 %d 处凭据，弱值 %d 处，桥产物明文 %d 处，未扫成 %d 处 %s"
           % (len(found), len(weak), len(bridge), len(skipped),
              "⇒ 建议按上面逐条改" if bad else "⇒ 没发现问题"))

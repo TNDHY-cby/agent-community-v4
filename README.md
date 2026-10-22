@@ -1,7 +1,7 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.33.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.35.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
@@ -65,7 +65,7 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 | 想看什么 | 去这里 |
 |---|---|
 | **项目到底在做什么、边界在哪** | [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) |
-| **全部设计稿（123 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
+| **全部设计稿（125 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
 | **本地优先 + 中心中转**（当前架构方向） | [`design-docs/V66_本地优先与中心中转架构设计.md`](design-docs/V66_本地优先与中心中转架构设计.md) |
 | **派活与回执走中转 / 一个 Hub 服务多家公司** | [`V67`](design-docs/V67_派活与回执走中转_M2设计.md) · [`V68`](design-docs/V68_一个Hub服务多家公司_公司隔离设计.md) |
 | **没有公网服务器怎么当中转**（三条路） | [`design-docs/RUNBOOK_没有公网服务器怎么当中转.md`](design-docs/RUNBOOK_没有公网服务器怎么当中转.md) |
@@ -143,6 +143,16 @@ python -m agent_community.cli stop
 > 有配 AI Provider 时，平台自己的助手会先给出一版回答（`结果:` 那一段）。
 
 **想跑测试**（可选）：`python -m pytest -q`（依赖里已含 pytest）。
+
+**填过 key 但连不上？先体检一次**（只给位置与指纹，**不打印明文**）：
+
+```bash
+python tools/credential_check.py          # exit 0=没发现问题；1=有弱值/明文，按上面逐条改
+```
+
+它会扫 `.env` / `config.local.json` / `data/keys/` / 桥脚本，指出"第几行那个 key 太短/是示例占位值"、
+"这份桥脚本里明文有你的 key，别外发"。界面上同一个能力是「体检」按钮（`POST /api/credentials/scan`），
+`GET /api/status` 的 `credentials` 段会显示摘要。
 
 **装不上桌面窗口？** 桌面窗口用 `pywebview`（Windows 需要 WebView2 运行时）。
 装了起不来就加 `--no-gui` —— **后端与 CLI 不依赖它**，功能一样。
@@ -231,6 +241,10 @@ python -m agent_community.cli agents list
 | `AC_UPDATE_SOURCES` | 更新源列表（逗号分隔，`名字=地址` 或只写地址）；不配则用本仓库 git 远端 | `（空）` | 否 |
 | `AC_REPLY_PROBE_ENABLED` | 回话探针总开关（默认关；设 1 才允许发探针，避免无意义开销） | `0` | 否 |
 | `AC_REPLY_PROBE_TIMEOUT` | 回话探针等回执的超时秒数 | `120` | 否 |
+| `AC_MONITOR_MAX_WATCH` | 监控室同时看几路画面（默认 6；越多越吃 CPU） | `6` | 否 |
+| `AC_MONITOR_FPS` | 监控画面刷新帧率上限（默认 1；快照墙够用，调高更吃 CPU） | `1` | 否 |
+| `AC_MONITOR_AI_OBSERVE` | 监控的「agent 简单观察」总开关（默认关；开了才允许把变化统计交给 AI 说一句话） | `0` | 否 |
+| `AC_MONITOR_AI_INTERVAL_MIN` | AI 观察的最小间隔（分钟，默认 30）——**绝不是每帧一次** | `30` | 否 |
 | `AC_AI_USAGE_DIR` | 用量落盘目录（默认随 AC_DATA_DIR） | `（空）` | 否 |
 | `AC_BUDGET_DAILY` | 日预算（元）；超限熔断 AI 调用 | `2.0` | 否 |
 | `AC_BUDGET_MONTHLY` | 月预算（元） | `20.0` | 否 |

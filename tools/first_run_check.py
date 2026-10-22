@@ -186,6 +186,34 @@ def main() -> int:
                      " ".join(verdict)[:200])
             else:
                 step("⑥b 在全新 clone 里跑自愈判据", False, "发布面缺 tools/check_watchdog.py")
+        # ⑤c **凭据体检**（V86，2026-10-22 新增）：陌生人拿到包，能不能自己查"我填的 key 到底行不行"？
+        #    为什么在这一层验：`tools/credential_check.py` 是**发布面**的东西 ——
+        #    只有对着**全新 clone**（空数据目录、没体检过）跑，才能证明"别人下载到的那份"真能体检，
+        #    而且要验证它**不撒谎**：没凭据就说没凭据，不许假装"全部通过"。
+        ccl = clone / "tools" / "credential_check.py"
+        if not ccl.exists():
+            step("⑤c 包里自带凭据体检（tools/credential_check.py）", False,
+                 "发布面缺这个文件 ⇒ 陌生人没法自己判断 key 填对没有")
+        else:
+            r5c = subprocess.run([sys.executable, str(ccl), "--no-record", "--json"],
+                                 cwd=str(clone), env=env, capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace", timeout=180)
+            out5c = (r5c.stdout or "").strip()
+            try:
+                # ⚠️ 这里**只取开头那个 JSON 对象**，不要求整段输出都是 JSON：
+                #    被判据的对象是"别人下载到的那个包"，它可能是**旧一点的版本**
+                #    （v4.33.0 的 CLI 会在 JSON 后面再打一行"结论"）。
+                #    要求"纯 JSON"会把自己锁死：发布前判据跑在旧发布面上 ⇒ 永远红 ⇒ 永远发不出去。
+                #    真正要防的是"跑不起来 / 没有机器可读结果"，不是"末尾多一行人话"。
+                _j, _end = json.JSONDecoder().raw_decode(out5c)
+                ok5c = isinstance(_j.get("summary"), dict) and isinstance(_j.get("found"), list)
+                detail5c = "找到 %s 处（弱值 %s / 桥产物明文 %s / 未扫成 %s）%s" % (
+                    _j["summary"].get("found"), _j["summary"].get("weak"),
+                    _j["summary"].get("plaintext_in_bridge"), _j["summary"].get("skipped"),
+                    "（输出末尾还有非 JSON 内容，已忽略）" if out5c[_end:].strip() else "")
+            except Exception as _e5c:            # noqa: BLE001 — 输出里根本没有 JSON 就是要报的结论
+                ok5c, detail5c = False, "输出里没有可解析的 JSON（%s）：%s" % (_e5c, out5c[:120])
+            step("⑤c 包里自带凭据体检（只给位置与指纹，绝不出明文）", ok5c, detail5c)
     finally:
         if srv is not None:
             try:

@@ -70,10 +70,17 @@ async def api_status():
         _sing = _sstate()
     except Exception as _e:                  # noqa: BLE001
         _sing = {"policy": "unknown", "why": str(_e)[:80]}
+    try:                                     # ★V86：凭据体检摘要（**只读账本、绝不在轮询里体检**）
+        from ..credentials import ledger_summary_light as _cred_light
+
+        _creds = _cred_light()
+    except Exception as _e:                  # noqa: BLE001
+        _creds = {"scanned": False, "why": str(_e)[:80]}
     return {
         "singleton": _sing,
         "status": "running",
         "version": _PKG_VERSION,
+        "credentials": _creds,
         "agents_registered": len(agents),
         "agents_online": online_agents,
         "tasks_total": len(tasks),

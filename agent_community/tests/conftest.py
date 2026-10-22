@@ -342,3 +342,12 @@ def _isolate_credentials(tmp_path, monkeypatch):
     except Exception:                                        # noqa: BLE001 — 有意静默：模块没装也不该挡住别的测试
         pass
 
+@pytest.fixture(autouse=True)
+def _isolate_monitor(tmp_path, monkeypatch):
+    """V88：监控室的名单/状态也指到 tmp（否则任何碰 /api/monitor 的测试会往真实数据目录写）。"""
+    try:
+        from agent_community.platform import monitor as _mn
+
+        monkeypatch.setattr(_mn, "MONITOR_DIR", tmp_path / "monitor", raising=True)
+    except Exception:                                        # noqa: BLE001 — 有意静默：模块没装也不该挡住别的测试
+        pass

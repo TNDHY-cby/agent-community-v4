@@ -2,6 +2,105 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.35.0] - 2026-10-22
+
+**V88 监控室：把外端 harness 的窗口画面拿回来（老板拍板四条已全部落地）**
+
+> 老板 2026-10-22 三条拍板 + 一条追加：① 先做快照墙；② AI 观察默认关、开了也「好歹 30 分钟一次」且可开关；
+> ③ 监控对象是 **agent**（注册+架桥后可勾选，可开可关）；④ 「**监控的开始和关闭都在监控室里面进行**」。
+> 设计稿 `design-docs/V88_监控室窗口画面墙设计.md`（§0.1/§0.2 拍板记录、§8 实施记录）。
+
+### 一、能看画面了（真机实测，不是示意图）
+
+- 抓取：`PrintWindow(PW_RENDERFULLCONTENT)`（**纯 ctypes、零依赖**）→ 失败再试老接口；
+  **黑图检测判失败**；最小化窗口如实拒绝（"最小化时系统不渲染内容，抓不到"）；
+- 编码：标准库 `zlib` **手写 PNG**（不引 Pillow）；缩小用整数采样；
+- 本机 14 个窗口实测：**6 个能抓**（DeepSeek Harness / Edge / ZCode / 微信 / 文件资源管理器 ×2），
+  **2 个如实失败**（Marvis 这类 Electron-GPU 合成窗口、系统 canvas）；
+- 同一窗口连抓 3 帧签名完全一致（`diff=0.000`）⇒ 变化检测稳定；内容真滚动时 `diff` 跳到 0.975（真变化）。
+
+### 二、开关就在监控室里（老板第四条）
+
+- `GET /api/monitor/agents`：**选择器**——能开哪几个、为什么不能开、现在开没开；
+  能开的排最前，不可开的**照样列出**并写明原因；
+- `POST /api/monitor/watched {harness_id, on}`：就地开关（**按 agent，不让用户挑窗口句柄**）；
+- 「已架桥」唯一口径：`bridge_status == "tested"`（`protocol.py` 词表：`""`未登记 /
+  `"reported"`只登记路径 / `"tested"`桥测试真通过）——`reported` **不算通**；
+- `window.can_capture` 三值：`true` 抓过且成功 / `false` 带原因 / **`null`＝还没试过（不猜）**；
+  列表**绝不现场抓图**。
+
+### 三、其余端点与安全
+
+`GET /api/monitor/health`（一处真相）· `GET /api/monitor/sources`（手动指定窗口一次时用）·
+`GET /api/monitor/{hid}/frame?max_w=`（PNG；放大＝`max_w=0`）· `POST /api/monitor/{hid}/observe`。
+`/stream` 本版**永远 501**（只做快照墙，文案如实说"本版没做"，不甩锅缺 Pillow）。
+`/api/monitor` 进 `EXTERNAL_READONLY_DENY`（**画面不出本机**）；开/关/观察全进审计；60 秒没人看自动停抓。
+
+### 四、AI 观察（按老板口径）
+
+`AC_MONITOR_AI_OBSERVE` 默认 `0`；开了也必须过 **≥ `AC_MONITOR_AI_INTERVAL_MIN`（默认 30 分钟）** 闸门。
+**本版不调用模型**（模型多半看不了图，不假装看了）：只做本地块哈希变化统计 + "画面 X 秒没动"的人话提示。
+
+### 五、给前端的契约件
+
+`外包交接_前端界面/监控室_契约与验收.md`（随本版一起发布）：端点表 / 两栏页面结构 /
+5 条显示规则（含 `null` 不许标红、`stopped` 要显示 why、AI 默认关不是故障）/
+4 条"绝对不要做" / 7 条自验收（含"窗口最小化要显示原因，不是黑图"）。
+
+### 六、判据
+
+| 项 | 结果 |
+|---|---|
+| `test_monitor` | **20 条全绿**（PNG 解回像素 / 黑图必须判失败 / 变化检测稳定且敏感 / 名单按 agent 且落盘 / 上限 / 无人看自动停 / AI 默认关 / AI 间隔 ≥30 分钟 / 资格只认 tested / `can_capture` 不猜 / 端点 400-404-403-501 / 只读档 DENY / 真机抓取或明确原因 / 认不出窗口不乱猜） |
+| 真机端到端 | `health` 200 → 开监控 200 → `frame` 200 `image/png`（头 `x-monitor-method: printwindow`）→ `stream` 501 → 关监控 200 |
+| 规模 | 接口面 **282** 条 · `routers/` **54 个文件** · 设计稿 **125 份** · 环境变量 **96 个**（新增 4 个监控相关） |
+
+### 七、本次新增/变更的环境变量
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `AC_MONITOR_MAX_WATCH` | `6` | 同时看几路 |
+| `AC_MONITOR_FPS` | `1` | 刷新帧率上限（快照墙够用） |
+| `AC_MONITOR_AI_OBSERVE` | `0` | AI 观察开关（默认关） |
+| `AC_MONITOR_AI_INTERVAL_MIN` | `30` | AI 观察最小间隔（分钟）——**绝不是每帧一次** |
+
+## [4.34.0] - 2026-10-22
+
+**V87 接入自检：一个端点回答「这条到底通没通」＋ 修掉一处"卡片假红"真实缺陷**
+
+> 老板 2026-10-22：「好」。设计稿 `design-docs/V87_接入自检一键闭环设计.md`（§8 实施记录）。
+
+### 一、一个端点出一句结论
+
+```
+POST /api/harness/{harness_id}/selfcheck      body: {"probe": false}
+→ {verdict, one_line, steps[5], next_step, counts, probe, health}
+```
+
+- 五步：凭据（V86 摘要）/ 声明合规（V82 卡片校验）/ 配置能连 / 桥在跑 / 真回话（V82 四段），
+  再叠名册健康（V85）；`verdict` ∈ `ok|blocked|stale|unverified`，**只由 steps 派生**；
+- `next_step` 只指向**最靠前**那个非 ok 的步骤；
+- **不新造任何探测**：只做聚合 + 排序 + 说人话。
+
+### 二、三条纪律（都有判据）
+
+① 缺数据一律 `unverified`，不许假绿；② 默认不打扰外部 agent（`probe=false` 根本不碰探针，
+`probe=true` 只**发出**——**发出 ≠ 验过**，`reply` 段停在 `unverified` 并写"等它回执"）；
+③ 外部只读档不可达（端点 POST-only，只读档第一步就挡非 GET/HEAD）。
+
+### 三、修掉一处真实缺陷：卡片"假红"
+
+`HarnessInfo.model_dump()` 默认不转 JSON 模式，`wakeup_method` 出来是 `WakeupMethod.CLIPBOARD`
+枚举成员；`card_conformance` 用 `str()` 一转变成 `'WakeupMethod.CLIPBOARD'`，与允许集合对不上 ⇒
+`/api/harness/{id}/capability` 与自检里的「声明合规」对**所有**这类 harness **假红**，
+还把内部名甩给用户。已用 `_plain()`（取 `.value`）统一取值；判据三条钉住（枚举入参必须通过 /
+枚举与 JSON 模式结论一致 / 真填错时报朴素值而不是内部名）。
+
+### 四、判据
+
+`test_harness_selfcheck` **8/8** · `test_card_conformance_enum` **3/3** ·
+真机 `/selfcheck` 的 `card` 由红转绿、结论如实为 `unverified`（两项本来就没验过）。
+
 ## [4.33.0] - 2026-10-22
 
 **V86 凭据体检（老板拍板：只做体检，签名串卡片与自动轮换明确不做）**

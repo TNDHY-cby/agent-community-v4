@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import time
@@ -22,6 +23,17 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from . import env_spec
+
+logger = logging.getLogger("ac.credentials")
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str) -> None:
+    """每进程只提醒一次（与项目其它模块同一写法；失败要说话，但不刷屏）。"""
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg)
 
 #: 账本目录覆盖（测试/多实例用；不改 `AC_DATA_DIR` 也能隔离）
 LEDGER_DIR: Optional[Path] = None
@@ -357,3 +369,63 @@ def overview() -> dict:
         "note": ("只存**指纹**与位置，**不存明文**；账本可删，删了 `POST /api/credentials/scan` 能重建。"
                  "明文仍在原来的地方（`.env` / 环境变量 / `data/keys/` / 桥产物），平台不搬它。"),
     }
+
+
+#: 账本轻读缓存：`(mtime, size) -> 摘要`。`/api/status` 被高频轮询，**绝不在里面重新体检**。
+_LIGHT_CACHE: dict = {}
+
+
+def ledger_summary_light() -> dict:
+    """给 `/api/status` 用的**零成本**摘要：只读账本文件，**不做任何体检**。
+
+    为什么要有它：界面上那条"你有 2 处密钥像占位值"必须能拿到，
+    但 `/api/status` 是被看门狗/CLI/界面高频轮询的端点 —— 在里面扫一遍磁盘是不可接受的
+    （同一类错误 V60 已经踩过：`/api/status` 里主动探活把轮询拖慢）。
+    所以这里只读**体检时落下的账本**；没体检过就如实说"还没体检"。
+    """
+    p = ledger_path()
+    try:
+        st = p.stat()
+    except OSError:
+        return {"scanned": False, "total": 0, "weak": 0, "stale": 0,
+                "plaintext_in_bridge": 0,
+                "hint": "还没体检过：点「体检」或跑 `python tools/credential_check.py`"}
+    key = (str(p), st.st_mtime_ns, st.st_size)
+    hit = _LIGHT_CACHE.get("k")
+    if hit and hit[0] == key:
+        return dict(hit[1])
+    ledger = _load_ledger()
+    entries = ledger.get("entries") or []
+    s = summary(entries)
+    out = {"scanned": True, "total": s["total"], "weak": s["weak"], "stale": s["stale"],
+           "plaintext_in_bridge": s["plaintext_in_bridge"],
+           "scanned_at": ledger.get("scanned_at"),
+           "hint": "" if not (s["weak"] or s["plaintext_in_bridge"]) else
+                   "有 %d 处弱值、%d 处桥产物明文 —— 打开「凭据体检」看怎么改"
+                   % (s["weak"], s["plaintext_in_bridge"])}
+    _LIGHT_CACHE["k"] = (key, out)
+    return dict(out)
+
+
+def startup_notice(emit=None) -> str:
+    """启动时的**一句提醒**（失败要说话：别让用户以为"配好了"）。
+
+    只读账本，不体检；没有任何问题就返回空串（不刷屏）。`emit` 默认走本模块的 `_warn_once`。
+    """
+    s = ledger_summary_light()
+    if not s.get("scanned"):
+        return ""
+    bits = []
+    if s.get("weak"):
+        bits.append("%d 处密钥像占位值/太短" % s["weak"])
+    if s.get("plaintext_in_bridge"):
+        bits.append("%d 处明文落在桥脚本里" % s["plaintext_in_bridge"])
+    if not bits:
+        return ""
+    msg = ("凭据体检：%s —— 运行 `python tools/credential_check.py` 看位置与怎么改"
+           "（或界面里点「体检」）" % "、".join(bits))
+    try:
+        (emit or _warn_once)("credentials.startup", msg)
+    except Exception as e:                       # noqa: BLE001 — 提醒发不出去不该影响启动，但要留痕
+        _warn_once("credentials.startup.emit_failed", "启动提醒发不出去：%s" % e)
+    return msg

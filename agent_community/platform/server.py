@@ -114,6 +114,13 @@ async def _app_lifespan(_app):
               f"provider={ai_provider.provider_type if ai_provider else None}", flush=True)
     except Exception as _ce:
         print(f"[startup] ai_mode 初始化失败: {_ce}", flush=True)
+    # ── V86 凭据提醒（只读账本，不体检；没有问题就什么都不说）────────────
+    try:
+        from .credentials import startup_notice as _cred_notice
+
+        _cred_notice(emit=lambda _k, _m: print("[startup] %s" % _m, flush=True))
+    except Exception as _cre:                # noqa: BLE001 — 提醒失败不许拖垮启动
+        print(f"[startup] 凭据提醒没发出来: {_cre}", flush=True)
     # ── V-16 §四 启动连通性自检（2026-10-05 负责人拍板）──────────────
     # ⚠️ 默认关（ai_verify_on_startup=False）：启动自检会真发一次极小探针，
     #    负责人要求"避免默认产生计费流量"，故不默认开。
@@ -267,6 +274,8 @@ from .routers.attestations import router as _attest_router
 from .routers.discovery import router as _discovery_router
 from .routers.registry_health import router as _registry_health_router
 from .routers.credentials import router as _credentials_router
+from .routers.harness_selfcheck import router as _selfcheck_router
+from .routers.monitor import router as _monitor_router
 app.include_router(_reply_probe_router)
 app.include_router(_artifacts_router)
 app.include_router(_approval_router)
@@ -279,6 +288,8 @@ app.include_router(_attest_router)
 app.include_router(_discovery_router)
 app.include_router(_registry_health_router)  # V85 名册健康（隐藏/申诉）  # V84 工作间可发现（/.well-known）  # V83 可验证附属记录（签名/扫描/审计）  # V80 通知渠道（webhook / smtp）  # V80 Agent Manager（安装默认关）  # V78 工作流执行引擎  # V77 执行预算与超时闸  # V76 运行快照回放 + 流程导入导出  # V76 人工审批闸门（默认关）  # V75 P1-4 产物统一出口  # V74 回话探针：验一次「发消息给它、它回了」并落证据  # 助手会话一族（2026-10-21 从 server.py 整块搬出）
 app.include_router(_credentials_router)  # V86 凭据体检（只读视图 + 手动体检；永不进外部只读档）
+app.include_router(_selfcheck_router)    # V87 接入自检（一句结论 + 有序步骤 + 下一步）
+app.include_router(_monitor_router)      # V88 监控室画面墙（只在本机看，画面不出本机）
 from .routers.agents_registry import router as _agents_registry_router
 app.include_router(_agents_registry_router)  # Agent 注册与在线列表（2026-10-21 从 server.py 整块搬出）
 from .routers.legacy_misc import router as _legacy_misc_router
@@ -444,7 +455,13 @@ EXTERNAL_READONLY_SUFFIX = (
 
 EXTERNAL_READONLY_DENY = ("/api/config", "/api/admin/", "/api/logs/", "/api/plugins", "/api/policy",
                           # V86：凭据体检会暴露"密钥在哪、多弱"——自己对内看，**永不对公网**
-                          "/api/credentials")
+                          "/api/credentials",
+                          # V88：监控画面绝不出本机（只读档一律挡住）
+                          "/api/monitor")
+# ⚠️ V87 的 `/api/harness/{id}/selfcheck` **不需要**进上面的 DENY：
+#   它是 **POST-only**，而 `_readonly_allows` 第一步就把非 GET/HEAD 全部挡掉；
+#   把 `/api/harness/` 整个塞进 DENY 反而会误伤外部只读档本来允许的 `/capability`。
+#   判据见 `tests/test_harness_selfcheck.py`：断言自检路由**没有 GET 方法**、且不在只读后缀白名单里。
 
 
 def external_readonly_enabled() -> bool:

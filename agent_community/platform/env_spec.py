@@ -142,6 +142,11 @@ SPEC: dict[str, Var] = {v.name: v for v in [
     Var("AC_UPDATE_SOURCES", "更新源列表（逗号分隔，`名字=地址` 或只写地址）；不配则用本仓库 git 远端", default="", kind="feature", example="gitee=https://gitee.com/<org>/<repo>.git,mirror=https://…"),
     Var("AC_REPLY_PROBE_ENABLED", "回话探针总开关（默认关；设 1 才允许发探针，避免无意义开销）", default="0", kind="feature", example="1"),
     Var("AC_REPLY_PROBE_TIMEOUT", "回话探针等回执的超时秒数", default="120", kind="feature", example="60"),
+    # ── V88 监控室（窗口画面墙；只在 Windows 上真能抓，其它平台如实不支持）──
+    Var("AC_MONITOR_MAX_WATCH", "监控室同时看几路画面（默认 6；越多越吃 CPU）", default="6", kind="feature", example="4"),
+    Var("AC_MONITOR_FPS", "监控画面刷新帧率上限（默认 1；快照墙够用，调高更吃 CPU）", default="1", kind="feature", example="2"),
+    Var("AC_MONITOR_AI_OBSERVE", "监控的「agent 简单观察」总开关（默认关；开了才允许把变化统计交给 AI 说一句话）", default="0", kind="feature", example="1"),
+    Var("AC_MONITOR_AI_INTERVAL_MIN", "AI 观察的最小间隔（分钟，默认 30）——**绝不是每帧一次**", default="30", kind="feature", example="60"),
         Var("AC_AI_USAGE_DIR", "用量落盘目录（默认随 AC_DATA_DIR）", default="", kind="feature"),
     Var("AC_BUDGET_DAILY", "日预算（元）；超限熔断 AI 调用", default="2.0", kind="feature"),
     Var("AC_BUDGET_MONTHLY", "月预算（元）", default="20.0", kind="feature"),
