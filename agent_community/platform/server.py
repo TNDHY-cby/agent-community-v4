@@ -261,12 +261,16 @@ from .routers.approval import router as _approval_router
 from .routers.snapshots import router as _snapshots_router
 from .routers.budget import router as _budget_router
 from .routers.workflow import router as _workflow_router
+from .routers.agent_manager import router as _agent_manager_router
+from .routers.notify import router as _notify_router
 app.include_router(_reply_probe_router)
 app.include_router(_artifacts_router)
 app.include_router(_approval_router)
 app.include_router(_snapshots_router)
 app.include_router(_budget_router)
-app.include_router(_workflow_router)  # V78 工作流执行引擎  # V77 执行预算与超时闸  # V76 运行快照回放 + 流程导入导出  # V76 人工审批闸门（默认关）  # V75 P1-4 产物统一出口  # V74 回话探针：验一次「发消息给它、它回了」并落证据  # 助手会话一族（2026-10-21 从 server.py 整块搬出）
+app.include_router(_workflow_router)
+app.include_router(_agent_manager_router)
+app.include_router(_notify_router)  # V80 通知渠道（webhook / smtp）  # V80 Agent Manager（安装默认关）  # V78 工作流执行引擎  # V77 执行预算与超时闸  # V76 运行快照回放 + 流程导入导出  # V76 人工审批闸门（默认关）  # V75 P1-4 产物统一出口  # V74 回话探针：验一次「发消息给它、它回了」并落证据  # 助手会话一族（2026-10-21 从 server.py 整块搬出）
 from .routers.agents_registry import router as _agents_registry_router
 app.include_router(_agents_registry_router)  # Agent 注册与在线列表（2026-10-21 从 server.py 整块搬出）
 from .routers.legacy_misc import router as _legacy_misc_router

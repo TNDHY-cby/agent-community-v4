@@ -570,6 +570,21 @@ async def ai_usage_summary():
             "month": {"cost": month, "budget": float(getattr(u, "monthly_budget", 0) or 0)},
             "price_per_1k": float(getattr(u, "price_per_1k", 0) or 0),
         }
+        # 30 天趋势（画图用）：按记录里的 date 聚合；没有记录就是空表
+        try:
+            from collections import defaultdict
+
+            _by_day = defaultdict(float)
+            for _rec in u._load_records():
+                _d = str(_rec.get("date") or "")
+                if _d:
+                    _by_day[_d] += float(_rec.get("cost", 0) or 0)
+            out["daily_30d"] = [{"date": d, "cost": round(c, 6)}
+                                for d, c in sorted(_by_day.items())[-30:]]
+        except Exception as _e:                            # noqa: BLE001 — 读不到就说没有，不编
+            out["daily_30d"] = []
+            out["daily_30d_why"] = "%s: %s" % (type(_e).__name__, str(_e)[:100])
+
         # 按模型汇总（有就报，没有就空表）
         try:
             rows = u.summary_by_model(days=30)          # 可选实现

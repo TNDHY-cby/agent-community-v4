@@ -2,6 +2,48 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.23.0] - 2026-10-22
+
+**V80 落地（大型功能）：Agent Manager（安装器）+ 通知渠道 + 双许可商业化**
+
+### 一、Agent Manager（安装默认关）
+
+- 清单 `platform/agent_catalog.py`：**数据不是代码**，首批只放通用条目（任意 npm 全局 CLI / 任意 pip 包）；
+  可用 `AC_AGENT_CATALOG_EXTRA` 指向自己的 JSON 追加条目（**换机器不用改代码**）；
+- 4 个端点：`GET /api/agents/catalog`、`POST /api/agents/{id}/detect|install|upgrade`；
+- **安全边界写死在代码里**：只执行清单里登记的命令模板、`shell=False`（命令是列表）、
+  必须 `AC_AGENT_INSTALL_ALLOW=1` **且** body 带 `confirm:true`、`dry_run` 只回命令不执行；
+  失败把**退出码 + 输出尾部原样**返回，并给一条手工装的路；
+- 阻塞调用已挪线程（`asyncio.to_thread`）—— `test_async_no_blocking` 抓到 `detect()` 里的裸 `subprocess.run`。
+
+### 二、通知渠道（只做不需要申请第三方账号的）
+
+- `webhook`（用户自己的 URL；飞书/钉钉/企微的自定义机器人本质也是这个）+ `SMTP`（自己的邮箱）；
+- 端点：`GET /api/notify/channels`（只说配没配，**不回显凭据明文**）、`POST /api/notify/test`；
+- 飞书/钉钉/企微/Telegram 需要**申请应用或 Bot** ⇒ 按老板口径本版不做。
+
+### 三、双许可商业化（AGPL 保留 + 商业许可证售卖）
+
+- 新增 `COMMERCIAL-LICENSE.md`：双许可说明、**什么情况必须买**（闭源嵌入 / 对外托管服务 / 合规不允许 AGPL）、
+  询价入口（商务邮箱待老板填）、授权包含与不包含；
+- README 许可证一行改为双许可；发布脚本的**真实同步列表**已加该文件（已核对，不是加在注释里）。
+
+### 四、遗留收尾
+
+- 派活真实端点 `POST /api/workshop/{ws_id}/leader/assign` 已写 `dispatch` 运行快照；
+- `GET /api/ai/usage` 新增 `daily_30d`（按落盘记录按天聚合最近 30 天；读不到就空表 + 原因）；
+- 清单模板记号由 `{{package}}` 改为 `%PACKAGE%` —— 被"开箱占位"判据抓到时**换记号而不是开例外**。
+
+### 五、判据
+
+| 项 | 结果 |
+|---|---|
+| Agent Manager | **6/6**（开关没开 403 且说怎么开 / 无 confirm 400 / dry_run 不执行 / 检出两路都有人话 / 自定义清单坏 JSON 要报错） |
+| 通知渠道 | **4/4**（本地临时 HTTP 服务真发一次并收到 / SMTP 缺项说清 / 响应不含凭据明文 / 没配不是 500） |
+| 全量 | **1922 passed / 3 skipped** |
+| 反私人定制 | `check_portability` fail=0、`check_productization` fail=0 |
+| 规模 | 环境变量 **89**、业务路由 **264**、`routers/` **48 文件**、设计稿 **117 份** |
+
 ## [4.22.0] - 2026-10-22
 
 **V79 落地（大型功能）：多节点并行推进 + 失败重路由** —— 画布的有向分支能力。

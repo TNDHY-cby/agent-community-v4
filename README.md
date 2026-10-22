@@ -1,7 +1,7 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.22.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.23.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
@@ -73,7 +73,7 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 | **前端交接件（对外契约 + 可执行预检）** | [`外包交接_前端界面/`](外包交接_前端界面/) |
 | **这个平台怎么被验证的（判据清单）** | [`AGENTS.md`](AGENTS.md) 的「产品化硬规则」段 |
 | **每个版本改了什么** | [`CHANGELOG.md`](CHANGELOG.md) |
-| **许可证** | [`LICENSE`](LICENSE)（AGPL-3.0） |
+| **许可证** | **双许可**：[`LICENSE`](LICENSE)（AGPL-3.0，可自由使用/修改/自部署）· [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md)（闭源嵌入或对外托管服务时购买） |
 
 
 ## 协议矩阵（多接口多选择）
@@ -216,6 +216,13 @@ python -m agent_community.cli agents list
 | `AC_AI_CACHE_MAX` | 缓存容量上限（LRU） | `512` | 否 |
 | `AC_AI_CACHE_DIR` | 缓存落盘目录（默认随 AC_DATA_DIR） | `（空）` | 否 |
 | `AC_AI_USAGE_ENABLED` | 用量/预算统计开关 | `1` | 否 |
+| `AC_SMTP_PORT` | SMTP 端口 | `587` | 否 |
+| `AC_SMTP_FROM` | 发件地址 | `（空）` | 否 |
+| `AC_SMTP_TO` | 收件地址（可逗号分隔） | `（空）` | 否 |
+| `AC_SMTP_TLS` | SMTP 是否 STARTTLS（默认 1） | `1` | 否 |
+| `AC_AGENT_INSTALL_ALLOW` | 允许平台执行安装命令（默认关；开了也只执行清单里的命令） | `0` | 否 |
+| `AC_AGENT_INSTALL_TIMEOUT` | 安装命令超时秒数 | `600` | 否 |
+| `AC_AGENT_CATALOG_EXTRA` | 自定义 agent 清单 JSON 路径（换机器不用改代码） | `（空）` | 否 |
 | `AC_WORKFLOW_BATCH` | 工作流一次最多并行推进几个节点 | `3` | 否 |
 | `AC_SNAPSHOT_MAX` | 每个任务保留多少条运行快照（超了丢最旧并留一条截断记录） | `200` | 否 |
 | `AC_MCP_TOOLSETS` | MCP 挂载哪些工具组（逗号分隔：api/task/bridge/browser/devices/plan；all=全量） | `api,task` | 否 |

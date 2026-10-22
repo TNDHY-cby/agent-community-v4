@@ -78,6 +78,19 @@ async def workshop_leader_assign(ws_id: str, request: Request):
         zone=2, display_name="组长",
     )
     save_state()
+    try:                                     # V75/V76：派活进运行快照（回放用）
+        from .. import run_snapshot as _rs
+        from ..state import tasks as _tasks
+
+        _tid_s = str((payload or {}).get("task_id") or "")
+        _tk_s = _tasks.get(_tid_s) if _tid_s else None
+        if _tk_s is not None:
+            _rs.append(_tk_s, "dispatch", summary="组长派活",
+                       detail={"workshop_id": ws.workshop_id, "member_id": member_id,
+                               "dispatched": disp_ok},
+                       actor="user")
+    except Exception as _e:                  # noqa: BLE001 — 快照失败不挡主流程
+        print("[snapshot] 派活快照失败：%s" % _e, flush=True)
     return {"success": True, "member_id": member_id, "dispatched": disp_ok, "dispatch_note": disp_note}
 
 
