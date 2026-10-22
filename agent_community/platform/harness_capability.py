@@ -149,7 +149,15 @@ def build_provenance(info: dict) -> dict:
 
     # ── 第二/三段：只有真的验过才敢说 ok（`V74` 回话探针）────────────
     probe = md.get("reply_probe") if isinstance(md.get("reply_probe"), dict) else {}
-    if probe.get("state") == "ok":
+    if _rp.is_stale(probe):
+        # V81：验过但已过期 —— 既不能说 ok（旧的不能代表现在），也不能打回 unverified（那是没验过）
+        _age = _rp.age_hours(probe)
+        reply_seg = _segment("stale", (
+            "验过，但那是 %.1f 小时前的结论（超过 %.0f 小时就不算数了）" % (_age, _rp.staleness_hours())
+            if _age >= 0 else "验过，但不知道是多久前验的（记录缺时间），建议重验"),
+            {"source": probe.get("source") or "auto", "at": probe.get("at"),
+             "how_to_fix": "再点一次「验一次」（自动型）或「我确认它回了」（人工中转型）"})
+    elif probe.get("state") == "ok":
         _src = probe.get("source") or "auto"
         reply_seg = _segment("ok", (
             "验过了：平台投递一条带 probe_id 的消息，它回了带回执的消息"

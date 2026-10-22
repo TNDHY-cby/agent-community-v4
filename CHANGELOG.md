@@ -2,6 +2,53 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [4.28.0] - 2026-10-22
+
+**V81：定位声明 + 探针过期（staleness）+ 第三方代码登记纪律**
+
+> 来源：两份外部核对材料（同赛道「可利用之物」清单、与 IBM mcp-context-forge v1.1.0 对比）。
+> 结论收进 `design-docs/V81_同赛道借鉴与定位声明.md`（只留口径与清单，过程材料不进仓库）。
+
+### 一、定位声明写进 README（对外话术定稿）
+
+> **对方管「怎么把服务安全地接出去」（南北向网关）；我们管「一群 agent 怎么组织起来干活、怎么算账、谁说了算」（东西向组织运行层）。**
+
+- README 新增「我们的定位」一节：**不做网关/代理**、**不补 OAuth/RBAC/SSO 全家桶**、**鉴权请前置**
+  （nginx / oauth2-proxy / 反代），合作社只保留 `policy` + `rule_gate` 这层治理规则；
+- 同时把我们**真正独有的一条链**写清：`approval`（封驳必填理由）→ `run_budget`（按节点算钱）→
+  `workflow_engine`（拓扑/幂等/重路由）→ `run_snapshot` + `artifacts`（可回放可交付）；
+- 以及"**管进程而不只协议**"（8 协议 + 桥模板 + 回话探针）。
+
+### 二、探针结果会过期（借鉴 24h staleness 的**思想**，代码自己写）
+
+- 新环境变量 `AC_PROBE_STALENESS_HOURS`（默认 **24**）；
+- `capability` 的 `agent_can_reply` 从三态变四态：`unverified` / `ok` / **`stale`** / `failed`；
+  `ok` 但超过时限 ⇒ `stale` + 一句"验过，但那是 N 小时前的结论（超过 M 小时就不算数了）" + 下一步"再验一次"；
+- 时间解析不了时**不判过期**（宁可显示 ok，也不误报）。
+- 判据 `test_v81_borrow_guards`（新鲜⇒ok / 过期⇒stale / 没验过⇒unverified）。
+
+### 三、第三方代码登记纪律（新增，挡住以后的许可纠纷）
+
+- 新增 `THIRD_PARTY_NOTICES.md`：**当前未借用任何第三方源代码**；登记表 + 本项目双许可说明 +
+  "无许可证（license=None）的仓库一行代码都不许抄"；
+- 新增 `tools/third_party_check.py`：扫仓库里带 `SPDX-License-Identifier` 的文件，逐个要求在 NOTICES 里对上；
+- 判据 `test_third_party_notices_consistent`（真跑该工具，必须 exit 0）。
+
+### 四、判据
+
+| 项 | 值 |
+|---|---|
+| 全量 | **1947 passed / 3 skipped** |
+| 新增守卫 | V81 五条（staleness 三条 + 第三方登记 + README 口径不许漂移） |
+| 环境变量 | 89 → **90**（`AC_PROBE_STALENESS_HOURS`） |
+| 设计稿 | **118 份**；`pre_release_check --fast` 9 项全过 |
+
+### 五、本轮**没做**的（要设计稿或等你拍板）
+
+租约式单实例守卫（防双写）、卡片 schema 校验（`conformance` 层）、名册生命周期（7 天隐藏/90 天清理/48 周期死号）、
+签名+扫描+Referrer 附属记录、virtual server（把工作间做成可被外部发现的一等资源）、
+联邦同步 / 团队四件套 / 凭据目录 —— **一律不抢跑**，先出设计稿再动。
+
 ## [4.27.0] - 2026-10-22
 
 **按《合作社 v4.25.0 借鉴与完善总清单》§三 修完 D1–D6 + 落地最高性价比借鉴项**

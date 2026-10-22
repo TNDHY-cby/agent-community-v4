@@ -178,3 +178,30 @@ def pending_expired(record: dict) -> bool:
 
 def clear(hid: str) -> None:
     _INFLIGHT.pop(str(hid or ""), None)
+
+
+def staleness_hours() -> float:
+    """探针结果多久算过期（小时；V81 §3 #1 借鉴的 24h 口径）。"""
+    try:
+        return max(1.0, float(os.environ.get("AC_PROBE_STALENESS_HOURS", "24")))
+    except Exception:                                        # noqa: BLE001
+        return 24.0
+
+
+def age_hours(record: dict) -> float:
+    """这条记录存了多久（小时）。时间解析不了返回 -1（表示"算不出"）。"""
+    at = str((record or {}).get("at") or "")
+    if not at:
+        return -1.0
+    try:
+        return (datetime.now() - datetime.fromisoformat(at)).total_seconds() / 3600.0
+    except Exception:                                        # noqa: BLE001
+        return -1.0
+
+
+def is_stale(record: dict) -> bool:
+    """`ok` 记录是否已过期。算不出年龄时**不判过期**（宁可显示 ok，也不误报）。"""
+    if not isinstance(record, dict) or record.get("state") != "ok":
+        return False
+    age = age_hours(record)
+    return age >= 0 and age > staleness_hours()

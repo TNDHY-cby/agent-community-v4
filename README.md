@@ -1,7 +1,7 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.27.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.28.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
@@ -224,6 +224,7 @@ python -m agent_community.cli agents list
 | `AC_AGENT_INSTALL_TIMEOUT` | 安装命令超时秒数 | `600` | 否 |
 | `AC_AGENT_CATALOG_EXTRA` | 自定义 agent 清单 JSON 路径（换机器不用改代码） | `（空）` | 否 |
 | `AC_WORKFLOW_BATCH` | 工作流一次最多并行推进几个节点 | `3` | 否 |
+| `AC_PROBE_STALENESS_HOURS` | 回话探针结果多少小时算过期（超时后 capability 显示 stale） | `24` | 否 |
 | `AC_SNAPSHOT_MAX` | 每个任务保留多少条运行快照（超了丢最旧并留一条截断记录） | `200` | 否 |
 | `AC_MCP_TOOLSETS` | MCP 挂载哪些工具组（逗号分隔：api/task/bridge/browser/devices/plan；all=全量） | `api,task` | 否 |
 | `AC_UPDATE_SOURCES` | 更新源列表（逗号分隔，`名字=地址` 或只写地址）；不配则用本仓库 git 远端 | `（空）` | 否 |
@@ -463,3 +464,20 @@ curl -X POST http://127.0.0.1:$PORT/api/harness/task-result \
 - **Harness 桥模板**：`agent_community/bridge_templates/` 提供 `cli_acp` / `file_poll` / `pending_poll` 三类可参数化模板，接入方按模板生成自己的桥。
 
 *（内容由AI生成，仅供参考）*
+
+## 我们的定位（一句话，先说清）
+
+> **IBM mcp-context-forge 这类项目管「怎么把服务安全地接出去」（南北向网关）；
+> 我们管「一群 agent 怎么组织起来干活、怎么算账、谁说了算」（东西向组织运行层）。**
+
+所以本平台**不做网关、不做代理**，也**不补** OAuth/RBAC/SSO 全家桶：
+
+- **鉴权请前置**（nginx / oauth2-proxy / 反向代理都可以），合作社只负责 policy + 
+ule_gate 这一层治理规则；
+- 我们真正独有的是**一条链**：pproval（审批封驳，拒绝必填理由）→ 
+un_budget（按节点算钱，超限拦下）
+  → workflow_engine（拓扑/幂等/失败重路由）→ 
+un_snapshot + rtifacts（可回放、可交付）；
+- 我们还是少数**管进程而不只协议**的实现：能拉起、探活、唤醒外部 agent（8 种协议 + 桥模板 + 回话探针）。
+
+第三方代码借鉴与许可登记见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
