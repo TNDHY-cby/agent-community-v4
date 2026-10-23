@@ -90,6 +90,17 @@ def checks(fast: bool) -> list:
         # ★2026-10-20：仓库里不许再有"去推/去从 GitHub 拉"这类**已经停更的旧指令**
         #   （GitHub 镜像 2026-10-16 停更；旧指令会把下一个 agent 骗到旧提交上）
         ("仓库无过时的 GitHub 旧指令", [py(), str(ROOT / "tools" / "check_stale_github.py")]),
+        # ★2026-10-22 夜场三：HANDOVER 的「现行继承书」指针必须**只有一个**且指向真文件
+        #   （夜场二收工时顶部躺着两条"现行"，上面那条只覆盖到 v4.15.0 ⇒ 新会话一开局就用过期坐标）
+        #   `--allow-missing`：发布副本本来就没有 HANDOVER（dev-only），那里是**不适用**，不是通过
+        ("HANDOVER 现行继承书指针唯一且可达",
+         [py(), str(ROOT / "tools" / "handover_ptr_check.py"), "--allow-missing"]),
+        # ★2026-10-23（外部审查第 3 轮 P1-A）：许可登记与"README 链接的文件真的会发布"
+        #   原来**都不在**发布前判据里 ⇒ 发出去的版本 README 指着 `THIRD_PARTY_NOTICES.md`、
+        #   而 Gitee 上没有这个文件，仓库自带的 `third_party_check.py` 实跑 exit 1。
+        #   这里跑 dev 侧；发布副本那一侧用 `publish_face_check.py --oss`（发完之后复核）。
+        ("发布面链接与许可登记（dev 侧）", [py(), str(ROOT / "tools" / "publish_face_check.py")]),
+        ("第三方代码许可登记", [py(), str(ROOT / "tools" / "third_party_check.py")]),
     ]
     return items
 

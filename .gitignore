@@ -114,3 +114,6 @@ aoci.database.txt
 # dev-only：DSH 自身工具（含本机私有路径），从不进发布面
 dsh-tooling/
 
+
+# 开机自启入口脚本（tools/autostart.py 生成；含本机绝对路径，每台机器不一样）
+deploy/autostart/

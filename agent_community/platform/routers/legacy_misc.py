@@ -60,7 +60,7 @@ async def api_status():
     ⚠️ **零成本铁律**：本端点被界面/看门狗/CLI 高频轮询 ⇒ **绝不在里面主动探活**，
     `reachable` 只来自 V-16 自检的缓存结论；没验过就如实给 `null`（未知），不猜。
     """
-    from ..server import PIPE_DIR, TaskStatus, _PKG_VERSION, _ai_health_snapshot, agents, harness_manager, orchestrator, tasks, ws_agents
+    from ..server import PIPE_DIR, TaskStatus, _PKG_VERSION, _ai_health_snapshot, agents, data_health, harness_manager, orchestrator, tasks, ws_agents
     online_agents = sum(1 for aid in agents if (
         aid in ws_agents or harness_manager.is_harness_agent(aid) or aid == orchestrator.AGENT_ID
     ))
@@ -81,6 +81,9 @@ async def api_status():
         "status": "running",
         "version": _PKG_VERSION,
         "credentials": _creds,
+        # ★2026-10-23（数据被清空事故后）：启动时算好的"数据健康"摘要。
+        # 界面据此显示横幅（"状态是空的、但数据目录里有历史痕迹"），别再让用户自己猜。
+        "data_health": data_health(),
         "agents_registered": len(agents),
         "agents_online": online_agents,
         "tasks_total": len(tasks),

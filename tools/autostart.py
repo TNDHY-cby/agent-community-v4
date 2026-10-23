@@ -31,8 +31,11 @@ import argparse
 import json
 import os
 import platform
+import re
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -74,10 +77,32 @@ def startup_dir(override: str = "") -> Path:
     return Path(xdg) / "systemd" / "user"
 
 
+def autostart_dir() -> Path:
+    """开机自启**入口脚本**的落点（默认 `<仓库>/deploy/autostart`）。
+
+    ★2026-10-23 搬过一次：原来放在 `data/autostart/`（**运行数据**目录里）。
+    后果是"登录自启的入口住在可变数据里" —— 换 `AC_DATA_DIR`、清数据、换实例，
+    入口就凭空消失，而**登录时什么都不会起**（死状态、且没有任何提示）。
+    仓库里的 `deploy/` 才是稳定的；它**不随发布同步**（dev-only）⇒ 里面写本机绝对路径不会外泄。
+
+    `AC_AUTOSTART_DIR` 可覆盖（测试/多实例用，别把真仓库写脏）。
+    """
+    env = (os.environ.get("AC_AUTOSTART_DIR") or "").strip()
+    d = Path(env) if env else (ROOT / "deploy" / "autostart")
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def legacy_launcher_path() -> Path:
+    """老位置（`data/autostart/`）—— 只用于**迁移**与"残留"提示。"""
+    ext = "ac_watchdog.ps1" if os.name == "nt" else "ac_watchdog.sh"
+    return data_dir() / "autostart" / ext
+
+
 def launcher_path() -> Path:
     """Windows 用 **.ps1**（不是 .cmd）—— 见 `launcher_content()` 的实测理由。"""
     ext = "ac_watchdog.ps1" if os.name == "nt" else "ac_watchdog.sh"
-    return data_dir() / "autostart" / ext
+    return autostart_dir() / ext
 
 
 def launcher_content() -> str:
@@ -100,23 +125,32 @@ def launcher_content() -> str:
     py = str(sys.executable)
     wd = str(watchdog_path())
     proj = str(ROOT)
-    log = str(data_dir() / "autostart" / "ac_watchdog.log")
+    # 日志放 `data/logs/`（运行数据该在的地方）；**入口脚本**不再放 data 里（见 `autostart_dir()`）。
+    # ⚠️ 这里**不许 mkdir**：`--dry-run` 也会调用本函数来打印内容，
+    #    而"dry-run 一个文件都不写"是既有判据（test_autostart.py 抓过我一次）。
+    #    目录由生成的脚本自己在启动时建（下面那行 New-Item / mkdir -p）。
+    logdir = data_dir() / "logs"
+    log = str(logdir / "autostart.log")
     if os.name == "nt":
         return ("# 由 tools/autostart.py 生成：登录后拉起看门狗（它再拉起平台服务）\n"
                 "$ErrorActionPreference = 'Continue'\n"
                 "Set-Location -LiteralPath '%s'\n"
+                # 日志目录可能还没建（换过数据目录/清过数据）⇒ 先建，别让日志静默丢失
+                "New-Item -ItemType Directory -Force -Path '%s' | Out-Null\n"
                 "Add-Content -LiteralPath '%s' -Value ('[' + (Get-Date -Format s) + '] launcher start')\n"
                 "& '%s' -u '%s' --daemon --interval 30 2>&1 | Out-File -LiteralPath '%s' -Append -Encoding utf8\n"
                 "Add-Content -LiteralPath '%s' -Value ('[' + (Get-Date -Format s) + '] launcher exit code=' + $LASTEXITCODE)\n"
-                % (proj.replace("'", "''"), log.replace("'", "''"), py.replace("'", "''"),
+                % (proj.replace("'", "''"), str(logdir).replace("'", "''"),
+                   log.replace("'", "''"), py.replace("'", "''"),
                    wd.replace("'", "''"), log.replace("'", "''"), log.replace("'", "''")))
     return ("#!/usr/bin/env bash\n"
             "# 由 tools/autostart.py 生成：登录后拉起看门狗（它再拉起平台服务）\n"
             'cd "%s" || exit 1\n'
+            'mkdir -p "%s"\n'
             'echo "[$(date)] launcher start" >> "%s"\n'
             '"%s" -u "%s" --daemon --interval 30 >> "%s" 2>&1\n'
             'echo "[$(date)] launcher exit=$?" >> "%s"\n'
-            % (proj, log, py, wd, log, log))
+            % (proj, logdir, log, py, wd, log, log))
 
 
 def unit_content() -> str:
@@ -146,10 +180,85 @@ def _shortcut_target(sfile: Path) -> str:
         return ""
 
 
+def _shortcut_args(sfile: Path) -> str:
+    """读回快捷方式的**参数**（自启的真正落点常常在参数里，例如 `-File "<脚本>"`）。"""
+    if os.name != "nt":
+        return ""
+    ps = ("$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%s');"
+          "Write-Output $s.Arguments" % str(sfile).replace("'", "''"))
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace", timeout=30)
+        return (r.stdout or "").strip()
+    except Exception:                                       # noqa: BLE001
+        return ""
+
+
+_QUOTED_PATH = re.compile(r'"([A-Za-z]:\\[^"]+)"')
+
+
+def _ps1_parses(path: Path) -> tuple:
+    """入口 `.ps1` 到底**能不能被 PowerShell 解析**（真解析，不是查文本）。
+
+    返回 (ok, 说明)。没有 PowerShell 时返回 (True, "（本机没 PowerShell，未做解析校验）")——
+    那是"没做成"，所以在 detail 里如实带上这句话，别当成绿。
+    """
+    exe = shutil.which("powershell") or shutil.which("pwsh")
+    if not exe:
+        return True, "（本机没 PowerShell，未做解析校验）"
+    ps = ("$t = Get-Content -Raw -LiteralPath '%s'; $e = $null; "
+          "[void][System.Management.Automation.Language.Parser]::ParseInput($t, [ref]$null, [ref]$e); "
+          "if ($e.Count -gt 0) { Write-Output $e[0].Message; exit 1 } else { exit 0 }"
+          % str(path).replace("'", "''"))
+    try:
+        r = subprocess.run([exe, "-NoProfile", "-NonInteractive", "-Command", ps],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=120)
+    except Exception as e:                                    # noqa: BLE001 — 解析器起不来要说
+        return True, "（解析校验没跑成：%s）" % e
+    if r.returncode == 0:
+        return True, "入口脚本可被 PowerShell 解析"
+    return False, ((r.stdout or "") + (r.stderr or "")).strip()[:160] or "解析器返回非 0"
+
+
+def _paths_in_args(args: str) -> list:
+    """从快捷方式参数里挑出**真实存在的绝对路径候选**（-File / --daemon 的参数等）。"""
+    return [m.group(1) for m in _QUOTED_PATH.finditer(args or "")]
+
+
+def _stale_artifacts() -> list:
+    """**两个目录**（新落点 + 老落点）里当前不该有的旧入口文件。
+
+    两件事都踩过：
+    · `data/autostart/ac_watchdog.cmd`（旧版生成的，还是 **UTF-8 无 BOM**）——
+      `.cmd` 由 cmd.exe 按 ANSI/GBK 读脚本，里面那句 `cd /d "D:\\…"` 的中文路径会被读坏，
+      **一旦有人以为"还有个 cmd 入口"去双击，它一定失败**；
+    · 搬家后老位置残留的 `ac_watchdog.ps1`（指向旧 data 目录）—— 留着会让人以为"入口在 data 里还活着"。
+    """
+    out = []
+    keep = launcher_path().resolve()
+    for d in {autostart_dir(), legacy_launcher_path().parent}:
+        if not d.is_dir():
+            continue
+        for f in d.iterdir():
+            if not f.is_file() or f.suffix.lower() not in (".cmd", ".ps1", ".vbs", ".sh"):
+                continue
+            if ".old_" in f.name:
+                continue                                  # 已经标过的历史残留，不再刷
+            try:
+                if f.resolve() == keep:
+                    continue
+            except OSError:                                   # noqa: BLE001 — 有意静默：resolve 失败＝文件刚被删，跳过即可（下一次扫描自然消失）
+                pass
+            out.append(str(f))
+    return out
+
+
 def status(startup: str = "", unit_dir: str = "") -> dict:
     sup = os.name == "nt" or sys.platform.startswith("linux")
     info = {"supported": sup, "platform": platform.system(), "installed": False,
-            "where": "", "detail": "", "launcher": str(launcher_path())}
+            "where": "", "detail": "", "launcher": str(launcher_path()),
+            "ok": False, "broken": [], "stale": _stale_artifacts()}
     if os.name == "nt":
         target = Path(startup or startup_dir()) / SHORTCUT_NAME
         task = _task_state()
@@ -160,10 +269,58 @@ def status(startup: str = "", unit_dir: str = "") -> dict:
             bits = []
             if target.exists():
                 tgt = _shortcut_target(target)
-                bits.append("启动文件夹快捷方式" + ("（指向 %s）" % tgt if tgt else ""))
+                args = _shortcut_args(target)
+                # ★2026-10-23：只报"指向 powershell.exe"没有任何用 —— 真正会执行的脚本在**参数**里。
+                #   原来 `status` 就停在这一步：仓库搬家 / 换了 AC_DATA_DIR / data 被清掉之后，
+                #   快捷方式还在、`status` 照样说"已装"，登录时却什么都没起（**看起来成功**）。
+                script = ""
+                for cand in _paths_in_args(args):
+                    if cand.lower().endswith((".ps1", ".py", ".vbs", ".cmd")):
+                        script = cand
+                        break
+                bits.append("启动文件夹快捷方式（%s%s）"
+                            % (tgt or "?", ("，脚本 %s" % script) if script else ""))
+                if script:
+                    sp = Path(script)
+                    if sp.exists():
+                        bits.append("脚本可达")
+                    else:
+                        info["broken"].append(script)
+                        bits.append("★脚本**不存在**：%s" % script)
+                else:
+                    info["broken"].append("参数里找不到脚本路径")
+                    bits.append("★参数里找不到脚本路径（登录后大概什么都不会起）")
             if task.get("installed"):
                 bits.append("计划任务 %s（%s）" % (TASK_NAME, task.get("state") or "已建"))
             info["detail"] = "；".join(bits)
+            # ★2026-10-23：入口脚本里写的是**本机绝对路径**（解释器 + 看门狗脚本）。
+            #   解释器换位置（换 Python / 删 uv 缓存）或仓库搬家，登录后就是"什么都没起"，
+            #   而原来的 status 只看快捷方式在不在 ⇒ 照样报"已装"。这里逐个验。
+            lp = launcher_path()
+            if lp.is_file():
+                text = lp.read_text(encoding="utf-8", errors="replace")
+                deps = [p for p in _paths_in_args(text.replace("'", '"'))
+                        if p.lower().endswith((".exe", ".py"))]
+                info["entry_deps"] = deps
+                miss = [p for p in deps if not Path(p).exists()]
+                if miss:
+                    info["broken"].extend(miss)
+                    bits.append("★入口脚本里的依赖**不存在**：%s" % "、".join(miss))
+                elif deps:
+                    bits.append("入口脚本的解释器/看门狗都在（%d 个）" % len(deps))
+                # ★2026-10-23：**能解析**才算能跑。BOM 丢了/文件被改坏 ⇒ 登录时 ParserError，
+                #   而"文件存在 + 依赖都在"照样会让人以为没事（PS 5.1 对无 BOM 的中文脚本按 ANSI 读）。
+                ok_parse, why_parse = _ps1_parses(lp) if os.name == "nt" else (True, "")
+                if not ok_parse:
+                    info["broken"].append("入口脚本解析不过")
+                    bits.append("★入口脚本**解析不过**（登录时一定失败）：%s" % why_parse)
+                elif why_parse:
+                    bits.append(why_parse)
+            elif info["installed"]:
+                info["broken"].append(str(lp))
+                bits.append("★入口脚本不存在：%s" % lp)
+            info["detail"] = "；".join(bits)
+            info["ok"] = bool(info["installed"] and not info["broken"])
         else:
             info["detail"] = "启动文件夹和计划任务里都没有 ⇒ 重启后平台不会自己起"
     elif sys.platform.startswith("linux"):
@@ -175,6 +332,7 @@ def status(startup: str = "", unit_dir: str = "") -> dict:
                                      capture_output=True, text=True).stdout.strip() \
                 if _has_systemctl() else ""
             info["detail"] = ("unit 存在；systemctl --user is-enabled = %s" % (enabled or "未知"))
+            info["ok"] = True
         else:
             info["detail"] = "没有 systemd user unit ⇒ 重启后平台不会自己起"
     else:
@@ -288,6 +446,14 @@ def enable(*, dry_run: bool = False, startup: str = "", unit_dir: str = "") -> i
     lp.parent.mkdir(parents=True, exist_ok=True)
     # Windows 侧必须带 **UTF-8 BOM**：PowerShell 5.1 没有 BOM 时会按 ANSI 读，中文路径就废了
     lp.write_text(launcher_content(), encoding=("utf-8-sig" if os.name == "nt" else "utf-8"), newline="")
+    # ★2026-10-23 迁移：老位置（`data/autostart/`）里的入口改名留证，别让它继续冒充"现行入口"。
+    legacy = legacy_launcher_path()
+    if legacy.exists() and legacy.resolve() != lp.resolve():
+        try:
+            legacy.rename(legacy.with_name(legacy.name + ".old_" + time.strftime("%Y%m%d")))
+            print("   老入口已改名留证：%s" % legacy)
+        except OSError as e:                                  # noqa: BLE001 — 说清楚，但不挡着装新的
+            print("   ⚠️ 老入口没改名（%s）；它已不再被使用，建议手工删掉" % e)
     target.parent.mkdir(parents=True, exist_ok=True)
     if os.name == "nt":
         ps = ("$w=New-Object -ComObject WScript.Shell;"
@@ -336,7 +502,7 @@ def disable(*, startup: str = "", unit_dir: str = "") -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("status", "enable", "disable", "run-now"):
+    for name in ("status", "check", "enable", "disable", "run-now"):
         s = sub.add_parser(name)
         s.add_argument("--json", action="store_true")
         s.add_argument("--dry-run", action="store_true")
@@ -355,6 +521,29 @@ def main() -> int:
         print("  位置：%s" % info["where"])
         print("  说明：%s" % info["detail"])
         print("  支持：%s（%s）" % ("是" if info["supported"] else "否", info["platform"]))
+        if info.get("broken"):
+            print("  ★断链：%s" % "；".join(info["broken"]))
+            print("     修：`python tools/autostart.py enable`（重写入口并重指快捷方式）")
+        for s in info.get("stale") or []:
+            print("  · 旧入口残留（当前模式不用，建议删）：%s" % s)
+        return 0
+    if a.cmd == "check":
+        # ★2026-10-23：给"登录后到底会不会自己起"一个**可脚本化**的判据。
+        #   退出码：0=装好且入口可达；1=装了但断链（红）；2=没装（没做成，不算通过）
+        info = status(a.startup, a.unit_dir)
+        if a.json:
+            print(json.dumps(info, ensure_ascii=False))
+        if info.get("broken"):
+            print("[FAIL] 开机自启断链：%s ⇒ 登录后不会起（修：python tools/autostart.py enable）"
+                  % "；".join(info["broken"]))
+            return 1
+        if not info["installed"]:
+            print("[没做成] 开机自启没装 ⇒ 重启/登录后平台不会自己起（修：python tools/autostart.py enable）")
+            return 2
+        if not info.get("ok"):
+            print("[FAIL] 开机自启状态不对劲：%s" % info["detail"])
+            return 1
+        print("[OK] 开机自启已装且入口可达：%s" % info["detail"])
         return 0
     if a.cmd == "enable":
         if os.name == "nt" and a.mode in ("task", "both"):

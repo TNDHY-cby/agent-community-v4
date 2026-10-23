@@ -179,20 +179,69 @@ async def monitor_frame(harness_id: str, max_w: int = 320):
 
 
 @router.get("/api/monitor/{harness_id}/stream")
-async def monitor_stream(harness_id: str):
-    """MJPEG 连续流（**需要 Pillow**；没装就如实 501 并告诉怎么装）。"""
+async def monitor_stream(harness_id: str, request: Request, fps: float = 0, max_w: int = 320):
+    """**连续画面流**（V89）：`multipart/x-mixed-replace` 分帧推 PNG。
+
+    为什么不是 MJPEG：真 JPEG 要 Pillow（可选依赖），而"看它动没动"用标准库 PNG 完全够
+    （浏览器对 multipart 里每段按 `Content-Type` 解码，PNG 段照样连续渲染）。
+    ⇒ 对外口径就叫「连续画面流（PNG 分帧）」，**不假装是 MJPEG**（V89 §1）。
+
+    失败语义（都要说人话）：
+      501 非 Windows；403 没开监控；404 找不到窗口；409 能定位但抓不到（**不发黑图**）。
+    """
+    from fastapi.responses import StreamingResponse
+
     from ..server import Utf8JSONResponse
 
     health = mn.health()
     if not health.get("supported"):
-        return Utf8JSONResponse({"error": health.get("why"), "how_to_fix":
-                                 "非 Windows 用 /api/harness/{id}/mirror 的协议级映射"},
+        return Utf8JSONResponse({"error": health.get("why"),
+                                 "how_to_fix": "非 Windows 用 /api/harness/{id}/mirror 的协议级映射"},
                                 status_code=501)
-    # 本版**只做 PNG 快照墙**（老板 2026-10-22 拍板①）——所以这里永远是 501，
-    # 且文案要说"本版没做"，**不许**甩锅给"缺 Pillow"（那是下一版的事）。
-    return Utf8JSONResponse({"error": health.get("stream_why") or "本版只做 PNG 快照墙",
-                             "how_to_fix": "用 GET /api/monitor/{id}/frame 轮询；需要更流畅等下一版"},
-                            status_code=501)
+    row = next((e for e in mn.watched() if e.get("harness_id") == harness_id), None)
+    if row is None or not row.get("on"):
+        return Utf8JSONResponse({"error": "这个 agent 没开监控", "how_to_fix":
+                                 "先 POST /api/monitor/watched {harness_id, on:true}"}, status_code=403)
+    hwnd, why = _hwnd_for(harness_id)
+    if not hwnd:
+        return Utf8JSONResponse({"error": why, "how_to_fix":
+                                 "GET /api/monitor/sources 挑一个窗口，再 POST watched 带 hwnd 指定一次"},
+                                status_code=404)
+    first_png, first_meta = await asyncio.to_thread(mn.frame_png, hwnd, max_w or 320)
+    if first_png is None:
+        return Utf8JSONResponse(dict(first_meta, error=first_meta.get("why", "抓不到"),
+                                     how_to_fix="先用 /api/monitor/{id}/frame 试一次；抓不到就别开流"),
+                                status_code=409)
+
+    rate = mn.fps_of(fps or None)
+    gen = mn.stream_frames(hwnd, max_w=max_w or 320, want_fps=rate)
+    boundary = mn.STREAM_BOUNDARY
+
+    async def _body():
+        mn.note_viewer(harness_id)
+        try:
+            while True:
+                if await request.is_disconnected():
+                    return
+                # 抓帧是阻塞的（GDI）⇒ 必须丢线程；一帧一帧取，别卡事件循环
+                item = await asyncio.to_thread(next, gen, None)
+                if item is None:
+                    return
+                chunk, meta = item
+                if chunk is None:
+                    print("[monitor] 流结束：%s（已推 %s 帧）"
+                          % (meta.get("why"), meta.get("frames")), flush=True)
+                    return
+                head = ("--%s\r\nContent-Type: image/png\r\nContent-Length: %d\r\n"
+                        "X-Monitor-Method: %s\r\nX-Monitor-Seq: %d\r\n\r\n"
+                        % (boundary, len(chunk), meta.get("method") or "", int(meta.get("seq") or 0)))
+                yield head.encode("utf-8") + chunk + b"\r\n"
+        finally:
+            mn.touch(harness_id, last_ok_at=time.time(), why="", hwnd=int(hwnd))
+            mn.auto_stop_idle()
+
+    return StreamingResponse(_body(), media_type="multipart/x-mixed-replace; boundary=%s" % boundary,
+                             headers={"Cache-Control": "no-store"})
 
 
 @router.post("/api/monitor/{harness_id}/observe")

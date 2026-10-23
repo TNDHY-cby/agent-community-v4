@@ -158,22 +158,27 @@ def test_frame_is_403_when_agent_not_watched(client):
     assert r.status_code in (403, 404)
 
 
-def test_stream_is_501_with_an_honest_reason(client):
-    """连续流本版**永远 501**，而且原因必须如实、按平台说清。
+def test_stream_contract_follows_v89(client):
+    """连续流（V89 起**真能推流**）的契约：**先判"该不该给"，再判"说没说清"**。
 
-    ⚠️ 2026-10-22 双平台真跑抓到的自己的错：这条原来断言"文本必须含 Pillow"，
-    在 Linux 上就红了 —— 因为 Linux 侧的真实原因是"窗口抓取只支持 Windows"。
-    判据要钉**契约**（501 + 有原因 + 原因与技术事实一致），不是钉某一句文案。
+    旧版这里断言"永远 501"——那是 V88 的裁决；V89（2026-10-23）把连续流做出来了，
+    501 只剩"这个平台抓不了窗口"这一种情形。判据要钉**契约**，不是钉某一句文案：
+
+    | 情形 | 应有的答案 |
+    |---|---|
+    | 非 Windows（抓不了窗口） | **501** + 原因里带 "Windows" |
+    | 有窗口能力、但这个 agent 没开监控 | **403** + 告诉他先 `POST /api/monitor/watched` |
     """
     r = client.get("/api/monitor/x/stream")
-    assert r.status_code == 501, r.text
-    body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
-    why = str(body.get("error") or "")
-    assert why, "501 必须说清为什么：%s" % r.text
     if not mn.IS_WINDOWS:
+        assert r.status_code == 501, r.text
+        why = str(r.json().get("error") or "")
         assert "Windows" in why, "非 Windows 就该直说只支持 Windows：%s" % why
-    else:
-        assert "快照墙" in why or "Pillow" in why, "Windows 上要说清本版只做快照墙：%s" % why
+        return
+    assert r.status_code == 403, r.text
+    body = r.json()
+    assert "没开监控" in str(body.get("error") or ""), body
+    assert "watched" in str(body.get("how_to_fix") or ""), "403 要给下一步（怎么开监控）：%s" % body
 
 
 def test_monitor_is_never_exposed_to_external_readonly():

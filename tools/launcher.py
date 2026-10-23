@@ -144,6 +144,7 @@ def _hidden_kwargs() -> dict:
 def _dotenv_value(name: str):
     """从 `deploy/.env` 或仓库根 `.env` 读一个键（**只读**，不改文件、不回写）。
 
+
     为什么启动器要读它：老启动器（`启动合作社-控制台.cmd` 的前身）就是用
     `deploy/.env` 里的 `AC4_PYTHON` 指定解释器的 —— 这是项目**已有的**部署约定，
     启动器若不认它，就会出现"用户明明配好了，双击却说找不到 Python"。
@@ -224,6 +225,61 @@ def tail_file(path: Path, n: int = 20) -> str:
         return ""
 
 
+def ensure_watchdog() -> None:
+    """顺带确保**有看门狗在守**（2026-10-23 加；老板口径「装好就能用」）。
+
+    为什么放在启动器里：双击是用户唯一的入口。以前双击只保证"平台起来"，
+    **崩了没人拉回来**（守护只装在"登录自启"那条链上）—— 用户完全看不出来这两件事不一样。
+
+    **幂等**：看门狗自己有单实例锁，已经在守的那只会立刻以 exit 2 退出并说明；
+    所以这里"起一次"是安全的，不需要先探测（探测反而容易误判 —— 锁文件是被独占的）。
+
+    `AC_LAUNCHER_NO_WATCHDOG=1` 可关掉（排障时不想有进程自动拉起它）。
+    """
+    if (os.environ.get("AC_LAUNCHER_NO_WATCHDOG") or "0").strip() == "1":
+        print("[watchdog] AC_LAUNCHER_NO_WATCHDOG=1 ⇒ 跳过（平台可用，但崩了不会自动回来）", flush=True)
+        return
+    script = REPO / "tools" / "watchdog.py"
+    if not script.is_file():
+        print("[watchdog] 没有 tools/watchdog.py ⇒ 跳过守护（平台可用，但崩了不会自动回来）", flush=True)
+        return
+    py = pick_interpreter()
+    if py is None:
+        print("[watchdog] 没找到可用解释器 ⇒ 跳过守护", flush=True)
+        return
+
+    log_path = log_dir() / "launcher_watchdog.log"
+    env = dict(os.environ)
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    logf = None
+    try:
+        logf = open(log_path, "ab", buffering=0)
+    except Exception as e:                                   # noqa: BLE001 — 没日志不影响守护
+        print("[watchdog] 日志打不开（%s），守护照起" % e, flush=True)
+    try:
+        proc = subprocess.Popen(list(py) + [str(script), "--daemon", "--interval", "30"],
+                                cwd=str(REPO), env=env,
+                                stdout=logf or subprocess.DEVNULL, stderr=subprocess.STDOUT,
+                                **_hidden_kwargs())
+    except Exception as e:                                   # noqa: BLE001 — 起不来要说清楚
+        print("[watchdog] ★守护没起来：%s: %s（平台可用，但崩了不会自动回来）"
+              % (type(e).__name__, e), flush=True)
+        return
+    finally:
+        if logf is not None:
+            logf.close()
+
+    time.sleep(2.0)
+    rc = proc.poll()
+    if rc is None:
+        print("[watchdog] 已同时启动看门狗（崩了会自动拉回平台；日志 %s）" % log_path, flush=True)
+    elif rc == 2:
+        print("[watchdog] 已经有一只守护在跑（单实例保护，这次不重复起）", flush=True)
+    else:
+        print("[watchdog] ★守护起来后立刻退出（exit %s）——平台可用，但崩了不会自动回来；看 %s"
+              % (rc, log_path), flush=True)
+
+
 def run_platform(port: int, timeout: float) -> None:
     """③ 拉平台 + ④ 等健康（**整个生命周期都在后台线程里，页面不等它**）。"""
     from agent_community.port_resolve import probe as _probe
@@ -234,6 +290,7 @@ def run_platform(port: int, timeout: float) -> None:
     # 已经在跑（比如看门狗刚救活、或用户重复双击）⇒ 不重复拉进程
     if _probe(port):
         set_state(phase="ready", step=5, text=STEP_TEXT[5])
+        ensure_watchdog()          # 复用现有平台时也要保证"有人在守"
         return
 
     if port_listening(port):
@@ -280,6 +337,7 @@ def run_platform(port: int, timeout: float) -> None:
     while time.time() < deadline:
         if _probe(port):
             set_state(phase="ready", step=5, text=STEP_TEXT[5])
+            ensure_watchdog()      # 平台起来了，顺手保证"崩了有人拉回来"
             return
         code = proc.poll()
         if code is not None:

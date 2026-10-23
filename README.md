@@ -1,7 +1,7 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.35.1`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.35.2`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
@@ -65,7 +65,7 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 | 想看什么 | 去这里 |
 |---|---|
 | **项目到底在做什么、边界在哪** | [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) |
-| **全部设计稿（125 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
+| **全部设计稿（127 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
 | **本地优先 + 中心中转**（当前架构方向） | [`design-docs/V66_本地优先与中心中转架构设计.md`](design-docs/V66_本地优先与中心中转架构设计.md) |
 | **派活与回执走中转 / 一个 Hub 服务多家公司** | [`V67`](design-docs/V67_派活与回执走中转_M2设计.md) · [`V68`](design-docs/V68_一个Hub服务多家公司_公司隔离设计.md) |
 | **没有公网服务器怎么当中转**（三条路） | [`design-docs/RUNBOOK_没有公网服务器怎么当中转.md`](design-docs/RUNBOOK_没有公网服务器怎么当中转.md) |
@@ -212,6 +212,7 @@ python -m agent_community.cli agents list
 | `AC4_SHUTDOWN_PIN` | 关停口令（空=关停端点仅允许本机来源 + 二次确认） | `（空）` | 否 |
 | `AC_LAUNCHER_BROWSER` | 启动器用哪个浏览器打开过场页/大厅（如 `firefox`；空=系统默认浏览器）。写可执行文件名或绝对路径，**不绑定任何一家浏览器** | `（空）` | 否 |
 | `AC_LAUNCHER_PYTHON` | 启动器强制使用的解释器（排障用；空=自动挑一个装好依赖的解释器）。与部署层的 `AC4_PYTHON` 分开：那个是部署配置，这个是启动器临时指定 | `（空）` | 否 |
+| `AC_AUTOSTART_DIR` | 开机自启的**入口脚本**放哪（默认 `<仓库>/deploy/autostart`）。⚠️ 别放运行数据目录里：换了 `AC_DATA_DIR` 或数据被清，登录自启的入口就凭空消失（登录时什么都不会起）。测试与多实例场景可以指到临时目录 | `（空）` | 否 |
 | `AC_AI_PROVIDER` | AI 后端：`openai`（OpenAI 兼容）/`ollama`/`http_callback`；空=不接 AI | `（空）` | 否 |
 | `AC_AI_BASE_URL` | OpenAI 兼容基址（**按你的服务商填**，别照抄示例） | `（空）` | 条件必需（AC_AI_PROVIDER=openai 时） |
 | `AC_AI_API_KEY` | AI 服务密钥（**绝不入库**；本地配置里保存时：**Windows 走 DPAPI 加密**（绑定当前用户），其它系统**明文**保存并**打告警**提示改用本环境变量） | `（空）` | 条件必需（AC_AI_PROVIDER=openai（或需要鉴权的服务）时） |
@@ -220,6 +221,9 @@ python -m agent_community.cli agents list
 | `AC_ACP_COMMAND` | ACP 拉起命令（桥用它拉起 agent） | `（空）` | 条件必需（手工跑 ACP 类桥且平台未注入时） |
 | `AC_AGENT_TOKEN` | Agent-Token（桥回报鉴权；平台注册时签发，通常由平台注入） | `（空）` | 条件必需（平台为该 harness 启用了 Agent-Token 时） |
 | **— 功能开关 —** | | | |
+| `AC_LAUNCHER_NO_WATCHDOG` | 双击启动器时**不要**顺带拉起看门狗（默认 0＝顺带拉起：崩了能自动拉回）。排障或只想手动起一次时设 1 | `0` | 否 |
+| `AC_STATE_BACKUP_MINUTES` | 状态快照（`data/backups/`）多久拍一份，默认 30 分钟；**0＝关掉自动快照**。快照是 `data/*.json` 的字节复制，恢复用 `tools/state_restore.py` | `30` | 否 |
+| `AC_STATE_BACKUP_KEEP` | 状态快照保留最近多少份（默认 20；超出的删最旧的） | `20` | 否 |
 | `AC_AI_REASONING_EFFORT` | 思考强度：off/low/medium/high/max（默认 off 省钱） | `off` | 否 |
 | `AC_AI_CACHE_ENABLED` | 相同输入复用历史回复（L2 缓存，零 token） | `1` | 否 |
 | `AC_AI_CACHE_TTL` | 缓存有效期（秒） | `1800` | 否 |
@@ -243,6 +247,7 @@ python -m agent_community.cli agents list
 | `AC_REPLY_PROBE_TIMEOUT` | 回话探针等回执的超时秒数 | `120` | 否 |
 | `AC_MONITOR_MAX_WATCH` | 监控室同时看几路画面（默认 6；越多越吃 CPU） | `6` | 否 |
 | `AC_MONITOR_FPS` | 监控画面刷新帧率上限（默认 1；快照墙够用，调高更吃 CPU） | `1` | 否 |
+| `AC_MONITOR_STREAM_MAX_SECONDS` | 单条连续画面流的**硬上限**（秒，默认 600）：到点主动收尾，浏览器会自动重连，免得僵尸连接占线程 | `600` | 否 |
 | `AC_MONITOR_AI_OBSERVE` | 监控的「agent 简单观察」总开关（默认关；开了才允许把变化统计交给 AI 说一句话） | `0` | 否 |
 | `AC_MONITOR_AI_INTERVAL_MIN` | AI 观察的最小间隔（分钟，默认 30）——**绝不是每帧一次** | `30` | 否 |
 | `AC_AI_USAGE_DIR` | 用量落盘目录（默认随 AC_DATA_DIR） | `（空）` | 否 |
@@ -287,6 +292,7 @@ python -m agent_community.cli agents list
 | `AC_ACP_CWD` | ACP 命令的工作目录 | `（空）` | 否 |
 | `AC_ACP_REPO` | ACP 仓库根（部分 harness 需要） | `（空）` | 否 |
 | **— 开发/测试内部 —** | | | |
+| `AC_STATE_ALLOW_EMPTY` | **故意清库**的专用口子（默认 0）：只有设 1 才允许「没加载过状态的进程」用空内存覆盖已有数据。正常运行时**不要**开——它是 2026-10-23 数据被清事故的防线 | `0` | 否 |
 | `AC_VERIFY_NO_START_BRIDGE` | 接入自检时**不**自动起桥（测试/排障用） | `（空）` | 否 |
 | `AC_FAKE_REPLY` | 假回复（离线跑测试用；**生产别设**） | `（空）` | 否 |
 | `AC_REGRESSION_BASE` | 安全回归指向的地址（测试用） | `（空）` | 否 |

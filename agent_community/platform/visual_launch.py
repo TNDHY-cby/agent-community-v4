@@ -170,10 +170,25 @@ def _clipboard(member, text: str) -> dict:
     try:
         wakeup_bridge._set_clipboard(text)          # 同步阻塞 ⇒ 调用方负责 to_thread
     except Exception as e:  # noqa: BLE001
+        # ★2026-10-23（真机实测抓到）：文案原来是**跨平台一句通用话**（"装一个剪贴板工具：
+        #   Linux xclip/xsel；macOS pbcopy"）——在 Windows 上**指错了方向**：
+        #   Windows 侧失败几乎都是"剪贴板被别的程序占着"（`Set-Clipboard` 抛
+        #   `ExternalException: Requested Clipboard operation did not succeed.`），
+        #   而 Windows 从来不需要装剪贴板工具。**失败要说话，还要说对**。
+        _msg = str(e)
+        if _IS_WINDOWS:
+            _hint = ("Windows 上这通常是**剪贴板被别的程序占着**（或当前会话没有可用剪贴板）："
+                     "关掉/等那个程序放开后重试；也可以改用邮箱那条路（不需要剪贴板）")
+        elif _IS_POSIX:
+            _hint = "装一个剪贴板工具（xclip 或 xsel；macOS 自带 pbcopy）后重试，或改用邮箱那条路（不需要剪贴板）"
+        else:
+            _hint = "这个平台没有可用的剪贴板实现 —— 如实说不支持；请改用邮箱那条路（不需要剪贴板）"
         return {"ok": False, "method": "clipboard", "need_human": True,
-                "detail": "剪贴板写入失败：%s" % e,
-                "next_step": "装一个剪贴板工具（Linux: xclip/xsel；macOS 自带 pbcopy）后重试，"
-                             "或改用邮箱那条路（不需要剪贴板）"}
+                "detail": "剪贴板写入失败：%s" % _msg,
+                "clipboard_unavailable": ("Clipboard operation did not succeed" in _msg
+                                          or "ExternalException" in _msg
+                                          or "剪贴板" in _msg),
+                "next_step": _hint}
     name = session_name_of(member)
     return {"ok": True, "method": "clipboard", "need_human": True, "verified": None,
             "detail": "已把 %d 字放进剪贴板（半自动档：**内容到了剪贴板，但要你贴过去**）" % len(text),

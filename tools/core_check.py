@@ -36,6 +36,7 @@ python tools/core_check.py --plan     # 只打印会跑什么
 | 21 | **派活与回执走中转**（派活真建间 / ack / 回执自动更新 / 失败可见 / 零对外监听） | `tools/relay_dispatch_check.py` |
 | 22 | **公司隔离**（私有形态不退化 / 共享形态真隔离 / 跨公司要两道许可） | `tools/relay_isolation_check.py` |
 | 23 | **回话探针 V74**（默认关 / 人工中转型只能人工确认 / 错 nonce 拒 / 超时记失败 / 没证据仍 unverified） | `tools/reply_probe_check.py` |
+| 24 | **监控室真抓一帧**（health 契约 / 没开监控 403 / stream 200或501 都说人话 / **真窗口抓一帧且不是黑图** / 不污染监控名单） | `tools/monitor_frame_check.py` |
 """
 from __future__ import annotations
 
@@ -49,6 +50,34 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 ROOT = Path(__file__).resolve().parent.parent
 BRIDGES = ROOT / "agent_community" / "bridges"
+DATA_DIR = ROOT / "agent_community" / "data"
+
+#: 真实数据的"状态文件"（判据跑完它们**一个字节都不该变**）
+#: ★2026-10-23 凌晨的真实事故：一次 core_check 跑完，这几个文件全被写成了 `{}`
+#:   （tasks/rooms/task_to_room/harnesses/workshops/state_machine/interjects 清空）。
+#:   机制：某个**没有加载过状态**的进程调用了 `save_state()` —— 它把空内存当真相写盘。
+#:   当时没有判据盯着这件事，所以"数据没了"是**静默**的（下一次启动才打印"已恢复 0 个工作间"）。
+#:   ⇒ 现在每次改动都记在案，并**点名是哪一项改的**。
+STATE_FILES = ("tasks.json", "rooms.json", "task_to_room.json", "harnesses.json",
+               "workshops.json", "state_machine.json", "interjects.json")
+
+
+def _snapshot_state() -> dict:
+    """真实 data 目录状态文件指纹（缺失也记，方便看出"被删了"）。"""
+    out = {}
+    for name in STATE_FILES:
+        f = DATA_DIR / name
+        try:
+            st = f.stat()
+            out[name] = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            out[name] = None
+    return out
+
+
+def _state_diff(before: dict, after: dict) -> list:
+    """返回 [(文件名, 前, 后)]，只列真的变了的。"""
+    return [(k, before.get(k), after.get(k)) for k in after if before.get(k) != after.get(k)]
 
 
 def _snapshot_bridges() -> dict:
@@ -79,6 +108,11 @@ def _run(name: str, argv: list, timeout: int = 900) -> tuple:
         return "skip", "%s: %s" % (type(e).__name__, e), ""
     secs = time.time() - t0
     tail = [ln.strip() for ln in out.strip().splitlines() if ln.strip()][-2:]
+    # ★2026-10-23：本文件开头就写了「退出码 2＝有项**没跑成**（＝部分）」，但实现一直把 2 当红 ——
+    #   那是**承诺与实现不一致**（实测：视觉拉起判据在"剪贴板被占用"时如实返回 2，这里却记成失败，
+    #   逼人去修不存在的 bug）。现在按承诺走：2 ⇒ 跳过（如实算"没跑成"，不算通过、也不算红）。
+    if rc == 2:
+        return "skip", "%.0fs ｜ 部分：%s" % (secs, " / ".join(tail)[-150:]), out
     return ("pass" if rc == 0 else "fail"), "%.0fs ｜ %s" % (secs, " / ".join(tail)[-160:]), out
 
 
@@ -114,25 +148,39 @@ def main() -> int:
         ("派活与回执走中转（M2）", [py, str(ROOT / "tools" / "relay_dispatch_check.py")]),
         ("公司隔离（一个 Hub 多家公司）", [py, str(ROOT / "tools" / "relay_isolation_check.py")]),
         ("回话探针 V74（验过才叫接上 / 超时记失败）", [py, str(ROOT / "tools" / "reply_probe_check.py")]),
+        # ★2026-10-22 夜场三：V88 画面墙的「抓到的是真画面」这一格以前只在单元测试里，
+        #   没有一条从真服务/真窗口/真 HTTP 验过 ⇒ 补上（非 Windows 与无窗口时如实跳过，不当通过）。
+        ("监控室真抓一帧（V88 画面墙）", [py, str(ROOT / "tools" / "monitor_frame_check.py")]),
     ]
     if a.plan:
-        print("核心体检会跑 %d 项：" % (len(items) + 1))
+        print("核心体检会跑 %d 项：" % (len(items) + 2))
         for i, (n, argv) in enumerate(items, 1):
             print("  %d. %s  →  %s" % (i, n, " ".join(Path(x).name for x in argv[1:])))
         print("  %d. 桥产物落点（跑完后仓库 `agent_community/bridges/` 不许新增）" % (len(items) + 1))
+        print("  %d. 真实数据落点（跑完后 `agent_community/data/*.json` 一个字节不许变；变了会点名是哪一项）"
+              % (len(items) + 2))
         print("退出码：0=全过；1=有红；2=有项没跑成（＝部分）。")
         return 0
 
     before = _snapshot_bridges()
+    before_state = _snapshot_state()
     print("=" * 88)
     print("核心体检 —— %s" % time.strftime("%Y-%m-%d %H:%M:%S"))
     print("=" * 88)
     bad = skipped = 0
     for name, argv in items:
+        _st_before = _snapshot_state()
         st, msg, out = _run(name, argv)
         bad += st == "fail"
         skipped += st == "skip"
         print("  [%-4s] %-30s %s" % ({"pass": "OK", "fail": "FAIL", "skip": "跳过"}[st], name, msg))
+        # ★真实数据守卫（2026-10-23）：这一项有没有动过 `agent_community/data/*.json`
+        _touched = _state_diff(_st_before, _snapshot_state())
+        if _touched:
+            bad += 1
+            print("            [FAIL] 这一项**改动了真实数据**（判据不许污染真实状态）：")
+            for _n, _b, _a in _touched:
+                print("                   %-22s %s → %s" % (_n, _b, _a))
         if st != "pass":
             for ln in (out or "").strip().splitlines()[-6:]:
                 print("            %s" % ln[:150])
@@ -161,6 +209,17 @@ def main() -> int:
         bad += 1
         for k in (new[:5] + changed[:5]):
             print("            %s" % k)
+
+    after_state = _snapshot_state()
+    _all_state_diff = _state_diff(before_state, after_state)
+    _state_ok = not _all_state_diff
+    print("  [%-4s] %-30s %s" % ("OK" if _state_ok else "FAIL", "真实数据落点（data/*.json 不许动）",
+                                 "真实数据一个字节没变" if _state_ok else
+                                 "%d 个状态文件被改过（上面已点名是哪一项）" % len(_all_state_diff)))
+    if not _state_ok:
+        bad += 1
+        for _n, _b, _a in _all_state_diff:
+            print("            %-22s %s → %s" % (_n, _b, _a))
 
     print("-" * 88)
     if bad:

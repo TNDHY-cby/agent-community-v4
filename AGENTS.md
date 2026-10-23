@@ -62,8 +62,10 @@ python tools/check_portability.py       # 硬编码坐标（端口/路径/凭据
 python tools/check_productization.py    # 平台专属命令冒充通用能力 / 开箱假数据
 python tools/first_run_check.py --src <发布副本>   # 陌生人首次运行五步走查
 python tools/dual_platform_check.py     # ★双平台真跑（Windows + WSL Linux）——2026-10-17 起的 CI 替代判据
-python tools/pre_release_check.py       # ★发布前一条命令跑全五类判据（--fast 跳过双平台）
-python tools/core_check.py              # ★核心体检一条命令（**26 项**，约 20 分钟）：六协议矩阵+闭环、建立会话、多轮派活、任务全链路、acp 真拉起、看门狗救活、一键更新、掉线恢复链、多成员并发派活、证据链 V55、辩论模式 V52、隔间继承 V53、通道生命周期 V28、受控重启 V58、只读日志尾 V59、任务树+资源库、巡逻员人工点派、视觉拉起、公司间合作 P1、**外部访问（只读档/令牌/cookie）**、**中转 M1/M2/M3**、桥产物落点
+python tools/pre_release_check.py       # ★发布前一条命令跑五类判据（--fast 12 项 / 全量 14 项）
+python tools/handover_ptr_check.py      # ★交接链判据：HANDOVER 的「现行继承书」必须**只有一个**且指向真文件、dev sha 真存在
+                                        #   （2026-10-22 夜场二收工时顶部躺着两条"现行"，上面那条只覆盖到 v4.15.0 ⇒ 新会话一开局就用过期坐标）
+python tools/core_check.py              # ★核心体检一条命令（**28 项**，约 20 分钟）：六协议矩阵+闭环、建立会话、多轮派活、任务全链路、acp 真拉起、看门狗救活、一键更新、掉线恢复链、多成员并发派活、证据链 V55、辩论模式 V52、隔间继承 V53、通道生命周期 V28、受控重启 V58、只读日志尾 V59、任务树+资源库、巡逻员人工点派、视觉拉起、公司间合作 P1、**外部访问（只读档/令牌/cookie）**、**中转 M1/M2/M3**、桥产物落点
 python tools/cross_company_check.py     # 公司间合作 P1：两个独立实例真投 / 真收 / 回查 / 鉴权 / 数据隔离 / 产物清单（**20 格**，不需要 frp）
 python tools/external_access_check.py   # 外部访问 V65：只读档 / 三种令牌携带 / 401与403区分 / ?token= 种 cookie（九格）
 python tools/relay_check.py             # 中转 V66 M1：一 Hub + 两终端互达 / 终端零入站 / 鉴权 / 断线重连 / 队列有界（九格）
@@ -83,6 +85,8 @@ python tools/inherit_chain_check.py     # 隔间继承 V53：只搬产物 / 邮�
 python tools/channel_chain_check.py     # 通道生命周期 V28：停用后不投递 / 换对话序号与留痕
 python tools/watchdog.py --check        # 服务活没活（exit 0=活 / 1=挂）；--daemon 常驻守护（零第三方依赖）
 python tools/autostart.py enable        # 让平台随登录自启（Windows 启动文件夹 / Linux systemd user unit）
+python tools/autostart.py check         # ★判据：登录自启**真能起**——快捷方式在、它指向的脚本在、解释器/看门狗都在（exit 0=好 / 1=断链 / 2=没装）
+                                        #   （2026-10-23：原来只报"快捷方式指向 powershell.exe"就说完事，脚本没了照样说"已装" ⇒ 现在按真文件判）
 python tools/check_watchdog.py          # 判据：看门狗真能救活服务（能起 + 崩了能再起 + 有日志）
 python tools/launcher_check.py          # 判据（V72）：双击到大厅——先出过场页 / 并行拉起 / 就绪进大厅 / 端口被占或缺解释器都要说人话
 python tools/gen_entry.py               # 由模板生成双击入口（启动合作社.vbs / .cmd，GBK+CRLF）；--check 防漂移
@@ -91,7 +95,11 @@ python tools/move_endpoints.py --module x.py --title "某族" --paths /api/a,/ap
 python tools/fix_doc_split.py --src design-docs/某大文档.md --out-dir design-docs/model --dry-run  # 大文档拆「主索引 + 分册」
 python tools/silent_except_report.py     # 静默吞异常的存量与"只减不增"闸门（--check / --write）
 python tools/credential_check.py         # 凭据体检（V86）：只给位置/指纹/弱值/桥产物明文，**绝不打印明文**；exit 1＝有问题
+python tools/monitor_frame_check.py      # 监控室真抓一帧（V88）：health 契约 / 没开监控 403 / stream 说人话 / **真窗口抓一帧且不是黑图** / 不污染监控名单（非 Windows 与无窗口如实跳过）
+python tools/state_restore.py --list     # 状态快照（data/backups/）：列快照 / --verify 校验完整性（sha256）/ --backup-now 立刻拍 / --restore <名> 恢复（先校验快照、再给当前状态拍一张，然后逐文件回读校验）
+                                        #   机制在 platform/state_backup.py：启动必拍一张 + 每 AC_STATE_BACKUP_MINUTES(30) 分钟一张，保留 AC_STATE_BACKUP_KEEP(20) 份
 python -m pytest -q                     # 全部回归（含双平台守卫）
+python tools/gitee_push.py --verify-only --repo <发布副本>   # 发布推送口径（令牌不进命令行/不打印）；*推之前先问远端*：远端领先就说清「谁推过 master + 三条处置」，退出码 2＝没推
 python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 ```
 

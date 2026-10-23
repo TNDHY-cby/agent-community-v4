@@ -949,6 +949,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
       <div class="workshop-list" id="workshopList"><div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">加载中...</div></div>
 
       <div style="padding:8px 10px 10px;display:flex;gap:10px;flex-wrap:wrap;border-top:1px solid var(--rule)">
+        <a href="/monitor.html" title="监控室 · 画面墙（只读快照）" style="font-size:11px;color:var(--muted);text-decoration:none">📺 监控室</a>
         <a href="/ops.html" title="运维看板 · 工单审计与Agent在线" style="font-size:11px;color:var(--muted);text-decoration:none">📡 看板</a>
         <a href="/handover.html" title="交付回执台" style="font-size:11px;color:var(--muted);text-decoration:none">🧾 回执</a>
         <a href="/booths.html" title="成员隔间与桥" style="font-size:11px;color:var(--muted);text-decoration:none">🏗 隔间</a>
@@ -992,6 +993,15 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
         <span class="ns-label">下一步</span>
         <span class="ns-text" id="nextStepText"></span>
         <span class="ns-actions" id="nextStepActions"></span>
+      </div>
+
+      <!-- V84 gate 横幅（DSH 254）：ok=false 才显示（why 一行 + 按 next_step 的引导按钮）；ok=true 不显示；开工按钮不禁用 -->
+      <div id="gateBanner" style="display:none;margin:8px 14px 0;padding:9px 14px;background:var(--bg3);border:1px solid var(--rule);border-left:3px solid var(--yellow,#FFB000);border-radius:10px;font-size:12.5px;color:var(--ink);line-height:1.7">
+        <span style="color:var(--yellow,#FFB000);font-weight:800">还不能开工：</span><span id="gateWhy"></span>
+        <div style="margin-top:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <span id="gateNext" style="color:var(--muted)"></span>
+          <button class="btn mini ghost" id="gateGo" onclick="location.href='/docking.html'" style="display:none">去对接中心接入 →</button>
+        </div>
       </div>
 
 
@@ -2791,6 +2801,18 @@ function _nsFlash(id){
 function _nsOpen(hash){
   window.open('booths.html?ws_id='+encodeURIComponent(wsId)+(hash||''), '_blank');
 }
+/* ── V84 gate 横幅（DSH 254）：ok=false 才显示；why 一行 + 按 next_step 的引导按钮；开工按钮不禁用 ── */
+function renderGateBanner(gate){
+  const bar=document.getElementById('gateBanner');
+  if(!bar)return;
+  if(!gate || gate.ok===true){ bar.style.display='none'; return; }
+  document.getElementById('gateWhy').textContent=gate.why||'';
+  document.getElementById('gateNext').textContent=gate.next_step?('下一步：'+gate.next_step):'';
+  const go=document.getElementById('gateGo');
+  if(go) go.style.display=(gate.state==='no_members'||gate.state==='no_verified_member')?'inline-block':'none';
+  bar.style.display='block';
+}
+
 function renderNextStep(){
   const bar=document.getElementById('nextStepBar');
   if(!bar)return;
@@ -3891,6 +3913,7 @@ function loadWorkshop(id){
 
     /* 90 号：先按首屏 status 渲染"下一步"条（不等首轮 AI 讨论，避免草稿文案长时间挂着） */
     _wsStatus=d.status||'';
+    renderGateBanner(d.gate);
     if(typeof d.hall_content==='string'){ _wsHall=d.hall_content.trim(); }
     renderNextStep();
     let stAuto='';   /* 首轮自动讨论回来后的最新 status（首屏 d.status 可能过期） */

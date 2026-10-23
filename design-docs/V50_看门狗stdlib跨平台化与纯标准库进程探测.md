@@ -121,6 +121,9 @@ _run(argv, timeout) -> str               # 唯一的子进程出口（守卫封�
 **突变检验**（`python temp/procprobe_mutation_check.py`，在文件末尾追加覆盖、跑完即还原）：
 **4/4 KILLED**（Windows 与真 Linux 各跑一遍）——
 
+> ⚠️ `temp/` 是**开发副本独有**（公开仓库里没有这个目录）：这条命令只在开发机上可复跑。
+> 外部读者要看的是"**用哪些测试文件、判什么**"（下表与 §判据），突变脚本不随仓库发布。
+
 | 突变体 | 它模拟的错误 | 结果 |
 |---|---|---|
 | M1 `listening_pids` 恒空 | 当年那份 Windows 专属实现（Linux 上谁也查不到） | KILLED |

@@ -45,6 +45,14 @@ body{font-family:"Fira Code","VT323","Courier New","Microsoft YaHei",monospace !
 h1,h2,h3,h4,.col-header,.col-head,.fb-step,.ns-label,.zone-tag,.who{
   letter-spacing:2px;
 }
+/* 色差（Chromatic Aberration）：标题红青错位，悬停瞬间加大再复原 */
+h1,h2,.topbar b,.sdh-title,.panel-title,.logo{
+  text-shadow:1px 0 0 rgba(255,0,60,.55),-1px 0 0 rgba(0,240,255,.45);
+}
+h1:hover,h2:hover,.topbar b:hover{
+  text-shadow:3px 0 0 rgba(255,0,60,.7),-3px 0 0 rgba(0,240,255,.6);
+  transition:text-shadow .08s steps(2,end);
+}
 
 /* ── CRT 屏幕特效：扫描线 + 噪点（纯覆盖层，不挡交互） ── */
 body::after{

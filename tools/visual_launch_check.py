@@ -53,11 +53,20 @@ def main() -> int:
     from agent_community.platform import visual_launch as vl
 
     fails = 0
+    skips = []
 
     def cell(name: str, ok: bool, detail: str = "") -> None:
         nonlocal fails
         print("   %-50s %-6s %s" % (name, "OK" if ok else "★FAIL", detail))
         fails += 0 if ok else 1
+
+    def skip(name: str, why: str) -> None:
+        """如实跳过：**没验到**（不是通过，也不算红）。
+
+        用来把「产品坏了」和「这台机器此刻测不了」分开 —— 后者判红会逼人去修不存在的 bug。
+        """
+        skips.append(name)
+        print("   %-50s %-6s %s" % (name, "如实跳过", why))
 
     print("=" * 92)
     print("视觉拉起端到端判据（靶子窗口 %s）" % TAG)
@@ -122,13 +131,25 @@ def main() -> int:
 
         # ④⑤ 真拉一次：无文本框窗口 ⇒ 自动改剪贴板 + 真置顶
         res = vl.launch(m, "echo VISUAL_LAUNCH_CHECK_OK", method="wmpaste", verify=True)
-        cell("④ wmPaste 不适用 ⇒ 自动改剪贴板档且成功",
-             bool(res.get("ok")) and res.get("method") == "clipboard"
-             and res.get("fallback_from") == "wmpaste",
-             "ok=%s method=%s from=%s" % (res.get("ok"), res.get("method"), res.get("fallback_from")))
-        cell("⑤ 真的把窗口调到最上层（foreground=True）",
-             res.get("foreground") is True,
-             "foreground=%s ｜ %s" % (res.get("foreground"), str(res.get("detail"))[:60]))
+        # ★2026-10-23（真机实测）：剪贴板会被别的程序占着（Windows `Set-Clipboard` 抛
+        #   `ExternalException: Requested Clipboard operation did not succeed.`）⇒ 平台**如实报失败**
+        #   （这是对的）。这种情况下 ④⑤ 属于**环境没条件**、不是产品回归：
+        #   如实跳过并写明原因；只有"不是剪贴板问题却失败"才判红。
+        _clip_env = bool(res.get("clipboard_unavailable")) or (
+            "Clipboard operation did not succeed" in str(res.get("detail") or ""))
+        if _clip_env:
+            skip("④ wmPaste 不适用 ⇒ 自动改剪贴板档且成功",
+                 "本机剪贴板被占用/不可用（%s）⇒ 兜底路径没法实证；平台已如实报失败"
+                 % str(res.get("detail"))[:80])
+            skip("⑤ 真的把窗口调到最上层（foreground=True）", "随 ④ 一起无法实证（同一次拉起）")
+        else:
+            cell("④ wmPaste 不适用 ⇒ 自动改剪贴板档且成功",
+                 bool(res.get("ok")) and res.get("method") == "clipboard"
+                 and res.get("fallback_from") == "wmpaste",
+                 "ok=%s method=%s from=%s" % (res.get("ok"), res.get("method"), res.get("fallback_from")))
+            cell("⑤ 真的把窗口调到最上层（foreground=True）",
+                 res.get("foreground") is True,
+                 "foreground=%s ｜ %s" % (res.get("foreground"), str(res.get("detail"))[:60]))
 
         # ⑥ 不许假成功：根本不存在的标题
         ghost = _Member("NO_SUCH_WINDOW_%d" % int(time.time()))
@@ -155,9 +176,15 @@ def main() -> int:
             fails += 1
 
     print("-" * 92)
-    print("结论：%s" % ("**视觉拉起端到端全绿（列表/编码/只读/兜底/置顶/不假成功/清理）**"
-                      if not fails else "**有 %d 格失败**" % fails))
-    return 0 if not fails else 1
+    if fails:
+        print("结论：**有 %d 格失败**%s" % (fails, ("（另有 %d 格如实跳过）" % len(skips)) if skips else ""))
+        return 1
+    if skips:
+        print("结论：**部分验证** —— 能测的都过了，%d 格**如实跳过**（环境没条件，不当通过）：%s"
+              % (len(skips), "、".join(skips)))
+        return 2
+    print("结论：**视觉拉起端到端全绿（列表/编码/只读/兜底/置顶/不假成功/清理）**")
+    return 0
 
 
 if __name__ == "__main__":

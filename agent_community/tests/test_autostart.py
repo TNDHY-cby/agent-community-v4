@@ -103,32 +103,38 @@ def test_enable_then_disable_is_clean():
         pytest.skip("这台机器建不了快捷方式（CI runner 无桌面 COM）：%s" % why)
     data = tempfile.mkdtemp(prefix="ac_as_data2_")
     startup = tempfile.mkdtemp(prefix="ac_as_start2_")
+    # ★2026-10-23：入口脚本已搬出运行数据目录（放 `deploy/autostart`，可被 `AC_AUTOSTART_DIR` 覆盖）。
+    #   测试**必须**把它指到临时目录，否则会往真仓库的 deploy/ 里写东西（把工作树弄脏）。
+    entry = tempfile.mkdtemp(prefix="ac_as_entry2_")
     # ⚠️ 必须显式 `--mode startup`：默认 `both` 会去建**计划任务**，而建"登录时运行"的计划任务
     #    需要管理员权限（本会话没提升 ⇒ Access is denied）。**测试不许去动真机器的计划任务。**
     r = _run("enable", "--mode", "startup", "--startup", startup, "--unit-dir", startup,
-             env_extra={"AC_DATA_DIR": data})
+             env_extra={"AC_DATA_DIR": data, "AC_AUTOSTART_DIR": entry})
     assert r.returncode == 0, "enable 失败：%s%s" % (r.stdout, r.stderr)
 
-    # 数据目录里应有启动器；启动/unit 目录里应有那一个入口
-    made = [p for p in Path(data).rglob("*") if p.is_file()]
+    # 入口脚本在 entry 目录；数据目录里**不许**再有入口（那就是这次搬家的目的）
+    made = [p for p in Path(entry).rglob("*") if p.is_file()]
     assert any(p.name.startswith("ac_watchdog") for p in made), "没生成启动器：%s" % made
+    assert not [p for p in Path(data).rglob("ac_watchdog*")], \
+        "入口脚本又被写进运行数据目录了（换 AC_DATA_DIR 就会丢）：%s" % list(Path(data).rglob("*"))
     entries = [p for p in Path(startup).iterdir()]
     assert len(entries) == 1, "启动入口应只有一个（实际 %s）" % [p.name for p in entries]
 
     # 装了之后 status 必须能看出来
     r2 = _run("status", "--json", "--startup", startup, "--unit-dir", startup,
-              env_extra={"AC_DATA_DIR": data})
+              env_extra={"AC_DATA_DIR": data, "AC_AUTOSTART_DIR": entry})
     info = json.loads(r2.stdout.strip().splitlines()[-1])
     assert info["installed"] is True, "装完了 status 还说没装：%s" % info
 
     # 卸两次都要干净（幂等）
     for _ in range(2):
         r3 = _run("disable", "--startup", startup, "--unit-dir", startup,
-                  env_extra={"AC_DATA_DIR": data})
+                  env_extra={"AC_DATA_DIR": data, "AC_AUTOSTART_DIR": entry})
         assert r3.returncode == 0, r3.stdout + r3.stderr
     assert list(Path(startup).iterdir()) == [], "没卸干净：%s" % [p.name for p in Path(startup).iterdir()]
     info2 = json.loads(_run("status", "--json", "--startup", startup, "--unit-dir", startup,
-                            env_extra={"AC_DATA_DIR": data}).stdout.strip().splitlines()[-1])
+                            env_extra={"AC_DATA_DIR": data,
+                                       "AC_AUTOSTART_DIR": entry}).stdout.strip().splitlines()[-1])
     assert info2["installed"] is False
 
 
@@ -156,3 +162,78 @@ def test_tool_has_no_machine_coordinates_in_code():
                 if bad in node.value:
                     bad_hits.append((bad, node.value[:60]))
     assert not bad_hits, "autostart.py 的**代码**里出现了本机坐标：%s" % bad_hits[:3]
+
+
+# ── 2026-10-23：`check` 子命令（登录后到底会不会自己起）─────────────────────
+def test_check_reports_not_installed_honestly(tmp_path):
+    """没装 ⇒ exit 2 + 说清"重启/登录不会自己起" + 给修复命令（不许假装 OK）。"""
+    startup = tmp_path / "startup_empty"
+    startup.mkdir()
+    data = tmp_path / "data_empty"
+    data.mkdir()
+    r = _run("check", "--startup", str(startup), "--unit-dir", str(startup),
+             env_extra={"AC_DATA_DIR": str(data), "AC_AUTOSTART_DIR": str(tmp_path / "entry_empty")})
+    assert r.returncode == 2, "没装自启应当是 2（没做成），实际 %s：%s" % (r.returncode, r.stdout + r.stderr)
+    assert "不会自己起" in r.stdout, r.stdout
+    assert "autostart.py enable" in r.stdout, "得告诉用户怎么修：%s" % r.stdout
+
+
+def test_check_detects_broken_pointer(tmp_path):
+    """★核心：快捷方式**还在**、但它指向的脚本没了 ⇒ 必须报断链。
+
+    这正是"看起来成功"的死状态：仓库搬家 / data 被清 / 解释器被删之后，
+    登录时什么都没起，而旧版 `status` 只看快捷方式在不在，照样说"已装"。
+    """
+    ok, why = _can_create_shortcut()
+    if not ok:
+        pytest.skip("这台机器建不了快捷方式（CI runner 无桌面 COM）：%s" % why)
+    data = tmp_path / "data_inst"
+    startup = tmp_path / "startup_inst"
+    entry = tmp_path / "entry_inst"                       # 入口脚本落点（不许写进真仓库 deploy/）
+    data.mkdir()
+    startup.mkdir()
+    r = _run("enable", "--mode", "startup", "--startup", str(startup), "--unit-dir", str(startup),
+             env_extra={"AC_DATA_DIR": str(data), "AC_AUTOSTART_DIR": str(entry)})
+    assert r.returncode == 0, r.stdout + r.stderr
+
+    rc_ok = _run("check", "--startup", str(startup), "--unit-dir", str(startup),
+                 env_extra={"AC_DATA_DIR": str(data), "AC_AUTOSTART_DIR": str(entry)})
+    assert rc_ok.returncode == 0, "刚装好应当 OK：%s" % (rc_ok.stdout + rc_ok.stderr)
+
+    entries = [p for p in entry.rglob("ac_watchdog*") if p.is_file()]
+    assert entries, "没生成入口脚本：%s" % list(entry.rglob("*"))
+    entries[0].unlink()                                   # 模拟"脚本没了"
+
+    rc_bad = _run("check", "--startup", str(startup), "--unit-dir", str(startup),
+                  env_extra={"AC_DATA_DIR": str(data), "AC_AUTOSTART_DIR": str(entry)})
+    assert rc_bad.returncode == 1, "入口脚本没了却报 OK（假绿）：%s" % (rc_bad.stdout + rc_bad.stderr)
+    assert "断链" in rc_bad.stdout or "不存在" in rc_bad.stdout, rc_bad.stdout
+
+
+def test_check_detects_unparseable_entry(tmp_path):
+    """入口脚本**在**、依赖也都在，但内容坏了（解析不过）⇒ 登录时一定失败，必须报红。
+
+    ★这条防的是"BOM 丢了 / 文件被改坏"：PS 5.1 对无 BOM 的中文脚本按 ANSI 读，直接 ParserError，
+    而"文件存在 + 依赖都在"照样会让人以为没事。
+    """
+    if os.name != "nt":
+        pytest.skip("只有 PowerShell 入口需要解析校验")
+    ok, why = _can_create_shortcut()
+    if not ok:
+        pytest.skip("这台机器建不了快捷方式：%s" % why)
+    data = tmp_path / "d"
+    startup = tmp_path / "s"
+    entry = tmp_path / "e"
+    for d in (data, startup, entry):
+        d.mkdir()
+    r = _run("enable", "--mode", "startup", "--startup", str(startup), "--unit-dir", str(startup),
+             env_extra={"AC_DATA_DIR": str(data), "AC_AUTOSTART_DIR": str(entry)})
+    assert r.returncode == 0, r.stdout + r.stderr
+
+    ps1 = [p for p in entry.rglob("*.ps1")][0]
+    ps1.write_text("if ($x -eq ) { broken\n", encoding="utf-8-sig")     # 故意写坏（语法都不成立）
+
+    rc = _run("check", "--startup", str(startup), "--unit-dir", str(startup),
+              env_extra={"AC_DATA_DIR": str(data), "AC_AUTOSTART_DIR": str(entry)})
+    assert rc.returncode == 1, "入口解析不过却报 OK（假绿）：%s" % (rc.stdout + rc.stderr)
+    assert "解析不过" in rc.stdout, rc.stdout

@@ -97,6 +97,22 @@ async def _app_lifespan(_app):
         load_state()  # 加载 harnesses/tasks/workshops/rooms 持久化
     except Exception as _e:
         print(f"[startup] load_state 失败: {_e}", flush=True)
+    # ★2026-10-23：起来之后**先拍一张状态快照**，再开自动快照循环。
+    #   事故教训：数据被清时没有一份旧快照可退回。快照失败只打日志，绝不影响启动。
+    try:
+        from . import state_backup as _bk
+
+        _first = _bk.snapshot("startup")
+        if _first.get("ok"):
+            print("[backup] 启动快照：%s（%d 个文件%s）"
+                  % (_first["dir"], len(_first["files"]), "；**状态是空的**" if _first.get("empty") else ""),
+                  flush=True)
+        else:
+            print("[backup] 启动快照没拍成：%s" % _first.get("why"), flush=True)
+        _bk.start_periodic()
+    except Exception as _e:                                  # noqa: BLE001 — 备份坏了不挡启动，但要说
+        print("[backup] 自动快照没起起来（%s: %s）——平台能用，但出事时没有可退回的快照"
+              % (type(_e).__name__, _e), flush=True)
     # 内部 AI 接管模式（remote/manual/off）与 manual 超时：任意启动方式均生效
     _cfg = None
     try:
@@ -764,43 +780,106 @@ def _harden_data_dir_once():
 _data_dir_hardened = False
 
 _STATE_LOCK = threading.Lock()
+#: 本进程是否已"取得状态所有权"（成功 load_state 过，或至少成功写过一次盘）。
+#: 为 False 时**不许**用空内存覆盖磁盘上已有的数据 —— 见 save_state() 的②号硬闸。
+_STATE_OWNED = False
+#: "空内存拒写"的告警是否已经打过（每进程一次，别刷屏）
+_EMPTY_WARNED = False
+
+
+def _allow_empty_write() -> bool:
+    """故意清库的口子（首次运行 / 手工重置）。设 `AC_STATE_ALLOW_EMPTY=1` 才放行。
+
+    ★V90：判定已搬到 `state_store.allow_empty_write()`；这里保留名字给历史调用点。
+    """
+    from .state_store import allow_empty_write as _f
+
+    return _f()
+
+
+def data_health() -> dict:
+    """数据健康摘要（**一处真相**在 `platform/data_health.py`）。
+
+    为什么不在本文件放模块级 dict：`python -m agent_community.platform.server` 时本文件有
+    **两份模块对象**（`__main__` 与包模块），模块级变量两边互不可见 ——
+    实测：启动时算了摘要、日志也打了警告，`/api/status`（走包模块）却读到默认值。
+    放独立模块里，两边 import 到的是**同一个对象**。
+    """
+    from . import data_health as _dh
+
+    return _dh.snapshot()
 
 def _atomic_write_text(path: Path, text: str):
-    """临时文件 + os.replace 原子替换写盘，避免写盘中断留下损坏的 JSON。"""
-    tmp = Path(str(path) + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    """临时文件 + os.replace 原子替换写盘，避免写盘中断留下损坏的 JSON。
+
+    ★V90：实现已搬到 `platform/state_store.py`（纯函数、可单测），这里保留名字是为了**不惊动历史调用点**。
+    """
+    from .state_store import atomic_write_text as _w
+
+    _w(path, text)
+
+
+def _disk_state_has_data() -> bool:
+    """磁盘上的状态文件里**有没有东西**（V90 起在 `state_store.disk_has_data()`）。"""
+    from . import state_store as _ss
+
+    return _ss.disk_has_data(DATA_DIR)
+
 
 def save_state():
     """将 tasks / discussion_rooms / task_to_room / harnesses / workshops 写入 DATA_DIR JSON 文件。
-    线程锁 + 原子写（临时文件 + os.replace）：并发写盘串行化，崩溃不产生半截 JSON。"""
+    线程锁 + 原子写（临时文件 + os.replace）：并发写盘串行化，崩溃不产生半截 JSON。
+
+    🚨2026-10-23 事故后的**两道硬闸**（那次 `tasks/rooms/harnesses/workshops/*.json`
+    在同一秒被写成空 `{}`，平台静默地"恢复 0 个"，用户完全看不出来）：
+
+    ① **降级实例不许写盘**：另一个实例持有数据目录时，写了必然互相覆盖；
+    ② **没有"取得状态所有权"的进程不许用空内存覆盖已有数据**
+       —— 这是那次事故的直接机制：某个进程没走 `load_state()`（内存是空的）却调了 `save_state()`。
+       "所有权"= 成功 `load_state()` 过，或本进程至少成功写过一次盘；
+       要故意清库（首次运行 / 手工重置）时设 `AC_STATE_ALLOW_EMPTY=1`，并把理由写在提交说明里。
+    """
+    from . import data_health as _dh
+    from . import state_store as _ss
+
+    global _STATE_OWNED, _EMPTY_WARNED
+
+    _empty_now = not (tasks or discussion_rooms or harness_manager.sessions or workshops)
+    _why = _ss.block_reason(empty_now=_empty_now, owned=_STATE_OWNED, degraded=bool(_dh.DEGRADED),
+                            disk_has_data=(_ss.disk_has_data(DATA_DIR) if _empty_now else False),
+                            allow_empty=_ss.allow_empty_write())
+    if _why:
+        # 每类告警每进程只打一次（别刷屏）
+        if _dh.DEGRADED:
+            if not _dh.WARNED:
+                _dh.WARNED = True
+                print(_why, flush=True)
+        elif not _EMPTY_WARNED:
+            _EMPTY_WARNED = True
+            print(_why, flush=True)
+            import traceback as _tb
+            _tb.print_stack()
+        return False
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     _harden_data_dir_once()  # V-9：首次写盘时收紧目录权限
-    tasks_file = DATA_DIR / "tasks.json"
-    rooms_file = DATA_DIR / "rooms.json"
-    mapping_file = DATA_DIR / "task_to_room.json"
-    harnesses_file = DATA_DIR / "harnesses.json"
-    workshops_file = DATA_DIR / "workshops.json"
-    # 逐项序列化+写盘，全部 try/except：任何失败单独记录，绝不 500（2026-08-29 修复持久化）
-    _ok = True
-    _items = (
-        ("tasks", tasks_file, lambda: {tid: t.model_dump() for tid, t in tasks.items()}),
-        ("rooms", rooms_file, lambda: {rid: r.model_dump() for rid, r in discussion_rooms.items()}),
-        ("task_to_room", mapping_file, lambda: dict(task_to_room)),
-        ("harnesses", harnesses_file, lambda: {hid: s.info.model_dump() for hid, s in harness_manager.sessions.items()}),
-        ("workshops", workshops_file, lambda: {wid: w.to_dict() for wid, w in workshops.items()}),
-        ("interjects", DATA_DIR / "interjects.json", lambda: interject_store.to_dict()),
-        ("state_machine", DATA_DIR / "state_machine.json", lambda: task_state_machine.to_dict()),
-    )
+    # 逐项序列化：**组装在本模块**（这些全局只有本模块看得见；见 V90 §1 的双模块陷阱），
+    # 交给 state_store 逐项 try + 原子写（一个坏对象不许拖垮全部状态的落盘）。
+    _items = [
+        ("tasks.json", lambda: {tid: t.model_dump() for tid, t in tasks.items()}),
+        ("rooms.json", lambda: {rid: r.model_dump() for rid, r in discussion_rooms.items()}),
+        ("task_to_room.json", lambda: dict(task_to_room)),
+        ("harnesses.json", lambda: {hid: s.info.model_dump() for hid, s in harness_manager.sessions.items()}),
+        ("workshops.json", lambda: {wid: w.to_dict() for wid, w in workshops.items()}),
+        ("interjects.json", lambda: interject_store.to_dict()),
+        ("state_machine.json", lambda: task_state_machine.to_dict()),
+    ]
     with _STATE_LOCK:
-        for _name, _file, _build in _items:
-            try:
-                _data = _build()
-                _atomic_write_text(_file, json.dumps(_data, ensure_ascii=False, indent=2))
-            except Exception as _e:
-                _ok = False
-                print(f"[persist] 序列化/写 {_name}.json 失败: {_e}", flush=True)
-                import traceback as _tb; _tb.print_exc()
+        _ok, _failed = _ss.write_items(_items, DATA_DIR)
+        if _failed:
+            print("[persist] 这些文件没写成功：%s" % "、".join(_failed), flush=True)
+    if _ok:
+        # 写过一次就"取得所有权"：之后即使列表变空（用户真的删光了）也允许落盘
+        _STATE_OWNED = True
     return _ok
 def load_state():
     """从 DATA_DIR JSON 文件恢复 tasks / discussion_rooms / task_to_room。"""
@@ -871,8 +950,38 @@ def load_state():
                 print(f"[persist] 已清理 {len(orphan_sm)} 条孤儿状态机记录: {orphan_sm}")
         except Exception as e:
             print(f"[persist] 加载 state_machine.json 失败: {e}")
-    print(f"[persist] 已恢复 {len(tasks)} 个任务, {len(discussion_rooms)} 个讨论室, "
-          f"{len(harness_manager.sessions)} 个 harness, {len(workshops)} 个工作间")
+    _summary = (f"[persist] 已恢复 {len(tasks)} 个任务, {len(discussion_rooms)} 个讨论室, "
+                f"{len(harness_manager.sessions)} 个 harness, {len(workshops)} 个工作间")
+    print(_summary)
+    # 走过 load_state ⇒ 本进程的内存就是磁盘的真相 ⇒ 允许它写盘（见 save_state 的②号硬闸）
+    global _STATE_OWNED
+    _STATE_OWNED = True
+    # 🚨2026-10-23 事故后的"失败要说话"：状态是空的、但数据目录里有**历史痕迹** ⇒ 大声说出来。
+    #   那次 tasks/rooms/harnesses/workshops 在 00:00:34 被同时写成 `{}`，而平台**安静地**起来了
+    #   （只在日志里打了"已恢复 0 个…"），用户双击启动看到的是"一片空白但一切正常"。
+    #   判据：不猜原因、不清数据、只把"你可能刚丢了数据 + 去哪儿找 + 怎么备份"说清楚。
+    try:
+        _ws_dirs = 0
+        try:
+            _ws_dirs = sum(1 for p in (DATA_DIR / "workshops").iterdir() if p.is_dir())
+        except OSError:
+            _ws_dirs = 0
+        _audit = DATA_DIR / "audit.json"
+        _audit_kb = int(_audit.stat().st_size / 1024) if _audit.exists() else 0
+        _state_empty = not (tasks or discussion_rooms or harness_manager.sessions or workshops)
+        from . import data_health as _dh
+        _dh.note(state_empty=bool(_state_empty), workspace_dirs=int(_ws_dirs),
+                 audit_kb=int(_audit_kb), checked_at=now_iso(),
+                 empty_but_history=bool(_state_empty and (_ws_dirs or _audit_kb >= 1)))
+        if _dh.HEALTH["empty_but_history"]:
+            print("[persist][警告] 状态文件是空的（0 任务/0 工作间），但数据目录里有历史痕迹："
+                  f"{_ws_dirs} 个工作区目录、audit.json {_audit_kb} KB。"
+                  "这通常意味着**状态被清空过**（例如另一个实例用空内存覆盖了盘）。"
+                  f"排查 ：① 先确认只有一个实例在跑（`{DATA_DIR / 'run' / 'platform.lock'}`）；"
+                  f"② 看 audit.json 里最后的工作间/登记记录；③ 恢复前先整目录备份 {DATA_DIR}。",
+                  flush=True)
+    except Exception as _e:                                  # noqa: BLE001 — 告警本身不许挡住启动
+        print(f"[persist] （历史痕迹检查没跑成：{type(_e).__name__}: {_e}）", flush=True)
 def now_iso() -> str:
     return datetime.now().isoformat()
 def _write_pipe_request(agent_id: str, message_type: str, task_id: str = "",
@@ -5631,11 +5740,16 @@ if __name__ == "__main__":
     # ★V82 修正：单实例锁必须由**服务进程本身**持有（原来放在 cli 父进程里，
     #   父进程一退出锁就没了 ⇒ 守卫形同虚设，还会显示"别人持有、degraded=true"的假象）。
     from .singleton import SingletonBusy as _SB, acquire as _acq
+    from . import data_health as _dh
 
+    # ⚠️ 这里在 `if __name__ == "__main__":` 的**模块级**代码里，不能写 `global`（会 SyntaxError）。
+    _dh.DEGRADED = False
     try:
         _lease = _acq()
-        if getattr(_lease, "degraded", False):
-            print("[singleton] 降级启动：另一个实例持有数据目录（写操作可能互相覆盖）", flush=True)
+        _dh.DEGRADED = bool(getattr(_lease, "degraded", False))
+        if _dh.DEGRADED:
+            print("[singleton] 降级启动：另一个实例持有数据目录（写操作会互相覆盖 ⇒ 本实例不写盘）",
+                  flush=True)
     except _SB as _e:
         print("[singleton] 拒绝启动：%s" % _e, flush=True)
         raise SystemExit(3)

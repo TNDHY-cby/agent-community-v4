@@ -375,6 +375,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
     <span class="logo">◈ 外端agent生产合作社</span>
     <div class="ws-status"><span class="ws-dot" id="wsDot"></span><span id="wsText">未连接</span></div>
     <div class="spacer"></div>
+    <button class="btn" onclick="location.href='/monitor.html'" title="监控室 · 画面墙（只读快照）">📺 监控室</button>
     <button class="btn" onclick="location.href='/docking.html'" title="对接中心 · 把外部 Agent 接进来、并让它跟工作间对上">🔌 对接中心</button>
     <button class="btn" onclick="location.href='/ops.html'" title="运维看板 · 工单审计与Agent在线">📡 看板</button>
     <button class="btn" onclick="location.href='/handover.html'" title="交付回执台 · 无证据不回执">🧾 回执</button>
@@ -383,6 +384,8 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
     <button class="btn" onclick="openSettings()">⚙ 设置</button>
   </div>
   <!-- 「恢复」按钮已移除（老板 2026-10-19 裁定）：其重绘能力并入 init() 自动执行，见 restoreSession() -->
+  <div id="dataHealthBar" style="display:none;padding:8px 16px;background:rgba(255,176,0,.10);border-bottom:1px solid rgba(255,176,0,.4);color:var(--yellow,#FFB000);font-size:12.5px"></div>
+  <div id="credBar" style="display:none;padding:8px 16px;border-bottom:1px solid transparent;font-size:12.5px"></div>
   <div id="singletonBar" style="display:none;padding:8px 16px;background:rgba(255,176,0,.12);border-bottom:1px solid rgba(255,176,0,.5);color:var(--yellow,#FFB000);font-size:12.5px"></div>
   <div class="main">
     <div class="col-left">
@@ -402,7 +405,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
               <span class="he-t">流程说明</span>
               <span class="he-s">使用说明书 · 流程 · 接口</span>
             </a>
-          </div><img class="he-emblem" src="boot_emblem.png" alt="徽记"><div class="he-title">社区大厅</div><div class="he-sub">发布任务后，先与平台 AI 明确需求，再选员工分工执行</div>
+          </div><img class="he-emblem" src="boot_emblem.png" alt="徽记">
         </div></div>
         <div class="hall-input">
           <div class="hi-row">
@@ -636,7 +639,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
             外端 Agent 生产协作平台 —— 让接入不同 harness 的外端 Agent 协同生产。<br>
             同一个 AI 接入不同 harness 后表现不同，平台按各 harness 的框架能力编排协作。<br><br>
             支持任务广播、讨论室协商分工、共识投票与委托执行。<br><br>
-            基于 FastAPI + WebSocket 构建，前端采用原生 HTML/CSS/JS 实现。
+            基于 FastAPI + WebSocket 构建，前端采用原生 HTML/CSS/JS 实现。<br><br>本项目双许可：AGPL-3.0（自用/自部署）/ 商业许可（闭源嵌入或对外托管服务时购买）。
           </div>
         </div>
       </div>
@@ -757,11 +760,25 @@ async function refreshStats(){try{const r=await fetch('/api/bus/stats');const d=
 async function refreshBudget(){if(!currentWorkshopId){document.getElementById('bpEmpty').style.display='';document.getElementById('bpContent').style.display='none';return}try{const r=await fetch(`/api/budget/${currentWorkshopId}`);const d=await r.json();const spent=d.spent||0,budget=d.budget||0,ratio=d.ratio||0,status=d.status||'ok';const t=tasks.find(x=>x.task_id===currentWorkshopId);document.getElementById('bpEmpty').style.display='none';document.getElementById('bpContent').style.display='flex';document.getElementById('bpTaskName').textContent=t?t.title||'未知':'未知';document.getElementById('bpSpent').textContent=spent.toLocaleString();document.getElementById('bpBudget').textContent=budget.toLocaleString();document.getElementById('bpRatio').textContent=(ratio*100).toFixed(1)+'%';const bar=document.getElementById('bpBar');bar.style.width=Math.min(ratio*100,100)+'%';bar.className='bp-bar'+(status==='warning'?' warning':status==='cutoff'?' cutoff':'');const st=document.getElementById('bpStatus');const sl={ok:'正常',warning:'预警',cutoff:'已熔断'};st.textContent=sl[status]||status;st.className='bp-status'+(status==='warning'?' warning':status==='cutoff'?' cutoff':'')}catch(e){}}
 async function checkSession(){try{const r=await fetch('/api/session/restore');const d=await r.json();if(d.summary&&d.summary.has_previous){const s=d.summary;appendMessage({from_agent:'system',to_agent:'user',content:`上次会话: ${s.task_title} (${s.task_status}) · ${s.task_count} 个任务`,message_type:'text',timestamp:new Date().toISOString()})}}catch(e){}}
 async function saveSession(){try{await fetch('/api/session/save',{method:'POST'});document.getElementById('lastAction').textContent='会话已保存'}catch(e){}}
-async function restoreSession(){try{const r=await fetch('/api/events?limit=50');const d=await r.json();const ev=d.events||[];const s=document.getElementById('hallMessages');s.innerHTML='';if(ev.length===0){s.innerHTML='<div class="hall-empty"><img class="he-emblem" src="boot_emblem.png" alt="徽记"><div class="he-title">社区大厅</div><div class="he-sub">输入指令广播任务</div></div>';return}ev.reverse().forEach(e=>{let c=e.content||'{}';try{c=JSON.stringify(JSON.parse(c),null,2)}catch(_){}appendMessage({from_agent:e.agent_id||'system',to_agent:'console',content:`[${e.event_type}] ${c}`,message_type:'text',timestamp:e.timestamp},true)});await refreshTasks()}catch(e){}}
+async function restoreSession(){try{const r=await fetch('/api/events?limit=50');const d=await r.json();const ev=d.events||[];const s=document.getElementById('hallMessages');s.innerHTML='';if(ev.length===0){s.innerHTML='<div class="hall-empty"></div>';return}ev.reverse().forEach(e=>{let c=e.content||'{}';try{c=JSON.stringify(JSON.parse(c),null,2)}catch(_){}appendMessage({from_agent:e.agent_id||'system',to_agent:'console',content:`[${e.event_type}] ${c}`,message_type:'text',timestamp:e.timestamp},true)});await refreshTasks()}catch(e){}}
 /* 心跳灯 V60（2026-10-20）：数据源=/api/status 的 ai 段（平台权威），不再写死 agent id。
    三态如实：只有 reachable===true 才绿；null=未知不绿；false=离线红+detail 原因放 title。 */
 function fmtAge(s){if(s==null)return'';if(s<60)return'刚刚';if(s<3600)return Math.round(s/60)+' 分钟前';return Math.round(s/3600)+' 小时前'}
-async function checkHealth(){try{const r=await fetch('/api/status');const d=await r.json();const ai=(d&&d.ai)||{};const el=document.getElementById('agentStatus');if(!el)return;if(ai.configured===false){el.textContent='AI未配置';el.style.color='var(--muted)';el.title=ai.detail||'在「设置」里配置平台 AI 后可用'}else if(ai.reachable===true){el.textContent='AI在线';el.style.color='var(--green)';const ag=fmtAge(ai.age_seconds);el.title=(ai.detail||'连通正常')+(ag?('（'+ag+'验证）'):'')}else if(ai.reachable===false){el.textContent='AI离线';el.style.color='var(--red)';el.title=ai.detail||'连通失败——点右侧「验证连通」看原因'}else{el.textContent='AI未验证';el.style.color='var(--yellow)';el.title=ai.detail||'已配置但还没验证过连通——点右侧「验证连通」核实'}const sg=d&&d.singleton;const bar=document.getElementById('singletonBar');if(bar){if(sg&&sg.degraded){bar.style.display='block';bar.textContent='⚠ 另一个平台实例正持有同一数据目录（写操作可能互相覆盖）'+(sg.holder?('——持有者：'+sg.holder):'');}else{bar.style.display='none';}}}catch(e){}}
+/* 凭据体检（V86 / DSH 244）：真扫描只在用户点按钮时发生；结果只给指纹不出明文 */
+async function credScan(){
+  try{
+    const d=await (await fetch('/api/credentials/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+    const parts=[];
+    if(d.total!=null)parts.push('扫描 '+d.total+' 处');
+    if(d.weak!=null)parts.push('弱 '+d.weak);
+    if(d.stale!=null)parts.push('过期 '+d.stale);
+    if(d.plaintext_in_bridge!=null)parts.push('桥内明文 '+d.plaintext_in_bridge);
+    alert('凭据体检完成：'+(parts.join(' · ')||JSON.stringify(d))+(d.hint?('\n'+d.hint):''));
+    if(typeof checkHealth==='function')checkHealth();
+  }catch(e){ alert('体检失败：'+e.message); }
+}
+
+async function checkHealth(){try{const r=await fetch('/api/status');const d=await r.json();const ai=(d&&d.ai)||{};const el=document.getElementById('agentStatus');if(!el)return;if(ai.configured===false){el.textContent='AI未配置';el.style.color='var(--muted)';el.title=ai.detail||'在「设置」里配置平台 AI 后可用'}else if(ai.reachable===true){el.textContent='AI在线';el.style.color='var(--green)';const ag=fmtAge(ai.age_seconds);el.title=(ai.detail||'连通正常')+(ag?('（'+ag+'验证）'):'')}else if(ai.reachable===false){el.textContent='AI离线';el.style.color='var(--red)';el.title=ai.detail||'连通失败——点右侧「验证连通」看原因'}else{el.textContent='AI未验证';el.style.color='var(--yellow)';el.title=ai.detail||'已配置但还没验证过连通——点右侧「验证连通」核实'}const dh=d&&d.data_health;const dbar=document.getElementById('dataHealthBar');if(dbar){const closed=sessionStorage.getItem('dhClosed')==='1';if(dh&&dh.empty_but_history===true&&!closed){dbar.style.display='block';dbar.innerHTML='⚠ 这台平台的数据可能是被清过的：状态是空的，但数据目录里还有历史痕迹（工作区目录 '+(dh.workspace_dirs!=null?dh.workspace_dirs:'?')+' 个 / 审计 '+(dh.audit_kb!=null?dh.audit_kb:'?')+' KB）。'+'<a href="javascript:void(0)" onclick="sessionStorage.setItem(&quot;dhClosed&quot;,&quot;1&quot;);this.closest(&quot;div&quot;).style.display=&quot;none&quot;" style="color:inherit;margin-left:8px">知道了</a>';}else{dbar.style.display='none';}}const sg=d&&d.singleton;const bar=document.getElementById('singletonBar');const cred=d&&d.credentials;const cbar=document.getElementById('credBar');if(cbar){if(cred&&cred.scanned===false){cbar.style.display='block';cbar.style.background='rgba(255,255,255,.05)';cbar.style.borderColor='var(--rule,#2E2B27)';cbar.style.color='var(--muted)';cbar.innerHTML='还没做过凭据体检——点 <a href="javascript:void(0)" onclick="credScan()" style="color:#00FFFF">这里体检</a>（只给指纹不出明文）';}else if(cred&&(cred.weak>0||cred.plaintext_in_bridge>0)){cbar.style.display='block';cbar.style.background='rgba(255,176,0,.12)';cbar.style.borderColor='rgba(255,176,0,.5)';cbar.style.color='var(--yellow,#FFB000)';cbar.innerHTML='⚠ '+(cred.hint||('发现 '+(cred.weak||0)+' 处弱密钥 / '+(cred.plaintext_in_bridge||0)+' 处桥内明文'))+'　<a href="javascript:void(0)" onclick="credScan()" style="color:#FFB000">体检</a>';}else{cbar.style.display='none';}}if(bar){if(sg&&sg.degraded){bar.style.display='block';bar.textContent='⚠ 另一个平台实例正持有同一数据目录（写操作可能互相覆盖）'+(sg.holder?('——持有者：'+sg.holder):'');}else{bar.style.display='none';}}}catch(e){}}
 /* 验证连通：POST /api/ai/verify（无 body）；成功/失败都用返回 detail/reason+how_to_fix 说话；cached=true 如实标「刚验证过」 */
 async function verifyAI(btn){const el=document.getElementById('lastAction');const old=btn.textContent;btn.disabled=true;btn.textContent='验证中...';try{const r=await fetch('/api/ai/verify',{method:'POST'});const d=await r.json().catch(()=>({}));if(r.ok&&d.ok){el.textContent='验证连通：'+(d.detail||('成功 '+d.elapsed_ms+'ms'))+(d.cached?'（刚验证过，10分钟内缓存）':'')}else{el.textContent='验证连通未通过：'+(d.reason||d.detail||('HTTP '+r.status))+(d.how_to_fix?(' · '+d.how_to_fix):'')}}catch(e){el.textContent='验证连通失败：'+e.message}btn.disabled=false;btn.textContent=old;await checkHealth()}
 function showBridgePanel(tid,prompt){bridgeTaskId=tid;bridgeCountdown=1800;let pt=prompt;['[桥接等待]','需要你在桥接目标中处理以下任务并提交响应:\n\n'].forEach(p=>{if(pt.startsWith(p))pt=pt.slice(p.length).trim()});document.getElementById('bridgePrompt').textContent=pt;document.getElementById('bridgeResponse').value='';document.getElementById('bridgeSubmitBtn').disabled=true;document.getElementById('bridgePanel').classList.add('show');document.getElementById('bridgeResponse').focus();startBridgeTimer();document.getElementById('lastAction').textContent='桥接等待中';renderWorkshops()}
@@ -1052,9 +1069,10 @@ async function loadProtocols(){
     const r=await fetch('/api/protocols');
     const d=await r.json();
     const protos=d.protocols||[];
-    const statusMap={available:['✅ 可用','var(--green)'],partial:['⚠️ 部分实现','var(--yellow)'],not_implemented:['🔒 规划中','var(--muted)'],disabled:['⏸ 已禁用','var(--muted)']};
+    /* V80 协议口径（DSH 242）：对外说法只认 openbox，别自己推断状态 */
+    const openboxMap={ready:['✅ 已通','var(--green)'],partial:['⚠️ 部分','var(--yellow)'],optional:['🔒 可选','var(--muted)'],planned:['🔒 规划中','var(--muted)'],absent:['🔒 未安装','var(--muted)']};
     box.innerHTML=protos.map(p=>{
-      const [label,color]=statusMap[p.status]||[p.status,'var(--muted)'];
+      const [label,color]=(p.openbox&&openboxMap[p.openbox])||[p.openbox||p.status,'var(--muted)'];
       return `<div style="border:1px solid var(--border,#2a3444);border-radius:8px;padding:12px 14px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <b style="font-size:13px;">${p.name}</b>

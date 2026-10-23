@@ -84,10 +84,18 @@ async def api_workshop_parallel_limit_set(ws_id: str, request: Request):
     PLUGIN_MODES_FILE.write_text(json.dumps(modes, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"success": True, "workshop_id": ws_id, "parallel_limit": n}
 
+_KNOWN_CREATE_FIELDS = frozenset({
+    "name", "hall_content", "members", "mode", "parallel_limit",
+    "debate_enabled", "budget_default", "pinned",
+})
+
+
 @router.post("/api/workshop")
 async def create_workshop(request: Request):
     from ..server import MAX_WORKSHOPS, Utf8JSONResponse, WORKSHOP_BASE, now_iso, save_state
     body = await request.json()
+    if not isinstance(body, dict):
+        body = {}
     name = (body.get("name") or "").strip()
     hall = body.get("hall_content", "") or ""
     # 工作间以工作内容命名：未传 name 或仍为默认值时，用任务内容截断
@@ -145,7 +153,18 @@ async def create_workshop(request: Request):
     # P2-1 审计：工作间创建
     _audit_log.record("workshop.create", actor="user", target=ws.workshop_id, detail=ws.name)
     save_state()
-    return {"success": True, "workshop_id": ws.workshop_id, "workspace_dir": ws.workspace_dir}
+    out = {"success": True, "workshop_id": ws.workshop_id, "workspace_dir": ws.workspace_dir,
+           "name": ws.name}
+    # ★2026-10-22 夜场三（我拿 `title` 建间、结果得到一个「未命名工作间」才发现）：
+    #   这个端点的名字字段叫 **`name`**，传 `title` 会被**静默忽略** ⇒ 用户/前端以为命名成功，
+    #   大厅里却是一排「未命名工作间」。**失败要说话**：认不出的字段一律回 warning 说清该叫什么。
+    _unknown = sorted(k for k in body if k not in _KNOWN_CREATE_FIELDS)
+    if _unknown:
+        out["warnings"] = ["这些字段没被识别：%s —— 工作间名字的字段叫 `name`，任务内容叫 `hall_content`"
+                           "（本次已按 %s 命名：%s）"
+                           % ("、".join(_unknown),
+                              "任务内容" if hall.strip() else "默认值", ws.name)]
+    return out
 
 @router.get("/api/workshops")
 async def list_workshops():
@@ -726,12 +745,23 @@ async def get_workshop(ws_id: str, after_seq: int = -1):
     ws = workshops.get(ws_id)
     if not ws:
         return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    # ★2026-10-23（外部测试问题 EXT-20261022-01 的收尾）：**详情也要带 gate**。
+    #   列表 /api/workshops 早就带了（Workshop.to_dict() 里），但详情是逐字段映射，
+    #   漏了 gate ⇒ 用户在详情页看不到为什么不能开工，只有点了才发现 409。
+    #   一处真相在 workshop_gate.info()；这里只做透传，别再自己写一套判断。
+    try:
+        from .. import workshop_gate as _gate_mod
+
+        _gate_info = _gate_mod.info(ws)
+    except Exception as _e:                                  # noqa: BLE001 — 闸门坏了不该让详情 500
+        _gate_info = {"ok": True, "state": "unknown", "why": str(_e)[:120], "next_step": ""}
     return {
         "workshop_id": ws.workshop_id,
         "name": ws.name,
         "status": ws.status,
         "workspace_dir": ws.workspace_dir,
         "hall_content": ws.hall_content,
+        "gate": _gate_info,
         "discussion": _normalize_discussion(ws, after_seq=after_seq),
         # V-15 步骤3：entry_state / entry_reason 必须显式列出 ——
         # 这里是**逐字段映射**，不加这两个键前端就拿不到，等于后端白做。

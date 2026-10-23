@@ -95,6 +95,26 @@ def fps() -> float:
     return max(0.2, min(10.0, float(cfg_int("AC_MONITOR_FPS", 1))))
 
 
+def fps_of(requested=None) -> float:
+    """一帧率到底多少（V89）：请求值 > `AC_MONITOR_FPS`，**硬上限 10 / 下限 0.2**。
+
+    为什么要夹紧：`?fps=1000` 只会把 CPU 烧穿、而人眼在 1–2 fps 的窗口画面上看不出差别。
+    """
+    if requested in (None, "", 0):
+        return fps()
+    try:
+        v = float(requested)
+    except (TypeError, ValueError):
+        return fps()
+    return max(0.2, min(10.0, v))
+
+
+def stream_max_seconds() -> int:
+    """单条连续流的**硬上限**（默认 600 秒）：到点主动收尾，浏览器会自己重连，
+    免得一个僵尸连接把线程占一整天。"""
+    return max(5, cfg_int("AC_MONITOR_STREAM_MAX_SECONDS", 600))
+
+
 def ai_enabled() -> bool:
     return (os.environ.get("AC_MONITOR_AI_OBSERVE") or "0").strip().lower() in ("1", "true", "yes", "on")
 
@@ -294,6 +314,54 @@ def jpeg_available() -> bool:
         return False
 
 
+# ── 连续画面流（V89）：**标准库 PNG 分帧**，不引 Pillow ─────────────────────
+STREAM_BOUNDARY = "acframe"
+#: 连续多少帧抓不到就结束这条流（宁可断，不给"黑屏但看起来在播"）
+STREAM_MAX_FAILS = 5
+
+
+def stream_frames(hwnd: int, max_w: int = TILE_W, want_fps: float | None = None,
+                  max_seconds: int | None = None, grabber=None, clock=time.time,
+                  sleeper=time.sleep) -> "object":
+    """连续产帧的**同步生成器**：每次 `yield (png_bytes, meta)`。
+
+    - **同步**而不是 async：抓窗口是阻塞的（GDI + ctypes），塞进事件循环会卡住整个服务；
+      路由层用 `asyncio.to_thread(next, gen)` 一帧一帧取（见 `routers/monitor.py`）。
+    - 帧率：`fps_of(want_fps)` 夹紧到 0.2–10；按"上一次产出时刻"算下一帧该等多久（不累积漂移）。
+    - **黑图/抓不到不发帧**：连续 `STREAM_MAX_FAILS` 次失败 ⇒ 生成器结束（调用方可读 `meta['why']`）。
+    - 上限：`max_seconds`（默认 `stream_max_seconds()`）到点结束。
+    - `grabber` / `clock` / `sleeper` 都可注入 —— 判据要能在没有窗口的机器上真跑。
+    """
+    g = grabber or frame_png
+    rate = fps_of(want_fps)
+    interval = 1.0 / rate
+    limit = float(max_seconds if max_seconds is not None else stream_max_seconds())
+    t0 = clock()
+    fails = 0
+    n = 0
+    while True:
+        now = clock()
+        if now - t0 >= limit:
+            return                                            # 到点收尾（浏览器自己会重连）
+        png, meta = g(hwnd, max_w)
+        if png is None or meta.get("ok") is False:
+            fails += 1
+            if fails >= STREAM_MAX_FAILS:
+                yield None, {"ok": False, "why": meta.get("why") or "连续抓不到画面",
+                             "fails": fails, "frames": n}
+                return
+            sleeper(interval)
+            continue
+        fails = 0
+        n += 1
+        yield png, {"ok": True, "w": meta.get("w"), "h": meta.get("h"),
+                    "method": meta.get("method"), "bytes": len(png), "seq": n,
+                    "fps": rate, "ts": clock()}
+        # 按"目标节奏"补齐到下一帧，别把抓图耗时累积成漂移
+        spent = clock() - now
+        sleeper(max(0.0, interval - spent))
+
+
 # ── 窗口枚举与"这个 agent 的窗口是哪个"（挂在 agent 上，不让用户挑 hwnd）────────
 def sources() -> list:
     """列出可抓的顶层窗口（供"手动指定一次"时选，以及给界面看能不能对上）。"""
@@ -491,10 +559,11 @@ def health() -> dict:
         "why": "" if IS_WINDOWS else "窗口抓取只支持 Windows（当前 %s）" % sys.platform,
         "encoding": "jpeg" if cap["jpeg"] else "png",
         "jpeg_available": cap["jpeg"],
-        # 本版**只做 PNG 快照墙**（老板 2026-10-22 拍板①）；连续流留到下一版。
-        "stream_available": False,
-        "stream_why": "本版只做 PNG 快照墙（轮询 frame）；连续流下一版再做"
-                      + ("（届时需要 Pillow，当前已装）" if cap["jpeg"] else "（届时需要 Pillow）"),
+        # ★V89（2026-10-23）：连续流**已可用**，而且是**零依赖 PNG 分帧**（不是 MJPEG）。
+        #   真 JPEG 仍需要 Pillow（jpeg_available 只作为将来更省流量的能力位，别拿它当门槛）。
+        "stream_available": True,
+        "stream_encoding": "png-frames",
+        "stream_why": "连续画面流（PNG 分帧，multipart/x-mixed-replace）；不依赖 Pillow",
         "max_watch": max_watch(), "fps": fps(),
         "ai_observe": {"enabled": ai_enabled(), "interval_min": ai_interval_seconds() // 60,
                        "note": "默认关；开了也最多每 %d 分钟一次，且可随时关" % (ai_interval_seconds() // 60)},

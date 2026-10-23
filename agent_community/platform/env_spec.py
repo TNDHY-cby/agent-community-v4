@@ -96,6 +96,26 @@ SPEC: dict[str, Var] = {v.name: v for v in [
         "启动器强制使用的解释器（排障用；空=自动挑一个装好依赖的解释器）。"
         "与部署层的 `AC4_PYTHON` 分开：那个是部署配置，这个是启动器临时指定",
         default="", kind="core", example=""),
+    Var("AC_AUTOSTART_DIR",
+        "开机自启的**入口脚本**放哪（默认 `<仓库>/deploy/autostart`）。"
+        "⚠️ 别放运行数据目录里：换了 `AC_DATA_DIR` 或数据被清，登录自启的入口就凭空消失（登录时什么都不会起）。"
+        "测试与多实例场景可以指到临时目录",
+        default="", kind="core", example=""),
+    Var("AC_LAUNCHER_NO_WATCHDOG",
+        "双击启动器时**不要**顺带拉起看门狗（默认 0＝顺带拉起：崩了能自动拉回）。"
+        "排障或只想手动起一次时设 1",
+        default="0", kind="feature", example="1"),
+    Var("AC_STATE_BACKUP_MINUTES",
+        "状态快照（`data/backups/`）多久拍一份，默认 30 分钟；**0＝关掉自动快照**。"
+        "快照是 `data/*.json` 的字节复制，恢复用 `tools/state_restore.py`",
+        default="30", kind="feature", example="10"),
+    Var("AC_STATE_BACKUP_KEEP",
+        "状态快照保留最近多少份（默认 20；超出的删最旧的）",
+        default="20", kind="feature", example="50"),
+    Var("AC_STATE_ALLOW_EMPTY",
+        "**故意清库**的专用口子（默认 0）：只有设 1 才允许「没加载过状态的进程」用空内存覆盖已有数据。"
+        "正常运行时**不要**开——它是 2026-10-23 数据被清事故的防线",
+        default="0", kind="dev", example="1"),
 
     # ── AI Provider（可选：不配也能跑，走规则兜底）────────────────────────
     Var("AC_AI_PROVIDER", "AI 后端：`openai`（OpenAI 兼容）/`ollama`/`http_callback`；空=不接 AI",
@@ -145,6 +165,7 @@ SPEC: dict[str, Var] = {v.name: v for v in [
     # ── V88 监控室（窗口画面墙；只在 Windows 上真能抓，其它平台如实不支持）──
     Var("AC_MONITOR_MAX_WATCH", "监控室同时看几路画面（默认 6；越多越吃 CPU）", default="6", kind="feature", example="4"),
     Var("AC_MONITOR_FPS", "监控画面刷新帧率上限（默认 1；快照墙够用，调高更吃 CPU）", default="1", kind="feature", example="2"),
+    Var("AC_MONITOR_STREAM_MAX_SECONDS", "单条连续画面流的**硬上限**（秒，默认 600）：到点主动收尾，浏览器会自动重连，免得僵尸连接占线程", default="600", kind="feature", example="120"),
     Var("AC_MONITOR_AI_OBSERVE", "监控的「agent 简单观察」总开关（默认关；开了才允许把变化统计交给 AI 说一句话）", default="0", kind="feature", example="1"),
     Var("AC_MONITOR_AI_INTERVAL_MIN", "AI 观察的最小间隔（分钟，默认 30）——**绝不是每帧一次**", default="30", kind="feature", example="60"),
         Var("AC_AI_USAGE_DIR", "用量落盘目录（默认随 AC_DATA_DIR）", default="", kind="feature"),
