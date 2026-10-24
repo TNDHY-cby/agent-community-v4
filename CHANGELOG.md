@@ -12,6 +12,25 @@
 > 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
 > ⚠️ 本文件里**不许出现真实本机路径**（发布前闸门会扫），下面全是相对路径与虚拟名。
 
+# 4.36.1 更新说明
+
+> 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
+> ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
+
+## [4.36.1] - 2026-10-24
+
+### 修复（跨平台，**非本次引入**）
+
+- **Linux 上 `platform/input_sim.py` 一 import 就崩**：模块顶层无条件求值 `ctypes.WINFUNCTYPE`
+  （该名字**只存在于 Windows**）⇒ 非 Windows 直接 `AttributeError`，
+  表现为「所有用到表层交互的测试在 Linux 全红、Windows 全绿」。
+  现在非 Windows 下不再求值；双平台真跑（`tools/dual_platform_check.py`）两侧转绿。
+
+### 说明
+
+- 这条是 4.36.0 发版后双平台判据抓出来的（Windows 侧 2222 全绿、Linux 侧 18 红，红点全部源于这一个 import），
+  属于**既有缺陷被新用例照出来**，不是 4.36.0 的新功能有问题；功能侧无改动。
+
 ## [4.36.0] - 2026-10-24
 
 ### 新能力（对外可见）

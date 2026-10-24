@@ -110,7 +110,13 @@ class _INPUT(ctypes.Structure):
     _fields_ = [("type", wintypes.DWORD), ("union", _INPUTUNION)]
 
 
-_EnumChildProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+# ★2026-10-24 修（**非本次引入**的跨平台硬伤）：`ctypes.WINFUNCTYPE` **只存在于 Windows**，
+#   原来在模块顶层无条件求值 ⇒ **Linux 上一 import 这个模块就 AttributeError**，
+#   表现为「凡是用到表层交互的测试在 Linux 全红（本机 Windows 全绿）」。现在非 Windows 下留空。
+if _IS_WINDOWS:
+    _EnumChildProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+else:                                                          # pragma: no cover — 仅非 Windows
+    _EnumChildProc = None
 
 
 def _user32():
