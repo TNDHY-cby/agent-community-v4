@@ -5,24 +5,29 @@
     "title": "流程说明",
     "logo": "▣\n流程说明\n· 全流程 · 只讲不做\n说明书 · 含示意",
     "banner": "◈ 本页是流程说明（全流程，只讲不做）：每步做什么、谁做、去哪个页面；操作一律去正主页面（接入页 / 工作间 / 大厅 / 看板）。",
-    "hasOld": false,
-    "railCount": 13
+    "hasOld": true,
+    "railCount": 15
   },
   "chapters": [
     {
       "no": "—",
       "t": "这页是什么（定位）",
-      "bodyLen": 443
+      "bodyLen": 440
     },
     {
       "no": "前",
       "t": "前置 · 起服务",
-      "bodyLen": 626
+      "bodyLen": 637
+    },
+    {
+      "no": "台",
+      "t": "前台怎么接一个 agent（从对接中心搬来的讲解）",
+      "bodyLen": 384
     },
     {
       "no": "0",
       "t": "0 · 注册 harness",
-      "bodyLen": 446
+      "bodyLen": 450
     },
     {
       "no": "1",
@@ -57,12 +62,17 @@
     {
       "no": "10",
       "t": "10 · 二三级讨论",
-      "bodyLen": 266
+      "bodyLen": 512
     },
     {
       "no": "尾",
       "t": "收尾 · 阶段整合",
       "bodyLen": 114
+    },
+    {
+      "no": "公",
+      "t": "11 · 和别的公司协作",
+      "bodyLen": 735
     },
     {
       "no": "随",
@@ -72,7 +82,7 @@
     {
       "no": "查",
       "t": "速查表",
-      "bodyLen": 974
+      "bodyLen": 1039
     }
   ],
   "viewports": {
@@ -80,14 +90,15 @@
     "v1024": true
   },
   "idx": {
+    "emptyState": false,
     "tab": "◈ 流程说明",
-    "tile": "流程说明",
-    "tileTitle": "流程说明 · 全流程（只讲不做）",
-    "hasOld": false
+    "tile": "",
+    "tileTitle": "",
+    "dockTile": ""
   },
   "wsp": {
-    "pill": "◈ 流程说明",
-    "hasOld": false
+    "pill": "对接中心",
+    "href": "/docking.html"
   },
   "hubApiReqs": [],
   "hubErrors": [],

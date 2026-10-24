@@ -184,7 +184,7 @@ def test_locate_endpoint_returns_candidates(monkeypatch):
 def test_try_activate_passes_through_tristate(monkeypatch):
     seen = {}
 
-    def _fake_launch(member, text, *, method="auto", session_name=None, verify=True):
+    def _fake_launch(member, text, *, method="auto", session_name=None, verify=True, anchor=None):
         seen.update(member=member, text=text, method=method, name=session_name, verify=verify)
         return {"ok": False, "method": "wmpaste", "verified": False, "need_human": False,
                 "detail": "读回不匹配：文本没落进去", "next_step": "确认那个窗口有没有输入框"}
@@ -205,7 +205,7 @@ def test_try_activate_pins_the_method_so_fallback_cannot_fake_success(monkeypatc
     """
     seen = {}
 
-    def _fake_launch(member, text, *, method="auto", session_name=None, verify=True):
+    def _fake_launch(member, text, *, method="auto", session_name=None, verify=True, anchor=None):
         seen["method"] = method
         return {"ok": True, "method": method, "verified": None, "need_human": True,
                 "detail": "已放进剪贴板", "next_step": "去粘贴"}
@@ -274,3 +274,60 @@ def test_harness_update_rejects_bad_patch(monkeypatch):
     res = asyncio.run(docking.docking_harness_update("H-1", _Req({"harness_id": "hack"})))
     assert isinstance(res, Utf8JSONResponse) and res.status_code == 400
     assert "不允许在这里改" in res.body.decode("utf-8")
+
+def test_try_activate_with_harness_goes_through_delivery_layer(monkeypatch, tmp_path):
+    """「带 harness_id 的试投」的**两种语义**（2026-10-23 两轮实测定下来的）。
+
+    ① **只说送给某位员工**（没给窗口）⇒ 走统一投递层 `delivery.deliver_to_harness`，
+       返回带 `via="harness"`，**不许**再走 `visual_launch.launch`（否则各处又长出一套注入逻辑）；
+    ② **用户已经点选了某个窗口**（给了 title/keywords）⇒ 留在"投给这个窗口"这条路，
+       **不许**被"按员工找目标"顶掉 —— 实测踩过：界面明明选好窗口，回应却是
+       "既没有手动绑定目标，也还没有会话名"（答非所问）。
+    """
+    import asyncio
+
+    monkeypatch.setenv("AC_DATA_DIR", str(tmp_path))   # 这条会写 anchor：绝不写真实数据目录
+
+    from agent_community.platform import delivery, visual_launch
+    from agent_community.platform.routers import docking as dk
+
+    class _Req:
+        def __init__(self, body):
+            self._b = body
+
+        async def json(self):
+            return self._b
+
+    seen = {}
+
+    def fake_deliver_to_harness(hid, text, *, prefer="", idx=None, press_enter=False):
+        seen["harness"] = (hid, text)
+        return {"ok": True, "channel": "cdp", "verified": True, "attempts": [],
+                "detail": "读回核对通过", "next_step": ""}
+
+    def fake_launch(member, text, *, method="auto", session_name=None, verify=True, anchor=None):
+        seen["launch"] = {"name": session_name, "anchor": anchor}
+        return {"ok": True, "method": method, "verified": None, "need_human": True,
+                "detail": "走窗口这条路", "next_step": ""}
+
+    monkeypatch.setattr(delivery, "deliver_to_harness", fake_deliver_to_harness, raising=True)
+    monkeypatch.setattr(visual_launch, "launch", fake_launch, raising=True)
+    monkeypatch.setattr(dk, "_find_harness", lambda h: object(), raising=True)
+
+    # ① 只给员工、不给窗口 ⇒ 通用投递层
+    out = asyncio.run(dk.docking_try_activate(_Req({"harness_id": "H-1", "text": "喂"})))
+    assert out.get("via") == "harness", out
+    assert seen.get("harness", (None,))[0] == "H-1" and "launch" not in seen, seen
+
+    # ② 给了窗口（+员工）⇒ 窗口这条路，且把"教过的位置"传下去
+    from agent_community.platform import input_anchor
+
+    input_anchor.set_anchor("H-1", 0.42, 0.88)
+    seen.clear()
+    out2 = asyncio.run(dk.docking_try_activate(
+        _Req({"harness_id": "H-1", "title": "示例窗口", "text": "喂"})))
+    assert out2.get("via") != "harness", out2
+    assert "launch" in seen and "harness" not in seen, seen
+    assert seen["launch"]["name"] == "示例窗口", seen
+    assert seen["launch"]["anchor"] and abs(seen["launch"]["anchor"]["rel_x"] - 0.42) < 1e-6, seen
+    assert out2.get("anchor_used") is True, out2

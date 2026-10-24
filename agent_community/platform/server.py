@@ -306,6 +306,8 @@ app.include_router(_registry_health_router)  # V85 名册健康（隐藏/申诉�
 app.include_router(_credentials_router)  # V86 凭据体检（只读视图 + 手动体检；永不进外部只读档）
 app.include_router(_selfcheck_router)    # V87 接入自检（一句结论 + 有序步骤 + 下一步）
 app.include_router(_monitor_router)      # V88 监控室画面墙（只在本机看，画面不出本机）
+from .routers.hall import router as _hall_router
+app.include_router(_hall_router)         # 大厅广播通知（2026-10-23：一条广播=一条大厅消息，不另造存储）
 from .routers.agents_registry import router as _agents_registry_router
 app.include_router(_agents_registry_router)  # Agent 注册与在线列表（2026-10-21 从 server.py 整块搬出）
 from .routers.legacy_misc import router as _legacy_misc_router
@@ -5085,6 +5087,36 @@ def _mark_sim_watch(harness_id, payload, kind):
 
 
 def _dispatch_to_harness(harness_id, payload, kind="task"):
+    """派发**总口**（组长派活 / 转向 / 检索委派 / 巡逻 / 抢救都过这里）。
+
+    除了原来的分流（http_api / file_poll / pending），这里多做一件**可选**的事：
+    若开了 `AC_DELIVERY_NOTIFY=1`，把要派的话**顺手用统一投递层送到对方界面**
+    （通道选择与读回核对全按 `platform/delivery.py` 的规则，一处真相）。
+
+    ★为什么用包装层：通知失败**绝不能**影响派发结果 —— 否则会出现"因为通知没成所以活没派出去"
+    这种荒唐状态（准则⑤：不让副作用污染主流程，也不留"看起来成功"的死状态）。
+    """
+    ok, note = _dispatch_core(harness_id, payload, kind=kind)
+    try:
+        from . import delivery_notify
+
+        res = delivery_notify.notify_dispatch(harness_id,
+                                              payload if isinstance(payload, dict) else {},
+                                              kind=kind, dispatched=bool(ok))
+        if not res.get("skipped"):
+            print(delivery_notify.summary_line(res), flush=True)
+    except Exception as _e:                                  # noqa: BLE001 — 通知层出问题不许影响派发
+        print("[delivery-notify] 包装层异常（已忽略，派发不受影响）：%s: %s"
+              % (type(_e).__name__, _e), flush=True)
+    return ok, note
+
+
+def _dispatch_core(harness_id, payload, kind="task"):
+    """派发的**实现**（真正的分流逻辑；外部统一走 `_dispatch_to_harness` 包装）。
+
+    ⚠️ 2026-10-23 改名原因：包装层要在"派完之后"顺手做**可选的通知**，
+    而通知失败**绝不能**影响派发结果；所以实现留在这里，外层只加一段 try/except。
+    """
     """统一向 harness 派发一条消息/任务，按唤醒方式分流。
     - http_api：POST 到 harness 自带 HTTP API（api_base_url + api_message_path），harness 自主处理
     - file_poll：写 inbox 文件（原逻辑）

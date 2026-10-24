@@ -67,13 +67,21 @@ def test_panel_is_wired_into_the_load_flow():
 
 
 def test_panel_sits_in_the_level3_discussion_area():
-    """面板必须长在**三级讨论区**那一带（V52 §1：辩论只在三级讨论里出现）。"""
+    """面板必须长在**三级讨论区**那一带（V52 §1：辩论只在三级讨论里出现）。
+
+    2026-10-23 改锚点：前端做「去 emoji」改版（`💬 三级讨论` → `三级讨论`），
+    原来按带 emoji 的整串找 ⇒ 判据假红。改成**按文字找**（不钉装饰符号），
+    并要求面板出现在某一处「三级讨论」标题**之后** —— 这才是不随图标变化的契约。
+    """
     src = _html()
-    level3 = src.find("💬 三级讨论")
     bar = src.find('id="debateBar"')
     form = src.find('id="debateForm"')
-    assert level3 != -1 and bar != -1, "三级讨论标题或辩论面板不存在"
-    assert level3 < bar < form, "辩论面板不在三级讨论区之后（位置错了）"
+    assert bar != -1, "辩论面板（id=\"debateBar\"）不存在"
+    assert form != -1, "辩论表单（id=\"debateForm\"）不存在"
+    anchors = [i for i in range(len(src)) if src.startswith("三级讨论", i)]
+    assert anchors, "找不到「三级讨论」这一节（前端结构变了，请同步本守卫）"
+    assert any(i < bar for i in anchors), "辩论面板不在三级讨论区之后（位置错了）"
+    assert bar < form, "表单应在面板之后（先看状态再填）"
 
 
 def test_frontend_does_not_recompute_the_verdict():

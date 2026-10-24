@@ -18,17 +18,17 @@
 
   <!-- ===== topbar ===== -->
   <header class="topbar">
-    <div class="logo"><span class="logo-mark">🔌</span> 对接中心<span class="sub" id="dockScopeSub">· 总控（全局）</span></div>
-    <div class="position" id="dockPosition">把外部 Agent 接进来、唤醒起来 · 讨论与工作仍在工作间</div>
+    <div class="logo"><span class="logo-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3v5M15 3v5"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v4"/></svg></span> 对接中心<span class="sub" id="dockScopeSub">· 总控（全局）</span></div>
+    <div class="position" id="dockPosition">把外部 Agent 接进来、唤醒起来、跟它说句话 · 讨论与工作仍在工作间</div>
     <div class="spacer"></div>
-    <button class="btn mini" style="margin-right:10px;align-self:center" onclick="dockGo('update')">检查更新</button>
+    <button class="btn mini quiet" style="margin-right:10px;align-self:center" onclick="dockGo('update')" title="只读检查；执行升级永远在你自己的终端">检查更新</button>
     <nav class="live-links">
-      <a href="/">◈ 实时大厅</a>
-      <a href="/monitor.html">📺 监控室</a>
-      <a href="/workshop.html">💬 工作间</a>
-      <a href="/register.html" title="旧页已下线为只读镜像：内容（接入模板/题库/桥型速查）可回查，写操作已停用">📖 接入模板（只读镜像）</a>
-      <a href="/hub.html">◈ 流程说明</a>
-      <a href="/ops.html">📡 看板</a>
+      <a href="/">实时大厅</a>
+      <a href="/monitor.html">监控室</a>
+      <a href="/workshop.html">工作间</a>
+      <a href="/register.html" title="旧页已下线为只读镜像：内容（接入模板/题库/桥型速查）可回查，写操作已停用">接入模板（只读镜像）</a>
+      <a href="/hub.html">流程说明</a>
+      <a href="/ops.html">看板</a>
     </nav>
   </header>
 
@@ -49,65 +49,112 @@
         <div class="stage-no" id="dockNo">前</div>
         <div>
           <h1 id="dockTitle">对接前台</h1>
-          <p id="dockUser" class="stage-user">你带着「要把这个 agent 接进来 / 叫起来」来，前台当场替你办</p>
+          <p id="dockUser" class="stage-user">你带着「要把这个 agent 接进来 / 叫起来 / 跟它说句话」来，前台当场替你办</p>
         </div>
         <div class="stage-api" id="dockApi">GET /api/docking/overview</div>
       </div>
 
-      <!-- ★第一屏＝功能模块（老板裁定）：按办事顺序排（FE-26 §2a），点一块弹窗当场办 -->
+      <!-- ★第一屏＝功能模块（老板裁定）：按办事顺序**分组**摆（FE-26 §2a ＋ 2026-10-23 评审第 4 条），
+           点一块弹窗当场办。图标统一成单色线性符号（不用彩色 emoji，免得和「近黑+骨白+红」打架）。 -->
       <section id="dockServices" class="stage-body">
         <div class="dock-tiles-head"><b>我们能替你办哪些事</b> <span class="sub">点一块，弹窗里当场办</span></div>
-        <div class="dock-tiles">
-          <div class="dock-tile" data-dock-service="register" role="button" tabindex="0" aria-label="登记一位新员工" onclick="dockGo('register')" onkeydown="dockTileKey(event,'register')">
-            <span class="tile-ico">📝</span><span class="tile-name">登记一位新员工</span>
-            <span class="tile-sub">你手头有什么给什么，平台自己探一次补齐</span>
-            <span class="tile-go">去办 →</span>
+        <div class="dock-groups">
+
+          <!-- ── 送话：一次一位，只说送什么（主角：整行） ── -->
+          <div class="dock-group">
+            <div class="dock-section-head">送话 <span class="sub">跟接进来的 agent 说一句话</span></div>
+            <div class="dock-tiles">
+              <!-- ★FE-30：送话（统一投递层的前台）—— 只说送什么，平台自己找目标、自己选能核实的通道 -->
+              <div class="dock-tile wide" data-dock-service="deliver" role="button" tabindex="0" aria-label="送话给员工" onclick="dockGo('deliver')" onkeydown="dockTileKey(event,'deliver')">
+                <span class="tile-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 11 21 3l-7 18-3-7z"/><path d="M11 14 21 3"/></svg></span>
+                <span class="tile-name">送话给员工</span>
+                <span class="tile-sub">只说送什么 —— 平台自己找目标窗口/页面，按能核实的通道先投；读回核对过才说「已自证」</span>
+                <span class="tile-go">去办 →</span>
+              </div>
+            </div>
           </div>
-          <div class="dock-tile hot" data-dock-service="script_activate" role="button" tabindex="0" aria-label="脚本激活：填关键词，让平台找窗口，试投并存成激活脚本" onclick="dockGo('script_activate')" onkeydown="dockTileKey(event,'script_activate')">
-            <span class="tile-ico">⚡</span><span class="tile-name">脚本激活</span>
-            <span class="tile-sub">填关键词 → 平台去找那个窗口 → 试投 → 存成激活脚本</span>
-            <span class="tile-go">去办 →</span>
+
+          <!-- ── 接入：把外面的 agent 登记进来 ── -->
+          <div class="dock-group">
+            <div class="dock-section-head">接入 <span class="sub">把外面的 agent 登记进来，平台自己探一次补齐</span></div>
+            <div class="dock-tiles">
+              <div class="dock-tile" data-dock-service="register" role="button" tabindex="0" aria-label="登记一位新员工" onclick="dockGo('register')" onkeydown="dockTileKey(event,'register')">
+                <span class="tile-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg></span>
+                <span class="tile-name">登记一位新员工</span>
+                <span class="tile-sub">你手头有什么给什么，平台自己探一次补齐</span>
+                <span class="tile-go">去办 →</span>
+              </div>
+              <div class="dock-tile" data-dock-service="agent_manager" role="button" tabindex="0" aria-label="Agent 安装器" onclick="dockGo('agent_manager')" onkeydown="dockTileKey(event,'agent_manager')">
+                <span class="tile-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v10"/><path d="M8 9l4 4 4-4"/><path d="M4 17v4h16v-4"/></svg></span>
+                <span class="tile-name">Agent 安装器</span>
+                <span class="tile-sub">检测 / 安装 / 升级桌面 agent 运行环境（安装默认关）</span>
+                <span class="tile-go">去办 →</span>
+              </div>
+              <div class="dock-tile" data-dock-service="onboard_recover" role="button" tabindex="0" aria-label="批量对接或掉线抢救" onclick="dockGo('onboard_recover')" onkeydown="dockTileKey(event,'onboard_recover')">
+                <span class="tile-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg></span>
+                <span class="tile-name">批量对接 / 掉线抢救</span>
+                <span class="tile-sub">全员一次对接；掉线的扫描并抢救</span>
+                <span class="tile-go">去办 →</span>
+              </div>
+              <div class="dock-tile" data-dock-service="peers" role="button" tabindex="0" aria-label="外部公司协作" onclick="dockGo('peers')" onkeydown="dockTileKey(event,'peers')">
+                <span class="tile-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h13"/><path d="M13 4l4 4-4 4"/><path d="M20 16H7"/><path d="M11 12l-4 4 4 4"/></svg></span>
+                <span class="tile-name">外部公司</span>
+                <span class="tile-sub">登记对端 · 验证 · 派活给别的合作社 · 隧道建议</span>
+                <span class="tile-go">去办 →</span>
+              </div>
+            </div>
           </div>
-          <div class="dock-tile" data-dock-service="archive" role="button" tabindex="0" aria-label="员工档案" onclick="dockGo('archive')" onkeydown="dockTileKey(event,'archive')">
-            <span class="tile-ico">🗂</span><span class="tile-name">员工档案</span>
-            <span class="tile-sub">框架 / 模型 / 桥 / 激活方式 —— 点「详情」可看可改</span>
-            <span class="tile-go">去办 →</span>
+
+          <!-- ── 激活：让它能被叫醒、能接活 ── -->
+          <div class="dock-group">
+            <div class="dock-section-head">激活 <span class="sub">让它能被叫醒、能接活</span></div>
+            <div class="dock-tiles">
+              <div class="dock-tile hot" data-dock-service="script_activate" role="button" tabindex="0" aria-label="脚本激活：填关键词，让平台找窗口，试投并存成激活脚本" onclick="dockGo('script_activate')" onkeydown="dockTileKey(event,'script_activate')">
+                <span class="tile-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13 2 5 14h6l-1 8 8-12h-6z"/></svg></span>
+                <span class="tile-name">脚本激活</span>
+                <span class="tile-sub">填关键词 → 平台帮你找到那个窗口 → 生成能在你自己会话里跑的脚本</span>
+                <span class="tile-go">去办 →</span>
+              </div>
+              <div class="dock-tile" data-dock-service="session_bridge" role="button" tabindex="0" aria-label="建会话或送桥" onclick="dockGo('session_bridge')" onkeydown="dockTileKey(event,'session_bridge')">
+                <span class="tile-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 15l6-6"/><path d="M7.5 12.5 5 15a3.5 3.5 0 0 0 5 5l2.5-2.5"/><path d="M16.5 11.5 19 9a3.5 3.5 0 0 0-5-5l-2.5 2.5"/></svg></span>
+                <span class="tile-name">建会话 / 送桥</span>
+                <span class="tile-sub">把岗位和它对上，会话名写进数据</span>
+                <span class="tile-go">去办 →</span>
+              </div>
+              <div class="dock-tile" data-dock-service="channel" role="button" tabindex="0" aria-label="通道停用或新建" onclick="dockGo('channel')" onkeydown="dockTileKey(event,'channel')">
+                <span class="tile-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 0 1 13-4"/><path d="M17 2v4h-4"/><path d="M20 15a8 8 0 0 1-13 4"/><path d="M7 22v-4h4"/></svg></span>
+                <span class="tile-name">通道停用 · 新建</span>
+                <span class="tile-sub">停用≠删除；先停用再新建</span>
+                <span class="tile-go">去办 →</span>
+              </div>
+              <div class="dock-tile" data-dock-service="bridge_helper" role="button" tabindex="0" aria-label="架桥辅助" onclick="dockGo('bridge_helper')" onkeydown="dockTileKey(event,'bridge_helper')">
+                <span class="tile-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 16h18"/><path d="M5 16c0-4 3-7 7-7s7 3 7 7"/><path d="M9 16v-3M15 16v-3"/></svg></span>
+                <span class="tile-name">架桥辅助</span>
+                <span class="tile-sub">桥路径 / 验证桥 / 自动连接（按员工作用）</span>
+                <span class="tile-go">去办 →</span>
+              </div>
+            </div>
           </div>
-          <div class="dock-tile" data-dock-service="session_bridge" role="button" tabindex="0" aria-label="建会话或送桥" onclick="dockGo('session_bridge')" onkeydown="dockTileKey(event,'session_bridge')">
-            <span class="tile-ico">🔗</span><span class="tile-name">建会话 / 送桥</span>
-            <span class="tile-sub">把岗位和它对上，会话名写进数据</span>
-            <span class="tile-go">去办 →</span>
+
+          <!-- ── 查档 · 问：看它的档案，或者直接问前台 ── -->
+          <div class="dock-group">
+            <div class="dock-section-head">查档 · 问 <span class="sub">看它的档案，或者直接问前台</span></div>
+            <div class="dock-tiles">
+              <div class="dock-tile" data-dock-service="archive" role="button" tabindex="0" aria-label="员工档案" onclick="dockGo('archive')" onkeydown="dockTileKey(event,'archive')">
+                <span class="tile-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h6l2 3h10v11H3z"/></svg></span>
+                <span class="tile-name">员工档案</span>
+                <span class="tile-sub">框架 / 模型 / 桥 / 激活方式 —— 点「详情」可看可改</span>
+                <span class="tile-go">去办 →</span>
+              </div>
+              <div class="dock-tile" data-dock-service="ask_frontdesk" role="button" tabindex="0" aria-label="问前台" onclick="dockGo('ask_frontdesk')" onkeydown="dockTileKey(event,'ask_frontdesk')">
+                <span class="tile-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4z"/></svg></span>
+                <span class="tile-name">问前台</span>
+                <span class="tile-sub">说不清就直接问，平台助手用它自己的工具看现状</span>
+                <span class="tile-go">去办 →</span>
+              </div>
+            </div>
           </div>
-          <div class="dock-tile" data-dock-service="onboard_recover" role="button" tabindex="0" aria-label="批量对接或掉线抢救" onclick="dockGo('onboard_recover')" onkeydown="dockTileKey(event,'onboard_recover')">
-            <span class="tile-ico">🛟</span><span class="tile-name">批量对接 / 掉线抢救</span>
-            <span class="tile-sub">全员一次对接；掉线的扫描并抢救</span>
-            <span class="tile-go">去办 →</span>
-          </div>
-          <div class="dock-tile" data-dock-service="channel" role="button" tabindex="0" aria-label="通道停用或新建" onclick="dockGo('channel')" onkeydown="dockTileKey(event,'channel')">
-            <span class="tile-ico">🔁</span><span class="tile-name">通道停用 · 新建</span>
-            <span class="tile-sub">停用≠删除；先停用再新建</span>
-            <span class="tile-go">去办 →</span>
-          </div>
-          <div class="dock-tile" data-dock-service="bridge_helper" role="button" tabindex="0" aria-label="架桥辅助" onclick="dockGo('bridge_helper')" onkeydown="dockTileKey(event,'bridge_helper')">
-            <span class="tile-ico">🌉</span><span class="tile-name">架桥辅助</span>
-            <span class="tile-sub">桥路径 / 验证桥 / 自动连接（按员工作用）</span>
-            <span class="tile-go">去办 →</span>
-          </div>
-          <div class="dock-tile" data-dock-service="ask_frontdesk" role="button" tabindex="0" aria-label="问前台" onclick="dockGo('ask_frontdesk')" onkeydown="dockTileKey(event,'ask_frontdesk')">
-            <span class="tile-ico">💬</span><span class="tile-name">问前台</span>
-            <span class="tile-sub">说不清就直接问，平台助手用它自己的工具看现状</span>
-            <span class="tile-go">去办 →</span>
-          </div>
-          <div class="dock-tile" data-dock-service="agent_manager" role="button" tabindex="0" aria-label="Agent 安装器" onclick="dockGo('agent_manager')" onkeydown="dockTileKey(event,'agent_manager')">
-            <span class="tile-ico">⤓</span><span class="tile-name">Agent 安装器</span>
-            <span class="tile-sub">检测/安装/升级桌面 agent 运行环境（安装默认关）</span>
-            <span class="tile-go">去办 →</span>
-          </div>
-          <div class="dock-tile" data-dock-service="peers" role="button" tabindex="0" aria-label="外部公司协作" onclick="dockGo('peers')" onkeydown="dockTileKey(event,'peers')">
-            <span class="tile-ico">⇄</span><span class="tile-name">外部公司</span>
-            <span class="tile-sub">登记对端 · 验证 · 派活给别的合作社 · 隧道建议</span>
-            <span class="tile-go">去办 →</span>
-          </div>
+
         </div>
       </section>
 
@@ -119,6 +166,8 @@
         <section id="dockRegisterWrap"></section>
         <!-- ★FE-26 §3：脚本激活工作台（四屏） -->
         <section id="dockScriptWrap"></section>
+        <!-- ★FE-30：送话给员工（统一投递层四通道的前台；与档案 ⑦ 共用同一份渲染） -->
+        <section id="dockDeliverWrap"></section>
         <!-- ★FE-26 §2b：员工档案（列表 + 详情四块） -->
         <section id="dockArchiveWrap"></section>
         <!-- ★V34：激活类端点是单间语义；总控显示「选一个工作间」引导 -->

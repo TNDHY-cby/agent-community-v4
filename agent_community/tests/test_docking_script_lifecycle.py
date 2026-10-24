@@ -63,9 +63,14 @@ def test_composed_script_is_reproducible_and_portable():
                                           generated_at="T")
     assert a["text"] == b["text"], "同样的输入必须生成同样的正文（可复现）"
     t = a["text"]
-    assert "$env:AC_BASE_URL" in t and "$env:AC_PORT" in t, "地址必须能由环境变量覆盖（不许写死）"
-    assert "UTF8.GetBytes" in t, "中文必须走 UTF-8 字节发送（PS 5.1 直接送中文会变字面 '?'）"
-    assert "exit 3" in t and "verified -ne $true" in t, "未自证必须非零退出（脚本不许自己报成功）"
+    # ★2026-10-23 契约变更（老板：「那就得视觉脚本」）：正文改成**在本机会话里干活**，
+    #   不再转调平台 API ⇒ 判据从"地址能由环境变量覆盖"升级成"**正文里根本不出现地址/端口/盘符**"
+    #   （不写死的最彻底形式），并保留"核不了必须非零退出"。
+    assert "http://" not in t and "127.0.0.1" not in t, "本机执行版不该写死任何平台地址"
+    assert "18920" not in t, "不该把导出机器上的端口写进正文"
+    assert "D:\\" not in t and "C:\\" not in t, "不该写死盘符路径"
+    assert "exit 3" in t and "未核实" in t, "核不了必须非零退出（脚本不许自己报成功）"
+    assert "WM_PASTE" in t and "Ctrl+V" in t, "两档都要在正文里（有原生文本框 / 没有）"
     assert "示例Harness-A - 会话" in t and "示例Harness-A" in t, "标题/关键词要进正文（那是匹配键）"
     assert a["method"] == "wmpaste" and a["verified"] is False, \
         "档案里没自证过（False）不许被抹成 None/True —— 三态要原样带出来"
@@ -119,33 +124,44 @@ def test_compose_endpoint_is_readonly_and_returns_notes(monkeypatch):
 
 # ── ④ 一键跑 ───────────────────────────────────────────────────────────
 def test_run_script_uses_archived_params_only(monkeypatch):
+    """一键激活**只认档案里存的东西**，并且走**统一投递层**（不再各自写一套注入逻辑）。
+
+    ★2026-10-23 改口径：以前这里钉 `visual_launch.launch`（会抢焦点、对 Electron 无效），
+    现在统一到 `delivery.deliver_by_name`（四通道自动选，能核实就核实）。
+    本用例钉三件事：① 名字用档案里的 title；② 话术用档案里的 message；
+    ③ 档案里存的旧档只影响"要不要半自动"，不再决定一切。
+    """
     seen = {}
 
-    def _fake_launch(member, text, *, method="auto", session_name=None, verify=True):
-        seen.update(text=text, method=method, name=session_name, verify=verify)
-        return {"ok": True, "method": method, "verified": True, "need_human": False,
-                "detail": "读回一致", "next_step": ""}
+    def _fake_deliver(name, text, *, prefer="", idx=0, press_enter=False):
+        seen.update(name=name, text=text, prefer=prefer, idx=idx)
+        return {"ok": True, "channel": "cdp", "verified": True, "attempts": [],
+                "detail": "用「insert」投进去了；读回 12 字（核对通过）", "next_step": ""}
 
-    monkeypatch.setattr(visual_launch, "launch", _fake_launch)
+    from agent_community.platform import delivery
+
+    monkeypatch.setattr(delivery, "deliver_by_name", _fake_deliver, raising=True)
     monkeypatch.setattr(docking, "_find_harness", lambda h: _session(script={
         "text": "正文", "method": "wmpaste", "keywords": ["示例Harness-A", "合作社"],
         "title": "示例Harness-A - 会话", "message": "快起来"}))
     out = asyncio.run(docking.docking_run_script(_Req({"harness_id": "H-1"})))
     assert out["verified"] is True and out["ok"] is True
-    assert seen["method"] == "wmpaste" and seen["name"] == "示例Harness-A - 会话", \
-        "必须用档案里的方法/标题（不许自己挑）"
+    assert seen["name"] == "示例Harness-A - 会话", "必须用档案里的标题（不许自己挑）"
     assert seen["text"] == "快起来", "要用档案里记的话术"
-    assert seen["verify"] is True
     assert out["used"]["keywords"] == ["示例Harness-A", "合作社"]
+    assert out["used"]["channel"] == "cdp", out["used"]
 
 
 def test_run_script_pins_method_and_reports_failure_honestly(monkeypatch):
     from agent_community.platform.server import Utf8JSONResponse
+    from agent_community.platform import delivery
 
-    monkeypatch.setattr(visual_launch, "launch",
-                        lambda *a, **k: {"ok": False, "method": k.get("method"), "verified": False,
-                                         "detail": "注入失败（exit=3）：[FAIL] no matching window",
-                                         "next_step": "窗口标题里带上会话名"})
+    monkeypatch.setattr(delivery, "deliver_by_name",
+                        lambda name, text, *, prefer="", idx=0, press_enter=False: {
+                            "ok": False, "channel": "", "verified": False,
+                            "attempts": [{"channel": "native", "ok": False, "why": "没有原生文本框"}],
+                            "detail": "所有通道都没成", "next_step": "看 attempts 里每一档的原因"},
+                        raising=True)
     monkeypatch.setattr(docking, "_find_harness", lambda h: _session(script={
         "text": "x", "method": "auto", "keywords": ["k"]}))
     out = asyncio.run(docking.docking_run_script(_Req({"harness_id": "H-1"})))

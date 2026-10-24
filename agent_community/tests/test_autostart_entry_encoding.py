@@ -103,3 +103,54 @@ def test_generation_does_not_touch_repo_deploy_dir():
         _generate(Path(tmp))
     after = sorted(p.name for p in real.iterdir()) if real.is_dir() else None
     assert before == after, "测试往真仓库 deploy/autostart 写了东西：%s → %s" % (before, after)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2026-10-23（老板真机报"点试投只弹几个黑框"那次）：**随仓库发布的 .ps1 也必须带 BOM**。
+#   我改 `inject_window.ps1` 时用文本编辑器写回，BOM 丢了 ⇒ PowerShell 5.1 按 ANSI 读，
+#   中文注释变乱码、**解析直接报错**（当时靠肉眼排了很久）。把这条变成硬判据。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _shipped_ps1_files():
+    """仓库里会被 PowerShell 执行的 .ps1（排除 *.bak* / *.old* / *.before* 备份件）。"""
+    import re
+
+    out = []
+    for rel in ("agent_community", "tools", "deploy"):
+        d = _ROOT / rel
+        if d.is_dir():
+            out.extend(sorted(d.rglob("*.ps1")))
+    return [f for f in out if not re.search(r"\.(bak|old|before)", f.name, re.I)]
+
+
+def test_shipped_ps1_have_utf8_bom():
+    """⑤ 含非 ASCII 字符的随仓 .ps1，首 3 字节必须是 UTF-8 BOM。
+
+    纯 ASCII 的脚本不要 BOM 也能被正确读（BOM 只解决"非 ASCII 被按 ANSI 解码"的问题），
+    所以这里只要求**含中文/非 ASCII 的**必须带 BOM —— 免得不必要地改动老脚本。
+    """
+    files = _shipped_ps1_files()
+    assert files, "一个 .ps1 都没扫到（路径变了？）"
+    bad = []
+    for f in files:
+        raw = f.read_bytes()
+        non_ascii = any(b > 0x7F for b in raw)
+        if non_ascii and not raw.startswith(b"\xef\xbb\xbf"):
+            bad.append(str(f.relative_to(_ROOT)))
+    assert not bad, ("这些 .ps1 含非 ASCII 却没有 UTF-8 BOM ⇒ PowerShell 5.1 会按 ANSI(cp936) 读，"
+                     "中文变乱码甚至解析失败：%s" % bad)
+
+
+@pytest.mark.skipif(shutil.which("powershell") is None, reason="这台机器没有 powershell，如实跳过")
+def test_shipped_ps1_parse_in_powershell():
+    """⑥ 真让 PowerShell 解析一遍：语法错当场红（不查源码文本，查"它到底能不能被解析"）。"""
+    bad = []
+    for f in _shipped_ps1_files():
+        script = "[void][ScriptBlock]::Create((Get-Content -Raw -LiteralPath '%s'))" % str(f).replace("'", "''")
+        # productization: allow(这条判据本身就是「PowerShell 能不能解析这个 .ps1」，天然只在 Windows)
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", script],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=120)
+        if r.returncode != 0:
+            bad.append((str(f.relative_to(_ROOT)), (r.stderr or "").strip()[:160]))
+    assert not bad, "这些 .ps1 在真 PowerShell 里解析失败：%s" % bad

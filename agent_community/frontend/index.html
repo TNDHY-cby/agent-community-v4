@@ -7,7 +7,7 @@
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="boot.css">
 <style>
-:root{--bg:#0F0E0C;--bg2:#161513;--bg3:#1C1A18;--bg4:#242220;--bg5:#2F2C29;--ink:#E8E4DB;--muted:#B3AEA5;--dim:#7E7971;--rule:#2E2B27;--accent:#FF3527;--accent-soft:rgba(255,53,39,.08);--accent-strong:#FF6A5C;--green:#86B394;--green-soft:rgba(134,179,148,.09);--yellow:#D9AB53;--yellow-soft:rgba(217,171,83,.10);--red:#FF3527;--red-soft:rgba(255,53,39,.08);--blue:#2A5A8C;--blue-soft:rgba(123,163,201,.10);--cyan:#2A6B6B;--cyan-soft:rgba(100,181,180,.10);--purple:#5E4A7A;--purple-soft:rgba(160,140,192,.10);--shadow-1:0 1px 2px rgba(0,0,0,.35),0 3px 10px rgba(0,0,0,.18);--shadow-2:0 8px 24px rgba(0,0,0,.38);--radius-lg:0px;--radius-md:0px;--radius-sm:0px;--focus-ring:0 0 0 3px rgba(255,53,39,.25);--font-mono:"JetBrains Mono","Cascadia Code",Consolas,"Courier New",monospace}
+:root{--bg:#0F0E0C;--bg2:#161513;--bg3:#1C1A18;--bg4:#242220;--bg5:#2F2C29;--ink:#E8E4DB;--muted:#B3AEA5;--dim:#918B81;--rule:#2E2B27;--accent:#FF3527;--accent-soft:rgba(255,53,39,.08);--accent-strong:#FF6A5C;--green:#86B394;--green-soft:rgba(134,179,148,.09);--yellow:#D9AB53;--yellow-soft:rgba(217,171,83,.10);--red:#FF3527;--red-soft:rgba(255,53,39,.08);--blue:#2A5A8C;--blue-soft:rgba(123,163,201,.10);--cyan:#2A6B6B;--cyan-soft:rgba(100,181,180,.10);--purple:#5E4A7A;--purple-soft:rgba(160,140,192,.10);--shadow-1:0 1px 2px rgba(0,0,0,.35),0 3px 10px rgba(0,0,0,.18);--shadow-2:0 8px 24px rgba(0,0,0,.38);--radius-lg:0px;--radius-md:0px;--radius-sm:0px;--focus-ring:0 0 0 3px rgba(255,53,39,.25);--font-mono:"JetBrains Mono","Cascadia Code",Consolas,"Courier New",monospace}
 *{margin:0;padding:0;box-sizing:border-box}
 *{scrollbar-width:thin;scrollbar-color:var(--bg4) transparent}
 ::-webkit-scrollbar{width:8px;height:8px}
@@ -16,7 +16,10 @@
 ::-webkit-scrollbar-thumb:hover{background:var(--bg5)}
 html,body{height:100%;overflow:hidden}
 body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
-.app{display:grid;grid-template-rows:52px 1fr 30px;height:100vh}
+/* ★2026-10-23 修：原来写死 `grid-template-rows:52px 1fr 30px`（只够 topbar/main/statusbar 三个孩子），
+   而 .app 里现在有 6 个兄弟（凭据黄条 / 数据健康黄条 / 单实例横幅）—— 任一条可见就把主区挤成 30px、整页塌掉。
+   改成纵向 flex：多出来几条横幅都只是"多一行"，主区永远 flex:1。 */
+.app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 /* topbar */
 .topbar{display:flex;align-items:center;gap:1rem;padding:0 16px;background:linear-gradient(180deg,#1d2026,#181a20);border-bottom:1px solid var(--rule);box-shadow:0 1px 0 rgba(255,255,255,.03)}
 .topbar .logo{font-size:15px;font-weight:800;color:var(--accent);letter-spacing:.03em;display:flex;align-items:center;gap:8px}
@@ -28,8 +31,11 @@ body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSys
 .topbar .spacer{flex:1}
 .topbar .btn{font-size:12px;padding:6px 14px;border:1px solid var(--rule);border-radius:8px;background:var(--bg3);color:var(--ink);cursor:pointer;transition:all .15s;font-weight:500}
 .topbar .btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+/* 主入口：对接中心（2026-10-23 评审：7 个按钮等权时，没有一个是"最该点的"） */
+.topbar .btn.primary{background:rgba(255,53,39,.14);border-color:#FF3527;color:#FF6A5C;font-weight:700}
+.topbar .btn.primary:hover{background:#D4291C;border-color:#D4291C;color:#F9F7F3}
 /* main grid */
-.main{display:grid;grid-template-columns:var(--nav-w,248px) 1fr 280px;overflow:hidden;transition:grid-template-columns .2s ease}
+.main{display:grid;grid-template-columns:var(--nav-w,248px) 1fr 280px;flex:1;min-height:0;overflow:hidden;transition:grid-template-columns .2s ease}
 /* left col */
 .col-left{border-right:1px solid var(--rule);background:var(--bg2);display:flex;flex-direction:column;overflow:hidden;transition:width .2s ease}
 .col-left .col-header{padding:13px 16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:8px;white-space:nowrap}
@@ -94,6 +100,10 @@ body.nav-collapsed .workshop-item .wi-ico{display:inline-block;font-size:15px;li
 .hall-entries{position:absolute;top:16px;left:16px;right:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;z-index:2}
 .hall-entry{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:208px;padding:13px 15px;background:var(--bg2);border:1px solid var(--rule);border-radius:12px;cursor:pointer;text-decoration:none;color:var(--ink);transition:background-color .15s,border-color .15s,transform .15s;text-align:left}
 .hall-entry:hover{background:var(--accent-soft);border-color:var(--accent);transform:translateY(-1px)}
+/* 新用户第一件事是「接入一位员工」—— 空状态里它排第一，并且视觉上比「流程说明」重一档 */
+.hall-entry.primary{border-color:rgba(255,53,39,.7);background:rgba(255,53,39,.07)}
+.hall-entry.primary .he-t{color:var(--ink)}
+.hall-entry.primary .he-i{color:var(--accent)}
 .hall-entry .he-i{font-size:20px;color:var(--accent);line-height:1}
 .hall-entry .he-t{font-size:14.5px;font-weight:900}
 .hall-entry .he-s{font-size:11px;color:var(--muted);line-height:1.5}
@@ -130,7 +140,7 @@ body.nav-collapsed .workshop-item .wi-ico{display:inline-block;font-size:15px;li
 .hall-input textarea{flex:1;background:var(--bg3);border:1px solid var(--rule);border-radius:12px;color:var(--ink);padding:10px 16px;font-size:14px;font-family:inherit;resize:none;min-height:44px;max-height:120px;transition:border-color .15s,box-shadow .15s;box-shadow:inset 0 1px 3px rgba(0,0,0,.25)}
 .hall-input textarea:focus{outline:none;border-color:var(--accent);box-shadow:var(--focus-ring),inset 0 1px 3px rgba(0,0,0,.25)}
 .hall-input textarea::placeholder{color:var(--muted)}
-.hall-input .send-btn{background:var(--accent);color:#fff;border:none;border-radius:12px;padding:0 26px;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;box-shadow:0 2px 10px rgba(217,119,87,.3)}
+.hall-input .send-btn{background:#D4291C;color:#F9F7F3;border:none;border-radius:12px;padding:0 26px;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;box-shadow:0 2px 10px rgba(217,119,87,.3)}
 .hall-input .send-btn:hover{filter:brightness(1.12);transform:translateY(-1px)}
 .hall-input .send-btn:active{transform:translateY(0)}
 .hall-input .send-btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
@@ -212,12 +222,12 @@ body.nav-collapsed .workshop-item .wi-ico{display:inline-block;font-size:15px;li
 .agent-card .ac-status.online{background:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
 .agent-card .ac-status.offline{background:var(--dim);box-shadow:0 0 0 3px rgba(102,98,90,.15)}
 .agent-card .ac-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.agent-card .ac-id{font-size:10px;color:var(--dim);font-family:var(--font-mono)}
+.agent-card .ac-id{font-size:11.5px;color:var(--dim);font-family:var(--font-mono)}
 .agent-card .ac-caps{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-.agent-card .cap-tag{font-size:10px;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
-.agent-card .ac-sw{font-size:10px;color:var(--muted);margin-top:4px}
+.agent-card .cap-tag{font-size:10px;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:#FF7B7B}
+.agent-card .ac-sw{font-size:12px;color:var(--muted);margin-top:4px}
 /* ★2026-10-11（老板要求）：Harness 列表要能看出「框架特点 + 适配大模型」 */
-.ac-fw{font-size:10.5px;color:var(--ink);margin-top:4px;line-height:1.45}
+.ac-fw{font-size:12px;color:var(--ink);margin-top:4px;line-height:1.45}
 .ac-model{font-size:10.5px;color:var(--ink);margin-top:2px;line-height:1.45}
 .agent-card{position:relative}
 .ac-more{margin-left:auto;background:transparent;border:none;color:var(--dim);font-size:16px;line-height:1;padding:2px 6px;cursor:pointer;border-radius:6px;transition:all .15s;flex-shrink:0}
@@ -365,6 +375,69 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
 .fs-enter{font-size:11.5px;font-weight:800;color:var(--accent);text-decoration:none;border:1px solid rgba(217,119,87,.4);border-radius:7px;padding:3px 10px;transition:all .15s}
 .fs-enter:hover{background:var(--accent-soft)}
 
+/* ══════════════════════════════════════════════════════════════════════════
+   布局 v2 · 去框化（与对接中心同一套 tokens，2026-10-23 第五批）
+   原则：框只给"可点的东西"；分段一律「红方点 + 字 + 延伸线」；字阶 20 / 13 / 12；间距只用 4/8/12/16/24。
+   这一整块在末尾 ⇒ 可整块删掉回退（另有 tag arch/before-v2-hall-workshop）。
+   ══════════════════════════════════════════════════════════════════════════ */
+:root{--t1:20px;--t2:13px;--t3:12px;--s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px}
+
+/* ① 三级字阶：正文 13、辅助 12（消息正文仍 13.5，聊天里太紧会难受） */
+body{font-size:var(--t2)}
+.topbar .logo{font-size:13.5px;line-height:1.15;align-items:center}
+.topbar .btn{font-size:var(--t3);padding:5px 12px}
+.hall-input textarea{font-size:var(--t2)}
+.hall-input .send-btn{font-size:var(--t2);padding:0 20px}
+.hi-hint{font-size:var(--t3);color:var(--dim)}
+.hmsg{font-size:13.5px}
+
+/* ② 分段语法只留一种：红方点 + 字 + 延伸线（三个栏头都用它） */
+.col-header,.col-right .col-header{
+  display:flex;align-items:center;gap:var(--s2);padding:var(--s3) var(--s4);
+  font-size:var(--t3);font-weight:800;letter-spacing:.08em;text-transform:none;color:var(--muted);
+  border-bottom:1px solid var(--rule)}
+.col-header::before,.col-right .col-header::before{
+  content:"";width:8px;height:8px;background:var(--accent);opacity:1;border-radius:0;flex:none}
+.col-header::after,.col-right .col-header::after{content:"";flex:1;height:1px;background:var(--rule)}
+.col-header .ch-count{margin-left:0}
+
+/* ③ 去框：左栏工作间行、消息气泡都不再是"卡片套卡片" */
+.workshop-item{border:0;border-radius:0;border-left:2px solid transparent}
+.workshop-item.active{border:0;border-left:2px solid var(--accent);background:var(--accent-soft);box-shadow:none}
+.hmsg{border:0;border-left:2px solid var(--rule);border-radius:0;background:transparent;padding:var(--s2) 0 var(--s2) var(--s3)}
+.hmsg .hm-type{border:0;border-left:2px solid var(--accent);background:transparent;border-radius:0}
+.agent-card{padding:var(--s3) var(--s4)}
+.stat-row{padding:var(--s1) 0}
+.budget-panel{padding:var(--s3) var(--s4)}
+
+/* ④ 可点物品仍留框（但只剩一种描边粗细） */
+.hall-entry{border-radius:2px;border-color:var(--rule);background:var(--bg3)}
+.hall-entry:hover{border-color:var(--accent)}
+.view-tab{border-bottom:2px solid transparent}
+.view-tab.active{border-bottom-color:var(--accent)}
+
+/* ⑤ 间距节奏：大厅内容与输入区 */
+.hall-messages{padding:var(--s5) var(--s5) var(--s4);gap:var(--s2)}
+.hall-input{padding:var(--s3) var(--s5) var(--s4)}
+.statusbar{font-size:var(--t3);padding:0 var(--s4)}
+
+/* ── 广播通知（2026-10-23 功能；视觉沿用基线：实底面板 + 红左边线）── */
+.view-tabs .bc-open{margin-left:auto;align-self:center;margin-right:4px;flex:0 0 auto;white-space:nowrap}
+.bc-panel{margin:10px 22px 0;padding:12px 14px;border:1px solid var(--rule-strong,rgba(232,228,219,.2));
+  border-left:2px solid var(--accent);background:var(--bg3);border-radius:2px;position:relative;z-index:3}
+.bc-panel[hidden]{display:none}
+.bc-panel .bc-head{font-size:12.5px;font-weight:700;margin-bottom:8px}
+.bc-panel .bc-head .sub{font-weight:400;color:var(--muted);font-size:11px;margin-left:6px}
+.bc-panel textarea{width:100%;box-sizing:border-box;resize:vertical;background:var(--bg2);
+  color:var(--ink);border:1px solid var(--rule);border-radius:2px;padding:8px 10px;font:inherit;font-size:13px}
+.bc-panel .bc-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.bc-panel .bc-row .spacer{flex:1}
+.bc-panel select{background:var(--bg2);color:var(--ink);border:1px solid var(--rule);border-radius:2px;
+  padding:4px 8px;font:inherit;font-size:12px}
+.bc-panel .bc-count{font-size:11px;color:var(--dim);font-family:var(--font-mono,monospace)}
+.bc-panel .bc-msg{font-size:12px;margin-top:6px;min-height:16px}
+.hall-messages .hmsg.type-notice{border-left:2px solid var(--accent);background:rgba(255,53,39,.07)}
+.hall-messages .hmsg.type-notice .hm-content{font-weight:600}
 </style>
 <link rel="stylesheet" href="/theme-crt.css">
 <script src="/theme-crt.js" defer></script>
@@ -375,13 +448,13 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
     <span class="logo">◈ 外端agent生产合作社</span>
     <div class="ws-status"><span class="ws-dot" id="wsDot"></span><span id="wsText">未连接</span></div>
     <div class="spacer"></div>
-    <button class="btn" onclick="location.href='/monitor.html'" title="监控室 · 画面墙（只读快照）">📺 监控室</button>
-    <button class="btn" onclick="location.href='/docking.html'" title="对接中心 · 把外部 Agent 接进来、并让它跟工作间对上">🔌 对接中心</button>
-    <button class="btn" onclick="location.href='/ops.html'" title="运维看板 · 工单审计与Agent在线">📡 看板</button>
-    <button class="btn" onclick="location.href='/handover.html'" title="交付回执台 · 无证据不回执">🧾 回执</button>
-    <button class="btn" onclick="location.href='/booths.html'" title="成员隔间与桥">🏗 隔间</button>
-    <button class="btn" onclick="saveSession()" title="保存当前会话快照">💾 保存</button>
-    <button class="btn" onclick="openSettings()">⚙ 设置</button>
+    <button class="btn" onclick="location.href='/monitor.html'" title="监控室 · 画面墙（只读快照）">监控室</button>
+    <button class="btn primary" onclick="location.href='/docking.html'" title="对接中心 · 把外部 Agent 接进来、并让它跟工作间对上">对接中心</button>
+    <button class="btn" onclick="location.href='/ops.html'" title="运维看板 · 工单审计与Agent在线">看板</button>
+    <button class="btn" onclick="location.href='/handover.html'" title="交付回执台 · 无证据不回执">回执</button>
+    <button class="btn" onclick="location.href='/booths.html'" title="成员隔间与桥">隔间</button>
+    <button class="btn" onclick="saveSession()" title="保存当前会话快照">保存</button>
+    <button class="btn" onclick="openSettings()">设置</button>
   </div>
   <!-- 「恢复」按钮已移除（老板 2026-10-19 裁定）：其重绘能力并入 init() 自动执行，见 restoreSession() -->
   <div id="dataHealthBar" style="display:none;padding:8px 16px;background:rgba(255,176,0,.10);border-bottom:1px solid rgba(255,176,0,.4);color:var(--yellow,#FFB000);font-size:12.5px"></div>
@@ -389,17 +462,34 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
   <div id="singletonBar" style="display:none;padding:8px 16px;background:rgba(255,176,0,.12);border-bottom:1px solid rgba(255,176,0,.5);color:var(--yellow,#FFB000);font-size:12.5px"></div>
   <div class="main">
     <div class="col-left">
-      <div class="col-header"><span class="nav-title">工作间</span><span class="ch-count" id="workshopCount">0</span><button class="nav-toggle" id="navToggle" onclick="toggleNav()" title="折叠/展开侧边栏">◀</button><button class="wi-act" style="margin-left:auto;font-size:12px" title="回收卡死工作间" onclick="event.stopPropagation();recycleStaleWorkshops()">♻️</button></div>
+      <div class="col-header"><span class="nav-title">工作间</span><span class="ch-count" id="workshopCount">0</span><button class="nav-toggle" id="navToggle" onclick="toggleNav()" title="折叠/展开侧边栏">◀</button><button class="wi-act" style="margin-left:auto;font-size:12px" title="回收卡死工作间" onclick="event.stopPropagation();recycleStaleWorkshops()">回收</button></div>
       <div class="workshop-list" id="workshopList"><div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无工作间<br><span style="font-size:11px">在大厅发布任务后自动创建</span></div></div>
     </div>
     <div class="col-center">
       <div class="view-tabs">
-        <div class="view-tab active" id="tabHall" onclick="switchView('hall')">🏛️ 大厅</div>
-        <div class="view-tab" id="tabWorkshop" onclick="switchView('workshop')" style="display:none">🔧 工作间</div>
+        <div class="view-tab active" id="tabHall" onclick="switchView('hall')">大厅</div>
+        <div class="view-tab" id="tabWorkshop" onclick="switchView('workshop')" style="display:none">工作间</div>
         <a class="view-tab" href="/hub.html" title="流程说明 · 全流程（只讲不做）">◈ 流程说明</a>
+        <button class="btn mini quiet bc-open" id="bcOpenBtn" onclick="bcToggle()" title="发一条广播：所有开着的页面都会看到（不进任务列表）">广播通知</button>
       </div>
       <div class="hall-view" id="hallView">
+        <div class="bc-panel" id="bcPanel" hidden>
+          <div class="bc-head">广播通知 <span class="sub">所有开着的页面都会看到；不进任务列表、不派活</span></div>
+          <textarea id="bcText" rows="2" placeholder="要广播的通知，例如：今晚 20:00 统一停机维护 10 分钟" oninput="bcCount()"></textarea>
+          <div class="bc-row">
+            <select id="bcLevel"><option value="info">通知</option><option value="warn">提醒</option><option value="urgent">紧急</option></select>
+            <span class="bc-count" id="bcCount">0 / 500</span><span class="spacer"></span>
+            <button class="btn mini" onclick="bcToggle()">收起</button>
+            <button class="btn primary" id="bcSendBtn" onclick="bcSend()">发出广播</button>
+          </div>
+          <div class="bc-msg" id="bcMsg"></div>
+        </div>
         <div class="hall-messages" id="hallMessages"><div class="hall-empty"><div class="hall-entries">
+            <a class="hall-entry primary" href="/docking.html" title="对接中心 · 把外部 Agent 登记进来、叫醒、送话">
+              <span class="he-i">▣</span>
+              <span class="he-t">接入一位员工</span>
+              <span class="he-s">对接中心 · 登记 / 激活 / 送话</span>
+            </a>
             <a class="hall-entry" href="/hub.html" title="流程说明 · 全流程（只讲不做）">
               <span class="he-i">◈</span>
               <span class="he-t">流程说明</span>
@@ -424,7 +514,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
         </div>
         <div class="ds-resizer" id="dsResizer"></div>
         <div class="discussion-section">
-          <div class="ds-header"><span>💬</span><span class="ds-name" id="dsWorkshopName">工作间</span><span>· 讨论</span><span class="ds-confirm-btn" id="dsConfirmBtn" onclick="confirmStartTask()" style="display:none">✓ 确认开始</span></div>
+          <div class="ds-header"><span class="ds-name" id="dsWorkshopName">工作间</span><span>· 讨论</span><span class="ds-confirm-btn" id="dsConfirmBtn" onclick="confirmStartTask()" style="display:none">✓ 确认开始</span></div>
           <div class="ds-list" id="discussionList"><div style="padding:8px;color:var(--dim);font-size:11px;text-align:center">暂无讨论</div></div>
           <div class="ds-input">
             <div class="ds-input-row">
@@ -436,7 +526,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
       </div>
     </div>
     <div class="col-right">
-      <div class="col-header">Harness 列表</div>
+      <div class="col-header">已登记员工</div>
       <div id="agentList" style="flex:1;overflow-y:auto"><div style="padding:20px;text-align:center;color:var(--dim);font-size:12px"><span class="spinner"></span> 加载中...</div></div>
       <div class="col-header">任务预算</div>
       <div class="budget-panel" id="budgetPanel">
@@ -462,7 +552,7 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
   <div class="statusbar"><div class="sb-item">状态: <strong id="agentStatus">检查中...</strong></div><button class="sb-verify" onclick="verifyAI(this)" title="对当前配置的平台 AI 做一次连通验证（POST /api/ai/verify）">验证连通</button><div class="sb-item">|</div><div class="sb-item" id="lastAction">就绪</div></div>
 </div>
 <div class="bridge-panel" id="bridgePanel">
-  <div class="bp-header"><span class="bp-icon">🔗</span><span class="bp-title">桥接等待中</span><span class="bp-timer" id="bridgeTimer">30:00</span></div>
+  <div class="bp-header"><span class="bp-title">桥接等待中</span><span class="bp-timer" id="bridgeTimer">30:00</span></div>
   <div class="bp-prompt-label">需要你在桥接目标中处理的任务:</div>
   <div class="bp-prompt" id="bridgePrompt"></div>
   <div class="bp-response-area"><textarea id="bridgeResponse" placeholder="将桥接目标的回复粘贴到此处，然后点击提交..." oninput="onBridgeInput(this)"></textarea></div>
@@ -650,14 +740,14 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
 let ws=null,wsReconnectTimer=null,agents=[],tasks=[],workshops=[],isExecuting=false,currentView='hall',currentWorkshopId=null,bridgeTaskId=null,bridgeTimer=null,bridgeCountdown=1800,taskMessages={};
 function connectWS(){const p=location.protocol==='https:'?'wss:':'ws:';const u=`${p}//${location.host}/ws`;setWSStatus('connecting');ws=new WebSocket(u);ws.onopen=()=>{setWSStatus('online');if(wsReconnectTimer){clearInterval(wsReconnectTimer);wsReconnectTimer=null}};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==='history')appendMessage(d.data,true);else appendMessage(d.data,false)}catch(e){}};ws.onclose=()=>{setWSStatus('offline');if(!wsReconnectTimer)wsReconnectTimer=setInterval(connectWS,5000)};ws.onerror=()=>{}}
 function setWSStatus(s){const d=document.getElementById('wsDot'),t=document.getElementById('wsText');d.className='ws-dot '+s;const l={online:'已连接',connecting:'连接中...',offline:'已断开'};t.textContent=l[s]||s}
-function appendMessage(msg,isHistory){if(!msg)return;const mt=msg.message_type||'text',tid=msg.task_id||'',isBc=msg.to_agent==='broadcast'||msg.to_agent==='所有人',isHall=isBc||!tid||mt==='text'||mt==='result';if(isHall)addToHall(msg,isHistory);if(tid){if(!taskMessages[tid])taskMessages[tid]=[];taskMessages[tid].push(msg);if(currentWorkshopId===tid)addToDiscussion(msg)}if(!isHistory&&mt==='bridge_waiting'&&tid)showBridgePanel(tid,msg.metadata?.bridge_prompt||msg.content||'');if(!isHistory&&(mt==='bridge_timeout'||mt==='bridge_response')&&tid===bridgeTaskId)hideBridgePanel()}
-function addToHall(msg,isHistory){const s=document.getElementById('hallMessages');const h=s.querySelector('.hall-empty');if(h)h.remove();const d=document.createElement('div');const mt=msg.message_type||'text',ts=msg.timestamp||new Date().toISOString(),time=formatTime(ts),from=msg.from_agent||'system',to=msg.to_agent||'broadcast',toD=to==='broadcast'?'所有人':to;const l={text:'消息',task_assign:'分派',task_complete:'完成',budget_warning:'预算',budget_cutoff:'熔断',memory_restore:'记忆',context_lost:'丢失',bridge_waiting:'桥接',bridge_timeout:'超时',bridge_response:'响应',result:'结果'};const tl=l[mt]||mt;let c=msg.content||'';if(c.startsWith('{')&&c.endsWith('}')){try{c=JSON.stringify(JSON.parse(c),null,2)}catch(e){}}const isUB=to==='broadcast'&&mt==='text'&&from==='user'&&!isHistory;if(isUB){d.className='broadcast-banner';d.innerHTML=`<div class="bb-label">📢 任务广播</div><div>${esc(c)}</div><div style="font-size:10px;color:var(--dim);margin-top:4px">${time}</div>`}else{d.className=`hmsg type-${mt}`;d.innerHTML=`<div class="hm-meta"><span class="hm-from">${esc(from)}</span><span class="hm-arrow">→</span><span class="hm-to">${esc(toD)}</span><span class="hm-type">${tl}</span><span class="hm-time">${time}</span></div><div class="hm-content">${esc(c)}</div>`}if(isHistory)s.insertBefore(d,s.firstChild);else{s.appendChild(d);s.scrollTop=s.scrollHeight}}
+function appendMessage(msg,isHistory){if(!msg)return;const mt=(msg.payload&&msg.payload.message_type)||msg.message_type||'text',tid=msg.task_id||'',isBc=msg.to_agent==='broadcast'||msg.to_agent==='所有人',isHall=isBc||!tid||mt==='text'||mt==='result';if(isHall)addToHall(msg,isHistory);if(tid){if(!taskMessages[tid])taskMessages[tid]=[];taskMessages[tid].push(msg);if(currentWorkshopId===tid)addToDiscussion(msg)}if(!isHistory&&mt==='bridge_waiting'&&tid)showBridgePanel(tid,msg.metadata?.bridge_prompt||msg.content||'');if(!isHistory&&(mt==='bridge_timeout'||mt==='bridge_response')&&tid===bridgeTaskId)hideBridgePanel()}
+function addToHall(msg,isHistory){const s=document.getElementById('hallMessages');const h=s.querySelector('.hall-empty');if(h)h.remove();const d=document.createElement('div');const mt=(msg.payload&&msg.payload.message_type)||msg.message_type||'text',ts=msg.timestamp||new Date().toISOString(),time=formatTime(ts),from=msg.from_agent||'system',to=msg.to_agent||'broadcast',toD=to==='broadcast'?'所有人':to;const l={text:'消息',notice:'广播',task_assign:'分派',task_complete:'完成',budget_warning:'预算',budget_cutoff:'熔断',memory_restore:'记忆',context_lost:'丢失',bridge_waiting:'桥接',bridge_timeout:'超时',bridge_response:'响应',result:'结果'};const tl=l[mt]||mt;let c=msg.content||'';if(c.startsWith('{')&&c.endsWith('}')){try{c=JSON.stringify(JSON.parse(c),null,2)}catch(e){}}const isUB=to==='broadcast'&&mt==='text'&&from==='user'&&!isHistory;if(isUB){d.className='broadcast-banner';d.innerHTML=`<div class="bb-label">📢 任务广播</div><div>${esc(c)}</div><div style="font-size:10px;color:var(--dim);margin-top:4px">${time}</div>`}else{d.className=`hmsg type-${mt}`;d.innerHTML=`<div class="hm-meta"><span class="hm-from">${esc(from)}</span><span class="hm-arrow">→</span><span class="hm-to">${esc(toD)}</span><span class="hm-type">${tl}</span><span class="hm-time">${time}</span></div><div class="hm-content">${esc(c)}</div>`}if(isHistory)s.insertBefore(d,s.firstChild);else{s.appendChild(d);s.scrollTop=s.scrollHeight}}
 function switchView(v){currentView=v;const tH=document.getElementById('tabHall'),tW=document.getElementById('tabWorkshop'),hV=document.getElementById('hallView'),wV=document.getElementById('workshopView');if(v==='hall'){tH.classList.add('active');tW.classList.remove('active');hV.classList.remove('hide');wV.classList.remove('show')}else{tH.classList.remove('active');tW.classList.add('active');hV.classList.add('hide');wV.classList.add('show')}}
 function openWorkshop(tid){currentWorkshopId=tid;switchView('workshop');_flowWsId=null;_flowWsStatus='';_flowWsErr='';renderFlowStrip();fetch('/api/tasks/'+encodeURIComponent(tid)+'/workshop').then(x=>{if(x.status===404){_flowWsErr='404';return null;}return x.ok?x.json():null;}).then(w=>{if(w&&w.workshop_id){_flowWsId=w.workshop_id;_flowWsStatus=w.status||'';}renderFlowStrip();}).catch(()=>{renderFlowStrip();});const t=tasks.find(x=>x.task_id===tid);if(!t)return;const wname=t.title||'未命名任务';document.getElementById('wsTaskTitle').textContent=wname;document.getElementById('tabWorkshop').style.display='flex';document.getElementById('tabWorkshop').innerHTML='🔧 '+esc(wname);document.getElementById('dsWorkshopName').textContent=wname;const se=document.getElementById('wsTaskStatus');const sl={pending:'待处理',discussing:'讨论中',routing:'路由中',executing:'执行中',completed:'已完成',failed:'失败',budget_cutoff:'预算熔断'};se.textContent=sl[t.status]||t.status;se.style.display='inline-block';const sc={completed:['var(--green-soft)','var(--green)'],failed:['var(--red-soft)','var(--red)'],budget_cutoff:['var(--red-soft)','var(--red)'],executing:['var(--blue-soft)','var(--blue)'],routing:['var(--blue-soft)','var(--blue)']};const c=sc[t.status]||['var(--yellow-soft)','var(--yellow)'];se.style.background=c[0];se.style.color=c[1];const cb=document.getElementById('dsConfirmBtn');if(cb){if(t.status==='discussing'){cb.style.display='';cb.textContent='✓ 确认开始';cb.style.opacity='1';cb.style.background='var(--green-soft)';cb.style.color='var(--green)';cb.onclick=confirmStartTask}else{cb.style.display='none'}}renderWorkflow(t);renderDiscussion(tid);refreshBudget();document.querySelectorAll('.workshop-item').forEach(e=>e.classList.remove('active'));const it=document.querySelector(`[data-task-id="${tid}"]`);if(it)it.classList.add('active')}
 function renderWorkflow(task){const cv=document.getElementById('workflowCanvas');cv.innerHTML='';let aa=[];try{aa=JSON.parse(task.assigned_agents||'[]')}catch(e){}let result='';try{result=JSON.parse(task.result||'{}').result||task.result||''}catch(e){result=task.result||''}const st=task.status||'pending',isD=st==='completed',isE=st==='executing'||st==='routing',isEr=st==='failed'||st==='budget_cutoff';const nodes=[];nodes.push({id:'start',type:'start',icon:'▶',label:'开始',detail:task.description||task.title||'',status:'done',x:20,y:40});nodes.push({id:'router',type:'router',icon:'⬡',label:'任务路由',detail:`意图: ${task.intent||'general'}\n分派: ${aa.length} 个 Agent`,status:isD||isE?'done':(isEr?'error':'active'),x:240,y:40});let ay=40;aa.forEach((aid,i)=>{const ag=agents.find(a=>a.agent_id===aid);nodes.push({id:`agent-${i}`,type:'agent',icon:'🤖',label:ag?ag.name:aid,detail:`${aid}\n来源: ${ag?ag.software_context:''}`,status:isD?'done':(isE?'active':''),x:460,y:ay});ay+=100});if(isD||result)nodes.push({id:'result',type:'result',icon:'✓',label:'结果',detail:result.substring(0,200)+(result.length>200?'...':''),status:isD?'done':'active',x:680,y:40});const mx=Math.max(...nodes.map(n=>n.x))+220,my=Math.max(...nodes.map(n=>n.y))+120;cv.style.width=mx+'px';cv.style.height=my+'px';const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('wf-svg');svg.setAttribute('width',mx);svg.setAttribute('height',my);const conns=[];conns.push({from:'start',to:'router',status:'done'});aa.forEach((_,i)=>conns.push({from:'router',to:`agent-${i}`,status:isD?'done':(isE?'flowing':'active')}));if(nodes.find(n=>n.id==='result')&&aa.length>0)conns.push({from:`agent-${aa.length-1}`,to:'result',status:isD?'done':''});const nm={};nodes.forEach(n=>nm[n.id]=n);conns.forEach(cn=>{const f=nm[cn.from],t=nm[cn.to];if(!f||!t)return;const x1=f.x+180,y1=f.y+30,x2=t.x,y2=t.y+30,mx2=(x1+x2)/2;const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',`M ${x1},${y1} C ${mx2},${y1} ${mx2},${y2} ${x2},${y2}`);if(cn.status==='flowing')p.classList.add('flowing');else if(cn.status==='done')p.classList.add('done');else if(cn.status==='active')p.classList.add('active');svg.appendChild(p)});cv.appendChild(svg);nodes.forEach(n=>{const el=document.createElement('div');el.className=`wf-node type-${n.type}`;if(n.status==='active')el.classList.add('active');if(n.status==='done')el.classList.add('done');if(n.status==='error')el.classList.add('error');el.style.left=n.x+'px';el.style.top=n.y+'px';const st2=n.status==='done'?'<span class="wn-status" style="background:var(--green-soft);color:var(--green)">完成</span>':n.status==='active'?'<span class="wn-status" style="background:var(--blue-soft);color:var(--blue)">执行中</span>':n.status==='error'?'<span class="wn-status" style="background:var(--red-soft);color:var(--red)">错误</span>':'';el.innerHTML=`<div class="wn-header"><div class="wn-icon">${n.icon}</div><span class="wn-label">${esc(n.label)}</span>${st2}</div><div class="wn-body"><div class="wn-detail">${esc(n.detail)}</div></div>`;cv.appendChild(el)})}
 function renderDiscussion(tid){const l=document.getElementById('discussionList');const ms=taskMessages[tid]||[];if(ms.length===0){l.innerHTML='<div style="padding:8px;color:var(--dim);font-size:11px;text-align:center">暂无讨论</div>';return}l.innerHTML=ms.map(m=>{const f=m.from_agent||'system',t=formatTime(m.timestamp||new Date().toISOString());let c=m.content||'';if(c.length>300)c=c.substring(0,300)+'...';return `<div class="ds-item"><span class="dsi-from">${esc(f)}</span><span class="dsi-time">${t}</span><div>${esc(c)}</div></div>`}).join('');l.scrollTop=l.scrollHeight}
 function addToDiscussion(msg){const l=document.getElementById('discussionList');const h=l.querySelector('div[style*="text-align:center"]');if(h)l.innerHTML='';const f=msg.from_agent||'system',t=formatTime(msg.timestamp||new Date().toISOString());let c=msg.content||'';if(c.length>300)c=c.substring(0,300)+'...';const d=document.createElement('div');d.className='ds-item';d.innerHTML=`<span class="dsi-from">${esc(f)}</span><span class="dsi-time">${t}</span><div>${esc(c)}</div>`;l.appendChild(d);l.scrollTop=l.scrollHeight}
-function renderWorkshops(){const l=document.getElementById('workshopList');document.getElementById('workshopCount').textContent=workshops.length;document.getElementById('statWorkshops').textContent=workshops.length;if(workshops.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无工作间<br><span style="font-size:11px">在大厅发布任务后自动创建</span></div>';renderFlowStrip();return}const sl={draft:'草稿',discussing:'一级讨论',selecting:'选定员工',division:'二级讨论',running:'工作中',review:'三级讨论',done:'已完成'};const ico={draft:'📝',discussing:'💬',selecting:'👥',division:'🧩',running:'⚙️',review:'📋',done:'✅'};l.innerHTML=workshops.map(w=>{const s=w.status||'draft',sl2=sl[s]||s,ic=ico[s]||'📋';const tm=w.created_at?new Date(w.created_at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';return `<div class="workshop-item ${currentWorkshopId===w.workshop_id?'active':''}" data-ws-id="${w.workshop_id}" onclick="openWorkshopPage('${w.workshop_id}')"><div class="wi-top"><span class="wi-status-dot ${s}"></span><span class="wi-ico">${w.pinned?'📌':ic}</span><span class="wi-title">${w.pinned?'📌 ':''}${esc(w.name||'(无标题)')}</span></div><div class="wi-agents">${(w.members||[]).map(m=>esc(m.role)).join(', ')||'未选员工'}</div><div class="wi-time">${sl2} · ${tm}</div><div class="wi-actions"><button class="wi-act" title="置顶" onclick="event.stopPropagation();togglePin('${w.workshop_id}',${w.pinned?'false':'true'})">${w.pinned?'📌':'📍'}</button><button class="wi-act" title="重命名" onclick="event.stopPropagation();renameWs('${w.workshop_id}')">✏️</button><button class="wi-act" title="删除" onclick="event.stopPropagation();deleteWs('${w.workshop_id}')">🗑️</button></div></div>`}).join('');renderFlowStrip()}
+function renderWorkshops(){const l=document.getElementById('workshopList');document.getElementById('workshopCount').textContent=workshops.length;document.getElementById('statWorkshops').textContent=workshops.length;if(workshops.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无工作间<br><span style="font-size:11px">在大厅发布任务后自动创建</span></div>';renderFlowStrip();return}const sl={draft:'草稿',discussing:'一级讨论',selecting:'选定员工',division:'二级讨论',running:'工作中',review:'三级讨论',done:'已完成'};l.innerHTML=workshops.map(w=>{const s=w.status||'draft',sl2=sl[s]||s;const tm=w.created_at?new Date(w.created_at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';return `<div class="workshop-item ${currentWorkshopId===w.workshop_id?'active':''}" data-ws-id="${w.workshop_id}" onclick="openWorkshopPage('${w.workshop_id}')"><div class="wi-top"><span class="wi-status-dot ${s}"></span><span class="wi-title">${w.pinned?'[置顶] ':''}${esc(w.name||'(无标题)')}</span></div><div class="wi-agents">${(w.members||[]).map(m=>esc(m.role)).join(', ')||'未选员工'}</div><div class="wi-time">${sl2} · ${tm}</div><div class="wi-actions"><button class="wi-act" title="置顶" onclick="event.stopPropagation();togglePin('${w.workshop_id}',${w.pinned?'false':'true'})">${w.pinned?'取消置顶':'置顶'}</button><button class="wi-act" title="重命名" onclick="event.stopPropagation();renameWs('${w.workshop_id}')">重命名</button><button class="wi-act" title="删除" onclick="event.stopPropagation();deleteWs('${w.workshop_id}')">删除</button></div></div>`}).join('');renderFlowStrip()}
 /* ── FE-07 主流程阶段条：task 视角打开 → 一次性反查工作间 → 状态珠 + 入口 ── */
 let _flowWsId=null, _flowWsStatus='', _flowWsErr='';
 function renderFlowStrip(){
@@ -743,12 +833,12 @@ function renderAgents(){
         （`framework` / `framework_note` / `model` / `model_provider`），
         取不到就**不编**（这里全部按"有才显示"处理）。 */
   const l=document.getElementById('agentList');
-  if(agents.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无已接入的 harness</div>';return}
+  if(agents.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无已登记员工<br><span style="font-size:11px">在对接中心「登记一位新员工」</span></div>';return}
   l.innerHTML=agents.map(a=>{
     let caps=[];try{const c=typeof a.agent_card==='string'?JSON.parse(a.agent_card):a.agent_card;caps=c?.capabilities||[]}catch(e){}
-    const fw=a.framework?`<div class="ac-fw">🧩 框架：<b>${esc(a.framework)}</b>${a.framework_note?(' · '+esc(a.framework_note)):''}</div>`:'';
-    const md=(a.model||a.model_provider)?`<div class="ac-model">🤖 适配模型：<b>${esc(a.model||'（未填）')}</b>${a.model_provider?(' · '+esc(a.model_provider)):''}${a.model_version?(' · '+esc(a.model_version)):''}</div>`:'';
-    return `<div class="agent-card"><div class="ac-top"><span class="ac-status ${a.status}"></span><span class="ac-name">${esc(a.name||a.agent_id)}</span>${a.is_harness?`<button class="ac-more" data-aid="${esc(a.agent_id)}" onclick="toggleAgentMenu(this,event)" title="设置">⋯</button>`:''}</div><div class="ac-id">${esc(a.agent_id)}</div>${fw}${md}${caps.length?`<div class="ac-caps">${caps.map(c=>`<span class="cap-tag">${c}</span>`).join('')}</div>`:''}<div class="ac-sw">${esc(a.software_context||'unknown')}</div>${a.is_harness?`<div class="ac-menu hidden" data-aid="${esc(a.agent_id)}" onclick="onAgentMenuClick(this,event)"><button data-act="prompt">✎ 唤醒提示词</button><button data-act="caps">✎ 精化能力列表</button><button class="danger" data-act="del">🗑 删除成员</button></div>`:''}</div>`}).join('')}
+    const fw=a.framework?`<div class="ac-fw">框架：<b>${esc(a.framework)}</b>${a.framework_note?(' · '+esc(a.framework_note)):''}</div>`:'';
+    const md=(a.model||a.model_provider)?`<div class="ac-model">适配模型：<b>${esc(a.model||'（未填）')}</b>${a.model_provider?(' · '+esc(a.model_provider)):''}${a.model_version?(' · '+esc(a.model_version)):''}</div>`:'';
+    return `<div class="agent-card"><div class="ac-top"><span class="ac-status ${a.status}"></span><span class="ac-name">${esc(a.name||a.agent_id)}</span>${a.is_harness?`<button class="ac-more" data-aid="${esc(a.agent_id)}" onclick="toggleAgentMenu(this,event)" title="设置">⋯</button>`:''}</div><div class="ac-id">${esc(a.agent_id)}</div>${fw}${md}${caps.length?`<div class="ac-caps">${caps.map(c=>`<span class="cap-tag">${c}</span>`).join('')}</div>`:''}<div class="ac-sw">软件环境：${a.software_context?esc(a.software_context):'未填'}</div>${a.is_harness?`<div class="ac-menu hidden" data-aid="${esc(a.agent_id)}" onclick="onAgentMenuClick(this,event)"><button data-act="prompt">唤醒提示词</button><button data-act="caps">精化能力列表</button><button class="danger" data-act="del">删除成员</button></div>`:''}</div>`}).join('')}
 function toggleAgentMenu(btn,e){if(e)e.stopPropagation();const aid=btn.dataset.aid;document.querySelectorAll('.ac-menu').forEach(m=>{if(m.dataset.aid!==aid)m.classList.add('hidden')});const menu=document.querySelector('.ac-menu[data-aid="'+CSS.escape(aid)+'"]');if(menu)menu.classList.toggle('hidden')}
 function onAgentMenuClick(menu,e){e.stopPropagation();const aid=menu.dataset.aid;const act=(e.target.dataset&&e.target.dataset.act)||'';if(act==='prompt')viewHarnessPrompt(aid);else if(act==='caps')editHarnessCaps(aid);else if(act==='del')deleteHarnessAgent(aid)}
 async function viewHarnessPrompt(aid){const a=agents.find(x=>x.agent_id===aid&&x.is_harness);if(!a)return;const hid=a.harness_id||aid.replace(/^harness-/,'');let cur='';try{const r=await fetch('/api/harness/'+encodeURIComponent(hid)+'/activation_prompt');const d=await r.json();cur=d.prompt||''}catch(err){acToast('加载失败: '+err.message,true);return}acModal.show({title:'唤醒提示词 · '+(a.name||aid),message:'激活工作间成员时下发给该 HA 的提示词模板。含 {role}/{workspace_dir} 占位符，激活时由平台自动填充；保存后重新注册不会覆盖。',input:cur,rows:12,placeholder:'请输入唤醒提示词模板…',onSubmit:async function(v){if(v==null)return;if(!(v||'').trim()){acToast('提示词不能为空',true);return}try{const r=await fetch('/api/harness/'+encodeURIComponent(hid)+'/activation_prompt',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:v})});const d=await r.json();if(d.success){acToast('唤醒提示词已保存');document.getElementById('lastAction').textContent='已保存 '+a.name+' 的唤醒提示词'}else{acToast(d.error||'保存失败',true)}}catch(err){acToast('保存失败: '+err.message,true)}}})}
@@ -760,7 +850,83 @@ async function refreshStats(){try{const r=await fetch('/api/bus/stats');const d=
 async function refreshBudget(){if(!currentWorkshopId){document.getElementById('bpEmpty').style.display='';document.getElementById('bpContent').style.display='none';return}try{const r=await fetch(`/api/budget/${currentWorkshopId}`);const d=await r.json();const spent=d.spent||0,budget=d.budget||0,ratio=d.ratio||0,status=d.status||'ok';const t=tasks.find(x=>x.task_id===currentWorkshopId);document.getElementById('bpEmpty').style.display='none';document.getElementById('bpContent').style.display='flex';document.getElementById('bpTaskName').textContent=t?t.title||'未知':'未知';document.getElementById('bpSpent').textContent=spent.toLocaleString();document.getElementById('bpBudget').textContent=budget.toLocaleString();document.getElementById('bpRatio').textContent=(ratio*100).toFixed(1)+'%';const bar=document.getElementById('bpBar');bar.style.width=Math.min(ratio*100,100)+'%';bar.className='bp-bar'+(status==='warning'?' warning':status==='cutoff'?' cutoff':'');const st=document.getElementById('bpStatus');const sl={ok:'正常',warning:'预警',cutoff:'已熔断'};st.textContent=sl[status]||status;st.className='bp-status'+(status==='warning'?' warning':status==='cutoff'?' cutoff':'')}catch(e){}}
 async function checkSession(){try{const r=await fetch('/api/session/restore');const d=await r.json();if(d.summary&&d.summary.has_previous){const s=d.summary;appendMessage({from_agent:'system',to_agent:'user',content:`上次会话: ${s.task_title} (${s.task_status}) · ${s.task_count} 个任务`,message_type:'text',timestamp:new Date().toISOString()})}}catch(e){}}
 async function saveSession(){try{await fetch('/api/session/save',{method:'POST'});document.getElementById('lastAction').textContent='会话已保存'}catch(e){}}
-async function restoreSession(){try{const r=await fetch('/api/events?limit=50');const d=await r.json();const ev=d.events||[];const s=document.getElementById('hallMessages');s.innerHTML='';if(ev.length===0){s.innerHTML='<div class="hall-empty"></div>';return}ev.reverse().forEach(e=>{let c=e.content||'{}';try{c=JSON.stringify(JSON.parse(c),null,2)}catch(_){}appendMessage({from_agent:e.agent_id||'system',to_agent:'console',content:`[${e.event_type}] ${c}`,message_type:'text',timestamp:e.timestamp},true)});await refreshTasks()}catch(e){}}
+/* ══ 空大厅给「动作」（产品化准则④：装好就能用）══════════════════════════════
+ * ★2026-10-23：新用户到这里，第一件事是**接入一位员工**（对接中心），第二件才是看流程说明。
+ * 之前只有「流程说明」一张卡，且它是静态 HTML、被 restoreSession 的 innerHTML 冲掉 ⇒ 实际看不到。
+ * 现在统一由这里渲染（静态 HTML 也保留同一份，供 JS 挂掉时兜底）。 */
+const HALL_EMPTY_ENTRIES =
+  '<div class="hall-entries">' +
+  '<a class="hall-entry primary" href="/docking.html" title="对接中心 · 把外部 Agent 登记进来、叫醒、送话">' +
+  '<span class="he-i">▣</span><span class="he-t">接入一位员工</span>' +
+  '<span class="he-s">对接中心 · 登记 / 激活 / 送话</span></a>' +
+  '<a class="hall-entry" href="/hub.html" title="流程说明 · 全流程（只讲不做）">' +
+  '<span class="he-i">◈</span><span class="he-t">流程说明</span>' +
+  '<span class="he-s">使用说明书 · 流程 · 接口</span></a>' +
+  '</div>';
+
+/* ── 广播通知（2026-10-23）──────────────────────────────────────────
+ * 一条广播＝大厅里一条消息（message_type=notice，payload.level 分档），后端只存这一处；
+ * 失败要说话：空 / 超 500 字 / 级别不合法都是 400，原文显示在 #bcMsg，绝不假装发成功。
+ */
+const BC_MAX = 500;
+function bcToggle() {
+  const p = document.getElementById('bcPanel');
+  if (!p) return;
+  p.hidden = !p.hidden;
+  if (!p.hidden) { const t = document.getElementById('bcText'); if (t) t.focus(); }
+}
+function bcCount() {
+  const t = document.getElementById('bcText');
+  const c = document.getElementById('bcCount');
+  if (t && c) c.textContent = t.value.length + ' / ' + BC_MAX;
+}
+async function bcSend() {
+  const t = document.getElementById('bcText');
+  const msg = document.getElementById('bcMsg');
+  const btn = document.getElementById('bcSendBtn');
+  const level = (document.getElementById('bcLevel') || {}).value || 'info';
+  if (!t || !msg) return;
+  const text = (t.value || '').trim();
+  if (!text) { msg.textContent = '内容是空的 —— 写一句话再发'; msg.style.color = 'var(--red,#FF3526)'; return; }
+  if (text.length > BC_MAX) {
+    msg.textContent = '最多 ' + BC_MAX + ' 字（现在 ' + text.length + ' 字）';
+    msg.style.color = 'var(--red,#FF3526)'; return;
+  }
+  msg.style.color = ''; msg.textContent = '正在发出…';
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/hall/notice', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: text, level: level})});
+    const d = await r.json().catch(() => ({error: '返回不是 JSON（HTTP ' + r.status + '）'}));
+    if (!r.ok || !d.ok) {
+      msg.textContent = '✗ 没发出去：' + (d.error || ('HTTP ' + r.status));
+      msg.style.color = 'var(--red,#FF3526)';
+      return;
+    }
+    t.value = ''; bcCount();
+    msg.textContent = '✓ 已广播（所有开着的页面都会看到；不进任务列表）';
+    const la = document.getElementById('lastAction'); if (la) la.textContent = '已广播一条通知';
+    bcToggle(); loadNotices();
+  } catch (e) {
+    msg.textContent = '✗ 请求发不出去：' + (e && e.message ? e.message : e);
+    msg.style.color = 'var(--red,#FF3526)';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+async function loadNotices() {
+  let d = null;
+  try { d = await (await fetch('/api/hall/notices?limit=20')).json(); } catch (e) { return; }
+  const rows = (d && (d.notices || [])) || [];
+  const box = document.getElementById('hallMessages');
+  if (!box || !rows.length) return;
+  const empty = box.querySelector('.hall-empty');
+  if (empty) empty.remove();
+  rows.forEach(n => addToHall({from_agent: 'platform', to_agent: 'broadcast',
+    content: n.text, timestamp: n.at, payload: {message_type: 'notice', level: n.level}}, true));
+}
+
+async function restoreSession(){try{const r=await fetch('/api/events?limit=50');const d=await r.json();const ev=d.events||[];const s=document.getElementById('hallMessages');s.innerHTML='';if(ev.length===0){s.innerHTML='<div class="hall-empty">'+HALL_EMPTY_ENTRIES+'</div>';return}ev.reverse().forEach(e=>{let c=e.content||'{}';try{c=JSON.stringify(JSON.parse(c),null,2)}catch(_){}appendMessage({from_agent:e.agent_id||'system',to_agent:'console',content:`[${e.event_type}] ${c}`,message_type:'text',timestamp:e.timestamp},true)});await refreshTasks()}catch(e){}}
 /* 心跳灯 V60（2026-10-20）：数据源=/api/status 的 ai 段（平台权威），不再写死 agent id。
    三态如实：只有 reachable===true 才绿；null=未知不绿；false=离线红+detail 原因放 title。 */
 function fmtAge(s){if(s==null)return'';if(s<60)return'刚刚';if(s<3600)return Math.round(s/60)+' 分钟前';return Math.round(s/3600)+' 小时前'}
@@ -1070,7 +1236,7 @@ async function loadProtocols(){
     const d=await r.json();
     const protos=d.protocols||[];
     /* V80 协议口径（DSH 242）：对外说法只认 openbox，别自己推断状态 */
-    const openboxMap={ready:['✅ 已通','var(--green)'],partial:['⚠️ 部分','var(--yellow)'],optional:['🔒 可选','var(--muted)'],planned:['🔒 规划中','var(--muted)'],absent:['🔒 未安装','var(--muted)']};
+    const openboxMap={ready:['已通','var(--green)'],partial:['部分','var(--yellow)'],optional:['可选','var(--muted)'],planned:['规划中','var(--muted)'],absent:['未安装','var(--muted)']};
     box.innerHTML=protos.map(p=>{
       const [label,color]=(p.openbox&&openboxMap[p.openbox])||[p.openbox||p.status,'var(--muted)'];
       return `<div style="border:1px solid var(--border,#2a3444);border-radius:8px;padding:12px 14px;">
@@ -1214,7 +1380,7 @@ async function saveAdvancedConfig(){
 
 
 
-async function init(){initNav();initDsResizer();connectWS();await checkConfigStatus();await refreshAgents();await refreshTasks();await refreshStats();await checkHealth();await restoreSession();await checkSession();setInterval(refreshAgents,10000);setInterval(refreshTasks,5000);setInterval(refreshStats,5000);setInterval(refreshBudget,3000);setInterval(checkHealth,30000);setInterval(pollPendingBridges,3000);document.getElementById('cmdInput').focus()}
+async function init(){initNav();initDsResizer();connectWS();await checkConfigStatus();await refreshAgents();await refreshTasks();await refreshStats();await checkHealth();await restoreSession();loadNotices();await checkSession();setInterval(refreshAgents,10000);setInterval(refreshTasks,5000);setInterval(refreshStats,5000);setInterval(refreshBudget,3000);setInterval(checkHealth,30000);setInterval(pollPendingBridges,3000);document.getElementById('cmdInput').focus()}
 init();
 /* ===== 自定义弹窗 UI ===== */
 (function(){var ov=null,timer=null,escH=null;

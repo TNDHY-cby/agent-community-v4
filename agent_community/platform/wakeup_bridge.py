@@ -208,12 +208,37 @@ class WakeupBridge:
             #   修法：**不经 stdin** —— 把文本 base64 嵌进命令（命令全 ASCII，不受码页影响），
             #   在 PowerShell 里解回 UTF-8 字符串再 `Set-Clipboard -Value`。
             payload = _b64.b64encode(text.encode("utf-8")).decode("ascii")
+
+            # ★2026-10-23（老板真机报"点一次试投只弹几个黑框"）：起 `powershell` 必须**不弹控制台**
+            #   （原来每写一次剪贴板就闪一个黑框）。另外两件事一起修：
+            #   ① 剪贴板被别的程序短暂占用时 `Set-Clipboard` 抛
+            #      `ExternalException: Requested Clipboard operation did not succeed.`
+            #      ⇒ **重试 3 次**（占用通常是瞬时的）；
+            #   ② 写成功后**读回核对**，不一致就抛错 —— 别把"剪贴板里是旧内容"当成功。
+            def _ps(cmd_text: str):
+                # 平台相关的子进程开关**只有一处真相**（`platform/spawn.py`）：
+                # 这里要的是"不要弹控制台黑框"（2026-10-23 老板真机报的正是这个）。
+                from .spawn import spawn_kwargs
+                kw = spawn_kwargs(detach=False, no_window=True)
+                import time as _time
+                last = None
+                for attempt in range(3):
+                    # productization: allow(Windows 剪贴板只能用 PowerShell 的 Set-Clipboard；Linux 走 xclip/xsel 分支)
+                    proc = subprocess.run(["powershell", "-NoProfile", "-Command", cmd_text],
+                                          capture_output=True, text=True, encoding="utf-8",
+                                          errors="replace", **kw)
+                    if proc.returncode == 0:
+                        return proc
+                    last = proc
+                    _time.sleep(0.15 * (attempt + 1))
+                return last
+
             if len(payload) <= 20000:
-                ps = ("Set-Clipboard -Value ([Text.Encoding]::UTF8.GetString("
-                      "[Convert]::FromBase64String('%s')))" % payload)
-                proc = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                                      capture_output=True, text=True, encoding="utf-8",
-                                      errors="replace")
+                ps = ("$t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('%s')); "
+                      "Set-Clipboard -Value $t; Start-Sleep -Milliseconds 60; "
+                      "if ((Get-Clipboard -Raw) -ne $t) { throw 'clipboard readback mismatch' }"
+                      % payload)
+                proc = _ps(ps)
                 if proc.returncode != 0:
                     raise RuntimeError(proc.stderr.strip() or "Set-Clipboard 返回非 0")
                 return
@@ -224,11 +249,11 @@ class WakeupBridge:
             try:
                 with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
                     f.write(text)
-                ps = ("Set-Clipboard -Value (Get-Content -Raw -Encoding UTF8 -LiteralPath '%s')"
+                ps = ("$t = Get-Content -Raw -Encoding UTF8 -LiteralPath '%s'; "
+                      "Set-Clipboard -Value $t; Start-Sleep -Milliseconds 60; "
+                      "if ((Get-Clipboard -Raw) -ne $t) { throw 'clipboard readback mismatch' }"
                       % tmp.replace("'", "''"))
-                proc = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                                      capture_output=True, text=True, encoding="utf-8",
-                                      errors="replace")
+                proc = _ps(ps)
                 if proc.returncode != 0:
                     raise RuntimeError(proc.stderr.strip() or "Set-Clipboard 返回非 0")
             finally:

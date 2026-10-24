@@ -78,22 +78,37 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   }));
   step('讨论舞台出口', { talk, work });
 
-  /* 2. 大厅入口（空白卡片 + 常驻 tab） */
+  /* 2. 大厅入口（空白卡片 + 常驻 tab）
+     ★2026-10-23：空态第一张改成「接入一位员工（对接中心）」，流程说明退居第二（见 FE-30 §9）。
+       ⇒ 判据按 href 认人，不按"第一张"认人。 */
   await page.goto(BASE + '/', { waitUntil: 'networkidle' });
   await sleep(900);
+  /* 隔离实例上没配 AI ⇒ 设置面板会自动弹出来挡住点击（不是缺陷，是"先配好 AI"的引导）。
+     验的是大厅入口，先把面板关掉，别让遮罩把点击吃掉（否则是假失败）。 */
+  if (await page.$('.sdh-close')) { await page.click('.sdh-close').catch(() => {}); await sleep(400); }
   const hall = await page.evaluate(() => {
-    const card = document.querySelector('.hall-entry');
+    const dock = document.querySelector('.hall-entry[href="/docking.html"]');
+    const hub = document.querySelector('.hall-entry[href="/hub.html"]');
     const tab = document.querySelector('.view-tab[href="/hub.html"]');
+    const box = e => (e && e.getBoundingClientRect().width > 0);
+    /* ★2026-10-23：卡片是**空态**的一部分；大厅里已经有广播/消息时它们本来就不出现（不是缺陷）。
+       所以这里记 `emptyState`，断言只在空态成立 —— 否则在"有广播的实例"上会假红。 */
+    const emptyState = !!document.querySelector('.hall-empty');
     return {
-      cardShown: !!card && card.getBoundingClientRect().width > 0,
-      cardText: card ? card.innerText.replace(/\n/g, ' | ') : null,
-      tabShown: !!tab && tab.getBoundingClientRect().width > 0
+      emptyState,
+      dockShown: box(dock), dockText: dock ? dock.innerText.replace(/\n/g, ' | ') : null,
+      hubShown: box(hub), hubText: hub ? hub.innerText.replace(/\n/g, ' | ') : null,
+      tabShown: box(tab)
     };
   });
   await page.screenshot({ path: path.join(OUT, '02_大厅入口.png') });
-  await page.click('.hall-entry');
-  await page.waitForURL(/hub\.html/, { timeout: 8000 }).catch(() => {});
-  step('大厅入口', { ...hall, clickedTo: page.url().includes('hub.html') });
+  let clickedTo = null;
+  if (hall.emptyState) {
+    await page.click('.hall-entry[href="/hub.html"]');
+    await page.waitForURL(/hub\.html/, { timeout: 8000 }).catch(() => {});
+    clickedTo = page.url().includes('hub.html');
+  }
+  step('大厅入口', { ...hall, clickedTo });
 
   /* 3. 工作间入口（规则11：不再写死 295f6eaa —— .hub-pill 是静态侧栏元素，无参打开即可验，零 404） */
   await page.goto(BASE + '/workshop.html', { waitUntil: 'domcontentloaded' });

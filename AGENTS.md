@@ -96,6 +96,11 @@ python tools/fix_doc_split.py --src design-docs/某大文档.md --out-dir design
 python tools/silent_except_report.py     # 静默吞异常的存量与"只减不增"闸门（--check / --write）
 python tools/credential_check.py         # 凭据体检（V86）：只给位置/指纹/弱值/桥产物明文，**绝不打印明文**；exit 1＝有问题
 python tools/monitor_frame_check.py      # 监控室真抓一帧（V88）：health 契约 / 没开监控 403 / stream 说人话 / **真窗口抓一帧且不是黑图** / 不污染监控名单（非 Windows 与无窗口如实跳过）
+python tools/delivery_check.py     # 统一投递层真机判据：channels 选路 / native(WM_PASTE+WM_GETTEXT 读回) / 没输入框时退半自动不假装成功 / cdp 真投真读回
+python tools/inject_probe_check.py    # 视觉拉起**真机**判据：真窗口置顶 / 两档投递发生 / 剪贴板写入经核对 / **不弹控制台黑框** / 无文本框窗口如实 exit 3（非 Windows 与无窗口如实跳过）
+python tools/vision_capture_check.py  # 视觉抓图**真机**判据：抓的必须是**整扇窗** —— 真造一个自己声明 DPI 的靶子窗，比"抓图尺寸 vs 真值"（150% 缩放下不声明 DPI 只抓得到左上 2/3；本机 100% 缩放会**如实说这里测不出**，不假绿）
+python tools/frontend_endpoint_check.py  # 前端接线判据：前端 JS 里出现的每个 `/api/…` 都必须**真的挂在后端**（路由自省、参数段按 `{}` 通配、允许"前缀+拼接"写法）；前端改了调用路径就跑它，防"点了按钮 404"
+python tools/protocol_call_check.py      # ★**逐个协议真调一次接口**（与 protocol_matrix 分工：那个测接入流程，这个测协议接口本身）：HTTP 真打 / WS 真连 / MCP 真走 JSON-RPC stdio / ACP 真拉起子进程握手 / A2A 真起 sidecar 读 Agent Card / gRPC 真起网关真发 RPC；pipe 与 sse 如实跳过并说明为什么
 python tools/state_restore.py --list     # 状态快照（data/backups/）：列快照 / --verify 校验完整性（sha256）/ --backup-now 立刻拍 / --restore <名> 恢复（先校验快照、再给当前状态拍一张，然后逐文件回读校验）
                                         #   机制在 platform/state_backup.py：启动必拍一张 + 每 AC_STATE_BACKUP_MINUTES(30) 分钟一张，保留 AC_STATE_BACKUP_KEEP(20) 份
 python -m pytest -q                     # 全部回归（含双平台守卫）
@@ -150,6 +155,16 @@ python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 > 验收判据＝**换机器 + 换端口 + 换域名 + 换穿透方式，不改一行代码**走通；
 > 代码与设计稿里**连举例都不写**具体域名/服务商/机器路径。
 
+## 协作通道（**2026-10-23 起换新通道**）
+
+> 前端协作方已从「MiMo / ZCode（智谱）」换成 **DSH 前端会话**；**智谱已停用**。
+
+- 目录：`D:\合作社开发\DSH后端-DSH前端协作对话通道`（旧通道 `MiMo-DSH新协作对话记录` **停用**，只作历史）
+- 结构：按天一个子文件夹 `月-日`；**两端各自独立编号**，文件名
+  `D后端-<序号>-<任务名>-<HHMM>.md` / `D前端-<序号>-<任务名>-<HHMM>.md`
+- 纪律照旧：一条一主题、每条事实标来源（实测/源码/引用/未核实）、对外例子只用虚拟名
+- 分支交接：前端提交走 **`frontend/<日期>` 分支**（**不要**直接 push master —— 那是发布脚本的单向推送目标）
+
 ## 铁律（违反即为错）
 
 1. **设计先行**。功能先出设计稿进 `design-docs/`，等老板拍板再写码；已定稿的设计「必须遵守、不得自行增删」。
@@ -173,6 +188,7 @@ python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 | ⑤ | **一次性脚本进 `tools/`** | `move_endpoints.py`（搬端点）/ `fix_doc_split.py`（拆文档）/ `silent_except_report.py`，都带 `--dry-run`/`--check` |
 | ⑥ | **每版收尾固定** | compileall → 守卫 → 全量 → 重启真打 → `pre_release_check --fast` → publish(Gitee) → tag+release → `dual_platform_check` 两侧真跑 |
 | ⑦ | **不粉饰** | "我以为改完了"不算，**守卫绿了才算**；既有问题如实说并注明"非本次引入" |
+| ⑧ | **功能一个循环走完再下一个**（2026-10-24 老板定，起因＝10-23 一整天在"把字送进对方应用"上反复试错） | 顺序**不许颠倒**：**① 大白话讲清功能与方案 → 老板把关 → ② 把老板的方案写进项目模型 → ③ 最小成本跑通一次（评估可行性）→ ④ 才转通用化**。禁止：先写一大坨功能再回头通用化；禁止用术语把人绕晕；禁止把没验证过可行性的方案直接落地 |
 
 > 详细版（含判定表与范例轨迹）：技能 `ac-project-dev` 的 `references/workmode.md`。
 

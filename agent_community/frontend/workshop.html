@@ -187,7 +187,6 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 .fb-step .fb-num{font-family:var(--mono);font-size:10.5px;font-weight:900;opacity:.7}
 
-
 .fb-step.active{background:linear-gradient(135deg,var(--accent),#c25f3f);color:#fff;border-color:transparent;box-shadow:0 2px 12px rgba(217,119,87,.4);transform:translateY(-1px)}
 
 
@@ -914,6 +913,58 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .ch-note{margin-top:7px}
 .ch-none{font-size:11px;color:var(--dim)}
 
+/* ══════════════════════════════════════════════════════════════════════════
+   布局 v2 · 去框化（与对接中心/大厅同一套 tokens，2026-10-23 第五批）
+   原则：框只给"可点的东西"；分段一律「红方点 + 字 + 延伸线」；字阶 20 / 13 / 12；间距 4/8/12/16/24。
+   这一整块在末尾 ⇒ 可整块删掉回退（另有 tag arch/before-v2-hall-workshop）。
+   ══════════════════════════════════════════════════════════════════════════ */
+:root{--t1:20px;--t2:13px;--t3:12px;--s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px}
+
+/* ① 三级字阶 */
+body{font-size:var(--t2)}
+.col-head,.col-header{font-size:var(--t3);letter-spacing:.08em;text-transform:none;padding:var(--s3) var(--s4)}
+.panel h2,.side-head h2{font-size:14px;margin:0 0 var(--s2)}
+.ws-content{padding:var(--s4) var(--s5) var(--s5)}
+.chat-input textarea{font-size:var(--t2)}
+.nextstep .ns-text{font-size:var(--t2)}
+
+/* ② 分段语法只留一种：红方点 + 字 + 延伸线 */
+.col-head,.col-header{display:flex;align-items:center;gap:var(--s2);border-bottom:1px solid var(--rule)}
+.col-head::before,.col-header::before{content:"";width:8px;height:8px;background:var(--accent);border-radius:0;flex:none}
+.col-head::after,.col-header::after{content:"";flex:1;height:1px;background:var(--rule)}
+.panel h2::before{content:"";width:7px;height:7px;border-radius:0;background:var(--accent);box-shadow:none}
+.side-head h2::before{content:"";width:7px;height:7px;background:var(--accent);flex:none}
+
+/* ③ 去框：面板与讨论区不再"卡片套卡片"，改"顶线 + 留白" */
+.panel{border:0;border-top:1px solid var(--rule);border-radius:0;background:transparent;box-shadow:none;
+  padding:var(--s3) 0 var(--s4);margin-bottom:var(--s2);overflow:hidden}
+.panel::before{display:none}
+#sidebar .panel{border:0;border-top:1px solid var(--rule);padding:var(--s3) 0}
+.disc-zone{border:0;border-top:1px solid var(--rule);border-radius:0;background:transparent;box-shadow:none;
+  padding:var(--s3) 0 var(--s2);margin-bottom:var(--s2)}
+.disc-zone.active{border-color:transparent;border-left:2px solid var(--accent);padding-left:var(--s3);box-shadow:none}
+.chat:empty::before{border:0;opacity:.6}
+.nextstep{border:0;border-left:2px solid var(--accent);border-radius:0;background:var(--bg3);padding:var(--s2) var(--s3);margin:var(--s2) 0 0}
+.debate-bar{border-radius:0}
+
+/* ④ 可点物品仍留框（输入框/按钮/候选），但描边只有一种粗细 */
+.chat-input textarea{border-radius:0;border-color:var(--rule);padding:var(--s2) var(--s3)}
+.chat-input button{border-radius:0}
+.nextstep .ns-btn{border-radius:0}
+.wi-actions button{border-radius:0}
+
+/* ⑤ 间距节奏 */
+.chat{padding:var(--s1) 0;gap:var(--s2)}
+.side-head{margin-bottom:var(--s2)}
+/* 阶段条编号原 opacity .7 ⇒ 3.16:1，读不清；提到骨白灰（当前阶段是红底，编号要压深） */
+.fb-step .fb-num{opacity:1;color:var(--muted)}
+.fb-step.active .fb-num{color:#0B0A09}
+/* 「下一步」标签在原 accent(#FF0000) 上只有 4.35:1 ⇒ 提亮一档 */
+.nextstep .ns-label{color:#FF7B7B}
+/* 右下角「插话」原来是给单字 emoji 设计的圆钮；改成文字后要按文字排 */
+.interject-fab{width:auto;min-width:56px;height:34px;padding:0 14px;font-size:12px;font-weight:800;
+  letter-spacing:.06em;white-space:nowrap;border-radius:2px}
+
 </style>
 
 
@@ -922,7 +973,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 </head>
 
 
-<body>
+<body class="">
 
 
 
@@ -939,7 +990,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
       <a class="sidebar-back" href="/" title="返回大厅">← <span class="sb-text">返回大厅</span></a>
       <!-- ★V34 §1：工作间入口**只指向本工作间**（`?ws=`）—— 不带参数的总控入口在大厅 -->
-      <a class="hub-pill" id="dockingPill" href="/docking.html" title="对接中心 · 本工作间的成员对接（看谁接上了、对上哪个岗位）">🔌 对接中心</a>
+      <a class="hub-pill" id="dockingPill" href="/docking.html" title="对接中心 · 本工作间的成员对接（看谁接上了、对上哪个岗位）">对接中心</a>
       <!-- 流程说明按钮已移除（老板 2026-10-19 裁定）：hub-pill 是 fixed 同坐标定位，两枚常驻重叠；流程讲解正主在 hub.html，大厅入口仍在 -->
 
 
@@ -949,10 +1000,10 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
       <div class="workshop-list" id="workshopList"><div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">加载中...</div></div>
 
       <div style="padding:8px 10px 10px;display:flex;gap:10px;flex-wrap:wrap;border-top:1px solid var(--rule)">
-        <a href="/monitor.html" title="监控室 · 画面墙（只读快照）" style="font-size:11px;color:var(--muted);text-decoration:none">📺 监控室</a>
-        <a href="/ops.html" title="运维看板 · 工单审计与Agent在线" style="font-size:11px;color:var(--muted);text-decoration:none">📡 看板</a>
-        <a href="/handover.html" title="交付回执台" style="font-size:11px;color:var(--muted);text-decoration:none">🧾 回执</a>
-        <a href="/booths.html" title="成员隔间与桥" style="font-size:11px;color:var(--muted);text-decoration:none">🏗 隔间</a>
+        <a href="/monitor.html" title="监控室 · 画面墙（只读快照）" style="font-size:11px;color:var(--muted);text-decoration:none">监控室</a>
+        <a href="/ops.html" title="运维看板 · 工单审计与Agent在线" style="font-size:11px;color:var(--muted);text-decoration:none">看板</a>
+        <a href="/handover.html" title="交付回执台" style="font-size:11px;color:var(--muted);text-decoration:none">回执</a>
+        <a href="/booths.html" title="成员隔间与桥" style="font-size:11px;color:var(--muted);text-decoration:none">隔间</a>
       </div>
 
     </div>
@@ -983,7 +1034,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 
         <div class="ws-status"><span class="ws-dot" id="wsDot"></span><span id="wsText">未连接</span><span class="ws-sm" title="自治边界状态机"><span class="ws-dot" id="smDot"></span><span id="smText">-</span></span></div>
-        <button class="btn mini ghost" onclick="fcToggle()" title="流程画布（任务树节点图 · 运行/审批/预算/回放）">🗺 画布</button>
+        <button class="btn mini ghost" onclick="fcToggle()" title="流程画布（任务树节点图 · 运行/审批/预算/回放）">画布</button>
 
 
       </div>
@@ -1035,7 +1086,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
           <div class="disc-zone zone-1" id="zone1">
 
 
-            <div class="side-head"><h2 style="margin:0">💬 一级讨论 <span class="zone-tag">平台AI</span></h2><button class="btn mini ghost" id="endDiscussBtn" title="同顶栏「下一步」条的按钮——主入口在那边" onclick="endDiscuss()">结束讨论，选定员工 →</button></div>
+            <div class="side-head"><h2 style="margin:0">一级讨论 <span class="zone-tag">平台AI</span></h2><button class="btn mini ghost" id="endDiscussBtn" title="同顶栏「下一步」条的按钮——主入口在那边" onclick="endDiscuss()">结束讨论，选定员工 →</button></div>
 
 
             <div class="chat" id="discussion1"></div>
@@ -1062,7 +1113,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
           <div class="disc-zone zone-2" id="zone2">
 
 
-            <div class="side-head"><h2 style="margin:0">💬 二级讨论 <span class="zone-tag">组长</span></h2><button class="btn mini" id="leaderStatusBtn" onclick="leaderStatus()">📋 组长检查员工状态</button></div>
+            <div class="side-head"><h2 style="margin:0">二级讨论 <span class="zone-tag">组长</span></h2><button class="btn mini" id="leaderStatusBtn" onclick="leaderStatus()">📋 组长检查员工状态</button></div>
 
 
             <div class="chat" id="discussion2"></div>
@@ -1089,7 +1140,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
           <div class="disc-zone zone-3" id="zone3">
 
 
-            <div class="side-head" style="display:flex;align-items:center;gap:8px"><h2 style="margin:0">💬 三级讨论 <span class="zone-tag">进度</span></h2><button class="btn mini" style="margin-left:auto" onclick="openWorkshopView()">🛠 展开车间</button></div>
+            <div class="side-head" style="display:flex;align-items:center;gap:8px"><h2 style="margin:0">三级讨论 <span class="zone-tag">进度</span></h2><button class="btn mini" style="margin-left:auto" onclick="openWorkshopView()">🛠 展开车间</button></div>
 
             <!-- ★V52 辩论模式（**可开可关**，默认关）：判定全在后端 platform/debate.py；
                  裁决只作为**一条消息**进讨论区，不改任何人的原话。 -->
@@ -1107,7 +1158,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
               <span class="debate-state" id="debateState">辩论模式：关（默认关）</span>
               <button class="btn mini" id="debateToggleBtn" onclick="toggleDebate()">开启</button>
               <button class="btn mini" onclick="openDebateForm()">＋ 陈述</button>
-              <button class="btn mini" onclick="runDebate()">⚖ 跑一轮</button>
+              <button class="btn mini" onclick="runDebate()">跑一轮</button>
             </div>
             <div class="debate-form" id="debateForm" style="display:none">
               <input id="debateSpeaker" placeholder="谁说的（裁决要指名道姓，不能匿名）">
@@ -1146,7 +1197,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
                     <!-- 工作间资源库：组长登记产出/路径，成员共享查看，可与任务树节点关联 -->
           <div class="disc-zone zone-3" id="resourceZone" style="margin-top:14px">
-            <div class="side-head" style="display:flex;align-items:center;gap:8px"><h2 style="margin:0">📁 工作间资源库 <span class="zone-tag">共享</span></h2><button class="btn mini" style="margin-left:auto" onclick="refreshResources()">🔄 刷新</button></div>
+            <div class="side-head" style="display:flex;align-items:center;gap:8px"><h2 style="margin:0">工作间资源库 <span class="zone-tag">共享</span></h2><button class="btn mini" style="margin-left:auto" onclick="refreshResources()">🔄 刷新</button></div>
             <div id="resourceList" style="margin-top:8px"><div class="id-empty">加载中...</div></div>
             <div style="margin-top:10px;border-top:1px dashed var(--rule);padding-top:10px">
               <div style="font-size:11px;font-weight:700;color:var(--dim);margin-bottom:6px">组长登记资源（生成工作间文件夹后上传，供成员查看）</div>
@@ -1165,8 +1216,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 
 
-          <button class="btn" id="startWorkBtn" onclick="startWork()" style="display:none;margin-top:8px">🚀 开始工作</button>
-          <button class="btn" id="manualActBtn" onclick="manualActToggle()" style="display:none;margin-top:8px">📋 手动激活模板</button>
+          <button class="btn" id="startWorkBtn" onclick="startWork()" style="display:none;margin-top:8px">开始工作</button>
+          <button class="btn" id="manualActBtn" onclick="manualActToggle()" style="display:none;margin-top:8px">手动激活模板</button>
           <div id="manualActBox" style="display:none;margin-top:8px"></div>
 
 
@@ -1174,7 +1225,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
           <div id="workStatus" style="margin-top:8px"></div>
 
 
-          <button class="btn" id="reviewBtn" onclick="startReview()" style="display:none;margin-top:8px">📋 进行三级讨论</button>
+          <button class="btn" id="reviewBtn" onclick="startReview()" style="display:none;margin-top:8px">进行三级讨论</button>
 
 
           <div style="display:flex;gap:8px;margin-top:8px">
@@ -1222,7 +1273,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
     <div class="col-right">
 
 
-      <div class="col-header">👥 员工名单</div>
+      <div class="col-header">员工名单</div>
 
 
       <div id="sidebar">
@@ -1271,15 +1322,15 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 
           <div id="sessionFlow" style="display:none">
-            <div class="col-header">📇 会话流程 <span class="sf-summary" id="sfSummary" style="display:none"></span></div>
+            <div class="col-header">会话流程 <span class="sf-summary" id="sfSummary" style="display:none"></span></div>
             <div id="sfBody" style="padding:0 8px 4px"></div>
           </div>
 
 
           <div id="offlinePanel" style="display:none">
-            <div class="col-header">🛡 成员状态 <span class="of-summary" id="ofSummary" style="display:none"></span></div>
+            <div class="col-header">成员状态 <span class="of-summary" id="ofSummary" style="display:none"></span></div>
             <div class="of-bar">
-              <button class="btn" id="ofScanBtn" type="button" onclick="ofScan()">🔄 全间抢救扫描</button>
+              <button class="btn" id="ofScanBtn" type="button" onclick="ofScan()">全间抢救扫描</button>
               <button class="btn" id="ofRefreshBtn" type="button" onclick="loadOfflineReport()">⟳ 刷新</button>
             </div>
             <div class="of-scan" id="ofScan" style="display:none"></div>
@@ -1301,7 +1352,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
       </div>
 
 
-      <div class="col-header">📊 系统统计</div>
+      <div class="col-header">系统统计</div>
 
 
       <div class="stats-grid">
@@ -1318,7 +1369,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
       <!-- Agent 列表默认收起：右轨只保常驻概览（统计），名册点开即看，1080p 不再被截断 -->
       <details class="rail-fold" id="agentFold">
-        <summary class="col-header">🤖 Agent 列表 <span class="fold-count" id="agentListCount"></span></summary>
+        <summary class="col-header">Agent 列表 <span class="fold-count" id="agentListCount"></span></summary>
         <div id="agentList" style="max-height:44vh;overflow-y:auto"><div style="padding:16px;color:var(--dim);font-size:12px">加载中...</div></div>
       </details>
 
@@ -1326,7 +1377,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
     </div>
 
 
-    <button class="interject-fab" id="interjectFab" onclick="toggleDrawer()" title="插话 / 组长工作台">💬</button>
+    <button class="interject-fab" id="interjectFab" onclick="toggleDrawer()" title="插话 / 组长工作台">插话</button>
 
 
     <div class="interject-drawer" id="interjectDrawer">
@@ -1367,12 +1418,12 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
     </div>
     <div class="wsv-main">
       <div class="wsv-left">
-        <div class="wsv-left-head">🌳 任务树</div>
+        <div class="wsv-left-head">任务树</div>
         <div class="wsv-tree" id="wsvTree"><div class="id-empty">加载中…</div></div>
-        <button class="btn wsv-expand" onclick="wsvTreeZoom(true)">⛶ 放大查看</button>
+        <button class="btn wsv-expand" onclick="wsvTreeZoom(true)">放大查看</button>
       </div>
       <div class="wsv-chat">
-        <div class="wsv-chat-head">💬 员工讨论 <span style="font-size:10px;text-transform:none;letter-spacing:0;color:var(--dim)">三级讨论 · 阶段总结与下一步</span></div>
+        <div class="wsv-chat-head">员工讨论 <span style="font-size:10px;text-transform:none;letter-spacing:0;color:var(--dim)">三级讨论 · 阶段总结与下一步</span></div>
         <div class="chat" id="wsvChatCenter"></div>
         <div class="chat-input">
           <textarea id="wsvChatInput" placeholder="在讨论区发言（和组长/员工讨论进度）..." rows="1" oninput="autoResize(this)"></textarea>
@@ -1380,22 +1431,22 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
         </div>
       </div>
       <div class="wsv-right">
-        <div class="wsv-right-head">🧰 车间面板</div>
-        <button class="btn wsv-btn" onclick="wsvPanel('staff')"><span class="ico">👥</span><span class="tt"><b>员工状态</b><span>成员在线 · 暂停标记</span></span></button>
-        <button class="btn wsv-btn" onclick="wsvPanel('interject')"><span class="ico">💬</span><span class="tt"><b>插话栏</b><span>组长插话记录</span></span></button>
-        <button class="btn wsv-btn" onclick="wsvPanel('token')"><span class="ico">🪙</span><span class="tt"><b>Token 消耗</b><span>用量统计</span></span></button>
-        <button class="btn wsv-btn" onclick="wsvMonitorToggle(true)"><span class="ico">🎛</span><span class="tt"><b>Harness 监控</b><span>监控室 · 多画面实时观察</span></span></button>
+        <div class="wsv-right-head">车间面板</div>
+        <button class="btn wsv-btn" onclick="wsvPanel('staff')"><span class="tt"><b>员工状态</b><span>成员在线 · 暂停标记</span></span></button>
+        <button class="btn wsv-btn" onclick="wsvPanel('interject')"><span class="tt"><b>插话栏</b><span>组长插话记录</span></span></button>
+        <button class="btn wsv-btn" onclick="wsvPanel('token')"><span class="tt"><b>Token 消耗</b><span>用量统计</span></span></button>
+        <button class="btn wsv-btn" onclick="wsvMonitorToggle(true)"><span class="tt"><b>Harness 监控</b><span>监控室 · 多画面实时观察</span></span></button>
       </div>
     </div>
     <div class="wsv-input wsv-plugins" id="wsvPluginsBox">
       <div class="wsv-plug-bar" onclick="wsvPluginsToggle()" title="点击展开 / 收起">
-        <span class="wsv-plug-bar-ico">⚙</span><span>插件接口区</span>
+        <span>插件接口区</span>
         <span class="wsv-plug-bar-tt" id="wsvPlugBarTt">外部程序接口 · 工作模式 · 扩展预留</span>
         <span class="wsv-plug-bar-btn" id="wsvPlugBarBtn">收起 ▾</span>
       </div>
       <div class="wsv-plug-body">
       <div class="wsv-plug-sec">
-        <div class="wsv-plug-head">🔌 外部程序接口 <span>注册外部程序 / HTTP 服务，车间内一键调用</span></div>
+        <div class="wsv-plug-head">外部程序接口 <span>注册外部程序 / HTTP 服务，车间内一键调用</span></div>
         <div class="wsv-plug-form">
           <input id="wsvPlgName" placeholder="名称（如 天气查询 / 备份脚本）" onkeydown="if(event.key==='Enter')wsvPluginAdd()">
           <select id="wsvPlgType"><option value="http">HTTP 调用</option><option value="cmd">启动命令</option></select>
@@ -1405,15 +1456,15 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
         <div class="wsv-plug-list" id="wsvPlgList">加载中…</div>
       </div>
       <div class="wsv-plug-sec">
-        <div class="wsv-plug-head">🎛 工作模式 <span>切换车间协作节奏 · 已持久化</span></div>
+        <div class="wsv-plug-head">工作模式 <span>切换车间协作节奏 · 已持久化</span></div>
         <div class="wsv-plug-modes" id="wsvPlgModes">加载中…</div>
       </div>
       <div class="wsv-plug-sec">
-        <div class="wsv-plug-head">🧭 收口决策 <span>三级讨论充分后的收口方式 · 已持久化</span></div>
+        <div class="wsv-plug-head">收口决策 <span>三级讨论充分后的收口方式 · 已持久化</span></div>
         <div class="wsv-plug-modes" id="wsvDecisionModes">加载中…</div>
       </div>
       <div class="wsv-plug-sec">
-        <div class="wsv-plug-head">🧩 扩展预留 <span>后续可挂脚本 / MCP / 自定义工具</span></div>
+        <div class="wsv-plug-head">扩展预留 <span>后续可挂脚本 / MCP / 自定义工具</span></div>
         <div class="wsv-plug-ext" id="wsvPlgExt">预留位：脚本工具、MCP 服务、自定义工作流插件将在此区展开。当前版本已提供外部程序接口与工作模式预设。</div>
       </div>
       </div>
@@ -1425,13 +1476,13 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
   </div>
   <!-- 任务树放大弹层 -->
   <div class="wsv-tree-zoom" id="wsvTreeZoom" style="display:none">
-    <div class="wsv-tree-zoom-head"><b>🌳 任务树 · 放大视图</b><button class="btn" onclick="wsvTreeZoom(false)">✕ 收起</button></div>
+    <div class="wsv-tree-zoom-head"><b>任务树 · 放大视图</b><button class="btn" onclick="wsvTreeZoom(false)">✕ 收起</button></div>
     <div class="wsv-tree-zoom-body" id="wsvTreeZoomBody"><div class="id-empty">加载中…</div></div>
   </div>
   <!-- Harness 监控室（多画面） -->
   <div class="wsv-mon" id="wsvMonitor">
     <div class="wsv-mon-head">
-      <b>🎛 HARNESS 监控室</b>
+      <b>HARNESS 监控室</b>
       <span class="mon-live"><i></i>LIVE</span>
       <span id="wsvMonMeta" style="font-size:11px;color:#768390"></span>
       <span style="flex:1"></span>
@@ -1573,7 +1624,7 @@ function wsvNodesFromTree(tree){
       else if(st==='bypassed')type='bypass';
       const res=(Array.isArray(n.resources)?n.resources:[]).map(r=>r&&r.name).filter(Boolean);
       const note=(n.note||'').trim();
-      const resNote=res.length?('📎 资源：'+res.join('、')):'';
+      const resNote=res.length?('资源：'+res.join('、')):'';
       nodes.push({
         label:n.label||'未命名节点',
         state:st,
@@ -1710,7 +1761,7 @@ async function wsvPanel(key,_ev,force){
       '<div style="display:flex;gap:6px;margin-top:6px;align-items:center"><select id="wsvItPriority" style="background:var(--bg3);color:var(--ink);border:1px solid var(--rule);border-radius:6px;padding:4px 6px;font-size:12px"><option value="一般">一般</option><option value="灵感">灵感</option><option value="紧急">紧急</option></select>'+
       '<button class="btn" style="font-size:11px;padding:4px 10px" onclick="wsvSubmitInterject()">提交插话</button>'+
       '<span style="font-size:10.5px;color:var(--dim)">紧急=立即注入可打断；灵感=下检查点；一般=进池待合并</span></div></div>'+
-      items+'<div style="margin-top:8px;font-size:10.5px;color:var(--dim)">操作后自动刷新；组长工作台见右下角 💬 抽屉</div>';
+      items+'<div style="margin-top:8px;font-size:10.5px;color:var(--dim)">操作后自动刷新；组长工作台见右下角「插话」抽屉</div>';
     box.style.display='block';
   }else if(key==='token'){
     box.innerHTML='<h4>Token 消耗</h4><div class="id-empty">暂无现成接口</div><div style="margin-top:8px;font-size:11px;color:var(--dim)">平台当前未提供 token 计量接口（server.py 无用量统计端点），此处为占位，待接入模型用量上报后填充。</div>';
@@ -2777,7 +2828,7 @@ async function ofScan(){
   }catch(e){
     box.style.display='';box.innerHTML='';
     box.append(sfEl('div','sf-err','扫描请求失败：'+e.message));
-  }finally{btn.disabled=false;btn.textContent='🔄 全间抢救扫描';}
+  }finally{btn.disabled=false;btn.textContent='全间抢救扫描';}
 }
 /* ── FE-07 下一步指引条：status → 文案与出口（示例Harness-E 22 号过审的 §1 映射） ── */
 let _wsStatus='';
@@ -2830,7 +2881,7 @@ function renderNextStep(){
       : ['该工作间尚在草稿；回大厅发布任务继续。',[['回大厅',()=>{location.href='/';}]]],
     discussing:['与平台AI明确需求；说“开始选人”，或点按钮结束讨论去选人。',[['结束讨论，选定员工 →',()=>endDiscuss()]]],
     selecting:['在右侧员工列表初选：点「让平台 AI 选定员工」或手工勾选；名单确认后进入二级讨论。',[['确认成员',()=>_nsFlash('confirmBtn')]]],
-    division:['分工安排已按当前名单更新（library/plan.md）。在讨论里发一条「分工可以，开始工作」，等平台AI回复「分工已明确，可以开始工作」后点「🚀 开始工作」。',[['📚 资料库',()=>_nsOpen('#libPanel')],['🏗 隔间与桥',()=>_nsOpen('')],['🚀 开始工作',()=>_nsFlash('startWorkBtn')]]],
+    division:['分工安排已按当前名单更新（library/plan.md）。在讨论里发一条「分工可以，开始工作」，等平台AI回复「分工已明确，可以开始工作」后点「开始工作」。',[['📚 资料库',()=>_nsOpen('#libPanel')],['🏗 隔间与桥',()=>_nsOpen('')],['开始工作',()=>_nsFlash('startWorkBtn')]]],
     running:['成员在各自隔间作业；完成后走 review 收口。',[['🏗 隔间与桥',()=>_nsOpen('')],['📚 资料库',()=>_nsOpen('#libPanel')]]],
     review:['完成复核与收口；可查隔间成果。',[['🏗 隔间与桥',()=>_nsOpen('')]]],
     done:['任务完成；隔间与资料库可回看留档。',[['🏗 隔间与桥',()=>_nsOpen('')]]]
@@ -3537,7 +3588,7 @@ async function manualActRender(){
     }));
     const fill=m=>{const t=tpls[m.role]||DEFAULT_ACT_TPL;try{return t.replace(/\{role\}/g,m.role).replace(/\{workspace_dir\}/g,wdir);}catch(e){return t;}};
     _mabCache.wdir=wdir;_mabCache.leader=leader?fill(leader):'';_mabCache.members={};_mabCache.names={};
-    let html='<div class="mab-head">📋 手动激活模板 <span class="sub">路径随当前工作间实时更新</span></div>';
+    let html='<div class="mab-head">手动激活模板 <span class="sub">路径随当前工作间实时更新</span></div>';
     html+='<div class="mab-block">';
     if(leader){
       html+='<div class="mab-title">👑 组长激活模板 <button class="btn" onclick="manualActCopy(\'leader\')">复制组长模板</button></div>';
@@ -4281,7 +4332,7 @@ function toggleNav(){const c=document.body.classList.toggle('nav-collapsed');con
 function initNav(){try{if(localStorage.getItem('navCollapsed')==='1'){document.body.classList.add('nav-collapsed');const b=document.getElementById('navToggle');if(b)b.textContent='▶'}}catch(e){}}
 
 
-function renderWorkshops(){const l=document.getElementById('workshopList');const cnt=document.getElementById('workshopCount');const st=document.getElementById('statWorkshops');if(cnt)cnt.textContent=workshops.length;if(st)st.textContent=workshops.length;if(!l)return;if(workshops.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无工作间<br><span style="font-size:11px">在大厅发布任务后自动创建</span></div>';return}l.innerHTML=workshops.map(w=>{const s=w.status||'draft',sl2=WS_LABEL[s]||s,ic=WS_ICON[s]||'📋';const tm=w.created_at?new Date(w.created_at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';const active=wsId===w.workshop_id;return `<div class="workshop-item ${active?'active':''}" data-ws-id="${w.workshop_id}" onclick="openWs('${w.workshop_id}')"><div class="wi-top"><span class="wi-status-dot ${s}"></span><span class="wi-ico">${w.pinned?'📌':ic}</span><span class="wi-title">${w.pinned?'📌 ':''}${esc(w.name||'(无标题)')}</span></div><div class="wi-agents">${(w.members||[]).map(m=>esc(m.role)).join(', ')||'未选员工'}</div><div class="wi-time">${sl2} · ${tm}</div><div class="wi-actions"><button class="wi-act" title="置顶" onclick="event.stopPropagation();togglePin('${w.workshop_id}',${w.pinned?'false':'true'})">${w.pinned?'📌':'📍'}</button><button class="wi-act" title="重命名" onclick="event.stopPropagation();renameWs('${w.workshop_id}')">✏️</button><button class="wi-act wi-act-danger" title="删除工作间（不可恢复）" onclick="event.stopPropagation();deleteWs('${w.workshop_id}')">🗑️</button></div></div>`}).join('')}
+function renderWorkshops(){const l=document.getElementById('workshopList');const cnt=document.getElementById('workshopCount');const st=document.getElementById('statWorkshops');if(cnt)cnt.textContent=workshops.length;if(st)st.textContent=workshops.length;if(!l)return;if(workshops.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无工作间<br><span style="font-size:11px">在大厅发布任务后自动创建</span></div>';return}l.innerHTML=workshops.map(w=>{const s=w.status||'draft',sl2=WS_LABEL[s]||s;const tm=w.created_at?new Date(w.created_at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';const active=wsId===w.workshop_id;return `<div class="workshop-item ${active?'active':''}" data-ws-id="${w.workshop_id}" onclick="openWs('${w.workshop_id}')"><div class="wi-top"><span class="wi-status-dot ${s}"></span><span class="wi-title">${w.pinned?'[置顶] ':''}${esc(w.name||'(无标题)')}</span></div><div class="wi-agents">${(w.members||[]).map(m=>esc(m.role)).join(', ')||'未选员工'}</div><div class="wi-time">${sl2} · ${tm}</div><div class="wi-actions"><button class="wi-act" title="置顶" onclick="event.stopPropagation();togglePin('${w.workshop_id}',${w.pinned?'false':'true'})">${w.pinned?'取消置顶':'置顶'}</button><button class="wi-act" title="重命名" onclick="event.stopPropagation();renameWs('${w.workshop_id}')">重命名</button><button class="wi-act wi-act-danger" title="删除工作间（不可恢复）" onclick="event.stopPropagation();deleteWs('${w.workshop_id}')">删除</button></div></div>`}).join('')}
 
 
 async function refreshWorkshops(){try{const d=await fetch('/api/workshops').then(x=>x.json());workshops=d.workshops||[];renderWorkshops()}catch(e){}}

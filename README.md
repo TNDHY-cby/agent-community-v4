@@ -1,7 +1,7 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.35.2`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.36.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
@@ -65,7 +65,7 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 | 想看什么 | 去这里 |
 |---|---|
 | **项目到底在做什么、边界在哪** | [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) |
-| **全部设计稿（127 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
+| **全部设计稿（136 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
 | **本地优先 + 中心中转**（当前架构方向） | [`design-docs/V66_本地优先与中心中转架构设计.md`](design-docs/V66_本地优先与中心中转架构设计.md) |
 | **派活与回执走中转 / 一个 Hub 服务多家公司** | [`V67`](design-docs/V67_派活与回执走中转_M2设计.md) · [`V68`](design-docs/V68_一个Hub服务多家公司_公司隔离设计.md) |
 | **没有公网服务器怎么当中转**（三条路） | [`design-docs/RUNBOOK_没有公网服务器怎么当中转.md`](design-docs/RUNBOOK_没有公网服务器怎么当中转.md) |
@@ -247,6 +247,8 @@ python -m agent_community.cli agents list
 | `AC_REPLY_PROBE_TIMEOUT` | 回话探针等回执的超时秒数 | `120` | 否 |
 | `AC_MONITOR_MAX_WATCH` | 监控室同时看几路画面（默认 6；越多越吃 CPU） | `6` | 否 |
 | `AC_MONITOR_FPS` | 监控画面刷新帧率上限（默认 1；快照墙够用，调高更吃 CPU） | `1` | 否 |
+| `AC_DELIVERY_NOTIFY` | 派活时**顺手**把这句话用统一投递层送到对方界面（默认关：往别人界面打字有副作用）；开了也不影响派发结果 | `0` | 否 |
+| `AC_CDP_PORT` | 浏览器级投递（不用真鼠标）要连的 Chromium 调试端口，可逗号分隔多个：目标应用需自己带 --remote-debugging-port 启动（Electron/Trae 这类） | `9222,9223,9224,9225` | 否 |
 | `AC_MONITOR_STREAM_MAX_SECONDS` | 单条连续画面流的**硬上限**（秒，默认 600）：到点主动收尾，浏览器会自动重连，免得僵尸连接占线程 | `600` | 否 |
 | `AC_MONITOR_AI_OBSERVE` | 监控的「agent 简单观察」总开关（默认关；开了才允许把变化统计交给 AI 说一句话） | `0` | 否 |
 | `AC_MONITOR_AI_INTERVAL_MIN` | AI 观察的最小间隔（分钟，默认 30）——**绝不是每帧一次** | `30` | 否 |

@@ -6,7 +6,9 @@
 :root{
   --dk-ink:#E8E4DB;
   --dk-dim:#B3AEA5;
-  --dk-dim2:#7E7971;
+  /* ★2026-10-23（FE-27 §5）：次要文字原为 #7E7971，在面板 #1C1A18 上只有约 4.0:1（正文要 4.5:1）。
+     这一档承担左轨副行 / 瓦片副标题 / UNIT 编号等**全部**次要文字，改一处即全页生效；观感仍是"暗、退后"，只是不再糊。 */
+  --dk-dim2:#918B81;
   --dk-line:rgba(232,228,219,.14);
   --dk-line-hi:rgba(232,228,219,.34);
   --dk-glow:#FF3527;
@@ -61,6 +63,12 @@ body.app-bg-dock .topbar{
   color:var(--dk-ink);
 }
 body.app-bg-dock .topbar .logo{color:var(--dk-ink)}
+body.app-bg-dock .topbar .logo-mark{display:inline-flex;align-items:center;color:var(--dk-glow)}
+body.app-bg-dock .topbar .logo-mark svg{width:17px;height:17px;fill:none;
+  stroke:currentColor;stroke-width:1.7;stroke-linecap:square}
+/* 「检查更新」降成安静的次要动作：不描边、不抢主按钮的位（它的结果也只读） */
+body.app-bg-dock .btn.quiet{color:var(--dk-dim2);border-color:transparent;background:transparent}
+body.app-bg-dock .btn.quiet:hover{color:var(--dk-ink);border-color:var(--dk-line-hi);background:transparent}
 body.app-bg-dock .topbar .sub{color:var(--dk-dim2)}
 body.app-bg-dock .live-links{border-left-color:var(--dk-line)}
 body.app-bg-dock .live-links a{
@@ -82,7 +90,13 @@ body.app-bg-dock .rail-item:hover{border-color:var(--dk-line-hi);background:rgba
 
 /* ── 主舞台与卡片：面板 #1C1A18 + 硬位移黑影（立体）─────────────── */
 body.app-bg-dock .stage-head{position:relative;padding:18px 44px 12px}
-body.app-bg-dock .stage-head h1{font-weight:900;letter-spacing:-.02em}
+/* 页头「前」：原 44px 实心红字比 H1 还重（评审第 4 条）——收成一枚**红框铭牌**，让 H1 当主角 */
+body.app-bg-dock .stage-no{
+  font-size:18px;font-weight:800;line-height:1;min-width:0;
+  padding:6px 10px;margin-top:6px;align-self:flex-start;
+  color:var(--dk-glow);border:1px solid rgba(255,53,39,.55);background:rgba(255,53,39,.07);
+  letter-spacing:.06em}
+body.app-bg-dock .stage-head h1{font-weight:900;letter-spacing:-.02em;font-size:26px}
 body.app-bg-dock .card{
   border:1px solid var(--dk-line);border-radius:var(--dk-radius);
   background:#1C1A18;position:relative}
@@ -103,13 +117,18 @@ body.app-bg-dock .btn.mini{
 body.app-bg-dock .btn.mini:hover{
   border-color:var(--dk-glow);background:rgba(255,53,39,.12)}
 body.app-bg-dock .btn.primary{
-  color:#F9F7F3;border:1px solid #E52E20;
-  background:#E52E20}
+  color:#F9F7F3;border:1px solid #C4261A;
+  /* 2026-10-23（FE-27 §5）：原 #E52E20 上白字只有 4.14:1（正文要 4.5:1）——压深一档到 4.7:1，观感不变。 */
+  background:#D4291C}
 body.app-bg-dock .btn.primary:hover{
-  border-color:#FF483B;background:#FF483B}
+  border-color:#E5352A;background:#E5352A}
 
-/* ── 第一屏：服务菜单 —— 黑标签条 + 硬阴影瓦片 ──────────────────── */
-.dock-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:10px 0 4px;counter-reset:tile-unit}
+/* ── 第一屏：服务菜单 —— 黑标签条 + 硬阴影瓦片（2026-10-23 起按「送话 / 接入 / 激活 / 查档·问」分组）── */
+.dock-groups{counter-reset:tile-unit;display:flex;flex-direction:column;gap:6px}
+.dock-group + .dock-group{margin-top:6px}
+.dock-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:6px 0 2px}
+.dock-group .dock-section-head{margin:10px 0 2px;font-size:10.5px}
+.dock-group .dock-section-head .sub{font-weight:600;letter-spacing:0;color:var(--dk-dim2)}
 body.app-bg-dock .dock-tiles-head{display:inline-flex;align-items:baseline;gap:10px;margin:2px 0 0;
   padding:6px 12px;background:#0A0908;border-left:4px solid var(--dk-glow);color:var(--dk-ink);font-size:13.5px}
 body.app-bg-dock .dock-tiles-head b{font-weight:900;letter-spacing:.02em}
@@ -123,12 +142,31 @@ body.app-bg-dock .dock-tiles-head .sub{color:var(--dk-dim2);font-size:11px}
   background:#1C1A18;transform:translate(-2px,-2px);box-shadow:6px 6px 0 rgba(255,53,39,.35)}
 .dock-tile:active{transform:translateY(0)}
 .dock-tile:focus-visible{outline:2px solid var(--dk-glow);outline-offset:2px}
-.dock-tile .tile-ico{font-size:19px;line-height:1}
+/* 图标：单色线性符号（stroke 用 currentColor）—— 不用彩色 emoji，免得与骨白/红的机甲语法打架 */
+.dock-tile .tile-ico{font-size:19px;line-height:1;color:var(--dk-dim)}
+.dock-tile .tile-ico svg{width:22px;height:22px;display:block;fill:none;
+  stroke:currentColor;stroke-width:1.6;stroke-linecap:square;stroke-linejoin:miter}
+.dock-tile:hover .tile-ico,.dock-tile:focus-visible .tile-ico{color:var(--dk-ink)}
+.dock-tile.hot .tile-ico{color:var(--dk-glow)}
+/* 主角瓦片：送话（整行横排：图标 · 名字/说明 · 去办） */
+.dock-tile.wide{grid-column:1 / -1;min-height:0;padding:12px 14px;
+  display:grid;grid-template-columns:26px 1fr auto;grid-template-areas:"ico name go" "ico sub go";
+  gap:2px 12px;align-items:center}
+.dock-tile.wide .tile-ico{grid-area:ico;align-self:center}
+.dock-tile.wide .tile-name{grid-area:name;font-size:15px}
+.dock-tile.wide .tile-sub{grid-area:sub;font-size:13px;max-width:96ch}
+.dock-tile.wide .tile-go{grid-area:go;margin:0;padding:0;align-self:center;font-size:12px}
 .dock-tile .tile-name{font-weight:800;font-size:13.5px;letter-spacing:-.01em;color:var(--dk-ink)}
-.dock-tile .tile-sub{color:var(--dk-dim2);font-size:11px;line-height:1.55}
-.dock-tile .tile-go{margin-top:auto;padding-top:7px;color:var(--dk-dim2);font-size:11px;
+.dock-tile .tile-sub{color:var(--dk-dim2);font-size:13px;line-height:1.5}
+.dock-tile .tile-go{margin-top:auto;padding-top:7px;color:var(--dk-dim);font-size:11.5px;
   transition:color .18s}
 .dock-tile:hover .tile-go{color:var(--dk-glow)}
+/* 选择器 + 重新解析（FE-27）：同一行，解析是**看得见的按钮**，不让人猜"点名字" */
+.dock-deliver-pick{display:flex;gap:8px;align-items:flex-end;margin:6px 0}
+.dock-deliver-pick label{flex:1;min-width:0;display:block;color:var(--dk-dim);font-size:11px}
+.dock-deliver-pick select{width:100%;margin-top:2px;padding:6px 9px;font-size:12px;color:var(--dk-ink);
+  border-radius:0;border:1px solid var(--dk-line-hi);background:#0F0E0C}
+.dock-deliver-pick .btn{flex:none}
 /* 高达机体编号 */
 .dock-tile:after{content:"UNIT-" counter(tile-unit,decimal-leading-zero);
   counter-increment:tile-unit;position:absolute;right:8px;bottom:6px;
@@ -295,3 +333,188 @@ body.app-bg-dock .card:after{content:"";position:absolute;bottom:7px;left:7px;wi
 .cap-src.src-probed{color:#FFB000}
 .cap-src.src-verified{color:#8FB39B;border-color:#8FB39B}
 .cap-src.src-failed{color:#FF0000;border-color:#FF0000}
+
+/* ── 可读性（2026-10-23 · FE-27 §5）────────────────────────────────
+ * 页脚与左轨小字继承 hub.css 的 --dim(#7E7971)，在近黑底上只有 2.8:1（正文要 4.5:1）。
+ * 只在本页覆盖（`body.app-bg-dock` 作用域），别的页面观感不动。 */
+body.app-bg-dock .stage-foot{color:#918B81}
+body.app-bg-dock .rail-sub{color:#918B81}
+
+/* ── 送话（FE-27，2026-10-23）──────────────────────────────────────
+ * 沿用机甲语法：直角、骨白字、红只给"要你动手"的那一下；
+ * 三态只用文字 + 左侧细条（ok 绿 / 未核实 琥珀 / 半自动 琥珀），不用整块彩色底。 */
+.dk-deliver .lead{margin:4px 0 8px;max-width:34em}
+.dk-deliver p.sub{max-width:42em}
+/* 半自动那段披露是本页最该被读到的一句话 ⇒ 正文档 13px、用骨白灰（不是最暗的一档） */
+.dk-deliver p[id$="-hint"]{font-size:13px;line-height:1.6;color:var(--dk-dim);max-width:40em}
+/* ── 备选路（表层交互 / 浏览器直连，FE-30 §11）：默认折叠，走不通时才展开 ── */
+.dk-alt{margin:10px 0 2px;border-top:1px dashed var(--dk-line-hi);padding-top:8px}
+.dk-alt > summary{cursor:pointer;font-size:11.5px;font-weight:700;color:var(--dk-muted,#B3AEA5);letter-spacing:.01em}
+.dk-alt > summary::marker{color:var(--dk-dim2)}
+.dk-alt[open] > summary{color:var(--dk-ink)}
+.dk-alt-sec{margin:10px 0 4px;padding:8px 10px;border:1px solid var(--dk-line);background:#161513}
+.dk-alt-sec + .dk-alt-sec{margin-top:8px}
+.dk-alt-head{font-size:11.5px;font-weight:800;letter-spacing:.08em;color:var(--dk-ink);margin-bottom:4px}
+.dk-alt-head .sub{font-weight:400;letter-spacing:0;color:var(--dk-dim2);font-size:11px}
+.dk-anchor{margin:4px 0}
+/* ══════════════════════════════════════════════════════════════════════════
+   布局 v2 · 去框化 · 分栏工位（2026-10-23 · 老板选 A）
+   量出来的毛病：① 送话弹窗 16 个描边框、最深 4 层套框 ② 6 种字号挤在 11–13.5px
+                ③ 三套分段语法并存 ④ 左栏 248px 只放一张卡 ⑤ 内边距 16/18·7/10·8/10 三种混用
+   原则：**框只给"可点的东西"**；分段一律用「红方点 + 一条横线」这一种语法；
+        字阶只留三级 22 / 13 / 12；间距只用 4/8/12/16/24；弹窗高度固定（不再随内容跳）。
+   ⚠️ 这一整块放在文件末尾 = 可整块删掉，回退到 v1（另有 tag arch/before-layout-v2）。
+   ══════════════════════════════════════════════════════════════════════════ */
+body.app-bg-dock{
+  --dk-t1:22px; --dk-t2:13px; --dk-t3:12px;
+  --dk-sp1:4px; --dk-sp2:8px; --dk-sp3:12px; --dk-sp4:16px; --dk-sp5:24px;
+}
+
+/* ① 左栏收窄：248 → 208（一列只放"范围 + 工作间"，不需要那么宽） */
+body.app-bg-dock .layout{grid-template-columns:208px minmax(0,1fr)}
+body.app-bg-dock .rail{padding:12px 10px}
+body.app-bg-dock .rail-head{font-size:var(--dk-t3);letter-spacing:.08em;margin-bottom:6px}
+
+/* ② 页头：H1 22px；印章与 API 标签退到辅助级 */
+body.app-bg-dock .stage-head{padding:20px 32px 6px;gap:14px}
+body.app-bg-dock .stage-head h1{font-size:var(--dk-t1);font-weight:800;letter-spacing:-.01em}
+body.app-bg-dock .stage-user{font-size:var(--dk-t3);color:var(--dk-dim2)}
+body.app-bg-dock .stage-api{font-size:var(--dk-t3)}
+
+/* ③ 分段语法**只留一种**：红方点 + 文字 + 一条延伸线（干掉黑标签条那条 bar） */
+body.app-bg-dock .dock-tiles-head{
+  display:flex;align-items:center;gap:var(--dk-sp2);margin:var(--dk-sp4) 0 var(--dk-sp2);
+  padding:0;background:none;border:0;border-left:0;font-size:var(--dk-t3);font-weight:800;letter-spacing:.1em}
+body.app-bg-dock .dock-tiles-head:before{content:"";width:8px;height:8px;background:var(--dk-glow);flex:none}
+body.app-bg-dock .dock-tiles-head:after{content:"";flex:1;height:1px;background:var(--dk-line-hi)}
+body.app-bg-dock .dock-section-head{margin:var(--dk-sp4) 0 var(--dk-sp2);font-size:var(--dk-t3)}
+body.app-bg-dock .dock-group .dock-section-head{margin:var(--dk-sp3) 0 var(--dk-sp2);font-size:var(--dk-t3)}
+body.app-bg-dock .col-header{font-size:var(--dk-t3);letter-spacing:.08em}
+
+/* ④ 瓦片：去掉整圈描边（框只留给"可点"反馈），靠底色 + 硬投影分层 */
+body.app-bg-dock .dock-tile{
+  border:0;background:#1B1917;box-shadow:3px 3px 0 rgba(0,0,0,.62);
+  padding:var(--dk-sp3) var(--dk-sp3) var(--dk-sp2);min-height:112px;transition:background .15s,outline-color .15s,transform .15s,box-shadow .15s}
+body.app-bg-dock .dock-tile:hover,body.app-bg-dock .dock-tile:focus-visible{
+  background:#22201D;transform:translate(-1px,-1px);box-shadow:5px 5px 0 rgba(255,53,39,.28);outline:1px solid var(--dk-glow);outline-offset:-1px}
+body.app-bg-dock .dock-tile.wide{background:#201D1A;align-content:center;row-gap:4px}
+/* CORE 主路径：v2 撤了整圈描边，但这条红边留着（它是"这块是主路径"的唯一信号） */
+body.app-bg-dock .dock-tile.hot{border-left:3px solid var(--dk-glow)}
+body.app-bg-dock .dock-tile .tile-sub{font-size:var(--dk-t3);color:var(--dk-dim2)}
+body.app-bg-dock .dock-tile .tile-go{font-size:var(--dk-t3);color:var(--dk-dim)}
+
+/* ⑤ 卡片：不再"白框贴白框"——只留一条顶线 + 稍深的底，靠留白分段 */
+body.app-bg-dock .card{
+  border:0;border-top:1px solid var(--dk-line-hi);background:#161513;
+  padding:var(--dk-sp3) var(--dk-sp4) var(--dk-sp4);box-shadow:none}
+body.app-bg-dock #dockBody .card{box-shadow:none}
+body.app-bg-dock .card h3{font-size:var(--dk-t2);font-weight:800;margin-bottom:var(--dk-sp1)}
+body.app-bg-dock .card:before,body.app-bg-dock .card:after{display:none}  /* 装甲角标跟着框一起撤 */
+
+/* ⑥ 三级字阶：正文 13 / 辅助 12；表单与按钮一并收口 */
+body.app-bg-dock .lead{font-size:var(--dk-t2);line-height:1.65}
+body.app-bg-dock .sub{font-size:var(--dk-t3);line-height:1.6}
+body.app-bg-dock .dock-form{font-size:var(--dk-t2);gap:var(--dk-sp2)}
+body.app-bg-dock .dock-form label{font-size:var(--dk-t3);margin-top:var(--dk-sp1)}
+body.app-bg-dock .dock-form input,body.app-bg-dock .dock-form select,body.app-bg-dock .dock-form textarea{
+  font-size:var(--dk-t2);padding:var(--dk-sp2) 10px;border-color:var(--dk-line)}
+body.app-bg-dock .dock-form input:focus,body.app-bg-dock .dock-form select:focus,body.app-bg-dock .dock-form textarea:focus{
+  border-color:var(--dk-glow)}
+body.app-bg-dock .btn.mini{font-size:var(--dk-t3);padding:5px 11px}
+/* 「重新解析 / 检查更新」这类只读检查是**次要动作**：不要描边（.btn.mini 的边框在后面会盖掉 .btn.quiet，
+   所以这里用更具体的选择器把它按回去） */
+body.app-bg-dock .btn.mini.quiet{color:var(--dk-dim2);border-color:transparent;background:transparent}
+body.app-bg-dock .btn.mini.quiet:hover{color:var(--dk-ink);border-color:var(--dk-line-hi);background:transparent}
+body.app-bg-dock .dock-msg{font-size:var(--dk-t3)}
+body.app-bg-dock .dock-kv{font-size:var(--dk-t3)}
+
+/* ⑦ 弹窗：宽度定 1040、高度固定（内容多了内部滚，不再让整个框跳）；body 不再自带 16/18 的厚内边距 */
+body.app-bg-dock .dock-modal{width:1040px;max-width:100%;max-height:82vh}
+body.app-bg-dock .dock-modal-body{padding:var(--dk-sp4) var(--dk-sp4) var(--dk-sp5);overflow-y:auto}
+body.app-bg-dock .dock-modal-head{padding:var(--dk-sp3) var(--dk-sp4)}
+body.app-bg-dock .dock-modal-title{font-size:var(--dk-t2);font-weight:800;letter-spacing:.02em}
+/* 1040 宽是给「送话」那种两栏面板的；单栏面板的正文别拉成全宽（一行 100+ 字很廉价） */
+body.app-bg-dock .dock-modal-body p.lead,body.app-bg-dock .dock-modal-body p.sub{max-width:82ch}
+body.app-bg-dock .dock-modal-body pre{max-width:94ch}
+body.app-bg-dock .dock-modal-body .dock-form textarea{max-width:100%}
+
+/* ⑧ 送话面板：**左右两栏**（左＝选目标+写话；右＝通道/结果/备选路），右栏自己滚 */
+body.app-bg-dock .dk-deliver{
+  border-top:0;background:transparent;padding:0;
+  display:grid;grid-template-columns:minmax(0,1fr) 356px;grid-template-areas:"lead lead" "box box" "left right";
+  gap:var(--dk-sp2) var(--dk-sp5);align-items:start}
+body.app-bg-dock .dk-deliver > p.lead{grid-area:lead;margin:0 0 var(--dk-sp1)}
+body.app-bg-dock .dk-left{grid-area:left;min-width:0}
+body.app-bg-dock .dk-right{grid-area:right;min-width:0;max-height:min(52vh,460px);overflow-y:auto;
+  padding-left:var(--dk-sp4);border-left:1px solid var(--dk-line);align-self:stretch}
+body.app-bg-dock .dk-aside-head{font-size:var(--dk-t3);font-weight:800;letter-spacing:.1em;color:var(--dk-dim2);
+  padding-bottom:var(--dk-sp2);margin-bottom:var(--dk-sp2);border-bottom:1px solid var(--dk-line)}
+
+/* 去框：目标块 / 通道行 / 备选段都不再套框 */
+body.app-bg-dock .dk-target{border:0;border-left:2px solid var(--dk-line-hi);background:transparent;
+  padding:var(--dk-sp1) 0 var(--dk-sp1) var(--dk-sp3);margin:var(--dk-sp2) 0 var(--dk-sp3)}
+body.app-bg-dock .dk-chans{margin:0 0 var(--dk-sp3)}
+body.app-bg-dock .dk-chan{border:0;border-left:2px solid var(--dk-line-hi);background:transparent;
+  padding:var(--dk-sp1) 0 var(--dk-sp1) var(--dk-sp2);margin:0 0 2px}
+body.app-bg-dock .dk-chan.on{border-left-color:var(--dk-ok)}
+body.app-bg-dock .dk-chan.off{border-left-color:var(--dk-line)}
+body.app-bg-dock .dk-alt{border-top:1px solid var(--dk-line);margin-top:var(--dk-sp3);padding-top:var(--dk-sp2)}
+body.app-bg-dock .dk-alt-sec{border:0;background:transparent;padding:var(--dk-sp2) 0 0;margin:var(--dk-sp2) 0 0;
+  border-top:1px dashed var(--dk-line)}
+body.app-bg-dock .dk-deliver-pick{margin:0 0 var(--dk-sp2)}
+body.app-bg-dock .dk-deliver p[id$="-hint"]{margin-bottom:0}
+
+/* ⑨ 点名册/悬空等列表行：去掉整圈框，改分隔线 */
+body.app-bg-dock .peer-row{border:0;border-bottom:1px solid var(--dk-line);background:transparent;padding:var(--dk-sp2) 0}
+body.app-bg-dock .dock-cand{border:1px solid var(--dk-line);background:#1A1816}  /* 可点 ⇒ 留框 */
+body.app-bg-dock .dock-cand:hover{border-color:var(--dk-glow);background:#201D1A}
+.dk-target .lead{max-width:34em}
+.dk-target{margin:8px 0;padding:7px 10px;border:1px solid var(--dk-line);background:#161513;font-size:12px}
+.dk-target-line{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+.dk-target-line b{color:var(--dk-ink);font-weight:800;word-break:break-all}
+.dk-ok-dot{display:inline-block;width:7px;height:7px;background:var(--dk-ok);flex:none;align-self:center}
+.dk-ok-dot.bad{background:var(--dk-warn)}
+.dk-chans{margin:8px 0}
+.dk-chans-head{font-size:11px;font-weight:800;letter-spacing:.12em;color:var(--dk-ink);margin-bottom:4px}
+.dk-chans-head .sub{font-weight:400;letter-spacing:0;color:var(--dk-dim2)}
+.dk-chan{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:4px 8px;margin-bottom:3px;
+  border-left:2px solid var(--dk-line-hi);background:rgba(232,228,219,.03);font-size:11.5px}
+.dk-chan.on{border-left-color:var(--dk-ok)}
+.dk-chan.off{border-left-color:var(--dk-line-hi);opacity:.82}
+.dk-chan-name{font-family:ui-monospace,Consolas,monospace;font-weight:800;color:var(--dk-ink);min-width:76px}
+.dk-chan .sub{color:var(--dk-dim2)}
+.dk-ch{font-family:ui-monospace,Consolas,monospace;font-size:11px;font-weight:800;
+  padding:0 6px;border:1px solid var(--dk-line-hi);color:var(--dk-ink)}
+.dk-ch.ch-cdp{border-color:var(--dk-glow);color:var(--dk-glow)}
+.dk-inline{display:inline-flex!important;align-items:center;gap:5px;font-size:11.5px;color:var(--dk-dim);margin:0!important}
+.dk-inline input{width:auto!important;margin:0!important}
+.dk-deliver textarea{width:100%;box-sizing:border-box}
+
+/* ── 框选输入框（D后端-17/18 · 作业帮式框题）：截图 + 拖两个框 ── */
+.dk-boxsel{grid-area:box;margin:0 0 12px;padding:0 0 12px;border-top:1px solid rgba(232,228,219,.10)}
+.dk-boxwrap{position:relative;margin-top:8px;max-width:100%;border:1px solid rgba(232,228,219,.18);
+  background:#0b0a09;cursor:crosshair;user-select:none;line-height:0}
+.dk-boxwrap img{display:block;width:100%;height:auto;pointer-events:none;-webkit-user-drag:none}
+.dk-boxrect{position:absolute;border:1px solid var(--accent);background:rgba(255,53,39,.14);pointer-events:none}
+.dk-boxrect.send{border-color:#7BD1A6;background:rgba(123,209,166,.14)}
+.dk-boxrect span{position:absolute;left:0;top:-16px;font:9px/1.4 var(--font-mono,monospace);
+  color:#FFF1EE;background:rgba(255,53,39,.75);padding:1px 5px;white-space:nowrap}
+.dk-boxrect.send span{background:rgba(20,90,60,.85)}
+
+/* ── 脚本激活面板：三段（选窗口 / 话术与正文 / 执行与结果）── */
+.dk-step{margin:14px 0;padding-top:12px;border-top:1px solid rgba(232,228,219,.10)}
+.dk-step:first-of-type{border-top:0;padding-top:0}
+.dk-step-h{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;margin-bottom:8px}
+.dk-step-h .no{color:var(--accent);font-family:var(--font-mono,monospace);font-weight:700}
+.dk-step-h .sub{font-weight:400;font-size:11.5px;color:var(--dim)}
+.dk-filebtn{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.cand-bad{color:#FF6A5C;font-weight:700}
+
+/* 三段之间与段内留白（2026-10-24：老板说排版乱 —— 只调间距） */
+.dk-step p.sub{margin:6px 0;line-height:1.6}
+.dk-step .dock-form-actions{margin:8px 0 2px;flex-wrap:wrap;gap:8px}
+.dk-step .dock-form{margin:6px 0}
+.dk-step textarea{margin:6px 0}
+/* 模板注册面板：确定按钮别拉满，四段小标题下的表单紧凑一点 */
+.dk-step .dock-form > .btn{flex:0 0 auto;max-width:140px}
+.dk-step .dock-form{gap:8px}

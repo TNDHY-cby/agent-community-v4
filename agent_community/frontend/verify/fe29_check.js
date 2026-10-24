@@ -96,8 +96,13 @@ async function launch() {
     };
   });
   await p.screenshot({ path: path.join(OUT, '03_脚本激活弹窗.png') });
-  const expectOrder = ['register', 'script_activate', 'archive', 'session_bridge',
-    'onboard_recover', 'channel', 'bridge_helper', 'ask_frontdesk'];
+  /* ★2026-10-23（FE-30）：瓦片顺序判据跟着页面走 —— 以前这里写死 8 块，页面后来加到 10 块，
+     这条判据就一直红着（**非本次引入**，本次一并校准）。
+     现在第一屏**按组**摆（送话 / 接入 / 激活 / 查档·问），所以顺序判据就是四组里的 DOM 顺序。 */
+  const expectOrder = ['deliver',
+    'register', 'agent_manager', 'onboard_recover', 'peers',
+    'script_activate', 'session_bridge', 'channel', 'bridge_helper',
+    'archive', 'ask_frontdesk'];
   const out = {
     base: BASE,
     orderOk: JSON.stringify(order) === JSON.stringify(expectOrder), order,

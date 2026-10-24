@@ -4,30 +4,33 @@
   ],
   "nonGet": [],
   "hub": {
-    "title": "对接中心",
-    "logo": "▣\n对接中心\n原型 · 演示数据",
-    "banner": "◈ 范围声明：一 / 二 / 三级讨论仍在\n工作间\n进行——本中心只做流程导航与状态总览，\n不承载讨论\n（全页零写请求）。",
-    "rail": 10,
-    "scopeNoDiscuss": true,
+    "title": "流程说明",
+    "logo": "▣\n流程说明\n· 全流程 · 只讲不做\n说明书 · 含示意",
+    "banner": "◈ 本页是流程说明（全流程，只讲不做）：每步做什么、谁做、去哪个页面；操作一律去正主页面（接入页 / 工作间 / 大厅 / 看板）。",
+    "rail": 15,
+    "scopeNoDiscuss": false,
     "hasWorkshopLink": true,
     "hasUndefined": false
   },
   "talk": {
-    "stage": "一级讨论",
-    "hasExit": true
+    "stage": "这页是什么（定位）",
+    "hasExit": false
   },
   "work": {
-    "stage": "二三级讨论 · 等结果",
-    "hasExit": true
+    "stage": "这页是什么（定位）",
+    "hasExit": false
   },
   "hall": {
-    "cardShown": true,
-    "cardText": "◈ | 进入对接中心 | 流程 0→10 导航 · 成员状态 · 隔间与资料库总览 | （一/二/三级讨论仍在工作间进行）",
+    "emptyState": false,
+    "dockShown": null,
+    "dockText": null,
+    "hubShown": null,
+    "hubText": null,
     "tabShown": true
   },
   "wsp": {
     "shown": true,
-    "href": "/hub.html"
+    "href": "/docking.html"
   },
   "narrow": {
     "overflow": false

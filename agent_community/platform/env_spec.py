@@ -165,6 +165,8 @@ SPEC: dict[str, Var] = {v.name: v for v in [
     # ── V88 监控室（窗口画面墙；只在 Windows 上真能抓，其它平台如实不支持）──
     Var("AC_MONITOR_MAX_WATCH", "监控室同时看几路画面（默认 6；越多越吃 CPU）", default="6", kind="feature", example="4"),
     Var("AC_MONITOR_FPS", "监控画面刷新帧率上限（默认 1；快照墙够用，调高更吃 CPU）", default="1", kind="feature", example="2"),
+    Var("AC_DELIVERY_NOTIFY", "派活时**顺手**把这句话用统一投递层送到对方界面（默认关：往别人界面打字有副作用）；开了也不影响派发结果", default="0", kind="feature", example="1"),
+    Var("AC_CDP_PORT", "浏览器级投递（不用真鼠标）要连的 Chromium 调试端口，可逗号分隔多个：目标应用需自己带 --remote-debugging-port 启动（Electron/Trae 这类）", default="9222,9223,9224,9225", kind="feature", example="9222"),
     Var("AC_MONITOR_STREAM_MAX_SECONDS", "单条连续画面流的**硬上限**（秒，默认 600）：到点主动收尾，浏览器会自动重连，免得僵尸连接占线程", default="600", kind="feature", example="120"),
     Var("AC_MONITOR_AI_OBSERVE", "监控的「agent 简单观察」总开关（默认关；开了才允许把变化统计交给 AI 说一句话）", default="0", kind="feature", example="1"),
     Var("AC_MONITOR_AI_INTERVAL_MIN", "AI 观察的最小间隔（分钟，默认 30）——**绝不是每帧一次**", default="30", kind="feature", example="60"),

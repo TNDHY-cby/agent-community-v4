@@ -68,6 +68,22 @@ WHITELIST_EXPECT = {
     "/api/harness/*/hide", "/api/harness/*/appeal",
     "/api/attest/*", "/api/attest/*/*",
     "/api/workshops/*/discoverable",
+    # ★2026-10-23 FE-26 §5 增补三（V92 统一投递层 / FE-30）：把一段话**真的送进**某个员工的窗口或页面
+    #   ⇒ "用户点按钮才调"，必须进白名单，**不豁免**；只读的 /delivery 与 /delivery/channels 不占白名单
+    "/api/docking/harness/*/deliver",
+    # ★2026-10-23 FE-26 §5 增补四（D后端-3 表层交互 / D后端-4 浏览器直连）：
+    #   教/清输入框位置（只记相对坐标）、扫页面输入框、**真往目标页面里打字**
+    "/api/docking/harness/*/anchor",
+    "/api/docking/web/editors", "/api/docking/web-send",
+    # ★2026-10-24 FE-26 §5 增补八（D后端-17/18 框选输入框）：存/清"框出来的输入框与发送按钮"
+    #   ⇒ 用户点「保存框选 / 清掉」才调；只读的 /screenshot 与 /regions(GET) 不占白名单
+    "/api/docking/harness/*/regions",
+    # ★2026-10-24 老板真机：框选保存时用它将窗口绑给该员工（否则试投认不出目标）
+    "/api/docking/harness/*/bind",
+    # ★2026-10-24 FE-31（视觉脚本注册模板）：点「新建会话」框 → 前后比这块画面
+    "/api/docking/harness/*/visual-probe",
+    # ★D后端-23：一次跑完 新建会话 → 粘 → 发送（测试发送消息 / 平时叫醒）
+    "/api/docking/harness/*/visual-run",
 }
 
 #: `FE-26` §2a：第一屏的功能模块（每块＝一件能当场办的事）。`data-dock-service` 用这些 id。

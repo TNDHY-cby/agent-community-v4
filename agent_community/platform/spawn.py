@@ -30,18 +30,22 @@ import subprocess
 _IS_WINDOWS = os.name == "nt"
 
 
-def spawn_kwargs(*, detach: bool = True) -> dict:
+def spawn_kwargs(*, detach: bool = True, no_window: bool = False) -> dict:
     """返回 `subprocess.Popen(..., **spawn_kwargs())` 用的平台相关 kwargs。
 
     `detach=True`（默认）＝让子进程**独立成组/会话**（父进程退出时不被连带杀掉）。
+    `no_window=True`＝**不要弹出控制台窗口**（Windows 上起 `powershell`/`cmd` 时必须；
+    否则每调用一次屏幕上就闪一个黑框 —— 2026-10-23 老板真机报的就是这个）。
     ⚠️ 一律用 `getattr(subprocess, ...)` 兜底：即使将来在某个平台缺属性，也只是少个标志，
     **不会把功能整个打成 500**。
     """
     if _IS_WINDOWS:
-        if not detach:
-            return {}
         flags = 0
-        flags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        flags |= getattr(subprocess, "DETACHED_PROCESS", 0)
+        if detach:
+            flags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            flags |= getattr(subprocess, "DETACHED_PROCESS", 0)
+        if no_window:
+            # DETACHED_PROCESS 自己就会开一个没有控制台的进程；CREATE_NO_WINDOW 是"有控制台但不显示"。
+            flags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
         return {"creationflags": flags} if flags else {}
     return {"start_new_session": True} if detach else {}

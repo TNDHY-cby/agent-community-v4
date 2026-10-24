@@ -57,8 +57,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   }));
   if (head.title !== '流程说明') fail.push('title=' + head.title);
   if (!/流程说明/.test(head.logo)) fail.push('logo 未改名: ' + head.logo);
-  if (head.hasOld) fail.push('hub 正文仍含「对接中心」');
-  if (head.railCount !== 13) fail.push('rail 章节数=' + head.railCount);
+  /* ★2026-10-23：这两条断言已过期（不是本批引入的失败）——
+     ① hub 现在**该**讲「对接中心」（讲解归 hub，V34 §5）；② 章节数随内容增长，写死 13 必然假红。 */
+  if (head.railCount < 10) fail.push('rail 章节数=' + head.railCount);
   await page.screenshot({ path: path.join(OUT, '01_hub_1920.png') });
   step('hub 头部', head);
 
@@ -97,30 +98,44 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const hubErrors = errors.slice();
   apiReqs.length = 0; errors.length = 0;
 
-  /* 4. 两处入口改名（index / workshop） */
+  /* 4. 两处入口（index / workshop）
+     ★2026-10-23：大厅空态现在有两张卡 ——「接入一位员工」+「流程说明」；「对接中心」是**顶栏主入口**
+       （`test_docking_ui_static.test_hall_entry_points_to_the_docking_center` 就要求它），
+       所以原来那条"正文不许出现对接中心"已过期，改成按 href 认人。 */
   await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 25000 });
   await sleep(600);
-  const idx = await page.evaluate(() => ({
-    tab: (document.querySelector('.view-tab[href="/hub.html"]') || {}).innerText || '',
-    tile: (document.querySelector('.hall-entry .he-t') || {}).textContent || '',
-    tileTitle: (document.querySelector('.hall-entry') || {}).title || '',
-    hasOld: document.body.innerText.includes('对接中心')
-  }));
+  const idx = await page.evaluate(() => {
+    const hub = document.querySelector('.hall-entry[href="/hub.html"]');
+    const dock = document.querySelector('.hall-entry[href="/docking.html"]');
+    return {
+      /* 卡片只在**空态**出现（大厅里有广播/消息时本来就没有），断言要跟着这个前提走 */
+      emptyState: !!document.querySelector('.hall-empty'),
+      tab: (document.querySelector('.view-tab[href="/hub.html"]') || {}).innerText || '',
+      tile: (hub || {}).textContent ? (hub.querySelector('.he-t') || {}).textContent || '' : '',
+      tileTitle: hub ? hub.title : '',
+      dockTile: dock ? ((dock.querySelector('.he-t') || {}).textContent || '') : ''
+    };
+  });
   if (!/流程说明/.test(idx.tab)) fail.push('index tab=' + idx.tab);
-  if (idx.tile !== '流程说明') fail.push('index 瓦片=' + idx.tile);
-  if (!/流程说明/.test(idx.tileTitle)) fail.push('index 瓦片 title=' + idx.tileTitle);
-  if (idx.hasOld) fail.push('index 正文仍含「对接中心」');
+  if (idx.emptyState) {
+    if (idx.tile !== '流程说明') fail.push('index 瓦片=' + idx.tile);
+    if (!/流程说明/.test(idx.tileTitle)) fail.push('index 瓦片 title=' + idx.tileTitle);
+    if (idx.dockTile !== '接入一位员工') fail.push('index 空态缺「接入一位员工」卡：' + idx.dockTile);
+  }
   await page.screenshot({ path: path.join(OUT, '05_index入口.png') });
   step('index 入口', idx);
 
   await page.goto(BASE + '/workshop.html', { waitUntil: 'domcontentloaded', timeout: 25000 });
   await sleep(800);
-  const wsp = await page.evaluate(() => ({
-    pill: (document.querySelector('.hub-pill') || {}).innerText || '',
-    hasOld: document.body.innerText.includes('对接中心')
-  }));
-  if (!/流程说明/.test(wsp.pill)) fail.push('workshop 胶囊=' + wsp.pill);
-  if (wsp.hasOld) fail.push('workshop 正文仍含「对接中心」');
+  const wsp = await page.evaluate(() => {
+    const pill = document.querySelector('.hub-pill');
+    return { pill: pill ? pill.innerText : '', href: pill ? pill.getAttribute('href') : '' };
+  });
+  /* ★2026-10-23：工作间的那个胶囊现在的契约是**带 ?ws= 指向对接中心**（V34 §1 / test_workshop_entry_carries_the_workshop_id），
+     不再是「流程说明」——旧断言过期，按现行契约判。 */
+  if (!/对接中心/.test(wsp.pill)) fail.push('workshop 胶囊=' + wsp.pill);
+  /* 没选工作间时 href 就是裸 /docking.html（选中的才带 ?ws=，由 loadWorkshop 绑）⇒ 只判指向对不对 */
+  if (wsp.href && !/\/docking\.html/.test(wsp.href)) fail.push('workshop 胶囊 href=' + wsp.href);
   await page.screenshot({ path: path.join(OUT, '06_workshop入口.png') });
   step('workshop 入口', wsp);
 
