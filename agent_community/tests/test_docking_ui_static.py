@@ -301,7 +301,17 @@ def test_register_panel_is_global_only():
     body = js[i:j]
     assert "DOCK_GLOBAL" in body and "innerHTML = ''" in body, \
         "注册区没有「只在总控挂载、单间清空」的分支"
-    assert "dockMountRegister();" in js, "注册区没被真正调用（那用户看不到它）"
+    # ★2026-10-25：大厅注册区换成「接入向导」（五步 + 协议树）；老面板保留可回退。
+    # 判据仍是那件事：**启动要真的把注册区挂上**，且被挂的那个函数自带"只在总控"的分支。
+    assert ("dockMountRegister();" in js) or ("dockMountWizard();" in js), \
+        "注册区没被真正调用（那用户看不到它）"
+    if "dockMountWizard();" in js:
+        wi = js.find("async function dockMountWizard(){")
+        assert wi != -1, "找不到 dockMountWizard"
+        wj = js.find("\n}", wi)
+        wbody = js[wi:wj]
+        assert "DOCK_GLOBAL" in wbody and "innerHTML = ''" in wbody, \
+            "接入向导没有「只在总控挂载、单间清空」的分支"
 
 
 def test_register_errors_are_shown_verbatim():

@@ -84,6 +84,10 @@ WHITELIST_EXPECT = {
     "/api/docking/harness/*/visual-probe",
     # ★D后端-23：一次跑完 新建会话 → 粘 → 发送（测试发送消息 / 平时叫醒）
     "/api/docking/harness/*/visual-run",
+    # ★2026-10-25 FE-26 §5j（接入向导五步）：检测 / 让平台验一次 / 人工搬运记账
+    "/api/docking/harness/*/test-now", "/api/harness/*/verify", "/api/harness/activation-result",
+    # ★2026-10-25 D后端-28/29：第①步真探协议；第④步"打开它的会话"
+    "/api/harness/probe-protocol", "/api/docking/harness/*/bring-front",
 }
 
 #: `FE-26` §2a：第一屏的功能模块（每块＝一件能当场办的事）。`data-dock-service` 用这些 id。

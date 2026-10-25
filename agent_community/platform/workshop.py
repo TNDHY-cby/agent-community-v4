@@ -125,7 +125,23 @@ class Workshop:
         try:
             from . import workshop_gate as _gate
 
-            _gate_info = _gate.info(self)
+            # 把成员的 harness 协议类型带进闸门：MCP/HTTP 那类**不需要**"新建会话"，
+            # 引导语必须分开写（2026-10-25 老板真机：MCP harness 注册后被指去开视觉会话）。
+            # 成员对象自己就带 `wakeup_method`（加成员时就记下了），拿不到再回查 harness 档案。
+            _kinds = [str(getattr(_m, "wakeup_method", "") or "") for _m in (self.members or [])]
+            if not any(_kinds):
+                try:
+                    from .harness_adapter import harness_manager as _hm
+
+                    for _m in (self.members or []):
+                        for _hid in (getattr(_m, "harness_ids", None) or []):
+                            _sess = _hm.sessions.get(_hid)
+                            _info = getattr(_sess, "info", None)
+                            if _info is not None:
+                                _kinds.append(getattr(_info, "wakeup_method", "") or "")
+                except Exception:                            # noqa: BLE001 — 取不到就按"没说"处理
+                    pass
+            _gate_info = _gate.info(self, _kinds)
         except Exception:                                    # noqa: BLE001 — 闸门坏不该让序列化失败
             _gate_info = {}
         return {

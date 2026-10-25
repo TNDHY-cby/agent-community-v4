@@ -27,7 +27,9 @@ GET /api/docking/overview?ws=<wsid>  # 单间：只回该间
 """
 from __future__ import annotations
 
+import json
 import re
+import time
 import types
 from datetime import datetime, timezone
 from urllib.parse import quote
@@ -39,8 +41,245 @@ from ..state import workshops
 router = APIRouter()
 
 
+#: 这些 wakeup_method 属于**协议型**（注册好、加进工作间就能派活，不需要人去开会话）
+_PROTOCOL_WAKE = {"mcp", "http", "http_api", "a2a", "grpc", "ws", "pipe", "file_poll"}
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+#: 名字里带这些词的 MCP 工具，才像"能对话"的（用来把一句话发过去、把它的话带回来）
+_CHAT_TOOL_HINTS = ("chat", "complete", "completions", "ask", "reply", "message",
+                    "talk", "converse", "query", "prompt", "generate", "echo")
+
+#: ★2026-10-25 老板口径：「平台不用从它的输入框把字发给它，只需要对方能够在它的会话里面发消息」
+#:   ⇒ **首选**这类"往它自己会话里发一条"的工具：消息落进它的会话，用户在自己的会话里就能看见它说话。
+_SESSION_POST_HINTS = ("session_post", "post_to_session", "session_message", "announce",
+                       "say", "speak", "reply_in_session", "post_message", "send_message",
+                       "notify", "broadcast")
+
+
+def _pick_chat_tool(tools: list, name=None) -> tuple:
+    """挑一个能让**它在自己会话里说话**的工具（做不到就退而求其次，并如实说明）。
+
+    优先级：① `_SESSION_POST_HINTS`（往自己会话里发一条）→ ② 能对话的工具
+    → ③ 任何有文本入参的（兜底，但**不算"在会话里发言"**）。
+
+    返回 `(tool_dict | None, 说明)`；挑中的 tool 上带 `_in_session` 标记（True＝真在会话里发言）。
+    """
+    def _props(t: dict) -> dict:
+        return ((t.get("inputSchema") or t.get("input_schema") or {}).get("properties") or {})
+
+    def _has_text_param(t: dict) -> bool:
+        return any(k in _props(t) for k in ("text", "prompt", "message", "query", "input", "content"))
+
+    cands = [t for t in (tools or []) if isinstance(t, dict) and t.get("name")]
+    for t in cands:                                            # ① 会话内发言（首选）
+        low = str(t.get("name")).lower()
+        if any(h in low for h in _SESSION_POST_HINTS):
+            return dict(t, _in_session=True), ""
+    for t in cands:                                            # ② 能对话的工具
+        low = str(t.get("name")).lower()
+        if any(h in low for h in _CHAT_TOOL_HINTS) and _has_text_param(t):
+            return dict(t, _in_session=False), ""
+    for t in cands:
+        low = str(t.get("name")).lower()
+        if any(h in low for h in _CHAT_TOOL_HINTS):
+            return dict(t, _in_session=False), "按名字挑的（它的 schema 里没看到文本入参，参数可能不对）"
+    for t in cands:                                            # ③ 兜底
+        if _has_text_param(t):
+            return dict(t, _in_session=False), "没有能对话的工具，挑了第一个有文本入参的：%s" % t.get("name")
+    return None, "工具表里没有一个能收一句话的工具"
+
+
+_SESSION_LIST_HINTS = ("sessions_list", "session_list", "list_sessions", "conversations",
+                      "chats_list", "list_chats", "session_index")
+
+_SESSION_READ_HINTS = ("session_messages", "session_history", "session_read", "read_session",
+                       "list_messages", "get_session", "session_get", "history")
+
+
+def _make_code() -> str:
+    """派活用的**核对码**（短、唯一、好在对面的会话里搜）。"""
+    import secrets
+
+    return "AC-" + secrets.token_hex(2).upper()
+
+
+def _dispatch_via_session_post(harness_id: str, text: str, session_id: str = "") -> dict:
+    """**协议型派活**：用它的 `session_post` 把任务写进它自己的会话（不是点窗口），再读回核对。
+
+    老板 2026-10-25：「平台不用从它的输入框把字发给它，只需要对方能够在它的会话里面发消息」
+    + 「派活后也要能核对它到底干没干」。所以 MCP/HTTP 这类 harness 的"派活"就走这条：
+    调用 → 正文末尾带核对码 → 读回核对 → `state` 只有两种：`delivered_verified` / `sent_unverified`。
+    """
+    import asyncio
+
+    from ..harness_adapter import harness_manager as _hm
+
+    sess = _hm.sessions.get(str(harness_id or ""))
+    if sess is None:
+        return {"ok": False, "why": "这个 harness 不在登记表里"}
+    info = sess.info
+    tools = [{"name": str(getattr(x, "name", "") or (x if isinstance(x, str) else "")),
+              "inputSchema": getattr(x, "parameters", None) or {}}
+             for x in (getattr(info, "tools", None) or [])]
+    pick, _why = _pick_chat_tool(tools)
+    if not pick or not pick.get("_in_session"):
+        return {"ok": False, "why": "它没有「会话内发言」工具（session_post 这类）—— 平台不点它的输入框，"
+                                    "所以派活发不进去；先让它补一个 session_post(text)"}
+    url = str(getattr(info, "api_base_url", "") or "").strip()
+    if not url:
+        return {"ok": False, "why": "没有 api_base_url，调不到它的工具"}
+    code = _make_code()
+    payload_text = "%s\n\n（核对码 %s，平台据此确认这条真的落进了你的会话）" % (text, code)
+    args = _args_for_tool(pick, payload_text)
+    if session_id and "session_id" in ((pick.get("inputSchema") or {}).get("properties") or {}):
+        args["session_id"] = session_id
+    try:
+        from .. import mcp_client as _mc
+
+        call = asyncio.run(_mc.mcp_call_tool(url, str(pick.get("name")), args))
+    except Exception as e:                                     # noqa: BLE001 — 发不进去要如实说
+        return {"ok": False, "why": "调 %s 失败：%s: %s" % (pick.get("name"), type(e).__name__,
+                                                          str(e)[:160])}
+    check = _verify_session_readback(harness_id, payload_text, session_id)
+    verified = bool(check.get("verified"))
+    return {
+        "ok": bool((call or {}).get("ok")),
+        "channel": "mcp_session_post",
+        "tool": pick.get("name"),
+        "text": payload_text,
+        "code": code,
+        "reply": str((call or {}).get("text") or "")[:600],
+        "verified": verified,
+        "state": "delivered_verified" if verified else "sent_unverified",
+        "session_check": check,
+        "note": ("读回核对通过：这条确实在它的会话里" if verified
+                 else "发出去了，但**读回核对没通过**（%s）—— 不要当成已送达" % (check.get("why") or "未知")),
+    }
+
+
+def _verify_session_readback(harness_id: str, text: str, session_id: str = "") -> dict:
+    """派活后**读回核对**：用它自己的"读会话"工具，看刚发的话是不是真在会话里。
+
+    只对**协议型且它有读会话工具**的 harness 有意义；其它情况如实说"核对不了"，不假装。
+    匹配方式：正文里的**核对码**（`AC-XXXX`）—— 没有就取正文前 12 个非空白字符。
+    """
+    import asyncio
+
+    from ..harness_adapter import harness_manager as _hm
+
+    out = {"checked": False, "verified": None, "why": ""}
+    sess = _hm.sessions.get(str(harness_id or ""))
+    if sess is None:
+        out["why"] = "这个 harness 不在登记表里"
+        return out
+    info = sess.info
+    kind_raw = getattr(info, "wakeup_method", "")              # 可能是枚举（str(枚举) 是 "WakeupMethod.MCP"）
+    kind = str(getattr(kind_raw, "value", kind_raw) or "").lower()
+    if kind not in ("mcp", "http", "http_api"):
+        out["why"] = "这个协议没有可读的会话接口（桌面/桥类），核对不了 —— 用户自己看窗口"
+        return out
+    tools = [{"name": str(getattr(x, "name", "") or (x if isinstance(x, str) else ""))}
+             for x in (getattr(info, "tools", None) or [])]
+    read_tool = _pick_session_read_tool(tools)
+    if not read_tool:
+        out["why"] = ("它没有「读会话」工具 ⇒ 平台无法核对这句话真有没有落进会话"
+                      "（请它补一个 session_messages(limit)）")
+        return out
+    url = str(getattr(info, "api_base_url", "") or "").strip()
+    if kind == "mcp" and not url:
+        out["why"] = "没有 api_base_url，读不了"
+        return out
+    import re as _re
+
+    m = _re.search(r"AC-[0-9A-F]{4}", text or "")
+    token = m.group(0) if m else "".join((text or "").split())[:12]
+    try:
+        from .. import mcp_client as _mc
+
+        props = (read_tool.get("inputSchema") or {}).get("properties") or {}
+        args = {}
+        for k in ("session_id", "limit", "count", "n"):
+            if k in props:
+                args[k] = session_id if k == "session_id" else 20
+        res = asyncio.run(_mc.mcp_call_tool(url, str(read_tool.get("name")), args))
+        blob = str((res or {}).get("text") or "")
+        out.update({"checked": True, "tool": read_tool.get("name"), "token": token,
+                    "verified": bool(token and token in blob), "excerpt": blob[:300]})
+        if not out["verified"]:
+            out["why"] = "读回来的最近消息里没有核对码「%s」⇒ 不算真的在会话里" % token
+    except Exception as e:                                     # noqa: BLE001 — 读不回也要如实说
+        out["why"] = "读会话失败：%s: %s" % (type(e).__name__, str(e)[:140])
+    return out
+
+
+def _pick_session_read_tool(tools) -> dict | None:
+    """找它自己的"**读会话**"工具 —— 用来核对"刚才那句话真的在会话里"（老板：怕真假）。
+
+    找不到就返回 None：平台**不假装能核对**，会明写"只能信它自报"。
+    """
+    for t in (tools or []):
+        if not isinstance(t, dict) or not t.get("name"):
+            continue
+        low = str(t.get("name")).lower()
+        if any(h in low for h in _SESSION_READ_HINTS):
+            return t
+    return None
+
+
+def _args_for_tool(tool: dict, text: str) -> dict:
+    """按工具的 inputSchema 把这句话塞进**存在的那个参数名**里（不瞎猜不存在的字段）。"""
+    schema = (tool.get("inputSchema") or tool.get("input_schema") or {}) if isinstance(tool, dict) else {}
+    props = (schema.get("properties") or {}) if isinstance(schema, dict) else {}
+    for key in ("text", "prompt", "message", "query", "input", "content", "q"):
+        if key in props:
+            return {key: text}
+    return {"text": text}                                       # 兜底：多数实现都认 text
+
+
+def _make_nonce() -> str:
+    """一次性的"收到口令"：只有真接住这条消息的对方才答得上来（防缓存/假回包）。"""
+    import secrets
+
+    return "收到-" + secrets.token_hex(3).upper()
+
+
+def _save_shot(harness_id: str) -> dict:
+    """给这个 harness 的窗口**存一张留档截图**（"看得见它在会话里干活"的证据）。
+
+    老板 2026-10-25 原话：「3 是必需的，不然以后接进来也看不到外端 agent 在它的会话里面干活」
+    ⇒ 测试、试投、派活之后都留一张，存到 `<AC_DATA_DIR>/shots/<harness_id>/<时间戳>.png`，
+    界面上能按时间往回看（**不覆盖**，一张一条）。
+    """
+    from ..server import DATA_DIR
+
+    out = {"ok": False, "why": ""}
+    try:
+        from .. import delivery as _dl, screen_vision
+
+        target = _dl.resolve_target(harness_id) or {}
+        hwnd = int(target.get("hwnd") or 0)
+        if not hwnd:
+            out["why"] = "这个 harness 还没绑定窗口（没有可截的画面）"
+            return out
+        shot = screen_vision.grab_png(hwnd)
+        if not shot.get("ok"):
+            out["why"] = shot.get("why") or "截图失败"
+            return out
+        d = DATA_DIR / "shots" / harness_id
+        d.mkdir(parents=True, exist_ok=True)
+        name = _now_iso().replace(":", "").replace("-", "").replace("+", "_") + ".png"
+        path = d / name
+        path.write_bytes(shot["png"])
+        out.update({"ok": True, "name": name, "bytes": len(shot["png"]),
+                    "width": shot.get("width"), "height": shot.get("height"),
+                    "at": _now_iso()})
+    except Exception as e:                                     # noqa: BLE001 — 截不到就如实说
+        out["why"] = "%s: %s" % (type(e).__name__, str(e)[:160])
+    return out
 
 
 def _interface_facts(wakeup_method: str) -> dict:
@@ -144,6 +383,69 @@ def build_overview(ws_id: str | None = None, *, workshop_map=None, sessions=None
         }
         item["docked_count"] = sum(1 for b in item["bindings"] if b["channel_state"] == "active")
         item.update(_interface_facts(item["wakeup_method"]))
+        # ★2026-10-25（老板真机："注册完我就不知道要干什么了"）：每条 harness 直接给**下一步**。
+        #   两种路差别很大：协议型（MCP/HTTP/A2A/gRPC…）注册好就能加进工作间派活，**不需要**"新建会话"；
+        #   桌面/剪贴板型必须由人把那个会话打开（再靠视觉脚本投递）。
+        _proto = str(item["wakeup_method"] or "").lower() in _PROTOCOL_WAKE
+        # 上次「测一次」的结果：从 **harness 档案**里读（list_sessions() 的字典不带 metadata）
+        try:
+            from ..harness_adapter import harness_manager as _hm
+
+            _sess = _hm.sessions.get(hid)
+            item["last_test"] = ((getattr(_sess.info, "metadata", None) or {}).get("last_test")
+                                 if _sess is not None else None)
+        except Exception:                                    # noqa: BLE001 — 读不到就当没测过
+            item["last_test"] = None
+        # 工具表 + "能不能在它自己会话里发言"（老板 2026-10-25：靠对方的 session_post 这类工具）
+        try:
+            from ..harness_adapter import harness_manager as _hm2
+
+            _sess2 = _hm2.sessions.get(hid)
+            _tl = list(getattr(getattr(_sess2, "info", None), "tools", None) or []) if _sess2 is not None else []
+            _names = [str(getattr(x, "name", "") or (x if isinstance(x, str) else "")) for x in _tl]
+            _names = [n for n in _names if n]
+            item["tools"] = _names
+            # ★2026-10-25（老板截图"返祖了"）：**两个能力要分开算** ——
+            #   session_post（能往里写）和"读会话工具"（能读回核对）缺哪个，引导都要出现。
+            item["in_session_capable"] = any(
+                any(k in n.lower() for k in _SESSION_POST_HINTS) for n in _names)
+            item["session_read_capable"] = bool(_pick_session_read_tool(
+                [{"name": n} for n in _names]))
+            # ★2026-10-25 第四轮（老板："没得复制"）：还差第三个能力 —— 能**列出会话**，
+            #   否则用户没法挑"我正在看的那条"，平台只能往默认会话写。
+            item["session_list_capable"] = any(
+                any(k in n.lower() for k in _SESSION_LIST_HINTS) for n in _names)
+            # 协议型（mcp/http…）但还不会在自己会话里发言 ⇒ 给一条**当场可复制**的引导
+            _is_proto = str(item.get("wakeup_method") or "").lower() in (
+                "mcp", "http", "http_api", "a2a", "grpc", "ws")
+            if _is_proto and not (item["in_session_capable"] and item["session_read_capable"]
+                                  and item["session_list_capable"]):
+                item["session_post_guide"] = "/api/docking/harness/%s/session-post-guide?format=md" % hid
+                if not item["in_session_capable"]:
+                    item["session_need"] = "session_post"
+                    item["session_post_need"] = ("它还不能在自己的会话里说话 —— 把这段要求复制给它，"
+                                                  "让它加一个 session_post 工具")
+                elif not item["session_read_capable"]:
+                    item["session_need"] = "session_messages"
+                    item["session_post_need"] = ("它能往自己会话里写，但平台**没法核对真假** —— "
+                                                  "把这段要求复制给它，让它再补一个 session_messages 工具")
+                else:
+                    item["session_need"] = "sessions_list"
+                    item["session_post_need"] = ("它能写、也能核对，但平台**列不出它的会话** ⇒ "
+                                                  "只能往它的默认会话写，你在自己窗口里看不到 —— "
+                                                  "把这段要求复制给它，让它再补一个 sessions_list 工具")
+            elif _is_proto:
+                item["session_need"] = None
+        except Exception:                                    # noqa: BLE001 — 拿不到就按"没有"处理
+            item["tools"] = []
+            item["in_session_capable"] = False
+        item["needs_visual_session"] = not _proto
+        item["joinable"] = True
+        item["next_step"] = (
+            "已登记。下一步：在某个工作间点「加成员」把它选进来就能派活 —— "
+            "**这类协议不需要新建会话/重命名会话**。" if _proto else
+            "已登记。下一步：把它的目标会话打开（或用「框选输入框」教一次位置），"
+            "再在某个工作间「加成员」；叫不醒时用视觉激活/人工粘贴。")
         harnesses.append(item)
 
     # ⚠️ **悬空引用要说话**：成员表里引用了某个 harness_id，但它不在已注册清单里
@@ -458,6 +760,202 @@ async def docking_harness_bind_clear(harness_id: str):
     return {"ok": True, "cleared": input_anchor.clear_bind(harness_id)}
 
 
+@router.get("/api/docking/harness/{harness_id}/session-post-guide")
+async def docking_harness_session_post_guide(harness_id: str, format: str = "json"):
+    """**让对方加 session_post 的引导**（老板 2026-10-25：「平台也要有引导让对方加」）。
+
+    凡是**协议型 harness 但工具表里没有会话内发言工具**的，界面就在这一行给一个
+    「复制要求给它」的按钮 —— 内容是**这个 harness 专属**的（带上它当前的工具表与 id），
+    用户整段复制给外端 agent，对方照着加一个 session_post(text) 工具。
+
+    query：ormat=md（纯 Markdown，直接进剪贴板）或 ormat=json（默认，带结构化字段）。
+    一处真相在 platform/session_post_guide.py。
+    """
+    from fastapi.responses import PlainTextResponse
+
+    from ..server import Utf8JSONResponse
+    from .. import session_post_guide as _spg
+    from ..harness_adapter import harness_manager as _hm
+
+    sess = _hm.sessions.get(str(harness_id or ""))
+    if sess is None:
+        return Utf8JSONResponse({"error": "这个 harness 不在登记表里"}, status_code=404)
+    info = sess.info
+    _tl = list(getattr(info, "tools", None) or [])
+    names = [str(getattr(x, "name", "") or (x if isinstance(x, str) else "")) for x in _tl]
+    names = [n for n in names if n]
+    try:
+        from .workshops_common import _platform_base_url_safe
+
+        base = _platform_base_url_safe()
+    except Exception:                                        # noqa: BLE001 — 拿不到地址就少写这行
+        base = ""
+    if (format or "").strip().lower() == "md":
+        return PlainTextResponse(
+            _spg.build_md(harness_id=str(harness_id or ""), tools=names, platform_url=base),
+            media_type="text/markdown; charset=utf-8")
+    return _spg.build_json(harness_id=str(harness_id or ""), tools=names, platform_url=base)
+
+
+@router.get("/api/docking/harness/{harness_id}/sessions")
+async def docking_harness_sessions(harness_id: str, limit: int = 30):
+    """**它有哪些会话**（老板 2026-10-25：消息写进去了但你窗口里看不到 —— 因为写到了别的会话）。
+
+    用途：界面把它的会话列出来（id + 标题 + 最近时间），用户挑**自己正在看的那个**，
+    之后测一次/派活时带上 session_id，消息才会落在他眼皮底下。
+
+    对方没提供「列会话」工具时**如实说**（不编 id、不猜）。
+    """
+    import asyncio
+
+    from ..server import Utf8JSONResponse
+    from ..harness_adapter import harness_manager as _hm
+
+    sess = _hm.sessions.get(str(harness_id or ""))
+    if sess is None:
+        return Utf8JSONResponse({"error": "这个 harness 不在登记表里"}, status_code=404)
+    info = sess.info
+    tools = [{"name": str(getattr(x, "name", "") or ""),
+              "inputSchema": getattr(x, "parameters", None) or {}}
+             for x in (getattr(info, "tools", None) or [])]
+    names = [t["name"] for t in tools if t["name"]]
+    pick = next((t for t in tools if any(h in t["name"].lower() for h in _SESSION_LIST_HINTS)), None)
+    url = str(getattr(info, "api_base_url", "") or "").strip()
+    if pick is None:
+        return {"ok": False, "harness_id": harness_id, "sessions": [], "tools": names,
+                "why": "它没有「列会话」的工具（建议它暴露 sessions_list）—— 平台无法列出它的会话；"
+                       "你也可以直接把会话 id 填进来，平台会用它发",
+                "hint": "让它加一个 sessions_list() → [{session_id, title, updated_at}]"}
+    if not url:
+        return {"ok": False, "sessions": [], "why": "没有 api_base_url，调不到它的工具"}
+
+    def _call():
+        from .. import mcp_client as _mc
+
+        props = (pick.get("inputSchema") or {}).get("properties") or {}
+        args = {k: max(1, min(int(limit), 100)) for k in ("limit", "count", "n") if k in props}
+        return asyncio.run(_mc.mcp_call_tool(url, pick["name"], args))
+
+    try:
+        res = await asyncio.to_thread(_call)
+    except Exception as e:                                     # noqa: BLE001 — 调不通要如实说
+        return {"ok": False, "sessions": [], "why": "调 %s 失败：%s: %s" % (
+            pick["name"], type(e).__name__, str(e)[:160])}
+    blob = str((res or {}).get("text") or "")
+    try:
+        import json as _json
+
+        data = _json.loads(blob[blob.find("[") if "[" in blob else blob.find("{"):])
+        items = data if isinstance(data, list) else (data.get("sessions") or data.get("items") or [])
+    except Exception:                                          # noqa: BLE001 — 不是 JSON 就把原文给出
+        items = []
+    out = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        sid = it.get("session_id") or it.get("id") or it.get("sessionId") or ""
+        if not sid:
+            continue
+        out.append({"session_id": str(sid),
+                    "title": str(it.get("title") or it.get("name") or it.get("topic") or ""),
+                    "updated_at": it.get("updated_at") or it.get("updatedAt") or it.get("created_at")})
+    return {"ok": bool(out), "harness_id": harness_id, "tool": pick["name"],
+            "sessions": out, "count": len(out),
+            "why": "" if out else "调通了但没解析出会话（返回原文见 excerpt）",
+            "excerpt": blob[:400]}
+
+
+@router.post("/api/docking/harness/{harness_id}/bring-front")
+async def docking_harness_bring_front(harness_id: str):
+    """**把它抬到前台**（老板 2026-10-25：「不用截图，让用户自己去外端 agent 会话里面看」）。
+
+    平台不替用户看、也不截屏证明；只负责把那个会话窗口**摆到眼前**，剩下的用户自己看。
+    ⇒ 这里只做一件事：找到它的窗口 → 恢复（若最小化）→ 抬前台；做不到就**如实说为什么**。
+    """
+    import asyncio
+
+    from ..server import Utf8JSONResponse
+    from .. import delivery as _dl
+
+    def _do():
+        target = _dl.resolve_target(harness_id) or {}
+        hwnd = int(target.get("hwnd") or 0)
+        if not hwnd:
+            # ★2026-10-25 老板问到点子上：**MCP/HTTP 这类纯协议接入根本没有"它会话窗口"**
+            #   （平台调的是工具接口，回复只回到平台）⇒ 不能给一个"打开它的会话"的假按钮。
+            #   这里要区分两种情况：① 纯协议（没窗口可看）② 有窗口但没绑定/没认出来。
+            _kind = ""
+            try:
+                from ..harness_adapter import harness_manager as _hm
+
+                _s = _hm.sessions.get(str(harness_id or ""))
+                _k = getattr(getattr(_s, "info", None), "wakeup_method", "") if _s is not None else ""
+                _kind = str(getattr(_k, "value", _k) or "").lower()
+            except Exception:                                  # noqa: BLE001 — 认不出协议就按"没窗口"说
+                _kind = ""
+            if _kind in ("mcp", "http", "http_api", "a2a", "grpc", "ws"):
+                return {"ok": False, "applicable": False, "hwnd": 0, "kind": _kind,
+                        "why": "这个 harness 是**纯协议接入（%s）**：平台直接调它的接口，"
+                               "它的回复只回到平台，**它的会话窗口里不会出现这句话** ⇒ 没有「去看会话」这回事。" % _kind,
+                        "hint": "回复就在上面那张结果卡里（含口令校验）。"
+                                "要看它**在自己的会话里**回话，只有一条路：用「视觉粘贴」把话打进它自己的聊天框"
+                                "（需要先框选输入框，且它得有窗口）。"}
+            return {"ok": False, "applicable": True,
+                    "why": target.get("why") or "还没认出这个 harness 的窗口 —— 先绑定窗口"}
+
+        from .. import input_sim, visual_launch as _vl
+
+        info = _vl.window_info(hwnd) or {}
+        # `ensure_foreground` 内部已含 `ShowWindow(SW_RESTORE)` + 轮询 + AttachThreadInput 兜底，
+        # 所以最小化的窗口也交给它（别在这里再写一份恢复逻辑 —— 一处真相）。
+        r = input_sim.ensure_foreground(hwnd)
+        return {"ok": bool(r.get("ok")), "applicable": True, "hwnd": hwnd,
+                "title": info.get("title") or "",
+                "minimized": bool(info.get("minimized")),
+                "why": "" if r.get("ok") else (r.get("why") or "抬不到前台"),
+                "hint": "现在去看它的会话窗口；平台不截图、也不替你判断它回了什么"}
+
+    return await asyncio.to_thread(_do)
+
+
+@router.get("/api/docking/harness/{harness_id}/shots")
+async def docking_harness_shots(harness_id: str, limit: int = 20):
+    """**它干活的样子**（留档截图清单，按时间倒序）—— 老板 2026-10-25：接进来之后要看得见它在会话里干活。"""
+    from ..server import DATA_DIR
+
+    d = DATA_DIR / "shots" / str(harness_id or "")
+    if not d.is_dir():
+        return {"harness_id": harness_id, "shots": [],
+                "note": "还没有留过截图（测一次 / 试投一次之后就会有）"}
+    items = []
+    for p in sorted(d.glob("*.png"), key=lambda x: x.stat().st_mtime, reverse=True)[:max(1, min(limit, 100))]:
+        try:
+            st = p.stat()
+            items.append({"name": p.name, "bytes": st.st_size,
+                          "at": datetime.fromtimestamp(st.st_mtime).astimezone().isoformat(timespec="seconds"),
+                          "url": "/api/docking/harness/%s/shots/%s" % (harness_id, p.name)})
+        except OSError:
+            continue
+    return {"harness_id": harness_id, "shots": items, "count": len(items)}
+
+
+@router.get("/api/docking/harness/{harness_id}/shots/{name}")
+async def docking_harness_shot_file(harness_id: str, name: str):
+    """取一张留档截图（只允许取自己那目录下的 `*.png`，挡路径穿越）。"""
+    from fastapi.responses import Response
+
+    from ..server import DATA_DIR, Utf8JSONResponse
+
+    safe = str(name or "").strip()
+    if (not safe.lower().endswith(".png")) or ("/" in safe) or ("\\" in safe) or (".." in safe):
+        return Utf8JSONResponse({"error": "文件名不合法"}, status_code=400)
+    p = DATA_DIR / "shots" / str(harness_id or "") / safe
+    if not p.is_file():
+        return Utf8JSONResponse({"error": "没有这张截图"}, status_code=404)
+    return Response(content=p.read_bytes(), media_type="image/png",
+                    headers={"Cache-Control": "no-store"})
+
+
 @router.get("/api/docking/harness/{harness_id}/screenshot")
 async def docking_harness_screenshot(harness_id: str, hwnd: int = 0, title: str = ""):
     """**这个员工现在长什么样**：抓一帧窗口/页面所在窗口的彩色 PNG（给"框选"用）。
@@ -709,6 +1207,18 @@ async def docking_harness_visual_run(harness_id: str, request: Request):
         settle_new=float(body.get("settle_new") or 1.2),
         restore_focus=bool(body.get("restore_focus", True)))
     res["text"] = text
+    # ★2026-10-25 老板改口径：「不用截图，让用户自己去外端 agent 会话里面看」
+    #   ⇒ 平台不再自动留图，只把它**在不在前台/窗口在哪**告诉界面，由用户抬头去看。
+    try:
+        from .. import visual_launch as _vl
+
+        _wi = _vl.window_info(hwnd) or {}
+        res["look_at"] = {"hwnd": _wi.get("hwnd"), "title": _wi.get("title") or "",
+                           "minimized": bool(_wi.get("minimized")),
+                           "front": bool(_wi.get("foreground")),
+                           "hint": "去它的会话窗口里看回复（平台不截图）"}
+    except Exception:                                          # noqa: BLE001 — 拿不到窗口信息不影响结论
+        res["look_at"] = {"hint": "去它的会话窗口里看回复（平台不截图）"}
     return res
 
 
@@ -775,6 +1285,361 @@ async def docking_harness_visual_probe(harness_id: str, request: Request):
     return res
 
 
+@router.post("/api/harness/probe-protocol")
+async def harness_probe_protocol(request: Request):
+    """**第 ① 步：不用先填字段，先探协议**（D前端-36 §4 要的那个端点）。
+
+    老板的流程第 1 步是"询问协议（若已知可手动跳过）"，前端一直缺一个"不用先填东西"的端点。
+    这里**不猜人名**、也不替用户填表，只做两件事：
+
+    1. 给了 `url`（或 `port`）⇒ **真连一次**判协议：能走 MCP `initialize` 就是 `mcp`，
+       只能 GET 通就是 `http_api`，都不通就如实说"连不上/不认识"；
+    2. 什么都没给 ⇒ 列出本机**正在监听的端口**（带进程名，最多 40 条）当候选项，
+       每条只标"**可能是**"，并说明"选了哪个我再真探一次"——**不给假结论**。
+    """
+    import asyncio
+
+    from ..server import Utf8JSONResponse
+    from .. import sysprobe
+
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001 — 允许空 body（只列候选）
+        body = {}
+    url = str((body or {}).get("url") or "").strip()
+    port = (body or {}).get("port")
+
+    # ── 有 url：真连一次，按"能做什么"判协议 ──
+    if url:
+        from .. import mcp_client as _mc
+
+        out = {"input": {"url": url}, "evidence": []}
+        try:
+            valid, why = _mc.validate_mcp_url(url)
+            if not valid:
+                out.update({"protocol": None, "ok": False,
+                            "why": "地址不合法：%s" % why, "hint": "形如 http://127.0.0.1:PORT/mcp"})
+                return out
+            info_srv, _sid = await _mc.mcp_open_session(url, timeout=8)
+            out.update({"protocol": "mcp", "ok": True,
+                        "why": "它认 MCP 的 initialize 握手",
+                        "server_info": (info_srv or {}).get("serverInfo") or info_srv})
+            out["evidence"].append("initialize 成功 ⇒ mcp")
+            return out
+        except Exception as e:                                 # noqa: BLE001 — 不是 MCP 就继续试 HTTP
+            out["evidence"].append("MCP initialize 失败：%s: %s" % (type(e).__name__, str(e)[:120]))
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=8, follow_redirects=False) as c:
+                r = await c.get(url)
+            out.update({"protocol": "http_api", "ok": True,
+                        "why": "GET 能通（HTTP %s），但它不是 MCP 服务" % r.status_code})
+            out["evidence"].append("GET %s ⇒ http_api" % r.status_code)
+            return out
+        except Exception as e:                                 # noqa: BLE001 — 两条都不通就如实说
+            out["evidence"].append("HTTP GET 也失败：%s: %s" % (type(e).__name__, str(e)[:120]))
+            out.update({"protocol": None, "ok": False,
+                        "why": "这个地址既不是 MCP 也不像 HTTP 服务（两条都试过，见 evidence）",
+                        "hint": "确认端口/路径对不对；有些 agent 只认目录（file_poll）或只能人工粘贴（clipboard）"})
+            return out
+
+    # ── 没给 url：列出本机在监听的端口，当候选（**只说可能**）──
+    def _scan():
+        try:
+            ports = sysprobe.listening_ports(local_only=True) or []
+        except Exception as e:                                 # noqa: BLE001 — 探不到就说清
+            return {"ok": False, "why": "探不到本机监听端口：%s: %s" % (type(e).__name__, e)}
+        # pid → 进程名（只建一次；别一个端口扫一遍进程表）
+        # ⚠️ `sysprobe.iter_processes()` 产出的是 **元组** `(pid, ppid, name, cmdline)`，
+        #   不是 dict（2026-10-25 实测，写 dict.get 会全部拿到空名字）。
+        names = {}
+        try:
+            for x in sysprobe.iter_processes() or []:
+                try:
+                    if isinstance(x, dict):
+                        names[int(x.get("pid") or 0)] = str(x.get("name") or "")
+                    else:
+                        names[int(x[0])] = str(x[2] or "")
+                except Exception:                              # noqa: BLE001 — 单条坏了跳过
+                    continue
+        except Exception:                                      # noqa: BLE001 — 名字拿不到不影响判协议
+            names = {}
+        cands = []
+        for p in sorted(set(int(x) for x in ports)):
+            # 低于 1024 以及系统占用端口不是"agent 服务"，列出来只会让人更糊涂
+            if p < 1024 or p in (135, 139, 445, 1900, 5353, 5040, 7680):
+                continue
+            pids = []
+            try:
+                pids = sysprobe.listening_pids(p) or []
+            except Exception:                                  # noqa: BLE001 — 拿不到 pid 不算错
+                pass
+            nm = names.get(int(pids[0]), "") if pids else ""
+            low = nm.lower()
+            if any(k in low for k in ("python", "node", "mcp", "trae", "cherry", "cursor", "code")):
+                guess = "像是「%s」开的端口，可能说 MCP/HTTP" % nm
+            elif nm:
+                guess = "「%s」占着这个端口" % nm
+            else:
+                guess = "本机有服务在听，看不出是什么程序"
+            cands.append({"port": p, "pid": pids[0] if pids else None, "process": nm,
+                          "guess": guess})
+            if len(cands) >= 40:
+                break
+        return {"ok": True, "candidates": cands, "backend": sysprobe.backend()}
+
+    res = await asyncio.to_thread(_scan)
+    if not res.get("ok"):
+        return Utf8JSONResponse({"protocol": None, "ok": False, "why": res.get("why", ""),
+                                 "hint": "也可以直接跳过这一步，自己选协议"}, status_code=200)
+    res.update({"protocol": None,
+                "why": "不知道它是哪种协议：下面是本机正在监听的端口（**只是候选，不是结论**）",
+                "hint": "选一个端口我再真探一次；或者直接跳过，手动选协议"})
+    return res
+
+
+@router.get("/api/docking/protocol-tree")
+async def docking_protocol_tree():
+    """**注册链路树**（老板 2026-10-25 口述流程的数据源，一处真相在 platform/protocol_tree.py）。
+
+    五步：① 先问协议（可跳过）② 选协议→才真注册（**不同协议挂不同的功能卡片，树状，不平铺**）
+    ③ 复制该协议的注册引导（Markdown，给外端 agent 看；这页也留给脚本注册）
+    ④ 检测（…/test-now）⑤ 跟它对话（人工搬运，半自动，不假装能核实）。
+
+    界面照着渲染即可，**不要在 JS 里再抄一份**协议能力表。
+    """
+    from .. import protocol_tree
+
+    return protocol_tree.build()
+
+
+@router.post("/api/docking/harness/{harness_id}/test-now")
+async def docking_harness_test_now(harness_id: str, request: Request):
+    """**即刻测一次**（按协议自动选测法）—— 对接中心每行一个按钮，老板 2026-10-25 要求。
+
+    为什么要它：老板原话「对接中心是真的乱，没有之前那个『注册 harness』一目了然和即刻测试」。
+    ⇒ 表里每一行都要能**当场验一次**，并把结果留在档案里（`metadata.last_test`），
+    下次打开就能看到"上次测是什么时候、通没通、为什么不通"，而不是一屏空壳卡片。
+
+    ★2026-10-25 补（D前端-39 / 老板「点击测试后还要让对方回复」）：请求体可带
+    `{"text": "请回复：收到"}` —— 协议型就**真把这句话发过去、把对方回的话带回来**：
+
+    | 协议 | 带 text 时测什么 |
+    |---|---|
+    | `mcp` | 挑一个能对话的工具（chat/complete/ask/reply/…，没有就取第一个）→ 真发 `tools/call` → 回**工具返回的文本** |
+    | `http` / `http_api` | 真 `POST` 这句话到 `api_base_url`（JSON：text/message/prompt）→ 回**响应体前 400 字** |
+    | 桌面/桥类 | 不假装：这些回复在**窗口画面里**，走 `visual-run` + 截图 + 人工确认 |
+
+    不带 text 时保持原来的"探活"语义（mcp 只列工具、http 只 GET）。
+    """
+    import asyncio
+
+    from ..server import Utf8JSONResponse, save_state
+    from ..harness_adapter import harness_manager
+
+    # 请求体可选（旧调用方不带 body 也要能跑）
+    try:
+        _body = await request.json()
+    except Exception:                                          # noqa: BLE001 — 没 body 就是纯探活
+        _body = {}
+    _text = str((_body or {}).get("text") or "").strip()
+    # ★口令（老板 2026-10-25 拍板"要能看见它真接住了"）：给了 text 就配一个一次性口令，
+    #   对方回显里必须包含它 ⇒ 才叫 verified=true（挡住缓存/老回包/写死应答这种假成功）。
+    _nonce = str((_body or {}).get("nonce") or "").strip()
+    _want_visual = bool((_body or {}).get("visual"))
+    if _text and not _nonce:
+        _nonce = _make_nonce()
+        _text_sent = "%s（口令：%s，请原样带回）" % (_text, _nonce)
+    else:
+        _text_sent = _text
+
+    sess = harness_manager.sessions.get(str(harness_id or ""))
+    if sess is None:
+        return Utf8JSONResponse({"error": "这个 harness 不在登记表里"}, status_code=404)
+    info = sess.info
+    kind = str(getattr(info, "wakeup_method", "") or "").lower()
+    kind = getattr(getattr(info, "wakeup_method", ""), "value", kind)     # 枚举兼容
+    url = str(getattr(info, "api_base_url", "") or getattr(info, "callback_url", "") or "").strip()
+    started = time.time()
+    ok, detail, extra = False, "", {}
+    try:
+        if kind == "mcp":
+            if not url:
+                detail = "没填 api_base_url —— MCP 必须给一个地址（形如 http://host:port/mcp）"
+            else:
+                from .. import mcp_client as _mc
+
+                valid, why = _mc.validate_mcp_url(url)
+                if not valid:
+                    detail = "地址不合法：%s" % why
+                else:
+                    tools = await _mc.mcp_list_tools(url)
+                    ok = True
+                    names = [str((t or {}).get("name") or "") for t in (tools or []) if isinstance(t, dict)]
+                    detail = "tools/list 通了，回 %d 个工具（%s）" % (len(names), "、".join(names[:5]) or "无")
+                    extra["tools"] = names
+                    if _text:
+                        # 挑一个"像在对话"的工具；都没有就用第一个（并如实说是哪个）
+                        pick, why_pick = _pick_chat_tool([t for t in (tools or []) if isinstance(t, dict)], name=names)
+                        if not pick:
+                            detail += "；但它没有能对话的工具 ⇒ 发不出「%s」" % _text
+                        else:
+                            # ★2026-10-25（老板："点击测试它没有在会话里面说收到，也不知道真假"）：
+                            #   ① 允许指定 `session_id`（避免它写到**另一个/新建的会话**里，用户看不到）；
+                            #   ② 发完再**读回来核对**口令 —— 只有读回看到那句话，才算"真的在会话里"。
+                            args = _args_for_tool(pick, _text_sent)
+                            # 没显式给 session_id 时，**沿用上次成功的那条会话**（同一处说话，别每次乱跳）
+                            _want_sid = str((_body or {}).get("session_id") or "").strip()
+                            if not _want_sid:
+                                try:
+                                    _prev_lt = (getattr(info, "metadata", None) or {}).get("last_test") or {}
+                                    if _prev_lt.get("in_session_verified") and _prev_lt.get("reply_session_id"):
+                                        _want_sid = str(_prev_lt["reply_session_id"])
+                                except Exception:              # noqa: BLE001 — 取不到就不带，不影响发送
+                                    _want_sid = ""
+                            _props_send = (pick.get("inputSchema") or {}).get("properties") or {}
+                            if _want_sid and "session_id" in _props_send:
+                                args["session_id"] = _want_sid
+                            call = await _mc.mcp_call_tool(url, str(pick.get("name")), args)
+                            reply = str((call or {}).get("text") or "").strip()
+                            ok = bool((call or {}).get("ok"))
+                            extra.update({"reply": reply, "tool": pick.get("name"),
+                                          "in_session": bool(pick.get("_in_session")),
+                                          "reply_raw": (call or {}).get("raw")})
+                            try:                               # 对方自报的 id（**不算证据**）
+                                _rj = {}
+                                if "{" in reply and "}" in reply:
+                                    _rj = json.loads(reply[reply.find("{"): reply.rfind("}") + 1])
+                            except Exception:                  # noqa: BLE001 — 不是 JSON 就算了
+                                _rj = {}
+                            if isinstance(_rj, dict):
+                                if _rj.get("session_id"):
+                                    extra["reply_session_id"] = _rj.get("session_id")
+                                if _rj.get("message_id"):
+                                    extra["reply_message_id"] = _rj.get("message_id")
+                                # 会话**标题**：用户靠它认「这是不是我在看的那条会话」
+                                for _tk in ("session_title", "title", "conversation_title"):
+                                    if _rj.get(_tk):
+                                        extra["reply_session_title"] = str(_rj.get(_tk))[:80]
+                                        break
+                                # ★2026-10-25（老板真机："会话里面只有之前回复的"）：
+                                #   它自报写进了某个会话，但用户看到的那个会话里没有 —— 最常见的坑就是写错会话。
+                                #   平台能做的：把它自报的会话 id + 标题摆出来让人核对，并明确提示。
+                                if extra.get("reply_session_id"):
+                                    extra["in_session_note"] = (
+                                        "它自报写进了会话 %s%s —— 请核对这是不是**你正在看的那个会话**；"
+                                        "如果不是，就是它写错会话了（平台没指定会话时它会用默认/新建的）"
+                                        % (str(extra["reply_session_id"])[:40],
+                                           ("（标题：%s）" % extra["reply_session_title"])
+                                           if extra.get("reply_session_title") else ""))
+                            # ── 读回核对：用它的"读会话"工具再看一眼那条消息在不在 ──
+                            _read_pick = _pick_session_read_tool(tools)
+                            if pick.get("_in_session") and _read_pick:
+                                try:
+                                    _props_r = (_read_pick.get("inputSchema") or {}).get("properties") or {}
+                                    _rargs = {}
+                                    for _k in ("session_id", "limit", "count", "n"):
+                                        if _k in _props_r:
+                                            _rargs[_k] = ((_want_sid or extra.get("reply_session_id") or "")
+                                                          if _k == "session_id" else 20)
+                                    _read = await _mc.mcp_call_tool(url, str(_read_pick.get("name")), _rargs)
+                                    _blob = str((_read or {}).get("text") or "")
+                                    extra["in_session_verified"] = bool(_nonce and _nonce in _blob)
+                                    extra["readback"] = {"tool": _read_pick.get("name"),
+                                                         "found": extra["in_session_verified"],
+                                                         "excerpt": _blob[:300]}
+                                    if not extra["in_session_verified"]:
+                                        extra["in_session_note"] = (
+                                            "它说发出去了（in_session=true），但用 %s 读回来的最近消息里"
+                                            "**没有这条口令** ⇒ 平台**不算「真的在会话里」**"
+                                            "（可能写到了别的会话，或只是返回了自报结果）"
+                                            % _read_pick.get("name"))
+                                except Exception as e:         # noqa: BLE001 — 读不回也要如实说
+                                    extra["readback"] = {"tool": _read_pick.get("name"), "found": None,
+                                                         "why": "%s: %s" % (type(e).__name__, str(e)[:120])}
+                            elif pick.get("_in_session"):
+                                extra["in_session_note"] = (
+                                    "它给了会话内发言工具，但**没有「读会话」的工具** ⇒ 平台无法核对"
+                                    "这句话是不是真落在会话里（只能信它自报 in_session=true）。"
+                                    "要能核对，请让它再暴露一个 session_messages(limit) 之类的读取工具")
+                            if not pick.get("_in_session"):
+                                extra["in_session_note"] = (
+                                    "它没有「往自己会话里发消息」的工具 ⇒ 这句回复**不会出现在它的会话里**，"
+                                    "只回到平台；要它在自己的会话里说话，得它自己提供一个这样的工具"
+                                    "（名字建议 session_post，参数 text）")
+                            detail = ("调 %s 发「%s」→ %s" % (
+                                pick.get("name"), _text_sent,
+                                ("它回了：" + reply[:400]) if reply else "没有返回文本"))
+                            if why_pick:
+                                extra["pick_note"] = why_pick
+        elif kind in ("http", "http_api"):
+            if not url:
+                detail = "没填 api_base_url / callback_url —— 没法测"
+            else:
+                import httpx
+
+                if not _text:
+                    async with httpx.AsyncClient(timeout=10, follow_redirects=False) as c:
+                        resp = await c.get(url)
+                    ok = resp.status_code < 500
+                    detail = "GET %s → HTTP %s" % (url, resp.status_code)
+                else:
+                    async with httpx.AsyncClient(timeout=30, follow_redirects=False) as c:
+                        resp = await c.post(url, json={"text": _text_sent, "message": _text_sent,
+                                                      "prompt": _text_sent})
+                    body_txt = (resp.text or "").strip()
+                    ok = resp.status_code < 400
+                    extra["reply"] = body_txt[:2000]
+                    detail = "POST %s 发「%s」→ HTTP %s；它回了：%s" % (
+                        url, _text_sent, resp.status_code, (body_txt[:400] or "（空）"))
+        elif kind in ("file_poll", "pending_poll", "clipboard"):
+            detail = "这类没有可调的接口：它靠平台落盘 + 桥/人来搬。请用「视觉自检」或到验证间点「验一次」"
+        else:
+            detail = "该协议（%s）暂无一键测试，请走 /verify 自检" % (kind or "未知")
+    except Exception as e:                                     # noqa: BLE001 — 测不通要如实说原因
+        detail = "%s: %s" % (type(e).__name__, str(e)[:200])
+    elapsed = int((time.time() - started) * 1000)
+    # ★口令校验 + 留档截图（老板 2026-10-25：要能看见它真接住了、还要看得见它在会话里干活）
+    if _nonce:
+        _reply_blob = " ".join(str(extra.get(k) or "") for k in ("reply", "detail"))
+        extra["nonce"] = _nonce
+        extra["text_sent"] = _text_sent
+        extra["verified"] = bool(ok and (_nonce in _reply_blob))
+        if ok and not extra["verified"]:
+            extra["verify_note"] = ("对方回了话，但**没带回口令**（%s）⇒ 不能算「真接住」，"
+                                    "可能是缓存/老回包/固定应答" % _nonce)
+    # ★硬信号（老板 2026-10-25「会话里只有之前回复的」）：
+    #   两次不同的口令，它返回的 message_id 却一模一样 ⇒ 返回的是**旧结果**（没真写）。
+    try:
+        _prev = (getattr(info, "metadata", None) or {}).get("last_test") or {}
+        _pm, _cm = str(_prev.get("reply_message_id") or ""), str(extra.get("reply_message_id") or "")
+        if _pm and _cm and _pm == _cm:
+            extra["suspicious"] = True
+            extra["suspicious_note"] = (
+                "它这次返回的 message_id 与上次**完全相同**（%s），但内容/口令不同 "
+                "⇒ 很可能**没有真的写**，返回的是上一次的结果" % _cm[:36])
+    except Exception:                                          # noqa: BLE001 — 判断不了就不下结论
+        pass
+    result = {"ok": bool(ok), "kind": kind, "detail": detail, "elapsed_ms": elapsed,
+              "at": _now_iso()}
+    result.update(extra)
+    # ★纯协议（mcp/http/…）：**没有"去它会话里看"这回事** —— 回复只回到平台，先说清楚，
+    #   别让界面挂一个点了没用的「打开它的会话」（老板 2026-10-25 追问的那条）。
+    if kind in ("mcp", "http", "http_api", "a2a", "grpc", "ws"):
+        result["look_at"] = {"applicable": False,
+                             "hint": "它是纯协议接入：回复就在这张卡里；它自己的会话窗口不会出现这句话。"
+                                     "要让它**在自己的会话里**回话，用「视觉粘贴」（需先框选输入框）。"}
+    try:
+        md = dict(getattr(info, "metadata", None) or {})
+        md["last_test"] = result
+        info.metadata = md
+        await asyncio.to_thread(save_state)
+    except Exception as e:                                     # noqa: BLE001 — 存不了不影响这次结论
+        result["persist_note"] = "结果没写进档案（%s）" % type(e).__name__
+    return result
+
+
 @router.get("/api/docking/harness/{harness_id}/delivery")
 async def docking_harness_delivery_target(harness_id: str):
     """**这个 harness 现在能把话送到哪儿**（通用入口的"解析结果"，只读）。
@@ -816,6 +1681,20 @@ async def docking_harness_deliver(harness_id: str, request: Request):
     if not text:
         return Utf8JSONResponse({"error": "要送的文本是空的"}, status_code=400)
     prev_fg = input_sim.foreground_window()
+    # ★协议型（MCP/HTTP 且它会话内发言）派活：走它的工具，不点窗口；发完读回核对。
+    try:
+        from ..harness_adapter import harness_manager as _hm0
+
+        _s0 = _hm0.sessions.get(str(harness_id or ""))
+        _raw0 = getattr(getattr(_s0, "info", None), "wakeup_method", "")      # 可能是枚举
+        _k0 = str(getattr(_raw0, "value", _raw0) or "").lower()                # 先取 .value 再 str
+    except Exception:                                          # noqa: BLE001 — 认不出就按老路
+        _k0 = ""
+    if _k0 in ("mcp", "http_api") and bool(body.get("via_session", True)):
+        out = await asyncio.to_thread(_dispatch_via_session_post, str(harness_id), text,
+                                      str(body.get("session_id") or ""))
+        # 这条路是给协议型派活用的：**要么成功、要么如实失败**，绝不偷偷换成"点它的窗口"
+        return Utf8JSONResponse(out, status_code=200 if out.get("ok") else 409)
     res = await asyncio.to_thread(delivery.deliver_to_harness, harness_id, text,
                                   prefer=str(body.get("prefer") or ""),
                                   idx=(int(body["idx"]) if body.get("idx") is not None else None),
@@ -827,6 +1706,21 @@ async def docking_harness_deliver(harness_id: str, request: Request):
             res["focus_restored"] = bool(r.get("ok"))
             if not r.get("ok"):
                 res["focus_note"] = r.get("why") or ""
+    # ★2026-10-25（老板："派活后也要能核对它到底干没干"）：协议型且它有"读会话"工具时，
+    #   送完**读回核对**一次；核对码写进正文末尾（明确告知，不偷偷加）。
+    if bool(body.get("verify_session", True)) and str(body.get("code") or "").strip() != "off":
+        try:
+            from ..harness_adapter import harness_manager as _hm
+
+            _sess = _hm.sessions.get(str(harness_id or ""))
+            _kind = str(getattr(getattr(_sess, "info", None), "wakeup_method", "") or "").lower()
+            _kind = getattr(_kind, "value", _kind)
+            if _kind in ("mcp", "http", "http_api"):
+                _res_v = await asyncio.to_thread(_verify_session_readback, str(harness_id),
+                                                 text, str(body.get("session_id") or ""))
+                res["session_check"] = _res_v
+        except Exception as e:                                 # noqa: BLE001 — 核对失败不影响"送没送"
+            res["session_check"] = {"checked": False, "why": "%s: %s" % (type(e).__name__, str(e)[:120])}
     return res
 
 

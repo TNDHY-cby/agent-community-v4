@@ -78,7 +78,26 @@ def block_reason(*, empty_now: bool, owned: bool, degraded: bool,
     return ""
 
 
-def write_items(items, data_dir: Path) -> tuple:
+def _payload_empty(data) -> bool:
+    """这份状态算不算"空"（dict/list/str 长度为 0；None 也算空）。"""
+    if data is None:
+        return True
+    if isinstance(data, (dict, list, str)):
+        return len(data) == 0
+    return False
+
+
+def _disk_file_nonempty(path: Path) -> bool:
+    """磁盘上这份文件**有内容**吗（不存在/读不出/坏 JSON 都算"没有"——不该因此拒写新内容）。"""
+    try:
+        if not path.is_file():
+            return False
+        return not _payload_empty(json.loads(path.read_text(encoding="utf-8")))
+    except Exception:                                        # noqa: BLE001 — 坏文件当空处理，下面照写
+        return False
+
+
+def write_items(items, data_dir: Path, *, allow_empty: bool = False) -> tuple:
     """**逐项**序列化 + 原子写盘（`items` 是 `[(文件名, () -> 数据)]`）。
 
     ★为什么是"惰性可调用"而不是现成 dict（2026-10-23 抽取时踩到）：
@@ -86,6 +105,12 @@ def write_items(items, data_dir: Path) -> tuple:
     `info.model_dump()` 会抛 `AttributeError`。如果先在调用方把整个 dict 组装好，
     这一个坏对象就会**把全部状态的落盘都打断**（正好是历史事故里最怕的那种"全废"）。
     ⇒ 逐项：这一项坏，只记它失败，其它照写。
+
+    🚨**第三道闸（逐文件，2026-10-24 事故后加）**：某个进程可能只认识**一部分**状态
+    （例如外部 agent 的诊断脚本只登记了 harness，`workshops` 在它内存里是空的），
+    无脑写盘就会把别人的 `workshops.json` 覆盖成 `{}` —— 实测就这么丢过数据。
+    规则：**新内容是空的、而磁盘这份文件非空** ⇒ **跳过这份、并大声说清**；
+    真要清库仍可显式传 `allow_empty=True`（`save_state` 侧认 `AC_STATE_ALLOW_EMPTY=1`）。
 
     返回 `(ok, failed_names)`；绝不抛异常。
     """
@@ -95,6 +120,10 @@ def write_items(items, data_dir: Path) -> tuple:
     for name, build in items:
         try:
             data = build()
+            if not allow_empty and _payload_empty(data) and _disk_file_nonempty(d / name):
+                print("[persist][危险] %s：本进程这份状态是空的，而磁盘上非空 ⇒ **跳过这份、不覆盖**"
+                      "（跨进程/诊断脚本常见；真要清库请设 AC_STATE_ALLOW_EMPTY=1）" % name, flush=True)
+                continue
             atomic_write_text(d / name, json.dumps(data, ensure_ascii=False, indent=2))
         except Exception as e:                               # noqa: BLE001 — 逐项报，别让一个坏对象拖垮全部
             ok = False

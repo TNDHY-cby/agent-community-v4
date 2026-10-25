@@ -165,6 +165,11 @@ function dockRender(d){
  */
 const DOCK_WRITE_WHITELIST = [
   '/api/harness/pre-register',
+  '/api/harness/probe-protocol',          // ★第①步：帮我探一次（不用先填字段）
+  '/api/docking/harness/*/bring-front',      // ★第④步：打开它的会话
+  '/api/harness/activation-result',   // ★接入向导⑤：人工搬运——我确认它回了
+  '/api/docking/harness/*/test-now',  // ★接入向导④：真打一次
+  '/api/harness/*/verify',  // ★接入向导②：让平台验一次（acp 类）
   '/api/harness/probe-register',
   '/api/harness/register',
   '/api/workshop/*/onboard-members',
@@ -274,6 +279,29 @@ function dockPath(tpl, ws, mid){
     .replace('{mid}', encodeURIComponent(mid || ''));
 }
 
+/** 只读 GET（不走白名单 —— 白名单管的是"会改状态"的请求）。失败原样返回 error。 */
+async function dockGet(path){
+  try {
+    const r = await fetch(path, {headers: {'Accept': 'application/json'}});
+    const d = await r.json().catch(() => ({error: '返回不是 JSON（HTTP ' + r.status + '）'}));
+    return {ok: r.ok, data: d, status: r.status};
+  } catch (e) {
+    return {ok: false, data: {error: '请求发不出去：' + (e && e.message ? e.message : e)}, status: 0};
+  }
+}
+
+/** 取**纯文本**返回（register-prompt 是 text/markdown，不能按 JSON 解）。 */
+async function dockGetText(path){
+  try {
+    const r = await fetch(path, {headers: {'Accept': 'text/markdown, text/plain'}});
+    const t = await r.text();
+    if (!r.ok) return {ok: false, text: '', data: {error: t.slice(0, 400) || ('HTTP ' + r.status)}, status: r.status};
+    return {ok: true, text: t, data: {}, status: r.status};
+  } catch (e) {
+    return {ok: false, text: '', data: {error: '请求发不出去：' + (e && e.message ? e.message : e)}, status: 0};
+  }
+}
+
 async function dockPost(path, body){
   if (!dockAllowed(path)){
     // 白名单是**代码里的一道闸**：写错路径时当场说清，而不是偷偷发出去
@@ -321,7 +349,7 @@ function _dockScrollTo(id){
   if (el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'start'});
 }
 const DOCK_SVC = {
-  register:        { sec:'dockRegisterWrap', title:'登记一位新员工', mount(){ dockMountRegister(); } },
+  register:        { sec:'dockRegisterWrap', title:'接入向导（五步 · 卡片跟着协议变）', mount(){ dockMountWizard(); } },
   script_activate: { sec:'dockScriptWrap',   title:'脚本激活工作台', mount(){ dockMountScript(); } },
   deliver:         { sec:'dockDeliverWrap',  title: DOCK_GLOBAL ? '送到哪位 harness（平台自己找目标、选通道）' : '送话给员工（平台自己找目标、选通道）', mount(){ dockMountDeliver(); } },
   archive:         { sec:'dockArchiveWrap',  title:'员工档案',       mount(){ dockLoadArchive(); } },
@@ -748,6 +776,588 @@ async function dockProbeRegister(){
   if (msg) msg.textContent = res.ok ? '已登记' : '失败，看下面的原因';
   dockRenderResult(document.getElementById('regResult'), res);
   dockLoad();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   接入向导（五步 + 协议树）· 老板 2026-10-25 定
+   ① 先问协议（可跳过）② 选协议 → 真注册（卡片按协议不同）③ 复制注册引导(.md)
+   ④ 检测 ⑤ 跟它对话（人工搬运）
+   协议与卡片**只读** GET /api/docking/protocol-tree，JS 里不抄第二份。
+   ══════════════════════════════════════════════════════════════════════════ */
+const WIZ = { tree: null, step: 1, protocol: '', harnessId: '', guide: '', error: '' };
+const WIZ_TITLES = ['问协议', '选协议并注册', '复制引导', '检测', '跟它对话'];
+
+/** 把接入向导搬到**第一屏最上面**（老板 2026-10-25：第一屏就是五步，不是一排瓦片）。 */
+function dockMountWizardInline(){
+  if (!DOCK_GLOBAL) return;
+  const host = document.getElementById('dockServices');
+  if (!host) return;
+  dockMountWizard();
+  const sec = document.getElementById('dockRegisterWrap');
+  if (!sec || sec.dataset.inlineMoved) return;
+  sec.dataset.inlineMoved = '1';
+  sec.classList.add('dock-wizard-inline');
+  /* 第一屏只放向导；其它能力折进「其它工具」，不再和向导抢版面 */
+  const rest = [...host.children].filter(function (el){ return el !== sec; });
+  const det = document.createElement('details');
+  det.className = 'dock-more';
+  det.innerHTML = '<summary>其它工具（送话 / 档案 / 问前台 / 安装器 / 抢救 / 外部公司 / 脚本激活 / 建会话 / 通道 / 架桥）</summary>';
+  rest.forEach(function (el){ det.appendChild(el); });
+  host.innerHTML = '';
+  host.appendChild(sec);
+  host.appendChild(det);
+  const tile = document.querySelector('[data-dock-service="register"]');
+  if (tile && tile.parentElement) tile.parentElement.style.display = 'none';
+}
+
+async function dockMountWizard(){
+  const wrap = document.getElementById('dockRegisterWrap');
+  if (!wrap) return;
+  if (!DOCK_GLOBAL){ wrap.innerHTML = ''; return; }      /* 注册是全局能力（V34 §1） */
+  if (wrap.dataset.mounted) return;
+  wrap.dataset.mounted = '1';
+  wrap.innerHTML =
+    '<div class="card wiz">' +
+    '<div class="wiz-head"><b>接入向导</b><span class="sub">五步把外面的 agent 接进来</span>' +
+    '<span class="dock-msg" id="wizMsg"></span></div>' +
+    '<ol class="wiz-steps" id="wizSteps"></ol>' +
+    '<div id="wizBody" class="wiz-body"><p class="sub">正在读平台给的协议表…</p></div>' +
+    '<div class="wiz-nav">' +
+    '<button class="btn mini quiet" onclick="wizGo(-1)">上一步</button>' +
+    '<button class="btn mini" onclick="wizGo(1)">下一步</button>' +
+    '</div></div>';
+  await wizLoad();
+  wizRender();
+}
+
+async function wizLoad(){
+  const res = await dockGet('/api/docking/protocol-tree');
+  const d = res.data || {};
+  if (!res.ok || !d.protocols){
+    WIZ.error = (d && d.error) || ('HTTP ' + res.status);
+    return;
+  }
+  WIZ.tree = d;
+}
+
+function wizSay(t, bad){
+  const el = document.getElementById('wizMsg');
+  if (!el) return;
+  el.textContent = t || '';
+  el.style.color = bad ? 'var(--red,#FF3526)' : '';
+}
+
+/** 步骤条：当前步高亮；能跳的步可点（已注册之后才允许跳③④⑤） */
+/** 当前选中的协议（第④步按协议分流用） */
+function _wizProto(){
+  return ((WIZ.tree && WIZ.tree.protocols) || []).find(function (x){ return x.id === WIZ.protocol; }) || {};
+}
+
+function wizRenderSteps(){
+  const ol = document.getElementById('wizSteps');
+  if (!ol) return;
+  ol.innerHTML = WIZ_TITLES.map(function (t, i){
+    const n = i + 1;
+    const cls = ['wiz-step'];
+    if (n === WIZ.step) cls.push('on');
+    if (n < WIZ.step) cls.push('done');
+    const reachable = n <= 3 || !!WIZ.harnessId;
+    return '<li class="' + cls.join(' ') + '"' + (reachable ? ' onclick="wizJump(' + n + ')"' : '') + '>' +
+      '<span class="n">' + n + '</span>' + esc(t) + '</li>';
+  }).join('');
+}
+
+function wizJump(n){
+  if (n >= 4 && !WIZ.harnessId){ wizSay('先在第 3 步的列表里选它（或手动填过），才能检测', true); return; }
+  WIZ.step = n; wizRender();
+}
+
+function wizGo(delta){
+  const target = WIZ.step + delta;
+  if (target < 1 || target > 5) return;
+  if (target > 1 && !WIZ.tree){ wizSay('协议表还没读到', true); return; }
+  if (target >= 4 && !WIZ.harnessId){ wizSay('先在第 3 步的列表里选它（或手动填过）', true); return; }
+  WIZ.step = target; wizRender();
+}
+
+/** 只画当前这一步 */
+function wizRender(){
+  wizRenderSteps();
+  const body = document.getElementById('wizBody');
+  if (!body) return;
+  if (WIZ.error){
+    body.innerHTML = '<div class="dock-err">✗ 读不到协议表：' + escPlain(WIZ.error) + '</div>';
+    return;
+  }
+  if (!WIZ.tree){ body.innerHTML = '<p class="sub">正在读…</p>'; return; }
+  const steps = WIZ.tree.steps || [];
+  const meta = steps[WIZ.step - 1] || {};
+  const prevBtn = document.querySelector('.wiz-nav .btn.quiet');
+  const nextBtn = document.querySelector('.wiz-nav .btn:not(.quiet)');
+  if (prevBtn) prevBtn.style.visibility = (WIZ.step === 1) ? 'hidden' : 'visible';
+  if (nextBtn) nextBtn.style.visibility = (WIZ.step === 5) ? 'hidden' : 'visible';
+
+  if (WIZ.step === 1){
+    body.innerHTML =
+      '<p class="wiz-p">' + escPlain(meta.what || '平台先判断它是哪种接入方式。') + '</p>' +
+      '<div class="wiz-actions"><button class="btn mini quiet" onclick="wizProbe()">帮我探一次</button>' +
+      '<span class="dock-msg" id="wizProbeMsg"></span></div>' +
+      '<div id="wizProbeOut" class="wiz-result"></div>' +
+      '<p class="wiz-hint">拿不准就往下一步走 —— 那边每个协议都有一句人话。</p>';
+    return;
+  }
+
+  if (WIZ.step === 2){
+    body.innerHTML =
+      '<div class="wiz-grid">' + (WIZ.tree.protocols || []).map(function (p){
+        const short = String(p.label || p.id).split('（')[0];
+        const tag = p.can_be_woken ? '能叫醒' : '叫不醒';
+        return '<button class="wiz-proto-card' + (WIZ.protocol === p.id ? ' on' : '') + '" onclick="wizPickProto(\'' + esc(p.id) + '\')">' +
+          '<b>' + esc(short) + '</b><span class="sub">' + esc(tag) + (p.needs_bridge ? ' · 要桥' : '') + '</span></button>';
+      }).join('') + '</div>' +
+      '<div id="wizDetail" class="wiz-detail"></div>';
+    wizRenderDetail();
+    return;
+  }
+
+  if (WIZ.step === 3){
+    body.innerHTML =
+      '<p class="wiz-p">把这段 Markdown 复制给外端 agent —— 它照着就能自己登记进来。</p>' +
+      '<div class="wiz-actions"><button class="btn primary" onclick="wizCopyGuide()">复制引导（.md）</button>' +
+      '<span class="dock-msg" id="wizGuideMsg"></span></div>' +
+      '<details class="wiz-more"><summary>先看看这段内容</summary><pre id="wizGuidePre" class="wiz-pre"></pre></details>' +
+      '<div class="wiz-pick"><span class="sub">它登记进来了吗？</span>' +
+      '<select id="wizHarnessPick" onchange="wizPickHarness(this.value)"></select>' +
+      '<button class="btn mini quiet" onclick="wizRefreshHarness()">刷新列表</button>' +
+      '<span class="dock-msg" id="wizPickMsg"></span></div>';
+    if (WIZ.guide){
+      const pre = document.getElementById('wizGuidePre');
+      const det = document.querySelector('.wiz-more');
+      if (pre) pre.textContent = WIZ.guide;
+      if (det) det.open = true;
+    }
+    wizRefreshHarness(true);
+    return;
+  }
+
+  if (WIZ.step === 4){
+    const p = _wizProto();
+    const needVisual = !p.can_be_woken;
+    const h = _wizHarness();
+    body.innerHTML =
+      '<p class="wiz-p">' + (WIZ.harnessId
+        ? (needVisual
+          ? ('<b>' + esc(WIZ.harnessId) + '</b> 只能靠视觉：平台会把它抬到前台、点输入框、粘一句、发送 —— 成没成照实写，' +
+             '<b>回没回你自己在它的窗口里看</b>。')
+          : ('<b>' + esc(WIZ.harnessId) + '</b> 走 <b>' + esc((p.label || '').split('（')[0]) +
+             '</b>：平台直接调它的接口，<b>不动它的窗口、也不需要框选</b>。'))
+        : '还没认到是哪一位 —— 回第 3 步在列表里选它（或手动填过）。') + '</p>' +
+      '<div class="wiz-actions">' +
+      '<button class="btn primary" onclick="wizTest()">测一次（请回复：收到）</button>' +
+      (needVisual ? '<button class="btn mini" onclick="wizRunVisual()">让它在对话框里做一次动作</button>' : '') +
+      '<button class="btn mini quiet" onclick="wizBringFront()">打开它的会话</button>' +
+      '<span class="dock-msg" id="wizTestMsg"></span></div>' +
+      '<div class="wiz-session-pick"><span class="sub">发到哪条会话：</span>' +
+      '<select id="wizSessionPick" onchange="wizSessionPicked(this.value)"><option value="">自动（沿用上次核对通过的那条）</option></select>' +
+      '<input id="wizSessionId" placeholder="或手填会话 id（可选）">' +
+      '<button class="btn mini quiet" onclick="wizSessionsLoad()">列出它的会话</button>' +
+      '<span class="dock-msg" id="wizSessMsg"></span></div>' +
+      '<div id="wizTestOut" class="wiz-result"></div>' +
+      (needVisual
+        ? ('<div class="wiz-actions"><label class="dk-inline"><input type="checkbox" id="wizSawReply"> 我看到它回话了</label>' +
+           '<button class="btn mini quiet" onclick="wizRecordReply()">记录这一条</button>' +
+           '<span class="dock-msg" id="wizReplyMsg"></span></div>')
+        : '') +
+      (needVisual ? '' : _wizSessionPostHtml(h));   /* 只有走接口的协议才谈得上“加 session_post” */
+    wizSessionsLoad(true);   /* 顺手列一次（对方没这工具就如实说） */
+    /* 刷新页面后也别让结果区空着：overview 里带着上次结果（h.last_test） */
+    if (h && h.last_test){
+      const box = document.getElementById('wizTestOut');
+      if (box) box.innerHTML = _wizTestHtml(h.last_test);
+    }
+    return;
+  }
+
+  body.innerHTML =
+    '<p class="wiz-p">叫不醒的协议用这个：平台那句你粘给它，它回的原话你粘回来。</p>' +
+    '<div class="wiz-line"><input id="wizChatSend" readonly placeholder="平台这句话"><button class="btn mini" onclick="wizCopyChat()">复制</button></div>' +
+    '<textarea id="wizChatBack" rows="3" placeholder="把它回的那段原话粘进来"></textarea>' +
+    '<div class="wiz-actions"><button class="btn primary" onclick="wizConfirmBack()">我确认它回了</button>' +
+    '<span class="dock-msg" id="wizChatMsg"></span></div>' +
+    '<div id="wizChatOut" class="wiz-result"></div>';
+  wizChatInit();
+}
+
+/** 第 2 步：选中协议后的卡片 + 字段 */
+function wizRenderDetail(){
+  const box = document.getElementById('wizDetail');
+  if (!box) return;
+  if (!WIZ.protocol){ box.innerHTML = '<p class="wiz-hint">挑一个最像的；选完这里会出现它要做的事。</p>'; return; }
+  const p = ((WIZ.tree.protocols || []).find(function (x){ return x.id === WIZ.protocol; })) || {};
+  const LBL = { harness_id: 'harness_id（标识）', api_base_url: '地址', acp_command: 'ACP 启动命令',
+    wakeup_dir: '收件目录', 'ai.model_name': '模型名' };
+  box.innerHTML =
+    '<div class="wiz-cards">' + (p.cards || []).map(function (c, i){
+      const needHid = (c.action === 'test_now' || c.action === 'verify' || c.action === 'add_member');
+      const blocked = needHid && !WIZ.harnessId;
+      return '<button class="wiz-card' + (blocked ? ' off' : '') + '"' +
+        (blocked ? ' title="等它登记进来（或手动填）之后才能点"' : ' onclick="wizCard(\'' + esc(c.action) + '\',' + i + ')"') + '>' +
+        '<b>' + esc(c.title || c.action) + '</b><span class="sub">' + escPlain(c.detail || '') + '</span></button>';
+    }).join('') + '</div>' +
+    '<p class="wiz-hint"><b>这一步不用你填</b> —— 下一步把引导（.md）复制给外端 agent，' +
+    '它自己会调接口登记；登记完你在第 3 步的列表里选它就行。</p>' +
+    '<details class="wiz-more"><summary>agent 自己注册不了时，手动填（可选）</summary>' +
+    '<div class="wiz-form">' + (p.required || []).map(function (k){
+      const id = 'wizf-' + k.replace(/[^a-z0-9]/gi, '-');
+      return '<label>' + esc(LBL[k] || k) + '<input id="' + id + '" data-field="' + esc(k) + '"' +
+        (k === 'harness_id' ? ' placeholder="例如 demo-harness"' : '') + '></label>';
+    }).join('') + '</div>' +
+    '<div class="wiz-actions"><button class="btn mini" onclick="wizRegister()">用手填的这些注册</button>' +
+    '<span class="dock-msg" id="wizRegMsg"></span></div></details>' +
+    '<div id="wizRegOut" class="wiz-result"></div>' +
+    (WIZ.harnessId ? ('<p class="wiz-hint">已认到：<b>' + esc(WIZ.harnessId) + '</b></p>') : '');
+}
+
+/** 从「已登记」里把刚注册进来的那位选出来（老板：字段让 agent 自己填，人只挑一下） */
+async function wizRefreshHarness(quiet){
+  const sel = document.getElementById('wizHarnessPick');
+  const msg = document.getElementById('wizPickMsg');
+  if (!sel) return;
+  try { await dockLoad(); } catch (e) { /* 拉不到就用旧的 */ }
+  const hs = (DOCK_LAST_OVERVIEW && DOCK_LAST_OVERVIEW.harnesses) || [];
+  /* 标出「已框选 / 未框选」—— 未框选的点第④步必然 409，先说清楚 */
+  const boxed = {};
+  await Promise.all(hs.map(async function (h){
+    const id = h.harness_id || '';
+    if (!id) return;
+    const r = await dockGet('/api/docking/harness/' + encodeURIComponent(id) + '/regions');
+    boxed[id] = !!(r.ok && r.data && r.data.regions);
+  }));
+  const ordered = hs.slice().sort(function (a, b){
+    return (boxed[b.harness_id] ? 1 : 0) - (boxed[a.harness_id] ? 1 : 0);
+  });
+  sel.innerHTML = '<option value="">（还没看到它）</option>' + ordered.map(function (h){
+    const id = h.harness_id || '';
+    return '<option value="' + esc(id) + '"' + (WIZ.harnessId === id ? ' selected' : '') + '>' +
+      esc(h.harness_name || id) + '（' + esc(id) + '）' + (h.online ? ' · 在线' : ' · 离线') +
+      (boxed[id] ? ' · 已框选，能直接动' : ' · 未框选') + '</option>';
+  }).join('');
+  if (!quiet && msg) msg.textContent = hs.length ? ('共 ' + hs.length + ' 位已登记') : '还没有登记的';
+}
+function wizPickHarness(id){
+  WIZ.harnessId = id || '';
+  wizRender();                       /* 先重画（重画会把提示清掉），再写提示 */
+  const msg = document.getElementById('wizPickMsg');
+  if (msg) msg.textContent = id ? ('已认到：' + id) : '';
+}
+
+function wizPickProto(id){
+  WIZ.protocol = id;
+  wizSay('');
+  wizRender();
+}
+
+function wizFieldValues(){
+  const out = { harness_id: '', ai: {} };
+  document.querySelectorAll('#wizDetail [data-field]').forEach(function (el){
+    const k = el.getAttribute('data-field');
+    const v = (el.value || '').trim();
+    if (k === 'ai.model_name'){ out.ai.model_name = v; return; }
+    out[k] = v;
+  });
+  if (!out.ai.model_name) delete out.ai;
+  return out;
+}
+
+async function wizRegister(){
+  if (!WIZ.protocol){ wizSay('先选一个协议', true); return; }
+  const body = Object.assign({ wakeup_method: WIZ.protocol }, wizFieldValues());
+  if (!body.harness_id){ wizSay('harness_id 必填', true); return; }
+  wizSay('正在注册…');
+  const res = await dockPost('/api/harness/register', body);
+  const d = res.data || {};
+  const out = document.getElementById('wizRegOut');
+  if (!res.ok || d.error){
+    wizSay('');
+    if (out) out.innerHTML = '<div class="dock-err">✗ ' + escPlain(d.error || ('HTTP ' + res.status)) + '</div>';
+    return;
+  }
+  WIZ.harnessId = body.harness_id;
+  wizSay('');
+  if (out) out.innerHTML = '<div class="dock-ok">✓ 注册成功：<code>' + esc(WIZ.harnessId) + '</code></div>';
+  wizRender();
+}
+
+/** 卡片动作：每张都对应一个真请求（不许死按钮） */
+async function wizCard(action, idx){
+  if (action === 'edit_fields'){ wizSay('在下面填字段，然后点「真注册」'); return; }
+  if (action === 'copy_guide'){ WIZ.step = 3; wizRender(); setTimeout(function (){ wizCopyGuide(); }, 50); return; }
+  if (action === 'open_script_editor'){ dockGo('script_activate'); return; }
+  if (action === 'open_bridge'){ dockGo('bridge_helper'); return; }
+  if (action === 'manual_chat'){ WIZ.step = 5; wizRender(); return; }
+  if (action === 'test_now'){
+    wizSay('正在测…');
+    const res = await dockPost(_dockHidPath('/api/docking/harness/{hid}/test-now', WIZ.harnessId), {});
+    const d = res.data || {};
+    const ok = res.ok && d.ok !== false;
+    wizSay(ok ? ('✓ ' + (d.detail || '通了')) : ('✗ ' + (d.detail || d.error || ('HTTP ' + res.status))), !ok);
+    return;
+  }
+  if (action === 'verify'){
+    wizSay('正在验…');
+    const res = await dockPost('/api/harness/' + encodeURIComponent(WIZ.harnessId) + '/verify', {});
+    const d = res.data || {};
+    wizSay((res.ok ? '✓ ' : '✗ ') + (d.detail || d.error || ('HTTP ' + res.status)), !res.ok);
+    return;
+  }
+  if (action === 'add_member'){
+    if (!DOCK_WS){ wizSay('大厅里没有工作间 —— 到工作间里再点「加成员」', true); return; }
+    const res = await dockPost('/api/workshop/' + encodeURIComponent(DOCK_WS) + '/members', { harness_id: WIZ.harnessId });
+    wizSay(res.ok ? '✓ 已加进工作间' : ('✗ ' + ((res.data && res.data.error) || ('HTTP ' + res.status))), !res.ok);
+    return;
+  }
+  wizSay('这个动作还没接：' + action, true);
+}
+
+async function wizCopyGuide(){
+  if (!WIZ.protocol){ wizSay('先选协议', true); return; }
+  const msg = document.getElementById('wizGuideMsg');
+  if (msg) msg.textContent = '正在取…';
+  const res = await dockGetText('/api/harness/register-prompt?wakeup_method=' + encodeURIComponent(WIZ.protocol) + '&format=md');
+  const text = res.text || '';
+  if (!res.ok || !text){ if (msg) msg.textContent = '✗ ' + ((res.data && res.data.error) || ('HTTP ' + res.status)); return; }
+  WIZ.guide = text;
+  const pre = document.getElementById('wizGuidePre');
+  const det = document.querySelector('.wiz-more');
+  if (pre) pre.textContent = text;
+  if (det) det.open = true;
+  try { await navigator.clipboard.writeText(text); if (msg) msg.textContent = '✓ 已复制（' + text.length + ' 字节）'; }
+  catch (e) { if (msg) msg.textContent = '已取到，浏览器不让复制 —— 从下面那段手选'; }
+}
+
+/** 第④步主路径：真的让目标在自己的对话框里做一次动作（visual-run），逐步显示 */
+/** 当前认到的 harness 在 overview 里的那一条（拿 in_session_capable 等字段） */
+function _wizHarness(){
+  const hs = (typeof DOCK_LAST_OVERVIEW !== 'undefined' && DOCK_LAST_OVERVIEW && DOCK_LAST_OVERVIEW.harnesses) || [];
+  return hs.find(function (h){ return h.harness_id === WIZ.harnessId; }) || null;
+}
+
+/** 「它还不能在自己的会话里说话」时：给出原因 + 复制后端给的要求（前端不拼文案） */
+function _wizSessionPostHtml(h){
+  /* 后端说缺什么（session_need / session_post_need）就显示什么 —— 不再只认 in_session_capable === false */
+  if (!h || !h.session_post_need) return '';
+  return '<div class="wiz-session-post"><p class="wiz-hint">' + escPlain(h.session_post_need || '它还不能在自己的会话里说话。') + '</p>' +
+    '<div class="wiz-actions"><button class="btn mini" onclick="wizCopySessionPost()">复制要求给它</button>' +
+    '<span class="dock-msg" id="wizSpMsg"></span></div></div>';
+}
+async function wizCopySessionPost(){
+  const h = _wizHarness();
+  const msg = document.getElementById('wizSpMsg');
+  const url = (h && h.session_post_guide) || ('/api/docking/harness/' + encodeURIComponent(WIZ.harnessId) + '/session-post-guide?format=md');
+  if (msg) msg.textContent = '正在取…';
+  const res = await dockGetText(url);
+  if (!res.ok || !res.text){ if (msg) msg.textContent = '✗ ' + ((res.data && res.data.error) || ('HTTP ' + res.status)); return; }
+  try { await navigator.clipboard.writeText(res.text); if (msg) msg.textContent = '✓ 已复制（' + res.text.length + ' 字节）—— 发给它'; }
+  catch (e) { if (msg) msg.textContent = '已取到，浏览器不让复制'; }
+}
+
+/** 第①步：帮我探一次（先列候选端口，选一条再真探） */
+async function wizProbe(){
+  const msg = document.getElementById('wizProbeMsg');
+  const out = document.getElementById('wizProbeOut');
+  if (msg) msg.textContent = '正在列候选端口…';
+  const res = await dockPost('/api/harness/probe-protocol', {});
+  const d = res.data || {};
+  if (msg) msg.textContent = '';
+  if (!res.ok || d.error){
+    if (out) out.innerHTML = '<div class="dock-err">✗ ' + escPlain(d.error || ('HTTP ' + res.status)) + '</div>';
+    return;
+  }
+  const cs = d.candidates || [];
+  if (!cs.length){
+    if (out) out.innerHTML = '<p class="wiz-hint">' + escPlain(d.why || '没看到像样的候选端口 —— 直接往下一步走。') + '</p>';
+    return;
+  }
+  if (out) out.innerHTML = '<p class="wiz-hint">' + escPlain(d.why || '这些只是候选，不是结论 —— 选一个真探一次：') + '</p>' +
+    '<div class="wiz-cards">' + cs.map(function (c, i){
+      return '<button class="wiz-card" onclick="wizProbeUrl(' + c.port + ')">' +
+        '<b>端口 ' + esc(String(c.port)) + '</b><span class="sub">' + escPlain(c.process || '（没认出进程）') +
+        (c.guess ? ' · ' + escPlain(c.guess) : '') + '</span></button>';
+    }).join('') + '</div>';
+}
+async function wizProbeUrl(port){
+  const msg = document.getElementById('wizProbeMsg');
+  const out = document.getElementById('wizProbeOut');
+  if (msg) msg.textContent = '正在真探 127.0.0.1:' + port + ' …';
+  const res = await dockPost('/api/harness/probe-protocol', {url: 'http://127.0.0.1:' + port + '/mcp'});
+  const d = res.data || {};
+  if (msg) msg.textContent = '';
+  if (out) out.innerHTML = '<div class="' + (res.ok && d.protocol ? 'dock-ok' : 'dock-warn') + '">' +
+    (res.ok && d.protocol ? ('✓ 像是 <b>' + esc(d.protocol) + '</b>') : ('⚠ ' + escPlain(d.why || ('HTTP ' + res.status)))) + '</div>' +
+    ((d.evidence || []).length ? ('<ul class="wiz-steps-list">' + d.evidence.map(function (e){ return '<li>' + escPlain(String(e)) + '</li>'; }).join('') + '</ul>') : '');
+  if (res.ok && d.protocol){
+    WIZ.protocol = d.protocol;
+    WIZ.step = 2;
+    wizRender();
+  }
+}
+
+/** 「打开它的会话」（抬前台）—— 做不到就把后端 why 原样显示 */
+async function wizBringFront(){
+  const msg = document.getElementById('wizTestMsg');
+  if (!WIZ.harnessId){ if (msg) msg.textContent = '先认到它'; return; }
+  if (msg) msg.textContent = '正在把它调到前面…';
+  const res = await dockPost(_dockHidPath('/api/docking/harness/{hid}/bring-front', WIZ.harnessId), {});
+  const d = res.data || {};
+  if (msg) msg.textContent = '';
+  const ok = res.ok && d.ok !== false;
+  const out = document.getElementById('wizTestOut');
+  if (out) out.innerHTML = '<div class="' + (ok ? 'dock-ok' : 'dock-warn') + '">' +
+    (ok ? ('✓ 已把它调到前面' + (d.title ? ('（' + escPlain(d.title) + '）') : ''))
+        : ('⚠ 没能调到前面：' + escPlain(d.why || d.error || ('HTTP ' + res.status)))) + '</div>';
+}
+
+async function wizRunVisual(){
+  const msg = document.getElementById('wizTestMsg');
+  const out = document.getElementById('wizTestOut');
+  if (!WIZ.harnessId){ if (msg) msg.textContent = '先在第 3 步认到它'; return; }
+  if (msg) msg.textContent = '正在让它动一下（抬前台 → 点输入框 → 粘 → 发送）…';
+  const res = await dockPost(_dockHidPath('/api/docking/harness/{hid}/visual-run', WIZ.harnessId), {
+    text: '请回复：收到', enter: true, new_session: false, restore_focus: true});
+  const d = res.data || {};
+  if (msg) msg.textContent = '';
+  if (!res.ok || d.error){
+    const why = d.why || d.error || ('HTTP ' + res.status);
+    const steps2 = d.steps || [];
+    if (out) out.innerHTML = '<div class="dock-err">✗ 没跑成：' + escPlain(why) + '</div>' +
+      (steps2.length ? ('<ul class="wiz-steps-list">' + steps2.map(function (x){
+        return '<li>' + (x.ok ? '✓' : '✗') + ' ' + escPlain(x.name) + (x.why ? '：' + escPlain(x.why) : '') + '</li>';
+      }).join('') + '</ul>') : '') +
+      (/框|绑定|截不了|最小化/.test(String(why))
+        ? '<div class="wiz-actions"><button class="btn mini" onclick="dockGo(\'script_activate\')">去框选输入框</button>' +
+          '<span class="wiz-hint">框完再回来点这一下。</span></div>'
+        : '');
+    return;
+  }
+  const steps = d.steps || [];
+  const allOk = steps.length > 0 && steps.every(function (x){ return x.ok === true; });
+  WIZ.visualOk = allOk;
+  if (out) out.innerHTML =
+    (allOk ? '<div class="dock-ok">✓ 它在自己的对话框里做完了一串动作</div>'
+           : '<div class="dock-warn">⚠ 停在：' + escPlain((steps.filter(function (x){ return !x.ok; })[0] || {}).name || '某一步') + '</div>') +
+    '<ul class="wiz-steps-list">' + steps.map(function (x){
+      return '<li>' + (x.ok ? '✓' : '✗') + ' ' + escPlain(x.name) +
+        (x.pasted === true ? '（粘进去了' + (typeof x.ratio === 'number' ? '，画面变化 ' + (x.ratio * 100).toFixed(2) + '%' : '') + '）' : '') +
+        (x.why ? '：' + escPlain(x.why) : '') + '</li>';
+    }).join('') + '</ul>' +
+    '<p class="wiz-hint">' + (d.state ? ('状态：' + escPlain(d.state) + '　') : '') +
+    (d.focus_restored === false ? '收尾没能把前台还回去' : '收尾已把前台还回去') + '</p>';
+}
+
+
+/** 人工确认：「我看到它回话了」→ 记进档案（不冒充平台自动确认） */
+async function wizRecordReply(){
+  const saw = !!(document.getElementById('wizSawReply') || {}).checked;
+  const msg = document.getElementById('wizReplyMsg');
+  if (!WIZ.harnessId){ if (msg) msg.textContent = '先认到它'; return; }
+  if (!saw){ if (msg) msg.textContent = '先在左边勾一下「我看到它回话了」'; return; }
+  const res = await dockPost('/api/harness/activation-result', {
+    harness_id: WIZ.harnessId, ok: true, via: 'manual_test',
+    note: '人工确认：第④步让它在对话框做动作后，我看到它回话了' + (WIZ.visualOk ? '（平台侧步骤全绿）' : '（平台侧未全绿）') + (WIZ.shotUrl ? '（附发送后的截图）' : '') });
+  const d = res.data || {};
+  if (msg) msg.textContent = res.ok ? '✓ 已记进档案' : ('✗ ' + (d.error || ('HTTP ' + res.status)));
+}
+
+/** 「发到哪条会话」：能列就列（GET …/sessions），列不出来就如实说并让人手填 */
+async function wizSessionsLoad(quiet){
+  const sel = document.getElementById('wizSessionPick');
+  const msg = document.getElementById('wizSessMsg');
+  if (!sel) return;
+  const res = await dockGet(_dockHidPath('/api/docking/harness/{hid}/sessions', WIZ.harnessId));
+  const d = res.data || {};
+  const list = d.sessions || d.items || [];
+  if (!res.ok || d.error || !list.length){
+    const why = (d && (d.error || d.why)) || (list.length ? '' : '它还列不出会话');
+    if (msg && !quiet) msg.textContent = '⚠ ' + why + (res.ok ? '（不填就沿用上次核对通过的那条）' : '');
+    return;
+  }
+  sel.innerHTML = '<option value="">自动（沿用上次核对通过的那条）</option>' + list.map(function (x){
+    const id = x.session_id || x.id || '';
+    return '<option value="' + esc(id) + '">' + esc(x.title || id) + (x.updated_at ? (' · ' + esc(String(x.updated_at))) : '') + '</option>';
+  }).join('');
+}
+function wizSessionPicked(v){
+  const box = document.getElementById('wizSessionId');
+  if (box && v) box.value = '';
+  const msg = document.getElementById('wizSessMsg');
+  if (msg) msg.textContent = v ? ('会发到：' + v) : '';
+}
+
+async function wizTest(){
+  const msg = document.getElementById('wizTestMsg');
+  const out = document.getElementById('wizTestOut');
+  if (!WIZ.harnessId){ if (msg) msg.textContent = '先注册/认到它'; return; }
+  if (msg) msg.textContent = '正在测（让它回一句「收到」）…';
+  const body = {text: '请回复：收到'};
+  const sid = (document.getElementById('wizSessionId') || {}).value || (document.getElementById('wizSessionPick') || {}).value || '';
+  if (sid && String(sid).trim()) body.session_id = String(sid).trim();
+  const res = await dockPost(_dockHidPath('/api/docking/harness/{hid}/test-now', WIZ.harnessId), body);
+  const d = res.data || {};
+  if (msg) msg.textContent = '';
+  if (!res.ok || d.error){
+    if (out) out.innerHTML = '<div class="dock-err">✗ ' + escPlain(d.why || d.detail || d.error || ('HTTP ' + res.status)) + '</div>';
+    return;
+  }
+  if (out) out.innerHTML = _wizTestHtml(d);
+}
+
+/** 测一次的结果（同一份渲染：刚测完 / 从 last_test 回放，都用它） */
+function _wizTestHtml(d){
+  d = d || {};
+  const verified = d.verified === true;
+  return '<div class="' + (verified ? 'dock-ok' : 'dock-warn') + '">' +
+    (verified ? '✓ 它接住了（带回口令）'
+              : '⚠ 真打过了，但' + (d.verify_note ? escPlain(d.verify_note) : '没带回口令 ⇒ 不算真接住')) + '</div>' +
+    (d.at ? ('<p class="wiz-hint">上次测于 ' + escPlain(String(d.at)) + '</p>') : '') +
+    (d.in_session === true ? '<p class="wiz-hint">走的通道：会话内发言（真写进它会话）</p>' : '') +
+    ((d.reply_session_title || d.reply_session_id)
+      ? ('<p class="wiz-hint">它写进了「' + escPlain(d.reply_session_title || d.reply_session_id) + '」' +
+         (d.reply_session_title && d.reply_session_id ? ('（<code>' + escPlain(String(d.reply_session_id)) + '</code>）') : '') +
+         (d.reply_message_id ? ('　消息 <code>' + escPlain(String(d.reply_message_id)) + '</code>') : '') + '</p>')
+      : '') +
+    (d.in_session_verified === true ? '<div class="dock-ok">✓ 平台读回核对通过：这条确实在它的会话里</div>' : '') +
+    (d.in_session_verified === false
+      ? ('<div class="dock-err">✗ 读回核对没过：' + escPlain((d.readback && d.readback.why) || '会话里找不到这条') + '</div>')
+      : '') +
+    (d.in_session_verified == null && d.in_session_note ? ('<div class="dock-warn">⚠ ' + escPlain(d.in_session_note) + '</div>') : '') +
+    (d.detail ? ('<p class="wiz-hint">' + escPlain(d.detail) + '</p>') : '') +
+    (d.reply ? ('<pre class="wiz-pre">' + esc(String(d.reply).slice(0, 600)) + '</pre>') : '') +
+    (d.pick_note ? ('<p class="wiz-hint">' + escPlain(d.pick_note) + '</p>') : '') +
+    (d.tool ? ('<p class="wiz-hint">走的工具：<code>' + escPlain(String(d.tool)) + '</code></p>') : '');
+}
+
+function wizChatInit(){
+  const box = document.getElementById('wizChatSend');
+  if (box) box.value = WIZ.guide || ('请到外端 Agent 生产合作社对接中心查看平台消息（' + (WIZ.harnessId || '') + '）');
+}
+async function wizCopyChat(){
+  const box = document.getElementById('wizChatSend'); const msg = document.getElementById('wizChatMsg');
+  if (!box || !box.value){ if (msg) msg.textContent = '还没有话可复制'; return; }
+  try { await navigator.clipboard.writeText(box.value); if (msg) msg.textContent = '✓ 已复制'; }
+  catch (e) { if (msg) msg.textContent = '浏览器不让复制 —— 手动选那句'; }
+}
+async function wizConfirmBack(){
+  const back = (document.getElementById('wizChatBack') || {}).value || '';
+  const msg = document.getElementById('wizChatMsg'); const out = document.getElementById('wizChatOut');
+  if (!back.trim()){ if (msg) msg.textContent = '先把它的回答粘进来'; return; }
+  if (!WIZ.harnessId){ if (msg) msg.textContent = '先注册'; return; }
+  if (msg) msg.textContent = '正在记…';
+  const res = await dockPost('/api/harness/activation-result', {
+    harness_id: WIZ.harnessId, ok: true, note: '人工搬运：' + back.trim().slice(0, 400), via: 'manual_chat' });
+  const d = res.data || {};
+  if (msg) msg.textContent = res.ok ? '' : ('✗ ' + (d.error || ('HTTP ' + res.status)));
+  if (out) out.innerHTML = '<div class="' + (res.ok ? 'dock-ok' : 'dock-err') + '">' +
+    (res.ok ? '✓ 已记下：它回了' : '✗ 没记上：' + escPlain(d.error || ('HTTP ' + res.status))) + '</div>';
 }
 
 function dockMountRegister(){
@@ -3341,6 +3951,6 @@ function dockVerCopy(){
 }
 
 /* ── 启动 ─────────────────────────────────────────────────────── */
-dockMountRegister();
+dockMountWizardInline();
 dockLoad();
 dockLoadActivation();

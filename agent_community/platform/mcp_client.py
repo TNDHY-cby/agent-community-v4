@@ -40,27 +40,36 @@ class McpAsyncPendingError(McpError):
 
 def validate_mcp_url(url: str) -> tuple[bool, str]:
     """MCP URL 校验：复用平台防 SSRF 思路（允许回环/本机，禁云元数据，域名须解析公网）。"""
-    from ..server import validate_harness_api_url  # 延迟导入避免循环
+    # ★2026-10-25 修（外部 agent 报的）：这里写成 `..server` 会去 `agent_community.server` 找（不存在）
+    #   ⇒ `validate_mcp_url` 必抛 ImportError，被上层 try 吞掉后表现成"地址不合法/拉不到工具"。
+    from .server import validate_harness_api_url  # 延迟导入避免循环
 
     return validate_harness_api_url(url)
 
 
-async def mcp_post_json(url: str, payload: dict, timeout: float = MCP_DEFAULT_TIMEOUT) -> Any:
-    """POST JSON-RPC 请求，兼容 JSON 与 SSE 两种响应体。"""
+async def _post_json_raw(url: str, payload: dict, timeout: float = MCP_DEFAULT_TIMEOUT,
+                         session_id: str | None = None) -> tuple:
+    """POST 一次 JSON-RPC，返回 `(解析后的消息, Mcp-Session-Id)`。
+
+    ★2026-10-25（外部 agent 实测报的第三个坑）：**Streamable HTTP 的 MCP 服务器要求
+    `initialize` 之后带 `Mcp-Session-Id` 头**，否则一律 `400 Missing session ID` ——
+    原来这里完全没处理会话头，所以"拉工具表"永远失败、`tools` 一直是 `[]`。
+    现在：发请求时带上已有 session；响应里给了新 session 就记下来。
+    """
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
     }
+    if session_id:
+        headers["Mcp-Session-Id"] = session_id
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
             resp = await client.post(url, json=payload, headers=headers)
     except httpx.HTTPError as e:
         raise McpError(f"MCP 连接失败: {e}") from e
+    new_sid = resp.headers.get("mcp-session-id") or session_id
     ctype = (resp.headers.get("content-type") or "").lower()
     if "text/event-stream" in ctype:
-        # SSE：优先按行取完整 JSON（多数服务器单行 data 发送）；
-        # 若单行均非 JSON，再尝试将本事件全部 data 行直接拼接（JSON 拆行场景，
-        # 拼接不引入分隔符，避免字面换行破坏 JSON 文本）。
         data_lines: list[str] = []
         for line in resp.text.splitlines():
             line = line.strip()
@@ -70,27 +79,33 @@ async def mcp_post_json(url: str, payload: dict, timeout: float = MCP_DEFAULT_TI
                     data_lines.append(data)
         for data in data_lines:
             try:
-                return json.loads(data)
+                return json.loads(data), new_sid
             except json.JSONDecodeError:
                 continue
         if data_lines:
             joined = "".join(data_lines)
             try:
-                return json.loads(joined)
+                return json.loads(joined), new_sid
             except json.JSONDecodeError as e:
                 raise McpError(f"MCP SSE data 载荷非 JSON: {joined[:200]}") from e
         raise McpError(f"MCP SSE 响应无有效 data 载荷 (HTTP {resp.status_code})")
     if resp.status_code >= 400:
         raise McpError(f"MCP HTTP {resp.status_code}: {resp.text[:300]}")
     if resp.status_code in (202, 204) or not resp.content:
-        # 202 Accepted / 空体：服务器已接受请求但结果异步产生（Streamable HTTP pending）
         raise McpAsyncPendingError(
             f"MCP HTTP {resp.status_code} 空响应：服务器异步接受（pending），当前最小实现不回收异步结果"
         )
     try:
-        return resp.json()
+        return resp.json(), new_sid
     except Exception as e:
         raise McpError(f"MCP 响应非 JSON: {resp.text[:200]}") from e
+
+
+async def mcp_post_json(url: str, payload: dict, timeout: float = MCP_DEFAULT_TIMEOUT,
+                        session_id: str | None = None) -> Any:
+    """POST JSON-RPC 请求，兼容 JSON 与 SSE 两种响应体（**只要消息**，会话头由 `_post_json_raw` 管）。"""
+    msg, _sid = await _post_json_raw(url, payload, timeout, session_id)
+    return msg
 
 
 def _raise_if_error(msg: dict) -> None:
@@ -99,8 +114,8 @@ def _raise_if_error(msg: dict) -> None:
         raise McpError(f"MCP JSON-RPC error: {err.get('code')} {err.get('message')}")
 
 
-async def mcp_initialize(url: str, timeout: float = MCP_DEFAULT_TIMEOUT) -> dict:
-    """initialize 握手，返回 serverInfo / protocolVersion。"""
+async def mcp_open_session(url: str, timeout: float = MCP_DEFAULT_TIMEOUT) -> tuple:
+    """`initialize` 握手并返回 `(serverInfo 结果, Mcp-Session-Id)`（Streamable HTTP 必须带回来）。"""
     payload = {
         "jsonrpc": "2.0",
         "id": "mcp-init",
@@ -111,30 +126,37 @@ async def mcp_initialize(url: str, timeout: float = MCP_DEFAULT_TIMEOUT) -> dict
             "clientInfo": {"name": "agent-community-mcp-client", "version": "1.0"},
         },
     }
-    msg = await mcp_post_json(url, payload, timeout)
+    msg, sid = await _post_json_raw(url, payload, timeout)
     _raise_if_error(msg)
     result = msg.get("result")
     if not isinstance(result, dict):
         raise McpError("initialize 响应缺少 result")
+    return result, sid
+
+
+async def mcp_initialize(url: str, timeout: float = MCP_DEFAULT_TIMEOUT) -> dict:
+    """initialize 握手，返回 serverInfo / protocolVersion。"""
+    result, _sid = await mcp_open_session(url, timeout)
     return result
 
 
-async def mcp_notify_initialized(url: str, timeout: float = MCP_DEFAULT_TIMEOUT) -> None:
+async def mcp_notify_initialized(url: str, timeout: float = MCP_DEFAULT_TIMEOUT,
+                                 session_id: str | None = None) -> None:
     """发送 initialized 通知（JSON-RPC notification，无 id）。失败不阻塞（部分实现忽略通知）。"""
     payload = {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
     try:
-        await mcp_post_json(url, payload, timeout)
+        await mcp_post_json(url, payload, timeout, session_id)
     except McpError:
         pass
 
 
 async def mcp_list_tools(url: str, timeout: float = MCP_DEFAULT_TIMEOUT) -> list[dict]:
     """动态发现远程工具。返回 [{name, description, inputSchema, ...}]"""
-    await mcp_initialize(url, timeout)
-    await mcp_notify_initialized(url, timeout)
+    _init, sid = await mcp_open_session(url, timeout)          # 会话头必须一路带着
+    await mcp_notify_initialized(url, timeout, sid)
     msg = await mcp_post_json(
-        url, {"jsonrpc": "2.0", "id": "mcp-list", "method": "tools/list", "params": {}}, timeout
-    )
+        url, {"jsonrpc": "2.0", "id": "mcp-list", "method": "tools/list", "params": {}},
+        timeout, sid)
     _raise_if_error(msg)
     result = msg.get("result")
     tools = result.get("tools") if isinstance(result, dict) else None
@@ -152,8 +174,8 @@ async def mcp_call_tool(
     异步 pending（202 Accepted / 空体 / result.status=="pending"）时，
     显式标记 ok=False 并附 [MCP async] 说明，避免被上层误判为调用成功。
     """
-    await mcp_initialize(url, timeout)
-    await mcp_notify_initialized(url, timeout)
+    _init, sid = await mcp_open_session(url, timeout)            # 会话头必须一路带着（同 list_tools）
+    await mcp_notify_initialized(url, timeout, sid)
     payload = {
         "jsonrpc": "2.0",
         "id": "mcp-call",
@@ -161,7 +183,7 @@ async def mcp_call_tool(
         "params": {"name": name, "arguments": arguments or {}},
     }
     try:
-        msg = await mcp_post_json(url, payload, timeout)
+        msg = await mcp_post_json(url, payload, timeout, sid)
     except McpAsyncPendingError as e:
         return {
             "ok": False,

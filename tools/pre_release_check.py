@@ -39,7 +39,21 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parent.parent
-OSS = Path(r"D:\外端Agent生产合作社（External Agent Community）-oss")
+
+
+def _resolve_oss() -> Path:
+    """发布副本目录：**不许写死本机路径**（外部审查 EXT-20261025-02 打回的那条）。
+
+    顺序：`ACV4_OSS_DIR` 环境变量 > 缺省 `<仓库父目录>/<仓库名>-oss`。
+    找不到就**由调用方判 FAIL**（"没验证"绝不能算绿灯 —— 那正是假绿的来源）。
+    """
+    env = (os.environ.get("ACV4_OSS_DIR") or "").strip()
+    if env:
+        return Path(env)
+    return ROOT.parent / (ROOT.name + "-oss")
+
+
+OSS = _resolve_oss()
 
 
 def py() -> str:
@@ -120,6 +134,14 @@ def main() -> int:
             print("  %d. %-42s %s %s" % (i, it[0], shown[:70], cwd))
         print("退出码：0=全过；1=有红；2=有项没跑成（＝部分，不算通过）。")
         return 0
+
+    # ★EXT-20261025-02（外部审查打回）：发布副本找不到 ⇒ **直接判红**，
+    #   "没验证"绝不能算绿灯（那三项以前会静默变成"跳过"，换台机器门禁就空转）。
+    if not OSS.is_dir():
+        print("[FAIL] 找不到发布副本：%s" % OSS)
+        print("  ⇒ 设环境变量 ACV4_OSS_DIR=<发布副本目录>，或把发布副本放在 %s"
+              % (ROOT.parent / (ROOT.name + "-oss")))
+        return 1
 
     print("=" * 78)
     print("发布前判据 —— %s" % time.strftime("%Y-%m-%d %H:%M:%S"))

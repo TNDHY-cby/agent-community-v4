@@ -65,11 +65,30 @@ async def _maybe_pull_mcp_tools(info):
             print(f"[mcp] {getattr(info, 'harness_id', '?')} 的 MCP 地址不合法（{why}）——"
                   f"注册继续，但拿不到工具清单", flush=True)
             return info
-        tools = await asyncio.to_thread(_mc.mcp_list_tools, url)
+        # ★2026-10-25 修（外部 agent 报的 bug，实测确实是"永远拿不到工具表"）：
+        #   `mcp_list_tools` 本身就是 **async** 函数，套 `asyncio.to_thread` 只会拿到一个
+        #   **协程对象**（既没执行也没 await）⇒ 永远落到 "tools/list 返回空" 那条分支，
+        #   于是所有 mcp 类 harness 的 `tools` 一直是 `[]`。这里直接 await。
+        tools = await _mc.mcp_list_tools(url)
         if isinstance(tools, list) and tools:
-            names = [str((t or {}).get("name") or "") for t in tools if isinstance(t, dict)]
-            info.tools = [n for n in names if n]
-            print(f"[mcp] {getattr(info, 'harness_id', '?')} 拉到 {len(info.tools)} 个工具", flush=True)
+            # ★注意：`info.tools` 必须是 **HarnessTool 对象**，不是字符串列表 ——
+            #   下游 `harness_to_agent_card()` 要读 `t.capability_tag`；
+            #   写成字符串会让**注册直接 500**（`'str' object has no attribute 'capability_tag'`，
+            #   2026-10-25 修 to_thread 之后立刻暴露）。口径抄 `routers/harness_common._maybe_pull_mcp_tools`。
+            from ..harness_adapter import HarnessTool as _HT
+            built = []
+            for t in tools:
+                if not isinstance(t, dict) or not t.get("name"):
+                    continue
+                built.append(_HT(name=str(t["name"]),
+                                 description=str(t.get("description") or ""),
+                                 parameters=t.get("inputSchema") or {},
+                                 capability_tag=str(t.get("capability_tag") or "")))
+            if built:
+                info.tools = built
+                print(f"[mcp] {getattr(info, 'harness_id', '?')} 拉到 {len(built)} 个工具", flush=True)
+            else:
+                print(f"[mcp] {getattr(info, 'harness_id', '?')} tools/list 有返回但没解析出工具", flush=True)
         else:
             print(f"[mcp] {getattr(info, 'harness_id', '?')} tools/list 返回空", flush=True)
     except Exception as e:  # noqa: BLE001
@@ -566,6 +585,14 @@ async def harness_register_prompt(request: Request):
     wake = request.query_params.get("wakeup_method", "")
     hid = request.query_params.get("harness_id", "")
     fmt = (request.query_params.get("format") or "text").strip().lower()
+    # ★2026-10-25（老板流程第 3 步「复制对应注册引导，给 agent 看的，.md 格式就行」）：
+    #   ormat=md ⇒ 直接回 **Markdown 文本**（	ext/markdown），前端一个「复制」按钮就能用。
+    if fmt == "md":
+        from fastapi.responses import PlainTextResponse
+
+        out_md = build(wake, platform_url=base, harness_id=hid, fmt="text")
+        md = out_md.get("prompt") if isinstance(out_md, dict) else str(out_md)
+        return PlainTextResponse(md, media_type="text/markdown; charset=utf-8")
     out = build(wake, platform_url=base, harness_id=hid, fmt=fmt)
     if fmt == "json":
         return out

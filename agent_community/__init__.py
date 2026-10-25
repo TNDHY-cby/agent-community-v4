@@ -13,4 +13,4 @@
 - 通用 AI Provider 接入层（OpenAI / Ollama / HTTP 回调）
 """
 
-__version__ = "4.36.1"
+__version__ = "4.37.0"

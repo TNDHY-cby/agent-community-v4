@@ -518,3 +518,85 @@ body.app-bg-dock .dock-cand:hover{border-color:var(--dk-glow);background:#201D1A
 /* 模板注册面板：确定按钮别拉满，四段小标题下的表单紧凑一点 */
 .dk-step .dock-form > .btn{flex:0 0 auto;max-width:140px}
 .dk-step .dock-form{gap:8px}
+
+/* ── 接入向导（五步 + 协议树）── */
+.wiz-proto{display:block;padding:8px 10px;margin:6px 0;border:1px solid rgba(232,228,219,.12);border-radius:6px;cursor:pointer}
+.wiz-proto:hover{border-color:rgba(232,228,219,.3)}
+.wiz-ok{color:#39D98A;font-size:11.5px}
+.wiz-warn{color:#FF6A5C;font-size:11.5px}
+.wiz-tag{color:var(--dim);font-size:11.5px}
+.wiz-cards-h{font-size:12px;font-weight:700;margin:10px 0 6px}
+.wiz-card{border:1px solid rgba(232,228,219,.12);border-radius:6px;padding:8px 10px;margin:6px 0}
+.wiz-card.off{opacity:.6}
+.wiz-card-t{font-weight:700;font-size:12.5px;margin-bottom:2px}
+.wiz-pre{max-height:260px;overflow:auto;background:#0b0a09;border:1px solid rgba(232,228,219,.12);
+  border-radius:6px;padding:8px;font-size:12px;line-height:1.5;white-space:pre-wrap}
+
+/* 接入向导放在第一屏（不是弹窗） */
+.dock-wizard-inline{display:block !important;margin:0 0 22px}
+.dock-wizard-inline .card{border-top:1px solid rgba(232,228,219,.12)}
+
+/* ── 接入向导：步骤条 + 单步内容（老板 2026-10-25「乱七八糟」后重画）── */
+.wiz-head{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+.wiz-head b{font-size:15px}
+.wiz-steps{display:flex;gap:6px;list-style:none;padding:0;margin:0 0 14px;flex-wrap:wrap}
+.wiz-step{display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid rgba(232,228,219,.14);
+  border-radius:999px;font-size:12px;color:var(--dim);cursor:pointer}
+.wiz-step .n{display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;
+  border-radius:50%;background:rgba(232,228,219,.14);font-size:10.5px;color:var(--fg)}
+.wiz-step.on{border-color:var(--accent);color:var(--fg);background:rgba(255,53,39,.10)}
+.wiz-step.on .n{background:var(--accent);color:#0b0a09}
+.wiz-step.done{color:var(--fg);opacity:.8}
+.wiz-body{min-height:120px}
+.wiz-p{margin:0 0 10px;line-height:1.7}
+.wiz-hint{margin:0 0 10px;font-size:12px;color:var(--dim);line-height:1.6}
+.wiz-actions{display:flex;align-items:center;gap:10px;margin:10px 0}
+.wiz-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.wiz-proto-card{border:1px solid rgba(232,228,219,.14);border-radius:8px;padding:10px;background:transparent;
+  text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+.wiz-proto-card:hover{border-color:rgba(232,228,219,.34)}
+.wiz-proto-card.on{border-color:var(--accent);background:rgba(255,53,39,.10)}
+.wiz-proto-card b{font-size:13px}
+.wiz-cards{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.wiz-card{flex:1 1 240px;border:1px solid rgba(232,228,219,.14);border-radius:8px;padding:8px 10px;
+  background:transparent;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+.wiz-card:hover{border-color:rgba(232,228,219,.34)}
+.wiz-card.off{opacity:.5;cursor:not-allowed}
+.wiz-card b{font-size:12.5px}
+.wiz-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}
+.wiz-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dim)}
+.wiz-form input{padding:6px 8px;border:1px solid rgba(232,228,219,.18);border-radius:5px;background:#0b0a09;color:inherit}
+.wiz-result{margin-top:10px}
+.wiz-line{display:flex;gap:8px;align-items:center;margin:8px 0}
+.wiz-line input{flex:1;padding:6px 8px;border:1px solid rgba(232,228,219,.18);border-radius:5px;background:#0b0a09;color:inherit}
+.wiz-body textarea{width:100%;box-sizing:border-box;padding:8px;border:1px solid rgba(232,228,219,.18);
+  border-radius:6px;background:#0b0a09;color:inherit;font:inherit}
+.wiz-nav{display:flex;justify-content:space-between;margin-top:14px;padding-top:10px;
+  border-top:1px solid rgba(232,228,219,.10)}
+.wiz-more{margin-top:8px}
+.wiz-pre{max-height:240px;overflow:auto;background:#0b0a09;border:1px solid rgba(232,228,219,.12);
+  border-radius:6px;padding:8px;font-size:12px;white-space:pre-wrap}
+/* 第一屏：其它工具折叠起来，不跟向导抢版面 */
+.dock-more{margin-top:18px}
+.dock-more > summary{cursor:pointer;font-size:13px;color:var(--dim);padding:8px 0;
+  border-top:1px solid rgba(232,228,219,.12)}
+.dock-more[open] > summary{margin-bottom:12px}
+
+.wiz-pick{display:flex;align-items:center;gap:8px;margin:12px 0;flex-wrap:wrap}
+.wiz-pick select{padding:6px 8px;border:1px solid rgba(232,228,219,.18);border-radius:5px;
+  background:#0b0a09;color:inherit;min-width:260px}
+
+.wiz-steps-list{margin:8px 0 4px;padding-left:18px;font-size:12.5px;line-height:1.75}
+.wiz-steps-list li{color:var(--fg)}
+
+/* 第④步：对方回话的样子（截图贴回来） */
+.wiz-shot{margin:12px 0 4px;border:1px solid rgba(232,228,219,.12);border-radius:8px;padding:10px}
+.wiz-shot-h{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--dim);margin-bottom:8px}
+.wiz-shot-img{display:block;width:100%;height:auto;border-radius:6px;border:1px solid rgba(232,228,219,.14)}
+
+/* 第④步：发到哪条会话 */
+.wiz-session-pick{display:flex;align-items:center;gap:8px;margin:10px 0;flex-wrap:wrap}
+.wiz-session-pick select,.wiz-session-pick input{padding:6px 8px;border:1px solid rgba(232,228,219,.18);
+  border-radius:5px;background:#0b0a09;color:inherit}
+.wiz-session-pick select{min-width:280px}
+.wiz-session-pick input{min-width:240px}

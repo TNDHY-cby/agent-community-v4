@@ -17,6 +17,61 @@
 > 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
 > ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
 
+# 4.37.0 更新说明
+
+> 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
+> ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
+
+## [4.37.0] - 2026-10-25
+
+### 接入向导（对接中心）按五步重做
+
+- **第①步 先问协议（可跳过）**：`POST /api/harness/probe-protocol` —— 给个地址就真连一次判协议
+  （MCP `initialize` 通 ⇒ `mcp`；只 GET 通 ⇒ `http_api`；都不通就如实说并附证据）；
+  什么都不给就列出本机正在监听的端口当**候选**（过滤系统端口、带进程名，只标"可能"，不下结论）。
+- **第②步 选协议 → 才真注册**：`GET /api/docking/protocol-tree` 一处给全五步与六种协议的
+  **功能卡片**（每张卡带 `action`：测一次/复制引导/打开脚本注册/架桥/加成员…）。
+  判据：**任意两个协议的卡片集不许完全相同**、每张卡片必须有动作。
+- **第③步 复制注册引导（Markdown）**：`GET /api/harness/register-prompt?format=md` 直接回 `text/markdown`。
+- **第④步 检测**：`POST /api/docking/harness/{id}/test-now`
+  - 可带 `{text}`：**真把一句话发过去**，并把对方的回话带回来；
+  - 带一次性**口令**：回显必须带回口令才算 `verified`；
+  - 协议型支持**读回核对**：发完调对方的"读会话"工具再确认一遍 ⇒ `in_session_verified`；
+  - 显示它写进了哪条会话（`reply_session_id` / `reply_session_title`），没指定时**沿用上次核对通过的那条**。
+- **第⑤步 跟它对话（人工搬运）**：半自动，不假装能核实。
+
+### 会话内发言：要对方自己提供能力，平台不点它的输入框
+
+- 平台只调对方暴露的工具；`session_post`（能写）/ `session_messages`（能读）/ `sessions_list`（能列）
+  三缺一，`/api/docking/overview` 就给出**该缺哪一项**的人话 + 一条可复制的 `.md` 要求
+  （`GET /api/docking/harness/{id}/session-post-guide?format=md`，内容是**这个 harness 专属**的：
+  带它自己的 id 与工具表、要求写进"用户当前正在看的会话"、返回会话标题）。
+- 协议型的"派活"改走它的 `session_post` + 正文带核对码，发完读回核对；
+  发不进去就如实 409，**不偷偷改成点窗口**。
+
+### 判据（新增，最重要的一条）
+
+- **`tools/verify_session_truth.py`**：接入外部 agent 时**只认对方应用自己的存储** ——
+  先把它应用的 SQLite 拷成只读副本，再按口令查是否真的落库；`exit 0` 才算通，`1`＝对方在自报。
+  起因：某插件返回 200、`message_id` 每次不同、"读回"也说读到了，但真实对话库里一条都没有 ——
+  平台曾被它自己的缓存骗过一轮，这条判据就是防这个（见 `design-docs/V101`）。
+- `tools/in_session_check.py`：`--send` 时**只认读回核对**，自报 `in_session=true` 不算通过。
+
+### 修复
+
+- `mcp_client` 的 `from ..server` 写错层级（`validate_mcp_url` 必抛 ImportError）；
+- `_maybe_pull_mcp_tools` 用 `asyncio.to_thread` 包 async 函数 ⇒ 永远拿不到工具表；
+- 修完暴露的 `HarnessTool` 类型错误（把工具写成字符串导致注册 500）；
+- MCP 的 **Streamable HTTP 会话头**没处理 ⇒ 一律 `400 Missing session ID`（现已带 `Mcp-Session-Id`）；
+- `tools/pre_release_check.py` 写死本机发布副本路径 ⇒ 改环境变量/同级目录，**找不到就判红**（不再"跳过算过"）；
+- `tools/third_party_check.py` 三处假绿（绝对路径跳目录 / 不排除自身 / 登记用子串匹配）；
+- `/api/ai/models` 占位符地址不再撞 DNS 抛 `ConnectError`，改成人话 + 该填什么。
+
+### 文档
+
+- `design-docs/V98`（对接中心重做：一张表 + 每行一个「测一次」）、`V99`（五步链路）、
+  `V100`（看得见它在干活：口令 + 抬前台）、`V101`（外部 agent 自报不算通过：联调判据）。
+
 ## [4.36.1] - 2026-10-24
 
 ### 修复（跨平台，**非本次引入**）

@@ -24,28 +24,49 @@ def _reached(member) -> bool:
 GATED_STAGES = ("draft", "discussing", "")
 
 
-def check(ws) -> dict:
+#: 这些协议的 harness **不需要"新建会话/重命名会话"那套视觉步骤** —— 注册好、加进工作间就能被派活
+PROTOCOL_KINDS = ("mcp", "http", "http_api", "a2a", "grpc", "ws", "pipe", "file_poll")
+
+
+def _proto_hint(wake_methods) -> bool:
+    """这批成员里有没有"协议型"（不需要人去开会话）的。"""
+    return any(str(w or "").lower() in PROTOCOL_KINDS for w in (wake_methods or []))
+
+
+def check(ws, wake_methods=None) -> dict:
     stage = str(getattr(ws, "status", "") or "")
     if stage not in GATED_STAGES:
         return {"ok": True, "state": "in_flight", "why": "", "next_step": ""}
     members = list(getattr(ws, "members", None) or [])
     if not members:
+        # ★2026-10-25 修：原来这句只写了"去对接中心做第 4/5 步（新建会话/重命名会话）"，
+        #   那是**桌面类 harness** 的必经步骤；对 MCP/HTTP/A2A 这类**根本不适用**
+        #   （老板原话：「MCP 协议适配的 harness 注册后无法拉入工作间，也没引导说明」）。
+        if _proto_hint(wake_methods):
+            nxt = ("在这个工作间点「加成员」，把已登记的 harness 选进来 —— **协议型（MCP/HTTP 等）不需要"
+                   "新建会话/重命名会话**，选上就能被派活；一个都没有就去「大厅 · 对接中心」注册一个")
+        else:
+            nxt = ("先在这个工作间点「加成员」选一个已登记的 harness；桌面类还要在验证间把目标会话打开、"
+                   "跑一次自检，再回来讨论")
         return {"ok": False, "state": "no_members",
                 "why": "这个工作间还没有成员：讨论发出去也没人接，平台不会假装在讨论",
-                "next_step": "先去「对接中心」接入一个 agent（第 4/5 步：新建会话 / 重命名会话都要做），"
-                             "再回本工作间加成员"}
+                "next_step": nxt}
     if not any(_reached(m) for m in members):
         pend = "、".join(str(getattr(m, "display_name", "") or getattr(m, "member_id", "")) for m in members[:3])
+        if _proto_hint(wake_methods):
+            nxt = ("对每个成员点「自检」看它回不回话 —— 协议型（MCP/HTTP 等）**不靠视觉脚本**，"
+                   "自检通就说明能被派活")
+        else:
+            nxt = ("对每个成员点「验一次」；人工中转型点「我确认它回了」；桌面类先把目标会话打开")
         return {"ok": False, "state": "no_verified_member",
                 "why": "成员都还没接上（桥没取走唤醒消息，agent 没醒）：%s" % (pend or "全部成员"),
-                "next_step": "对每个成员点「验一次」；人工中转型点「我确认它回了」。"
-                             "然后在验证间补齐第 4/5 步，成员状态变成「已进入」再回来讨论"}
+                "next_step": nxt}
     return {"ok": True, "state": "ready", "why": "", "next_step": ""}
 
 
-def info(ws) -> dict:
+def info(ws, wake_methods=None) -> dict:
     """给界面用的轻量版（序列化时带上）。"""
-    g = check(ws)
+    g = check(ws, wake_methods)
     return {"ok": g["ok"], "state": g["state"], "why": g["why"], "next_step": g["next_step"],
             "members_count": len(getattr(ws, "members", None) or []),
             "verified_count": sum(1 for m in (getattr(ws, "members", None) or []) if _reached(m))}

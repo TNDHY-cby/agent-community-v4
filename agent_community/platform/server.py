@@ -876,7 +876,11 @@ def save_state():
         ("state_machine.json", lambda: task_state_machine.to_dict()),
     ]
     with _STATE_LOCK:
-        _ok, _failed = _ss.write_items(_items, DATA_DIR)
+        # 逐文件闸要知道"这次允许写空吗"：本进程拿过所有权（load 过/写过）或显式允许清库 ⇒ 允许；
+        # 否则「空内容不许覆盖非空磁盘文件」（2026-10-24 外部 agent 诊断脚本把 workshops.json
+        # 写成 {} 就是这个机制 —— 它只认识 harness，workshops 在它内存里是空的）。
+        _allow_empty = bool(_STATE_OWNED or _ss.allow_empty_write())
+        _ok, _failed = _ss.write_items(_items, DATA_DIR, allow_empty=_allow_empty)
         if _failed:
             print("[persist] 这些文件没写成功：%s" % "、".join(_failed), flush=True)
     if _ok:

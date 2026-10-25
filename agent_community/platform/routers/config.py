@@ -128,6 +128,25 @@ async def api_ai_models(request: Request, base_url: str = ""):
                 "fallback": True, "error": "未配置 base_url"}
     norm = _norm(_base)
 
+    # ★EXT-20261025-01（外部审查，P2）：出厂默认的 base_url 是**保留示例域名**
+    #   （`api.example.com`，DNS 永远解析不到）⇒ 以前会真发一次请求、把
+    #   `ConnectError: [Errno 11001] getaddrinfo failed` 这种底层术语糊到用户脸上，
+    #   而设置页还固定追加一句"不影响保存与调用"（对调用**是假的**）。
+    #   现在：**先判占位符，命中即短路**（不出网、不出现底层异常名），并把"该填什么"说清。
+    try:
+        from ..ai_provider import PLACEHOLDER_BASE_URL, _placeholder_hint as _ph_hint
+
+        if PLACEHOLDER_BASE_URL and PLACEHOLDER_BASE_URL.lower() in norm.lower():
+            return {"ok": False, "models": [], "source": "builtin", "fallback": True,
+                    "placeholder": True,
+                    "error": "还没配 AI：base_url 仍是出厂的示例地址（%s）" % norm,
+                    "tried_url": None, "base_url": norm,
+                    "hint": _ph_hint(cfg.get("ai_provider") or "") or
+                            ("把 BASE URL 换成你的服务商地址（只到域名，别带 /v1），"
+                             "再填 API KEY 与模型名；暂时不用 AI 就把 ai_mode 设成 off")}
+    except Exception as e:                                    # noqa: BLE001 — 判不了就照常往下（不阻断）
+        print("[ai/models] 占位符判定失败（继续正常拉取）：%s: %s" % (type(e).__name__, e), flush=True)
+
     # ── V-14 出网闸门 ──
     from ..policy import (NETWORK_EGRESS, actor_from_request, blocked_message,
                           check, pending_message)
@@ -183,8 +202,20 @@ async def api_ai_models(request: Request, base_url: str = ""):
             pass
         return {"ok": True, "models": ids, "source": "remote", "fallback": False}
     except Exception as e:
+        # ★EXT-20261025-01：DNS 解析失败 / 连不上 也要说人话（别再糊 `Errno 11001`）,
+        #   并把实际尝试的地址带出来（同 404 那支的做法）。
+        _tried = f"{norm}/v1/models"
+        _msg = str(e)
+        if ("getaddrinfo" in _msg) or ("Name or service not known" in _msg) or ("11001" in _msg):
+            return {"ok": False, "models": [], "source": "builtin", "fallback": True,
+                    "error": "这个地址解析不到（域名可能写错或不存在）：%s" % norm,
+                    "tried_url": _tried, "base_url": norm,
+                    "hint": "检查 BASE URL 是否写成了真实可达的地址（只到域名，别带 /v1）；"
+                            "示例域名（api.example.com）永远解析不到，必须换成你自己的服务商地址"}
         return {"ok": False, "models": [], "source": "builtin", "fallback": True,
-                "error": f"{type(e).__name__}: {e}"}
+                "error": f"{type(e).__name__}: {e}",
+                "tried_url": _tried, "base_url": norm,
+                "hint": "先确认这台机器能上网、地址与 key 都对；再不行点「连通性自检」看详细原因"}
 
 
 @router.get("/api/config/status")
