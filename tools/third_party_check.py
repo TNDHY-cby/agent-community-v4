@@ -49,16 +49,35 @@ def _skip(p: Path) -> bool:
     return bool(rel.parts) and rel.parts[0] in SKIP_TOP
 
 
+#: `os.walk` **任意层级**要剪掉的目录（运行数据/日志/临时件/第三方构建产物 —— 里面不可能有要登记的源码）
+#: ⚠️这不是"整仓跳过"：判断用 `_skip()`（只看相对仓库根的第一层），二者分工不同。
+PRUNE_ANY = {".git", "__pycache__", "node_modules", ".venv", "dist", "build",
+             ".pytest_cache", "data", "runtime_logs", "temp", "dsh-tooling",
+             "library", "OutAgentsCommunity", "agent_community_pipe", "agent_wakeup_pipe",
+             "GPUPersistentCache", "Partitions"}
+
+
 def scan() -> list:
-    """扫出所有带 SPDX 头的代码文件（**排除本工具自身**，修 ②）。"""
+    """扫出所有带 SPDX 头的代码文件（**排除本工具自身**，修 ②）。
+
+    ⚠️2026-10-25 真机暴露（WSL 侧超时 120s 才红）：**不能用 `rglob("*")`** ——
+    它先遍历再判断，等于把 `.git` / `node_modules` 整个走一遍；在 `/mnt/d`（9p 跨盘）
+    上这一步要几分钟，Linux 侧门禁就超时失败了。
+    现在改成 `os.walk` + **原地剪枝**：遇到要跳的目录直接把 dirnames 清空，根本不下去。
+    """
+    import os
+
     me = Path(__file__).resolve()
     marker = "SPDX" + "-License-Identifier"          # 拼开写，免得扫到自己（双保险）
     hits = []
-    for p in ROOT.rglob("*"):
-        if not p.is_file() or p.suffix.lower() not in _CODE_SUFFIX:
-            continue
-        if _skip(p):
-            continue
+    for cur, dirnames, filenames in os.walk(ROOT):
+        dirnames[:] = [d for d in dirnames if d not in PRUNE_ANY]    # 原地剪枝（运行数据/日志一并剪掉）
+        for fn in filenames:
+            if not fn.lower().endswith(_CODE_SUFFIX):
+                continue
+            p = Path(cur) / fn
+            if _skip(p):
+                continue
         try:
             if p.resolve() == me:
                 continue
