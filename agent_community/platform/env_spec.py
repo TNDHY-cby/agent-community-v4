@@ -124,6 +124,13 @@ SPEC: dict[str, Var] = {v.name: v for v in [
     Var("AC_ALLOW_LEGACY_AI_SELECT",
         "**兼容口子（默认 0）**：`POST /api/workshop/{id}/select-members`（让平台 AI 选人）已于 2026-10-31 退役 —— 平台不选人（`V116` §16），名单由组长回执交回（§8.1）。置 1 可临时恢复旧行为（响应会标 `legacy`）。",
         default="0", kind="dev", example="1"),
+    Var("AC_ALLOW_MANUAL_SIM",
+        "**默认 0（关）**：平台**内部 AI 代成员发言**的应急能力。"
+        "历史上用于「平台 AI 额度挂掉时由外部 AI 接管」：成员被派发后 90 秒无回报、或派发本身失败时，"
+        "平台会用内部模型冒充该成员在讨论区发言（消息标 `source=manual-sim`）。"
+        "**这与 `V116` §16「不做：代成员说话」冲突，所以默认关**；"
+        "只有在 `ai_mode=manual/off` **且**显式置 1 时才会发生。要它请明确知道自己在花谁的钱。",
+        default="0", kind="dev", example="1"),
     Var("AC_STATE_ALLOW_EMPTY",
         "**故意清库**的专用口子（默认 0）：只有设 1 才允许「没加载过状态的进程」用空内存覆盖已有数据。"
         "正常运行时**不要**开——它是 2026-10-23 数据被清事故的防线",

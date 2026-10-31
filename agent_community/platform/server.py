@@ -4712,11 +4712,15 @@ def _member_recover_sweep_once() -> dict:
 
 
 def _manual_sim_sweep_once() -> int:
-    """外端派发成功但长期无回报的补齐扫描（仅 manual/off 模式，20s 周期调用）。
+    """外端派发成功但长期无回报的补齐扫描（仅 manual/off + 显式开关，20s 周期调用）。
 
     覆盖 running/division/review 全状态工作间：只看有 watch 的派发对象，
     因此不会干扰未被派发的成员。幂等：每次派发只补齐一次。
+
+    ★2026-11-01：第一道闸就是 `AC_ALLOW_MANUAL_SIM`（**默认关**）。
     """
+    if not _manual_sim_allowed():
+        return 0
     if ai_external_get_mode() not in ("manual", "off"):
         return 0
     n = 0
@@ -4946,7 +4950,18 @@ def _build_experience_pack(sess, task_text: str) -> Optional[str]:
 # ═══════════════════════════════════════════════════════════════
 # manual 降级通道：外端 harness 不可达时由平台内部 AI 模拟成员发言
 # （2026-09-12 新增；仅在派发失败触发，消息标注 source=manual-sim）
+#
+# ★2026-11-01 老板拍板：**改成显式开关，默认关**。
+#   起因：`V116` §16 白纸黑字写「不做：…代成员说话」，而这条路径在 `ai_mode=manual/off`
+#   下**会真的用平台内部模型冒充成员发言**（还会花钱）——模型与实现不一致，而且不一致在"会烧钱"这一侧。
+#   现在：`AC_ALLOW_MANUAL_SIM=1` **且** `ai_mode ∈ {manual, off}` 两把钥匙同时插上才生效。
+#   ⚠️ 这是**安全/口径闸门**，不是功能开关：动它之前先读 `V116` §16 与 `env_spec` 里那条说明。
 # ═══════════════════════════════════════════════════════════════
+def _manual_sim_allowed() -> bool:
+    """平台内部 AI 代成员发言是否允许（**默认否**）。见本段标题下的说明。"""
+    return str(os.environ.get("AC_ALLOW_MANUAL_SIM", "0")).strip().lower() in ("1", "true", "on", "yes")
+
+
 def _sim_zone_for(ws) -> int:
     """降级发言所属讨论区：二级（分工/工作）或三级（依进度讨论）。"""
     st = getattr(ws, "status", "")
@@ -4978,11 +4993,17 @@ def _strip_report_instructions(text):
 async def _simulate_member_reply(harness_id, payload, kind, reason):
     """外端 harness 派发失败（无额度/未启动）时，用平台内部 AI 模拟该成员发言。
 
+    ★2026-11-01：**默认关**（见 `_manual_sim_allowed`）—— 与 `V116` §16「不代成员说话」对齐。
     只在派发失败时触发；写回讨论区的消息带 source=manual-sim，
     与真实 harness 回报（无该字段）严格区分，避免把模拟结果当成真实能力。
 
+    纵深防御：即便调用方漏了检查，这里也再拦一道（它是真正**花钱调模型**的那一层）。
+
     Returns: True 表示已产出并写入讨论区
     """
+    if not _manual_sim_allowed():
+        print("[manual-sim] 跳过：未开 AC_ALLOW_MANUAL_SIM（默认关，见 V116 §16）", flush=True)
+        return False
     if ai_provider is None:
         return False
     wid = payload.get("workshop_id") or ""
@@ -5052,7 +5073,12 @@ async def _simulate_member_reply(harness_id, payload, kind, reason):
 
 
 def _schedule_manual_sim(harness_id, payload, kind, reason):
-    """派发失败 → 仅在 manual/off 模式下调度本地模拟（不阻塞调用方）。"""
+    """派发失败 → 仅在「显式开关 + manual/off」时调度本地模拟（不阻塞调用方）。
+
+    ★2026-11-01：加了 `_manual_sim_allowed()` 这道闸（**默认关**，与 `V116` §16 对齐）。
+    """
+    if not _manual_sim_allowed():
+        return
     if ai_external_get_mode() not in ("manual", "off"):
         return
     if kind not in ("task", "activation", "leader_discuss"):

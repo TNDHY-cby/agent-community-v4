@@ -16,7 +16,7 @@
 | `ai.model_name` | **必须** | 注册 400：**中文、字段级**——"注册参数有问题：缺少必填字段 ai.model_name"，并附**最小可用示例**（照抄即可成功） |
 | `acp_command` | 非 MCP 类**必须** | 注册 400：`acp_command 校验失败`（防解释器包装 RCE）。**file_poll 类也要求它**——这是刻意的安全校验，不是 bug |
 | `api_base_url` | 仅 MCP 类必须 | MCP 注册 400：`mcp 类型需要 api_base_url` |
-| **平台 AI（provider/key）** | 可选 | ① `select-members`（AI 初选）400「AI Provider 未配置」⇒ **不挡路**：用 `POST .../members` **手工给名单**即可；② 一级讨论**有规则兜底**（响应带 `action_source=rule_fallback`）。**其余步骤不依赖 AI** |
+| **平台 AI（provider/key）** | **不再需要** | ⚠️ **2026-11-01 修**：本行原来写「`select-members`（AI 初选）400 说明」「一级讨论有规则兜底」——那两个入口**都已退役**（`410 AI_SELECT_RETIRED` / `410 FREECHAT_RETIRED`）。**现行流程不需要平台侧的任何 AI 配置**：组长由**你**选（平台只筛资格），名单由**组长回执**落库，讨论走**结构化 AILP**（`POST …/ailp`，收发的是结构化消息，不做自由生成） |
 | `scripts`（新建对话/重命名/投递） | 可选 | 相关步骤走**人工模式**：返回退出码 10（未核实）+ `manual[].hint`（给用户看的话）。**不是报错** |
 | `wakeup_dir`（file_poll） | 可选 | 平台改用**该成员的邮箱** `<成员隔间>/inbox`（2026-10-08 起），**同一 harness 多会话也不会串** |
 | `AC_DATA_DIR` | 可选 | 默认写仓库内 `data/`。**演练/验证务必指定临时目录**（别动在用实例） |
