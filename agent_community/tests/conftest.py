@@ -26,6 +26,7 @@ tasks.json / rooms.json / task_to_room.json / workshops.json 全量重写。
 - `guard_real_data_dir`（session autouse）：记录真实 data/ 的文件指纹，
   会话结束时若有变化**直接 fail** —— 这样即使将来有新的泄漏路径，也会立刻暴露。
 """
+import os
 import sys
 from pathlib import Path
 
@@ -67,6 +68,20 @@ def _fingerprint(root: Path) -> dict:
         #   于是"跑完整测试"就撞见"测试污染真实数据"（Linux 侧尤其明显：两边挂同一路径）。
         #   锁文件与 pid 文件都是**运行时租约**，不是业务数据 ⇒ 一律不纳入指纹。
         if p.suffix.lower() in (".lock", ".pid"):
+            continue
+        # ★2026-10-30（真事故，假红）：`data/` 下这几类是**服务自己的运行时产物**，
+        #   刚停服务就立刻跑全量会撞红、重跑又绿（今天真机上遇到两次）：
+        #   `run/platform.lease.json`（启动写/退出清）、`monitor/watched.json`（监控名单快照）、
+        #   `audit.json`（审计流水按行追加）。与"测试有没有偷写用户数据"无关 ⇒ 不纳入指纹。
+        #   ⚠️ 豁免必须窄：名单/工作间/凭据/配置**一个都不放过**。
+        if rel.replace("\\", "/").startswith("run/"):
+            continue
+        if rel.replace("\\", "/") in ("monitor/watched.json", "audit.json"):
+            continue
+        # ★2026-10-30（真事故，假红，今日第三次同类）：**状态快照是服务自己每 30 分钟拍的**
+        #   （`backups/state_<时间>_auto/_meta.json`）。全量跑一次常跨过这个边界 ⇒ 一次红一次绿。
+        #   快照是平台产物（`tools/state_restore.py` 用），不是测试写的用户数据 ⇒ 不纳入指纹。
+        if rel.replace("\\", "/").startswith("backups/"):
             continue
         try:
             st = p.stat()
@@ -351,3 +366,42 @@ def _isolate_monitor(tmp_path, monkeypatch):
         monkeypatch.setattr(_mn, "MONITOR_DIR", tmp_path / "monitor", raising=True)
     except Exception:                                        # noqa: BLE001 — 有意静默：模块没装也不该挡住别的测试
         pass
+
+
+@pytest.fixture(autouse=True)
+def _no_live_platform(monkeypatch):
+    """**不许偷偷依赖"本机正跑着一个平台"**（2026-10-25 用真事故换的）。
+
+    背景：`test_mcp_http_server` 里有一条用例会**真去打 `127.0.0.1:18920`** ——
+    本机服务开着时它绿、Linux 侧必红（假绿）。同一类写法还可能在别处埋着。
+
+    做法：测试期间把**到平台端口的出站连接**直接掐掉（其它端口不管，子进程/临时实例照常）。
+    要真的连本机服务（极少见）就设 `AC_TEST_ALLOW_LIVE=1`。
+
+    为什么这样最省事：不用逐条去改测试，**依赖"线上服务"的用例会自己红**，红在它自己身上。
+    """
+    import socket as _socket
+
+    if (os.environ.get("AC_TEST_ALLOW_LIVE") or "").strip() in ("1", "true", "yes", "on"):
+        return
+    try:
+        from agent_community.platform_address import resolve_port as _rp
+
+        live_port = int(_rp())
+    except Exception:                                        # noqa: BLE001 — 有意静默：取不到端口就不拦（宁可不拦，不误伤）
+        return
+
+    _orig_connect = _socket.socket.connect
+
+    def _guard_connect(self, address, *a, **kw):
+        try:
+            host, port = address[0], int(address[1])
+        except (TypeError, ValueError, IndexError):          # 非 (host, port) 形状 ⇒ 不管
+            return _orig_connect(self, address, *a, **kw)
+        if port == live_port and str(host) in ("127.0.0.1", "::1", "localhost"):
+            raise OSError(
+                "测试里不许连本机正在跑的平台（端口 %d）：这条用例在别的机器/CI 上会红成假绿。"
+                "要么改成走 TestClient/monkeypatch，要么显式设 AC_TEST_ALLOW_LIVE=1。" % live_port)
+        return _orig_connect(self, address, *a, **kw)
+
+    monkeypatch.setattr(_socket.socket, "connect", _guard_connect, raising=True)

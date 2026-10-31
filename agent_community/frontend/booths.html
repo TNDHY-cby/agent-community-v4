@@ -14,7 +14,7 @@
 ::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
 html,body{height:100%;overflow:hidden}
 body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
-.app{display:grid;grid-template-rows:52px 1fr 26px;height:100vh}
+.app{display:grid;grid-template-rows:auto 1fr 26px;height:100vh}
 .topbar{display:flex;align-items:center;gap:12px;padding:0 16px;background:linear-gradient(180deg,#1d2026,#181a20);border-bottom:1px solid var(--rule);min-width:0}
 .topbar .logo{font-size:15px;font-weight:800;color:var(--accent);letter-spacing:.03em;display:flex;align-items:center;gap:8px;white-space:nowrap}
 .topbar .logo .sub{color:var(--muted);font-weight:600;font-size:12.5px}
@@ -186,19 +186,18 @@ body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSys
 .m-draftbar{font-size:11px;color:var(--yellow);background:var(--yellow-soft);border:1px solid rgba(217,171,83,.4);border-radius:7px;padding:5px 9px;margin-bottom:7px;line-height:1.6;font-weight:700}
 @media (max-width:1099px){
   html,body{overflow:auto}
-  .app{height:auto;min-height:100vh;grid-template-rows:52px auto 26px}
+  .app{height:auto;min-height:100vh;grid-template-rows:auto auto 26px}
   .main{overflow:visible}
   .grid{grid-template-columns:1fr}
   .topbar{flex-wrap:wrap;height:auto;padding:8px 16px}
   .app{grid-template-rows:auto 1fr 26px}
 }
 </style>
-<link rel="stylesheet" href="/theme-crt.css">
-<script src="/theme-crt.js" defer></script>
+<link rel="stylesheet" href="chrome.css">
 </head>
 <body class="">
 <div class="app">
-  <header class="topbar">
+  <header class="topbar chrome-top">
     <div class="logo">🏗 成员隔间与桥<span class="sub">· V23 §9</span></div>
     <a class="navlink" id="backWs" href="#" style="display:none">↩ 返回工作间</a>
     <div class="health checking" id="health"><span class="dot"></span><span id="healthText">检测中…</span></div>
@@ -1073,5 +1072,6 @@ window.__boothsTest={
   startTimer();
 })();
 </script>
+<script src="chrome.js" defer></script>
 </body>
 </html>

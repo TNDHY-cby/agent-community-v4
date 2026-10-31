@@ -270,6 +270,20 @@ from .routers.policy import router as _policy_router
 app.include_router(_policy_router)  # V-14 策略自省与待审批：GET /api/policy、/api/policy/pending（人工审批）
 from .routers.sessions import router as _sessions_router
 app.include_router(_sessions_router)  # V-15 步骤8：会话可见性：GET /api/sessions（§12.2.1 保留待复用必配可见性）
+from .routers.p6_v5 import router as _p6_v5_router  # V117/P6：AILP 2.0 结构化讨论区
+from .routers.p5_v5 import router as _p5_v5_router  # V116/P5：组长列表/对接单/命名
+from .routers.p4_v5 import router as _p4_v5_router  # V113/P4：目录校验/产物清单/验收/归档
+from .routers.dispatch_v5 import router as _dispatch_v5_router  # V113/P3：派活（写文件+notice+manifest+激活）
+from .routers.mind_v5 import router as _mind_v5_router  # V117/P2.5：心智根(根A)+manifest(根B)
+from .routers.intake_v5 import router as _intake_v5_router  # V110/P1：收外端回执（三档归一）
+from .routers.mcp_http import router as _mcp_http_router
+app.include_router(_mcp_http_router)
+app.include_router(_intake_v5_router)
+app.include_router(_mind_v5_router)
+app.include_router(_dispatch_v5_router)
+app.include_router(_p4_v5_router)
+app.include_router(_p5_v5_router)
+app.include_router(_p6_v5_router)  # V117/P6：/api/ailp/types · /api/workshop/{id}/discuss  # V116/P5：lead-roster / lead-kit / 选组长 / 成员 kit  # V113/P4：verify-dirs / verify-artifacts / review / integrate / close  # V113/P3：dispatch / wakeup-poll / dispatch 详情  # V117/P2.5：mind/manifest/boot-prompt/daily-close  # V110/P1：intake 三档 + 回执流水  # V104 §7：平台当 MCP 服务端（HTTP）—— 让对方的 agent 真来调我们 + 调用留痕
 from .routers.company_admin import router as _company_admin_router
 app.include_router(_company_admin_router)  # 远程接入（公司间令牌授权）管理：登记/签发/吊销/校验
 from .routers.docking import router as _docking_router
@@ -748,6 +762,28 @@ task_to_room: dict[str, str] = {}                  # task_id → room_id
 ws_agents: dict[str, WebSocket] = {}
 ws_clients: set[WebSocket] = set()
 hall_messages: list[Message] = []
+
+
+def ws_registry() -> tuple:
+    """**WS 连接注册表与大厅消息的唯一入口**（返回 `(ws_clients, hall_messages)`）。
+
+    为什么需要它（2026-10-25 真对端判据抓到）：`python -m agent_community.platform.server`
+    跑起来时本模块叫 `__main__`，而 `routers/*` 里的 `from ..server import ...` 会
+    **再导入一份** `agent_community.platform.server` ⇒ 两份 `ws_clients`：
+    `/ws` 把连接加进 `__main__` 那份，`bcast_to_clients` 遍历的却是另一份（永远空）
+    ⇒ **外部客户端一帧都收不到**（`TestClient` 只有一份，所以测试看不出来）。
+
+    ⇒ 一律以**真正在跑的那份**（`__main__`）为准；没有 `__main__.ws_clients` 时退回本模块。
+    """
+    import sys as _sys
+
+    main = _sys.modules.get("__main__")
+    if main is not None:
+        mc = getattr(main, "ws_clients", None)
+        mh = getattr(main, "hall_messages", None)
+        if isinstance(mc, set) and isinstance(mh, list):
+            return mc, mh
+    return ws_clients, hall_messages
 # 平台助手持续会话：用户与平台 Agent（Orchestrator）在 register 页直聊窗口的对话历史。
 # 元素: {"role": "user"/"assistant"/"system", "content": str}
 pipe_adapter = PipeAdapter(str(PIPE_DIR))
@@ -1013,14 +1049,17 @@ def _append_hall(msg: Message):
 def _pack_msg(msg: Message) -> dict:
     return {"type": "message", "data": msg.model_dump()}
 async def bcast_to_clients(msg: Message):
+    """把一条消息广播给**所有**前端 WS 连接（注册表走 `ws_registry()`，见那里的说明）。"""
     dead = set()
     p = _pack_msg(msg)
-    for ws in ws_clients:
+    clients, _ = ws_registry()
+    for ws in list(clients):
         try:
             await ws.send_text(json.dumps(p, ensure_ascii=False))
-        except Exception:
+        except Exception as e:                              # noqa: BLE001 — 发失败要留痕，别静默丢
             dead.add(ws)
-    ws_clients.difference_update(dead)
+            print("[ws] 广播给一条连接失败（%s: %s），已摘掉它" % (type(e).__name__, e), flush=True)
+    clients.difference_update(dead)
 async def _try_bcast(msg: Message):
     """安全广播——失败时仅记录日志，不中断请求"""
     try:
@@ -1384,8 +1423,9 @@ async def client_ws(ws: WebSocket):
         await ws.close(code=4401, reason="unauthorized")
         return
     await ws.accept()
-    ws_clients.add(ws)
-    for msg in hall_messages[-50:]:
+    _clients, _hall = ws_registry()
+    _clients.add(ws)
+    for msg in _hall[-50:]:
         try:
             await ws.send_text(json.dumps({"type": "history", "data": msg.model_dump()}, ensure_ascii=False))
         except Exception:
@@ -1398,7 +1438,8 @@ async def client_ws(ws: WebSocket):
     except WebSocketDisconnect:      # noqa: BLE001 — 有意静默：客户端正常断连，不是故障
         pass
     finally:
-        ws_clients.discard(ws)
+        _c2, _ = ws_registry()
+        _c2.discard(ws)
 # ═══════════════════════════════════════════════════════════════
 # 任务创建 → 广播 + 等待举手
 # ═══════════════════════════════════════════════════════════════

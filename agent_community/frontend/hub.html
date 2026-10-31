@@ -7,16 +7,15 @@
 <title>流程说明</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="hub.css">
-<link rel="stylesheet" href="/theme-crt.css">
-<script src="/theme-crt.js" defer></script>
+<link rel="stylesheet" href="chrome.css">
 </head>
 <body class="">
 <a class="skip-link" href="#stageMain">跳到主内容</a>
-<div class="app">
+<div class="app has-masthead">
 
   <!-- ===== topbar ===== -->
-  <header class="topbar">
-    <div class="logo"><span class="logo-mark">▣</span> 流程说明<span class="sub">· 全流程 · 只讲不做</span><span class="tag-proto">说明书 · 含示意</span></div>
+  <header class="topbar chrome-top chrome-fixed">
+    <div class="logo"><span class="logo-mark">▣</span> 流程说明<span class="sub">· 全流程 · 只讲不做</span></div>
     <div class="position">从启动到交付的全流程 · 步骤 0→10 · 操作去正主页面</div>
     <div class="spacer"></div>
     <nav class="live-links">
@@ -25,8 +24,24 @@
       <a href="/ops.html">📡 看板</a>
       <a href="/handover.html">🧾 回执</a>
       <a href="/booths.html">🏗 隔间</a>
+      <a href="/mind.html">🧠 心智档案</a>
     </nav>
   </header>
+
+  <!-- ===== 刊头 ===== -->
+  <div class="masthead">
+    <div class="mh-in">
+      <div class="mh-tag"><b>■</b> SYSTEM // 外端 AGENT 生产合作社 · 流程说明</div>
+      <h1>全流程<span class="slash">/</span>说明书</h1>
+      <div class="mh-meta">
+        <span>步骤 0→10</span>
+        <span>只讲不做</span>
+        <span>操作去正主页面</span>
+        <span data-chrome-clock>--:--:--</span>
+      </div>
+    </div>
+    <div class="mh-hazard" aria-hidden="true"></div>
+  </div>
 
 
   <div class="scope-banner" role="note">◈ 本页是<b>流程说明</b>（全流程，<b>只讲不做</b>）：每步做什么、谁做、去哪个页面；<b>操作一律去正主页面</b>（接入页 / 工作间 / 大厅 / 看板）。</div>
@@ -86,5 +101,6 @@
 </template>
 
 <script src="hub.js"></script>
+<script src="chrome.js" defer></script>
 </body>
 </html>

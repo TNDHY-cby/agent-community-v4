@@ -179,6 +179,14 @@ def _agent_card(host: str, port: int) -> dict:
             "streaming": False,
             "pushNotifications": False,
             "stateTransitionHistory": True,
+            # ★V119 B2：**明确"不流式，但可长轮询"** —— 卡上写清楚，别让客户端猜。
+            "statusLongPoll": {
+                "supported": True,
+                "method": "tasks/watch",
+                "maxWaitSeconds": 30,
+                "note": "长轮询（非 SSE/流式）：任务状态、产物清单或验收结论任一变化即返回；"
+                        "超时如实返回 changed=false，不假装有更新",
+            },
         },
         "skills": _harness_skills(),
         # 候选C §4：schemes **必须非空** —— 卡上写"无需鉴权"属误导性暴露。
@@ -254,16 +262,39 @@ def _find_ws_by_task(task_id: str) -> str:
     return ""
 
 
-def _task_to_a2a(ws_id: str, task: dict | None, status: str = "working") -> dict:
-    """把平台工作间/任务映射为 A2A Task 对象。
+def _v5_artifacts(ws_id: str) -> list:
+    """v5 产物清单（`V119` 批 B1）：读 P4 落下的 `_meta/artifacts.json`，**与平台同源**。
 
-    ★2026-10-20（V64）：`artifacts` 不再恒为空 —— 从平台只读端点
-    `GET /api/workshop/{ws}/outputs` 取**产物清单**映射过来。
-    为什么重要：跨公司派活时，本侧要能看到"**对方交了什么东西**"；此前回执只有状态，
-    等于交付物凭空消失（`artifacts: []`）。
-    **边界（诚实）**：只带清单（名字/大小/归属成员），**不带文件内容**——
-    文件在对端那台机器上，跨公司不做自动下载。
+    ★2026-10-28：V64 那版只从 v4 的 `/outputs`（成员 output/ 目录）取，
+      v5 的产物走的是**目录 diff**（`platform/artifacts.py` → `_meta/artifacts.json`，带 sha256）。
+      两条路都要，否则"用 A2A 接入的对端"看不到 v5 的产物 —— 那就是协议落地不完整。
+    **边界**：只给清单 + sha256，**不搬文件内容**（文件在谁那台机器上就在那）。
     """
+    out = []
+    try:
+        data = _get("/api/workshop/%s/artifacts" % urllib.parse.quote(str(ws_id)))
+        if not isinstance(data, dict) or not data.get("ok"):
+            print("[a2a] v5 产物清单读不到 ws=%s → %s" % (ws_id, str(data)[:160]), file=sys.stderr)
+            return []
+        for slot, info in (data.get("slots") or {}).items():
+            for rel, meta in ((info or {}).get("files") or {}).items():
+                out.append({
+                    "name": "%s/%s" % (slot, rel),
+                    "parts": [],
+                    "metadata": {"bytes": (meta or {}).get("bytes"),
+                                 "sha256": (meta or {}).get("sha256"),
+                                 "slot_dir": slot, "source": "v5_dir_diff",
+                                 "note": "目录 diff 得出的清单；文件不在本侧，不自动搬运"},
+                })
+        if not out:
+            print("[a2a] v5 产物清单是空的 ws=%s（空就是空，不当成有）" % ws_id, file=sys.stderr)
+    except Exception as e:                                   # noqa: BLE001 — 说清楚，不吞
+        print("[a2a] 读 v5 产物异常 ws=%s: %s: %s" % (ws_id, type(e).__name__, e), file=sys.stderr)
+    return out[:50]
+
+
+def _v4_artifacts(ws_id: str) -> list:
+    """v4 产物清单（成员 `output/` 目录），保留兼容。"""
     artifacts = []
     try:
         outs = _get("/api/workshop/%s/outputs" % urllib.parse.quote(str(ws_id)))
@@ -284,19 +315,173 @@ def _task_to_a2a(ws_id: str, task: dict | None, status: str = "working") -> dict
             })
     except Exception as e:                                   # noqa: BLE001
         print("[a2a] 列产物异常 ws=%s: %s: %s" % (ws_id, type(e).__name__, e), file=sys.stderr)
-        artifacts = []
+    return artifacts
+
+
+def _merge_artifacts(ws_id: str) -> list:
+    """v5 目录 diff + v4 output/ 合并（按 name 去重；v5 优先，因为它带 sha256）。"""
+    seen, out = set(), []
+    for a in _v5_artifacts(ws_id) + _v4_artifacts(ws_id):
+        key = str(a.get("name") or "")
+        if key and key in seen:
+            continue
+        seen.add(key)
+        out.append(a)
+    return out[:60]
+
+
+def _ledger_task_id(row: dict) -> str:
+    """从账本一行里取"任务号"：优先 `task_id`，否则从任务文件名 `T-001.md` 里取。
+
+    为什么需要：账本第一版只记 `task_seq` 和 `file`，没记 `task_id`；
+    不兜这一层，"派到已有工作间"就永远绑不上验收结论（2026-10-28 判据抓到）。
+    """
+    if not isinstance(row, dict):
+        return ""
+    tid = str(row.get("task_id") or "").strip()
+    if tid:
+        return tid
+    m = re.search(r"(T-\d+)\.md$", str(row.get("file") or ""))
+    return m.group(1) if m else ""
+
+
+def _v5_tasks(ws_id: str) -> list:
+    """读 v5 任务账本（只读）；读不到就空列表并**说一句**。"""
+    if not ws_id:
+        return []
+    try:
+        data = _get("/api/workshop/%s/tasks" % urllib.parse.quote(str(ws_id)))
+    except Exception as e:                                   # noqa: BLE001
+        print("[a2a] 取任务账本失败 ws=%s: %s: %s" % (ws_id, type(e).__name__, e), file=sys.stderr)
+        return []
+    tasks = (data or {}).get("tasks") or []
+    return tasks if isinstance(tasks, list) else []
+
+
+def _v5_task(ws_id: str, task_id: str = "") -> dict:
+    """按 task_id 在账本里找那条；找不到返回 `{}`（**不编**）。"""
+    if not task_id:
+        return {}
+    for t in _v5_tasks(ws_id):
+        if not isinstance(t, dict):
+            continue
+        if (_ledger_task_id(t) or str(t.get("task_id") or "")) == str(task_id) \
+                or task_id in str(t.get("file") or "") \
+                or (str(t.get("title") or "") and str(t.get("title")) == str(task_id)):
+            return t
+    return {}
+
+
+def _v5_review(ws_id: str, task_id: str = "") -> dict:
+    """把 v5 任务账本里的**验收结论**取出来（`V119` 批 B3）。
+
+    匹配顺序：① 账本里的 `task_id` 字段 ② 任务文件路径里含这个 id ③ 标题相等。
+    找不到就返回空 dict（**不编**），调用方据此不塞 `metadata.review`。
+    """
+    t = _v5_task(ws_id, task_id)
+    if not t:
+        return {}
+    return {"task_id": t.get("task_id"), "task_seq": t.get("task_seq"), "state": t.get("state"),
+            "result": t.get("review_result"), "evidence_level": t.get("evidence_level"),
+            "note": t.get("review_note"), "reviewed_at": t.get("reviewed_at"),
+            "artifact_note": "验收只针对清单与证据等级；平台不判断内容好坏"}
+
+
+def _status_from_review(review: dict, default: str = "working") -> str:
+    """账本状态 → A2A 状态（**一一对应，不猜**）。"""
+    state = str((review or {}).get("state") or "")
+    return {"accepted": "completed", "rejected": "failed", "rework": "input-required"}.get(state, default)
+
+
+def _task_to_a2a(ws_id: str, task: dict | None, status: str = "working",
+                 a2a_id: str = "", review: dict | None = None) -> dict:
+    """把平台工作间/任务映射为 A2A Task 对象。
+
+    - **artifacts**：v5 目录 diff（带 sha256）+ v4 `output/` 清单合并（`V119` B1）；
+    - **metadata.review**：v5 任务账本的验收结论（`V119` B3），没有就不塞；
+    - **status**：账本 `accepted/rejected/rework` → `completed/failed/input-required`。
+    **边界（诚实）**：只带清单，**不带文件内容**——文件不在本侧就不搬。
+    """
+    artifacts = _merge_artifacts(ws_id)
+    review = review or {}
+    if review:
+        status = _status_from_review(review, status)
     return {
-        "id": ws_id,
+        # ★2026-10-25：A2A 的 id 必须是**任务 id**（客户端拿它调 tasks/get）；
+        #   原来这里塞的是**工作间 id** ⇒ 客户端按自己拿到的 id 回查永远查不到（真对端判据抓到）。
+        #   ws_id 保留在 metadata 里，产物清单仍按它取。
+        "id": (a2a_id or ws_id),
         "status": status,  # submitted / working / completed / failed / input-required / canceled
-        "artifacts": artifacts,     # V64：产物**清单**（不带内容；见上）
+        "artifacts": artifacts,     # V64 + V119：v5 目录 diff（sha256）+ v4 清单
         "history": [],
         "metadata": {
+            "ws_id": ws_id,
             "task_title": (task or {}).get("title", ""),
             "task_status": (task or {}).get("status", ""),
             "ws_status": (task or {}).get("ws_status", ""),
-            "artifacts_note": "只给清单；文件在对端机器上，跨公司不自动下载",
+            "artifacts_note": "只给清单（v5 带 sha256）；文件不在本侧就不搬",
+            "review": review or None,
+            "review_note": "验收结论来自平台任务账本；平台不判断内容好坏，只记证据等级",
         },
     }
+
+
+# ── 状态订阅（`V119` B2）：**长轮询**，不是 A2A 流式 ────────────────────────
+#: `task_id → (status, artifacts 指纹, review 指纹)`；用于判断"这次查询有没有变化"
+_TASK_SNAPSHOT: dict[str, tuple] = {}
+
+
+def _snapshot_of(task_obj: dict) -> tuple:
+    arts = task_obj.get("artifacts") or []
+    fp = ",".join(sorted(str(a.get("name")) + str((a.get("metadata") or {}).get("sha256") or "")
+                         for a in arts))
+    rv = (task_obj.get("metadata") or {}).get("review") or {}
+    return (task_obj.get("status"), fp, json.dumps(rv, sort_keys=True, ensure_ascii=False))
+
+
+def _watch_task(task_id: str, wait_seconds: float = 10.0) -> dict:
+    """**长轮询**等状态/产物/验收三者任一变化；超时就如实说"没变"。
+
+    为什么是长轮询：`capabilities.streaming=false`（我们不假装支持 SSE/流式）。
+    卡上写了 `statusLongPoll`，客户端按它用 —— **协议边界写清楚比假装支持强**。
+    """
+    import time as _time
+
+    deadline = _time.time() + max(0.5, min(float(wait_seconds or 10), 30))
+    first = None
+    while True:
+        task = _task_to_a2a(_TASK_TO_WS.get(task_id) or _find_ws_by_task(task_id) or task_id,
+                            _get("/api/task/%s" % urllib.parse.quote(task_id)),
+                            a2a_id=task_id,
+                            review=_v5_review(_TASK_TO_WS.get(task_id) or "", task_id))
+        snap = _snapshot_of(task)
+        if first is None:
+            first = snap
+            prev = _TASK_SNAPSHOT.get(task_id)
+            _TASK_SNAPSHOT[task_id] = snap
+            if prev is not None and prev != snap:
+                task["metadata"]["changed"] = True
+                return task
+        elif snap != first:
+            _TASK_SNAPSHOT[task_id] = snap
+            task["metadata"]["changed"] = True
+            return task
+        if _time.time() >= deadline:
+            task["metadata"]["changed"] = False
+            task["metadata"]["wait_note"] = ("长轮询 %ss 内没有变化（超时如实返回，不假装有更新）"
+                                             % int(wait_seconds or 10))
+            return task
+        _time.sleep(0.5)
+
+
+def _declared_skill_ids() -> set:
+    """Agent Card 上**已声明**的能力 id 集合（`V119` B4 的 fail-closed 依据）。"""
+    try:
+        return {str(s.get("id") or "") for s in _harness_skills() if s.get("id")}
+    except Exception as e:                                   # noqa: BLE001 — 取不到就空集（等于什么都不许调）
+        print("[a2a] 取已声明能力失败（%s: %s）⇒ 本次按空集处理（拒绝所有指定 skill 的调用）"
+              % (type(e).__name__, e), file=sys.stderr)
+        return set()
 
 
 def handle_rpc(msg: dict, host: str, port: int) -> dict:
@@ -329,13 +514,51 @@ def handle_rpc(msg: dict, host: str, port: int) -> dict:
         title = _text_of(message).strip()
         if not title:
             return _rpc_error(msg_id, -32602, "message 缺少文本内容")
+        # ── V119 B4：**未声明能力不许调**（fail-closed）──
+        want_skill = str(params.get("skillId") or (params.get("metadata") or {}).get("skill") or "")
+        if want_skill:
+            declared = _declared_skill_ids()
+            if want_skill not in declared:
+                return _rpc_error(
+                    msg_id, -32004,
+                    "未声明能力（%s）：本侧 Agent Card 的 skills 里没有它。可用示例：%s"
+                    % (want_skill, "、".join(sorted(declared)[:5]) or "（卡上暂时没有 skills）"))
         task_id = str(params.get("taskId", "")).strip() or uuid.uuid4().hex[:8]
+        # V119：允许**派到已有工作间**（`params.workshopId`）—— 外部 A2A 客户端把活
+        # 派进一个已经建好名单/看板/产物的 v5 工作间时用；不传就照旧新建一个。
+        attach_ws = str(params.get("workshopId") or (params.get("metadata") or {}).get("workshopId") or "").strip()
+        if attach_ws:
+            probe = _get("/api/workshop/%s" % urllib.parse.quote(attach_ws))
+            if not isinstance(probe, dict) or not (probe.get("workshop_id") or probe.get("ws_id")):
+                return _rpc_error(msg_id, -32004,
+                                  "指派的 workshopId 不存在或读不到：%s（平台返回：%s）"
+                                  % (attach_ws, str(probe)[:160]))
+            _remember_task_ws(task_id, attach_ws)
+            # `V119` B3：把 A2A 任务**绑到账本里的那条**——客户端给了 taskId 就按它对，
+            # 没给就取这个工作间**唯一的一条**（多于一条时不猜，如实说"要先给 taskId"）。
+            ledger = _v5_tasks(attach_ws)
+            if not str(params.get("taskId", "")).strip():
+                if len(ledger) == 1:
+                    task_id = _ledger_task_id(ledger[0]) or task_id
+                    _remember_task_ws(task_id, attach_ws)
+                elif len(ledger) > 1:
+                    return _rpc_error(
+                        msg_id, -32602,
+                        "这个工作间有 %d 条任务，必须用 `taskId` 指明是哪一条（不替你猜）：%s"
+                        % (len(ledger), "、".join(_ledger_task_id(t) or "?" for t in ledger[:5])))
+            review = _v5_review(attach_ws, task_id)
+            return _rpc_success(msg_id, _task_to_a2a(attach_ws, probe, "working",
+                                                    a2a_id=task_id, review=review))
         # 平台侧：创建工作间（含任务），触发广播与讨论
         # V-42 遗留修复：平台 /api/workshop 实际字段为 name/hall_content（title/description 导致未命名工作间）
+        # ★2026-10-25：**必须让平台真建出任务**（原来只建了空工作间，	ask_id 被忽略
+        #   ⇒ 客户端拿到的 id 查不到、也没处回报结果 —— 与 MCP 那条是同一个洞）
         resp = _post("/api/workshop", {
             "name": title[:20],
             "hall_content": title,
             "task_id": task_id,
+            "create_task": True,
+            "task_title": title[:80],
         })
         if not resp.get("ok", True):
             return _rpc_error(msg_id, -32000, f"平台创建任务失败: {resp}")
@@ -347,7 +570,8 @@ def handle_rpc(msg: dict, host: str, port: int) -> dict:
         except Exception:  # noqa: BLE001
             pass
         _remember_task_ws(task_id, ws_id)      # V64：记住 task→工作间，回查时才能列出产物
-        return _rpc_success(msg_id, _task_to_a2a(ws_id, resp, "working"))
+        _real_tid = str(resp.get("task_id") or task_id)
+        return _rpc_success(msg_id, _task_to_a2a(ws_id, resp, "working", a2a_id=_real_tid))
 
     if method == "tasks/get":
         task_id = str(params.get("taskId", "")).strip()
@@ -367,7 +591,22 @@ def handle_rpc(msg: dict, host: str, port: int) -> dict:
         status = "working"
         if isinstance(task, dict) and task.get("status") in ("completed", "failed"):
             status = task["status"]
-        return _rpc_success(msg_id, _task_to_a2a(ws_id, task, status))
+        # V119 B3：把 v5 账本的验收结论一并带出（状态也按账本映射）
+        review = _v5_review(ws_id, task_id)
+        return _rpc_success(msg_id, _task_to_a2a(ws_id, task, status, a2a_id=task_id,
+                                                review=review))
+
+    if method in ("tasks/watch", "tasks/resubscribe"):
+        # V119 B2：长轮询订阅（**不是流式**；卡上 capabilities.statusLongPoll 已声明）
+        task_id = str(params.get("taskId", "")).strip()
+        if not task_id:
+            return _rpc_error(msg_id, -32602, "缺少 taskId")
+        wait = params.get("waitSeconds", 10)
+        try:
+            wait_f = float(wait)
+        except (TypeError, ValueError):                       # 给个默认 10 秒，别在这儿炸
+            wait_f = 10.0
+        return _rpc_success(msg_id, _watch_task(task_id, wait_f))
 
     if method == "tasks/cancel":
         return _rpc_success(msg_id, {"id": str(params.get("taskId", "")), "status": "canceled"})

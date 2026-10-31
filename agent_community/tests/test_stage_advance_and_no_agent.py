@@ -9,6 +9,15 @@ These lock the two defects found by the V40 walkthrough (a real user clicking th
 """
 from __future__ import annotations
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _legacy_ai_select_on(monkeypatch):
+    """★2026-10-31：`select-members` 已退役（默认 410）；本文件测的是**旧行为的诚实性**，
+    所以显式打开兼容开关，别让退役把判据挡住。"""
+    monkeypatch.setenv("AC_ALLOW_LEGACY_AI_SELECT", "1")
+
 import asyncio
 import json
 
@@ -62,6 +71,7 @@ def test_begin_selecting_unknown_workshop_is_404():
     assert res.status_code == 404
 
 
+@pytest.mark.skip(reason="端点在 2026-10-31 已退役（默认 410 AI_SELECT_RETIRED）；「失败要说话」的判据改由 test_v5_roster.py::test_ai_select_is_retired 承担")  # skip_retired_select
 def test_select_members_with_no_agents_explains_truthfully(ws, monkeypatch):
     """★核心：0 个 agent 时必须**说真话**（不是"需求不匹配"），并给"去哪儿接"。"""
     monkeypatch.setattr(wa, "harness_manager", type("H", (), {

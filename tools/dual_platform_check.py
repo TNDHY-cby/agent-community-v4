@@ -46,6 +46,16 @@ ROOT = Path(__file__).resolve().parent.parent
 LINUX_RUNNER = ROOT / "tools" / "run_suite_in_repo.sh"
 PYTEST_TARGETS = ["agent_community/tests", "tests"]
 
+# ★2026-10-25：**线上服务在跑的时候跑本判据，可能被"真实数据被改"的红误导** ——
+#   `agent_community/tests/conftest.py` 的会话级守卫盯的是**仓库里的 data/**，
+#   而线上服务（看门狗守着）会周期性写 audit/state ⇒ 两侧任何一侧恰好在它写的时候收尾，
+#   就会报「测试污染了真实数据」。实测（2026-10-25）Linux 侧就这样红过一次。
+#   ⇒ 跑之前先说一句，别让人对着假红查真 bug。
+_SERVICE_HINT = ("（提示）如果本机平台服务正在跑（看门狗守着），它会在跑判据期间写 "
+                 "`agent_community/data/`，可能让「真实数据被改」那条守卫误红 —— "
+                 "要最干净的结果，先停看门狗与服务再跑。")
+
+
 
 def load_dotenv() -> dict:
     """读仓库根 `.env`（只取本工具要的两个键；不引第三方库、不覆盖已存在的环境变量）。"""
@@ -209,12 +219,25 @@ def run_linux(distro: str, linux_python: str, junit_name: str) -> tuple:
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 
+# 平台**自己定时写**的运行时产物 —— 不算"测试污染"，判定时必须排除。
+# 与 `agent_community/tests/conftest.py` 的"真实数据指纹"守卫同一口径（一处真相：`backups/**`、`run/**`、日志）。
+# ★2026-10-31 修（判据自己假红）：生产实例（看门狗守着的 18920）每 `AC_STATE_BACKUP_MINUTES`（默认 30）
+#   分钟往 `agent_community/data/backups/` 拍一张状态快照，一跑判据就报「18 处新增」——
+#   那不是测试写的，是平台自己写的；不排除就会让「有服务在跑」这件事本身变成红。
+_PLATFORM_OWNED_PARTS = ("/backups/", "/logs/", "/run/")
+
+
+def _is_platform_owned(rel_posix: str) -> bool:
+    return any(part in ("/" + rel_posix) for part in _PLATFORM_OWNED_PARTS)
+
+
 def _snapshot_repo_runtime() -> dict:
     """给"**运行数据目录**"拍快照：仓库根的 `library/` / `data/` / `agent_community/data/` /
     `runtime_logs/` / `agent_community/bridges/`。
 
     这几处是平台运行期会写的（工作间共享资料库、状态与日志、生成的桥脚本）。它们被 `.gitignore` 排除，
     所以 `git status` 看不出污染 —— **必须自己拍快照**才抓得到"测试往仓库里写东西"。
+    `backups/` / `logs/` / `run/` 是平台自己定时写的（见 `_PLATFORM_OWNED_PARTS`），不在此列。
     """
     snap = {}
     for rel in ("library", "data", Path("agent_community") / "data", "runtime_logs",
@@ -224,10 +247,13 @@ def _snapshot_repo_runtime() -> dict:
             continue
         for p in base.rglob("*"):
             try:
+                rel_posix = str(p.relative_to(ROOT)).replace("\\", "/")
+                if _is_platform_owned(rel_posix):
+                    continue
                 st = p.stat()
                 # 只记**大小**：内容是否变，用大小判就够（真污染必然改大小/改集合）；
                 # mtime 会被同机其它进程的正常重写带偏（见 _pollution_diff 的注释）。
-                snap[str(p.relative_to(ROOT))] = st.st_size
+                snap[rel_posix] = st.st_size
             except OSError:
                 continue
     return snap
@@ -290,6 +316,7 @@ def plan_text(distro: str, linux_python: str) -> str:
 
 
 def main() -> int:
+    print(_SERVICE_HINT, flush=True)
     ap = argparse.ArgumentParser()
     ap.add_argument("--plan", action="store_true", help="只打印计划（不跑）")
     ap.add_argument("--local-only", action="store_true", help="只跑本机这一侧")

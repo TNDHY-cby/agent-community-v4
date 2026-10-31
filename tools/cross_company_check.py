@@ -323,7 +323,23 @@ def main() -> int:
         art_ok = False
         detail_art = "未测到"
         try:
-            ws_b = tid3 or ""
+            # ★2026-10-31 修判据（**既有假红**，在 8dc159d 上同样红，非本次引入）：
+            #   原注写「对端工作间的 id 就等于 a2a 的 task_id」——这条**早就不成立**了。
+            #   实测：`pb.task_id` 是对端任务号（如 5d3fbe9a），而对端真工作间 id 是另一个值（如 7d10818e），
+            #   拿任务号去 `POST /api/workshop/<id>/members` 必然 404 ⇒ 加不上成员 ⇒ 造不出产物 ⇒ 本格恒红。
+            #   现在照 ⑪ 的做法**按标题在对端列表里搜真工作间 id**；搜不到才退回 task_id，并如实标出来源。
+            ws_b, ws_src = "", ""
+            for _ in range(20):
+                _st, wl = req(base_b, "/api/workshops")
+                for w in (wl or {}).get("workshops") or []:
+                    if isinstance(w, dict) and title2[:10] in str(w.get("name") or ""):
+                        ws_b, ws_src = str(w.get("workshop_id") or ""), "按标题搜到"
+                        break
+                if ws_b:
+                    break
+                time.sleep(0.3)
+            if not ws_b:
+                ws_b, ws_src = tid3 or "", "退回 task_id（没按标题搜到工作间）"
             st_m, _mb = req(base_b, "/api/workshop/%s/members" % ws_b,
                             {"members": [{"role": "码农", "harness_ids": []}]})
             st_w, wbody = req(base_b, "/api/workshop/%s" % ws_b)
@@ -340,8 +356,8 @@ def main() -> int:
             st_r2, rb2 = req(base_a, "/api/peer-tasks/%s/refresh" % pt_id, {})
             arts = ((rb2 or {}).get("task") or {}).get("artifacts") or []
             art_ok = bool(arts) and all(a.get("owner") == "remote" for a in arts)
-            detail_art = ("产物 %d 个 ｜ 对端ws=%s 加成员=%s 成员=%d 目录=%s ｜ 对端outputs=%s/%s ｜ %s" %
-                          (len(arts), ws_b or "?", st_m, len(members), made or "无",
+            detail_art = ("产物 %d 个 ｜ 对端ws=%s(%s) 加成员=%s 成员=%d 目录=%s ｜ 对端outputs=%s/%s ｜ %s" %
+                          (len(arts), ws_b or "?", ws_src, st_m, len(members), made or "无",
                            st_o, (ob or {}).get("total_files"), (arts[0].get("name") if arts else "无")))
         except Exception as e:                               # noqa: BLE001
             detail_art = "异常：%s: %s" % (type(e).__name__, str(e)[:80])

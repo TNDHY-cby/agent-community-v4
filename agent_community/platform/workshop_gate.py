@@ -11,6 +11,35 @@
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+_WARNED: set = set()
+
+
+def _warn_once(key: str, msg: str) -> None:
+    """同一进程同一 key 只喊一次（失败要说话，但不刷屏）。"""
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    logger.warning("%s", msg)
+
+
+def _effective(ws) -> dict:
+    """人数口径：**v5 名单优先**；v5 模块坏了也要让闸门能判（如实降级成 legacy/empty）。"""
+    try:
+        from . import v5_roster as _rw
+
+        eff = _rw.effective_members(getattr(ws, "workshop_id", "") or "")
+        if eff.get("source") == "v5":
+            return eff
+    except Exception as e:                                   # noqa: BLE001 — 名单坏了不该让闸门 500
+        _warn_once("v5_roster_effective_failed", "名单口径取不到，闸门退回旧 members：%s" % e)
+    legacy = list(getattr(ws, "members", None) or [])
+    return {"source": "legacy" if legacy else "empty", "total": len(legacy),
+            "active": sum(1 for m in legacy if _reached(m)), "members": []}
+
+
 REACHED = ("entered", "working", "idle")
 
 
@@ -38,7 +67,10 @@ def check(ws, wake_methods=None) -> dict:
     if stage not in GATED_STAGES:
         return {"ok": True, "state": "in_flight", "why": "", "next_step": ""}
     members = list(getattr(ws, "members", None) or [])
-    if not members:
+    # ★2026-10-30：人数以 **v5 名单** 为主（旧 members 只在 v5 为空时兜底）——
+    #   原来只看旧模型 ⇒ 有 active 工位却报 `no_members`（假状态，真机实测到）。
+    _eff = _effective(ws)
+    if _eff["total"] <= 0 and not members:
         # ★2026-10-25 修：原来这句只写了"去对接中心做第 4/5 步（新建会话/重命名会话）"，
         #   那是**桌面类 harness** 的必经步骤；对 MCP/HTTP/A2A 这类**根本不适用**
         #   （老板原话：「MCP 协议适配的 harness 注册后无法拉入工作间，也没引导说明」）。
@@ -51,8 +83,10 @@ def check(ws, wake_methods=None) -> dict:
         return {"ok": False, "state": "no_members",
                 "why": "这个工作间还没有成员：讨论发出去也没人接，平台不会假装在讨论",
                 "next_step": nxt}
-    if not any(_reached(m) for m in members):
-        pend = "、".join(str(getattr(m, "display_name", "") or getattr(m, "member_id", "")) for m in members[:3])
+    if _eff["active"] <= 0 and not any(_reached(m) for m in members):
+        _names = ([str(m.get("slot_dir") or "") for m in _eff["members"]]
+                  or [str(getattr(m, "display_name", "") or getattr(m, "member_id", "")) for m in members])
+        pend = "、".join(_names[:3])
         if _proto_hint(wake_methods):
             nxt = ("对每个成员点「自检」看它回不回话 —— 协议型（MCP/HTTP 等）**不靠视觉脚本**，"
                    "自检通就说明能被派活")
@@ -68,5 +102,6 @@ def info(ws, wake_methods=None) -> dict:
     """给界面用的轻量版（序列化时带上）。"""
     g = check(ws, wake_methods)
     return {"ok": g["ok"], "state": g["state"], "why": g["why"], "next_step": g["next_step"],
-            "members_count": len(getattr(ws, "members", None) or []),
-            "verified_count": sum(1 for m in (getattr(ws, "members", None) or []) if _reached(m))}
+            "members_count": _effective(ws)["total"],
+            "verified_count": _effective(ws)["active"],
+            "members_source": _effective(ws)["source"]}

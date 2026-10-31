@@ -1,0 +1,1451 @@
+/* v5.js — 工作间对接中心（V116 十一步的界面骨干；2026-10-31 正名：工作间专属，不带大厅级动作）
+ *
+ * 设计口径（与后端 V116/V117 一致，别在这里另立口径）：
+ * - 平台**不判断、不推荐、不代写**；这里只把后端的真实返回照实显示；
+ * - 每个动作失败都要显示 `code` / `four`（谁/缺什么/去哪补/怎么做）——不许只弹一句"失败"；
+ * - 证据、验收、讨论都按后端强校验走：缺证据就不许 active，L3 一律拒，自由聊天 422。
+ */
+'use strict';
+
+// 老板 2026-10-29：从工作间页点进来时带 `?ws=<id>`（也兼容 `?ws_id=`）
+const _QP = new URLSearchParams(location.search);
+const WANT_WS = (_QP.get('ws') || _QP.get('ws_id') || '').trim();
+
+const S = { ws: '', name: '', list: [], mind: '', path: '', members: [], slots: [] };
+
+function $(id) { return document.getElementById(id); }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+  });
+}
+function say(id, text, kind) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'msg' + (kind ? ' ' + kind : '');
+}
+function banner(kind, html) {
+  return '<div class="banner ' + kind + '">' + html + '</div>';
+}
+function fourHtml(four) {
+  if (!four) return '';
+  return '<div class="msg">谁：' + esc(four.who) + '　缺什么：' + esc(four.what) +
+    '<br>去哪补：' + esc(four.where) + '　怎么做：' + esc(four.how) + '</div>';
+}
+function errHtml(d, status) {
+  const code = d && d.code ? d.code : ('HTTP ' + status);
+  let h = '<div class="bad">✗ ' + esc(code) + '：' + esc((d && d.error) || '请求失败') + '</div>';
+  if (d && d.four) h += fourHtml(d.four);
+  if (d && d.errors && d.errors.length) {
+    h += '<div class="msg">' + d.errors.slice(0, 5).map(function (e) {
+      return esc(e.code) + ' ' + esc(e.field) + '：' + esc(e.message) +
+        (e.fix ? '（' + esc(e.fix) + '）' : '');
+    }).join('<br>') + '</div>';
+  }
+  if (d && d.next) h += '<div class="msg">下一步：' + esc(d.next) + '</div>';
+  return h;
+}
+
+async function api(method, path, body) {
+  const opt = { method: method, headers: {} };
+  if (body !== undefined) {
+    opt.headers['Content-Type'] = 'application/json';
+    opt.body = JSON.stringify(body);
+  }
+  let res, data;
+  try {
+    res = await fetch(path, opt);
+  } catch (e) {
+    return { ok: false, status: 0, data: { code: 'NET', error: '连不上平台（' + e + '）' } };
+  }
+  const text = await res.text();
+  try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 300) }; }
+  return { ok: res.ok, status: res.status, data: data };
+}
+
+/* ── 0. 工作间 ─────────────────────────────────────────────── */
+async function loadWs() {
+  const r = await api('GET', '/api/workshops');
+  if (!r.ok) {
+    /* ★2026-10-31（老板）：拉不到列表就等于「不知道有哪些工作间」——
+       以前这里静默过去，页面就退化成一张看不出绑了谁的通用页；现在明说。 */
+    say('wsMsg', '拉不到工作间列表：' +
+      ((r.data && (r.data.error || r.data.code)) || ('HTTP ' + r.status)) + ' —— 刷新重试', 'bad');
+    applyWsScope();
+    return;
+  }
+  const list = (r.data && r.data.workshops) || [];
+  S.list = list;   /* 名字/状态缓一份：铭牌、顶栏读数、换间都要用 */
+  const sel = $('wsSel');
+  sel.innerHTML = '<option value="">（未选工作间 —— 从工作间页进入会自动选中）</option>' +
+    (list.map(function (w) {
+      return '<option value="' + esc(w.workshop_id) + '">' + esc(w.name || w.workshop_id) +
+        '（' + esc(w.workshop_id) + ' · ' + esc(w.status || '?') + '）</option>';
+    }).join('') || '<option value="">（还没有工作间）</option>');
+  const want = S.ws || WANT_WS;
+  if (list.length && want) {
+    const hit = list.some(function (w) { return w.workshop_id === want; });
+    sel.value = hit ? want : '';
+    if (!hit) say('wsMsg', 'URL 里的工作间 ' + want + ' 不存在（或已删）—— 请在下面下拉里重选', 'warn');
+    if (hit) pickWs();
+  }
+  else if (!list.length) say('wsMsg', '还没有工作间 —— 上面填名字和路径，点「建工作间 + 建心智根」', 'warn');
+  /* ★2026-10-30（老板「只能从工作间进入」）：URL 没带 ?ws= ⇒ **不自动挑第一个**。
+     自动挑等于"随便给一个工作间就让你派活/验收"，正是老板要禁的那件事。
+     这时只留 UNIT-00 让人自己选（或从工作间页进来）。 */
+  applyWsScope();   /* 没有工作间语境时收起 01–09，只留选间卡 */
+}
+
+function pickWs() {
+  S.ws = $('wsSel').value;
+  const meta = (S.list || []).filter(function (w) { return w.workshop_id === S.ws; })[0] || null;
+  S.name = meta ? (meta.name || '') : '';
+  applyWsScope();
+  loadWsDetail();
+  loadRoster2();
+  /* fillConsoleContext 会把 agent_key 填进 leadKey —— 拉人列表要等它落定再预填 */
+  fillConsoleContext().then(loadLeadPull);
+  loadLibDir();
+  loadTasks();
+  loadAilp();
+}
+
+/* 本间铭牌 / 顶栏读数 / 标签页标题 —— 一处算、三处显，别各算一套 */
+function paintIdentity() {
+  const has = !!S.ws;
+  const name = S.name || S.ws;
+  const hw = $('hdrWs');
+  if (hw) {
+    hw.textContent = has ? ('工作间 ' + name) : '未选工作间';
+    hw.dataset.led = has ? 'ok' : 'off';
+    hw.title = has ? ('本页只干这个工作间：' + S.ws + '（换间请回工作间列表）')
+                   : '还没绑定工作间 —— 从工作间页的「本间对接中心」进来会自动带上';
+  }
+  const chip = $('mhWs');
+  if (chip) {
+    chip.dataset.led = has ? 'ok' : 'off';
+    chip.innerHTML = has
+      ? '本间 <b>' + esc(name) + '</b>' + (S.name ? '<span style="color:var(--dim);margin-left:8px">' + esc(S.ws) + '</span>' : '')
+      : '未绑定工作间 —— 从工作间页的「本间对接中心」进来';
+  }
+  document.title = has ? (name + ' · 工作间对接中心') : '工作间对接中心 · 从接组长到验收';
+
+  /* ★2026-10-31（老板「无法从工作间对接中心回到刚才的工作间」）：
+     顶栏回程键与导航「工作间」**都要带 ?ws_id=** —— 原来那只跳 /workshop.html（列表页），
+     等于把人从本间丢回一串工作间的清单里。没绑定工作间时回程键藏起来，导航回列表。 */
+  const back = $('backWs');
+  if (back) {
+    back.href = has ? ('/workshop.html?ws_id=' + encodeURIComponent(S.ws)) : '/';
+    back.hidden = !has;
+    back.title = has ? ('回本间工作页：' + name + '（讨论与工作都在那儿）') : '';
+  }
+  const nav = $('navWs');
+  if (nav) {
+    nav.href = has ? ('/workshop.html?ws_id=' + encodeURIComponent(S.ws)) : '/workshop.html';
+    nav.title = has ? ('回本间工作页：' + name) : '工作间列表（还没绑定工作间）';
+  }
+  /* ★2026-10-31（老板拍板「切成本间模式」）：顶栏「对接中心」带 ?ws= ——
+     从本间进去就是本间的对接台（激活/送话只对本间），不是全局总控。 */
+  const dock = $('navDock');
+  if (dock) {
+    dock.href = has ? ('/docking.html?ws=' + encodeURIComponent(S.ws)) : '/docking.html';
+    dock.title = has ? ('本间对接中心 · ' + name + '（登记/激活/送话，只对本间）') : '对接中心 · 全局登记';
+  }
+}
+
+/* ★2026-10-30（老板）：对接中心只能从工作间进入；2026-10-31 补充：本页是工作间专属的对接中心。
+   ★2026-10-31（老板，发火那轮说透了）：这张页是**工作间专属的对接中心** —— 从工作间进来后
+   只干本间的活：建工作间/换工作间是大厅级动作，**不属于本页**，选中后 UNIT-00 一并收起；
+   没有工作间语境时（直接敲地址）才留 UNIT-00 做兜底选间。
+   做法：用**类**切换而不是写 inline display —— 各卡自己的 display 保持原样，
+   一旦选中工作间就原封不动地回来。 */
+function applyWsScope() {
+  const has = !!S.ws;
+  document.querySelectorAll('.card[id]').forEach(function (el) {
+    const id = el.id;
+    if (id === 'noWsNotice') return;
+    if (!/^sec\d+$/.test(id) && !/^sec[A-Z]/.test(id)) return;
+    /* secLib（资料库指向）也是本间动作 —— 此前漏了它，没选工作间时它会裸奔（7f7a199 引入的洞） */
+    /* 有工作间 ⇒ 本间模式：连 UNIT-00（选间/建间）一起收；没有 ⇒ 只留 UNIT-00 兜底 */
+    el.classList.toggle('ws-out', id === 'sec0' ? has : !has);
+  });
+  const howto = document.querySelector('.howto');
+  if (howto) howto.classList.toggle('ws-out', !has);
+  document.querySelectorAll('.bay-rail a[data-target]').forEach(function (a) {
+    const t = a.getAttribute('data-target');
+    a.classList.toggle('ws-out', t === 'sec0' ? has : !has);
+  });
+  const n = $('noWsNotice');
+  if (n) n.style.display = has ? 'none' : '';
+  paintIdentity();   /* 顶栏读数 + 刊头铭牌 + 标签页标题：本间是谁，一处算三处显 */
+}
+
+// 从工作间页进来：把**本间已知的东西**填好（路径/方向/心智根键），不让用户手抄
+async function fillConsoleContext() {
+  if (!S.ws) return;
+  const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) + '/console-context');
+  if (!r.ok) return;
+  const d = r.data || {};
+  S.path = d.workshop_path || S.path;
+  S.mind = d.mind_path || S.mind;
+  S.libPath = (typeof d.library_path === 'string') ? d.library_path : '';  /* 资料库指向：空 = 默认 */
+  const dir = d.direction || {};
+  if (dir.brief && !$('dirBrief').value) $('dirBrief').value = dir.brief;
+  if ((dir.enum || []).length && !$('dirEnum').value) $('dirEnum').value = dir.enum.join(',');
+  if (d.agent_key && !$('leadKey').value) $('leadKey').value = d.agent_key;
+  const hub = $('wsMsg');
+  if (hub) {
+    const bits = [];
+    if (d.workshop_path) bits.push('根B ' + d.workshop_path);
+    if (d.mind_path) bits.push('根A ' + d.mind_path);
+    bits.push('名单 ' + ((d.members || {}).total || 0) + ' 人（接上 ' + ((d.members || {}).active || 0) + '）');
+    if (!d.manifest_ok) bits.push('manifest 不合法');
+    hub.textContent = bits.join(' · ');
+    hub.className = 'msg' + (d.manifest_ok ? '' : ' warn');
+    if ((d.notes || []).length) hub.title = d.notes.join('；');
+  }
+}
+
+async function loadWsDetail() {
+  if (!S.ws) return;
+  const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws));
+  if (!r.ok) return;
+  S.path = r.data.workspace_dir || r.data.workshop_path || '';
+  const d = r.data.direction || {};
+  if (d.brief) $('dirBrief').value = d.brief;
+  if (d.enum && d.enum.length) $('dirEnum').value = d.enum.join(',');
+}
+
+async function createWs() {
+  const name = $('newName').value.trim();
+  const path = $('newPath').value.trim();
+  const mind = $('newMind').value.trim();
+  if (!name || !path) { say('mkOut', '名字和路径都要填', 'bad'); return; }
+  say('mkOut', '正在建工作间…');
+  const r = await api('POST', '/api/workshop', { name: name, hall_content: name, workshop_path: path });
+  if (!r.ok) { $('mkOut').innerHTML = errHtml(r.data, r.status); return; }
+  const wid = r.data.workshop_id;
+  S.ws = wid;
+  let h = '<div class="ok">✓ 工作间 ' + esc(wid) + ' 建好了（根B：' + esc(path) + '）</div>';
+  if (mind) {
+    const mk = await api('POST', '/api/mind/' + encodeURIComponent(mind), { display_name: name });
+    if (mk.ok) {
+      S.mind = mk.data.mind_path;
+      h += '<div class="ok">✓ 心智根建好：' + esc(S.mind) + '（建了 ' +
+        ((mk.data.created || []).length) + ' 项）</div>';
+      $('leadKey').value = mind;
+      $('newMind').value = mind;
+      const mf = await api('POST', '/api/workshop/' + encodeURIComponent(wid) + '/manifest',
+        { mind_path: S.mind, entry_points: ['_lead/建模.md'], task_focus: name });
+      if (mf.ok) h += '<div class="ok">✓ manifest 写入：' + esc(mf.data.manifest_hash || '') + '</div>';
+      else h += errHtml(mf.data, mf.status) +
+        '<div class="msg">提示：manifest 要求入口文件真实存在 —— 先让组长建 <code>_lead/建模.md</code>，再回来写一次。</div>';
+    } else {
+      h += errHtml(mk.data, mk.status);
+    }
+  }
+  $('mkOut').innerHTML = h;
+  await loadWs();
+}
+
+/* ── 1. 方向 + 组长候选 ─────────────────────────────────────── */
+async function saveDirection() {
+  if (!S.ws) { say('dirMsg', '先选工作间', 'bad'); return; }
+  const brief = $('dirBrief').value.trim();
+  const arr = $('dirEnum').value.split(/[,，\s]+/).filter(Boolean);
+  if (!brief || !arr.length) { say('dirMsg', '方向长文和下拉都要填（平台不体检内容，但不许空）', 'bad'); return; }
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws),
+    { direction: { brief: brief, enum: arr } });
+  if (r.ok) say('dirMsg', '✓ 方向已存（' + arr.join('、') + '）', 'ok');
+  else $('dirMsg').innerHTML = errHtml(r.data, r.status);
+}
+
+async function loadRoster() {
+  const dir = $('dirEnum').value.split(/[,，\s]+/).filter(Boolean)[0] || '';
+  const r = await api('GET', '/api/lead-roster?direction=' + encodeURIComponent(dir));
+  if (!r.ok) { $('rosterOut').innerHTML = errHtml(r.data, r.status); return; }
+  const d = r.data;
+  const note = $('rosterNote');
+  if (d.note) { note.hidden = false; note.textContent = d.note; } else { note.hidden = true; }
+  let h = '<div class="msg">' + esc(d.sort_note || '') + '</div>';
+  if (!d.candidates.length) {
+    h += banner('warn', '现在没有能当组长的 harness。组长门槛：<b>能写文件</b> 且 <b>能把回执送回来</b>' +
+      '（协议或桥）。下面是被排除的与原因；可以让它报 <code>tools</code>，或点「实测」写一次盘。');
+  }
+  h += '<div class="row"><button onclick="loadTooling()">看所有 harness 的实测状态</button></div><div id="toolOut"></div>';
+  h += '<table><tr><th>harness</th><th>模型</th><th>方向</th><th>能不能当组长</th><th></th></tr>' +
+    d.candidates.map(function (c) {
+      return '<tr><td>' + esc(c.harness_id) + '<div class="msg">' + esc(c.harness_name) + '</div></td>' +
+        '<td>' + esc(c.model) + '</td><td>' + esc((c.directions || []).join('、') || '—') + '</td>' +
+        '<td class="ok">能</td><td><button class="p" onclick="chooseLead(\'' + esc(c.harness_id) + '\')">选它当组长</button></td></tr>';
+    }).join('') + '</table>';
+  if ((d.excluded || []).length) {
+    h += '<div class="msg" style="margin-top:8px">被排除（' + d.excluded.length + '）：<br>' +
+      d.excluded.map(function (x) {
+        return '· ' + esc(x.harness_id) + ' —— ' + esc(x.why);
+      }).join('<br>') + '</div>';
+  }
+  $('rosterOut').innerHTML = h;
+}
+
+async function loadTooling() {
+  const r = await api('GET', '/api/harness-tooling');
+  if (!r.ok) { $('toolOut').innerHTML = errHtml(r.data, r.status); return; }
+  $('toolOut').innerHTML = '<table><tr><th>harness</th><th>fs_write</th><th>来源</th><th>唤醒</th>' +
+    '<th>协议/桥</th><th>能当组长</th><th></th></tr>' +
+    r.data.items.map(function (it) {
+      const t = it.tooling || {};
+      const can = it.lead_eligible ? '<span class="ok">能</span>' : '<span class="bad">不能</span>';
+      return '<tr><td>' + esc(it.harness_id) + '</td><td>' + esc(String(t.fs_write)) +
+        '</td><td>' + esc(t.fs_write_source || '声明') + '</td><td>' + esc(t.wakeup_method || '') +
+        '</td><td>' + (t.protocol_call ? '协议 ' : '') + (t.bridge_poll ? '桥' : '') +
+        '</td><td>' + can + '</td><td><button onclick="probe(\'' + esc(it.harness_id) +
+        '\')">实测写一次盘</button></td></tr>';
+    }).join('') + '</table>' +
+    '<div class="msg">「实测」是平台在自己的数据目录真写一次再读回；它只证明<b>平台侧落点可写</b>，' +
+    '不等于那个 agent 自己有 fs 工具。</div>';
+}
+
+async function probe(hid) {
+  const r = await api('POST', '/api/harness/' + encodeURIComponent(hid) + '/probe-tooling', {});
+  if (!r.ok) { $('toolOut').innerHTML = errHtml(r.data, r.status); return; }
+  await loadTooling();
+  await loadRoster();
+}
+
+async function chooseLead(hid) {
+  if (!S.ws) { say('rosterNote', '先选工作间', 'bad'); return; }
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) + '/lead', { harness_id: hid });
+  if (!r.ok) {
+    $('rosterOut').innerHTML = errHtml(r.data, r.status) + $('rosterOut').innerHTML;
+    return;
+  }
+  say('kitMsg', '✓ 组长已定（' + hid + '），状态 = ' + r.data.status + '；下面生成对接单', 'ok');
+  await loadRoster2();
+  await leadKit();
+}
+
+/* ── 2. 组长拉人列表（老板 10-31）──────────────────────────── */
+/* 打开对接中心就自动按本间预填：/api/lead-roster 列能当组长的壳，
+   /lead-kit 把工作间路径**和桥参数**一起拼进对接单（D后端-62：kit 自带「## 桥参数」段，
+   不再分两块显示）—— 每行按该壳自己的 harness_id 拉一份，复制出去直接能用。
+   issue_token=0：列表里恒不带 A 档 token（要签走下面手动那排）。 */
+async function loadLeadPull() {
+  const box = $('leadPullList');
+  if (!box || !S.ws) return;
+  const rr = await api('GET', '/api/lead-roster');
+  if (!rr.ok) { box.innerHTML = errHtml(rr.data, rr.status); return; }
+  const d = rr.data || {};
+  const cands = d.candidates || [];
+  const excluded = d.excluded || [];
+  if (!cands.length) {
+    let h = '<div class="msg warn">现在没有能当组长的壳（组长必须能写文件 + 能把回执送回来）。</div>';
+    if (excluded.length) {
+      h += '<details style="margin:4px 0 8px"><summary style="cursor:pointer;color:var(--dim);font-size:11.5px">' +
+        '为什么它们不行（' + excluded.length + ' 个）</summary><ul style="margin:4px 0;padding-left:18px;font-size:11.5px">' +
+        excluded.map(function (x) {
+          return '<li><code>' + esc(x.harness_id || '') + '</code> —— ' + esc(x.why || '') + '</li>';
+        }).join('') + '</ul></details>';
+    }
+    if (d.note) h += '<div class="msg">' + esc(d.note) + '</div>';
+    box.innerHTML = h;
+    return;
+  }
+  const key = $('leadKey').value.trim();
+  const kits = await Promise.all(cands.map(function (c) {
+    return api('GET', '/api/workshop/' + encodeURIComponent(S.ws) +
+      '/lead-kit?format=json&issue_token=0&harness_id=' + encodeURIComponent(c.harness_id) +
+      (key ? '&agent_key=' + encodeURIComponent(key) : ''));
+  }));
+  S.leadPulls = cands.map(function (c, i) {
+    const r = kits[i] || {};
+    const kd = r.ok ? (r.data || {}) : {};
+    return { c: c, kit: kd.kit || '', missing: kd.bridge_missing || [],
+             tpl: kd.bridge_template || '', err: r.ok ? null : (r.data || {}) };
+  });
+  const wsName = S.name || S.ws;
+  box.innerHTML =
+    '<div class="msg">共 ' + cands.length + ' 个能当组长的壳。每行的对接单已按本间「' + esc(wsName) +
+    '」预填好 —— <b>含桥参数（路径平台填好，别手改）</b>；点「复制对接单」，去它的外部会话粘贴发送。</div>' +
+    S.leadPulls.map(function (p, i) {
+      const c = p.c, t = c.tooling || {};
+      const bits = [c.harness_id, c.model, t.wakeup_method ? ('唤醒:' + t.wakeup_method) : '']
+        .filter(Boolean).join(' · ');
+      const miss = p.missing.length
+        ? '<span class="msg warn" style="flex-basis:100%">还缺：' + esc(p.missing.join('、')) +
+          '（平台不瞎填 —— 定下组长后重拉，或手填这一项）</span>' : '';
+      const bad = p.err ? '<span class="msg" style="flex-basis:100%;color:var(--bad)">对接单没拼出来：' +
+        esc(p.err.error || p.err.code || '未知原因') + '</span>' : '';
+      return '<div class="leadpull-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;' +
+        'border:1px solid var(--dim);padding:6px 8px;margin:6px 0">' +
+        '<b style="font-size:12px">' + esc(c.harness_name || c.harness_id) + '</b>' +
+        '<span class="msg" style="flex:1;min-width:180px">' + esc(bits) + '</span>' +
+        (p.kit ? '<button class="p" onclick="copyLeadPull(this,' + i + ')">复制对接单拉它</button>' : '') +
+        (p.kit ? '<details style="flex-basis:100%"><summary style="cursor:pointer;color:var(--dim);' +
+          'font-size:11px">看对接单全文</summary><pre style="white-space:pre-wrap;font-size:11px">' +
+          esc(p.kit) + '</pre></details>' : '') +
+        miss + bad + '</div>';
+    }).join('') +
+    ((d.note) ? '<div class="msg">' + esc(d.note) + '</div>' : '');
+}
+
+function copyLeadPull(btn, i) {
+  const p = (S.leadPulls || [])[i];
+  const text = p && p.kit;
+  if (!text) { say('kitMsg', '这份对接单没拼出来 —— 看行内原因', 'bad'); return; }
+  if (navigator.clipboard) navigator.clipboard.writeText(text);
+  else {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+  }
+  if (btn) {
+    const old = btn.textContent;
+    btn.textContent = '✓ 已复制 —— 去粘贴给组长';
+    setTimeout(function () { btn.textContent = old; }, 2500);
+  }
+}
+
+/* ── 2b. 组长对接单（手动版：A 档 token 在这里签）──────────── */
+async function leadKit() {
+  if (!S.ws) { say('kitMsg', '先选工作间', 'bad'); return; }
+  const key = $('leadKey').value.trim() || 'lead';
+  const tok = $('leadTok').value === '1' ? 1 : 0;
+  const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) + '/lead-kit?agent_key=' +
+    encodeURIComponent(key) + '&issue_token=' + tok + '&format=json');
+  if (!r.ok) { $('kitMsg').innerHTML = errHtml(r.data, r.status); return; }
+  const out = $('leadKitOut');
+  out.hidden = false;
+  out.textContent = r.data.kit;
+  say('kitMsg', '✓ 拼好了（' + (r.data.has_token ? '含 A 档一次性 token，别转贴' : '不含 token') + '）', 'ok');
+  $('leadLabel').value = r.data.session_label || '';
+}
+
+function copyEl(id) {
+  const el = $(id);
+  if (!el || el.hidden) { return; }
+  const text = el.textContent || '';
+  if (navigator.clipboard) navigator.clipboard.writeText(text);
+  else {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+  }
+}
+
+/* ── 3. 接组长（证据）─────────────────────────────────────── */
+/* 名单镜像回显（D后端-56 §2）：写名单的响应都带 mirror 字段，照实带出，不吞。
+   {ok:true,path,members} / {ok:false,why}；镜像不是真源，失败也不阻断主库。 */
+function mirrorLine(m) {
+  if (!m) return '';
+  if (m.ok) return '<div class="msg">名单镜像：已写 <code>' + esc(m.path || '') + '</code>' +
+    (m.members != null ? '（' + esc(String(m.members)) + ' 人）' : '') + '</div>';
+  return '<div class="msg warn">名单镜像：没写（' + esc(m.why || '后端没给原因') + '）—— 名单主库不受影响。</div>';
+}
+
+function currentLead() {
+  return (S.members || []).filter(function (m) { return m.slot_dir === '_lead'; })[0] || null;
+}
+
+async function markEvidence() {
+  const m = currentLead();
+  if (!m) { say('evMsg', '还没有组长工位 —— 先在「方向 + 组长」里点「选它当组长」', 'bad'); return; }
+  const scope = $('evScope').value.trim();
+  if (!scope) { say('evMsg', '「覆盖范围」必填：写清覆盖到哪一段（不写就永远到不了 active）', 'bad'); return; }
+  const body = {
+    tier: $('leadTier').value,
+    paste_seen: $('evPaste').checked,
+    press_ok: $('evPress').checked,
+    rename_seen: $('evRename').checked,
+    protocol_ok: $('evProto').checked,
+    bridge_ok: $('evBridge').checked,
+    /* D后端-63：B 档 = 桥通 **且** 真从 _inbox 取走一次 ⇒ active；只通只记 acked */
+    mailbox_ok: $('evMailbox') ? $('evMailbox').checked : false,
+    verified_scope: scope,
+    who: 'user'
+  };
+  /* D后端-67 §2：`actual_name` 可选 —— 填了平台才比（只提醒不拦），不填就不许显示成"已核对" */
+  if ($('evActual') && $('evActual').value.trim()) body.actual_name = $('evActual').value.trim();
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) + '/members/' +
+    m.member_seq + '/evidence', body);
+  if (!r.ok) { $('evOut').innerHTML = errHtml(r.data, r.status); return; }
+  const d = r.data;
+  let h = '';
+  if (d.state === 'active') {
+    h += banner('ok', '✓ 已接上（active）：' + esc(d.verified_scope || ''));
+  } else {
+    const miss = (d.need && d.need.missing_evidence) || [];
+    h += banner('warn', '还没到 active，现在记的是 <b>' + esc(d.state) + '</b>。' +
+      '平台不会替你打勾（V116 §3：未打勾最高只记 acked）。' +
+      (d.need ? '<br>还缺：' + esc(miss.join('、') || '—') +
+        '　覆盖范围：' + esc(d.need.verified_scope || '') : '') +
+      /* D后端-63：B 档「只通没取件」最高只记 acked —— 这句要说清，否则会被当成 bug */
+      (miss.indexOf('mailbox_ok') >= 0
+        ? '<br><b>B 档：桥通了但还没真从 <code>_inbox</code> 取走一次</b> —— 老板口径「只通没有取件，最高只记 acked」；' +
+          '让它真取一次件、勾上「B 档真从 _inbox 取走一次」再来。'
+        : ''));
+  }
+  /* 名字核对：只提醒，不改状态（老板选项："填了就比，不一致只提醒"） */
+  const nc = d.name_check || {};
+  if (nc.expected || nc.actual) {
+    h += nc.match
+      ? '<div class="msg">名字对得上：<code>' + esc(nc.actual || '') + '</code> ＝ 平台给的 <code>' +
+        esc(nc.expected || '') + '</code></div>'
+      : banner('warn', '⚠ 名字对不上：名单上叫「' + esc(nc.expected || '') + '」，你说它叫「' +
+          esc(nc.actual || '') + '」。<br>' + esc(nc.note || '') +
+          '<br><b>只提醒，不拦</b> —— 状态和派活都不受影响（改名很常见）。');
+  } else {
+    h += '<div class="msg">这个名字是你给它的，<b>平台没核过它真实叫什么</b>。' +
+      '接人时在「它现在实际叫什么」里填一下，平台才会跟名单比（不一致也只提醒）。</div>';
+  }
+  $('evOut').innerHTML = h + mirrorLine(d.mirror);
+  say('evMsg', '档位：' + (d.tier || '') + '　状态：' + (d.state || ''), d.state === 'active' ? 'ok' : 'warn');
+  await loadRoster2();
+}
+
+/* ── 4. 回执 + 工位 ───────────────────────────────────────── */
+async function submitRcpt() {
+  if (!S.ws) { say('rcptMsg', '先选工作间', 'bad'); return; }
+  const text = $('rcptText').value;
+  if (!text.trim()) { say('rcptMsg', '把回执原样贴进来', 'bad'); return; }
+  if (!$('rcptConfirm').checked) {
+    say('rcptMsg', 'C 档是人工粘贴，必须自己打勾确认（否则平台不收）', 'warn');
+    return;
+  }
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) + '/intake?source=C&confirm=1',
+    { text: text });
+  if (!r.ok) { $('rcptMsg').innerHTML = errHtml(r.data, r.status); return; }
+  const d = r.data;
+  say('rcptMsg', '✓ 收下：' + d.type + '（' + (d.row_count || 0) + ' 行）' +
+    (d.applied ? '，已落库' : '，只记账'), 'ok');
+  if (d.result) {
+    $('rcptMsg').innerHTML += '<div class="msg">落库结果：' +
+      esc(JSON.stringify(d.result).slice(0, 300)) + '</div>';
+  }
+  $('rcptMsg').innerHTML += mirrorLine(d.mirror);
+  await loadRoster2();
+}
+
+async function loadRoster2() {
+  if (!S.ws) return;
+  const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) + '/roster');
+  if (!r.ok) { $('slotsOut').innerHTML = errHtml(r.data, r.status); return; }
+  S.members = r.data.members || [];
+  S.slots = r.data.slots || [];
+  /* D后端-67（V116 §8.0 口径一）：名单和实到对不上时，平台给**一句话**，界面直接显示，别自己拼数字。
+     `sentence` 里带 `**强调**`（后端同一套写法），走 mdInline 转义；`detail` 是补充的两句（近/告警）。 */
+  const rs = r.data.roster_summary || {};
+  let head = '';
+  if (rs.sentence) {
+    const kind = rs.all_active ? 'ok' : (rs.can_dispatch_anyone ? 'warn' : 'bad');
+    head = banner(kind, mdInline(rs.sentence) +
+      ((rs.detail || []).length
+        ? '<br><span class="msg">' + (rs.detail || []).map(mdInline).join('<br>') + '</span>'
+        : ''));
+  }
+  let h = '<table><tr><th>工位</th><th>harness</th><th>状态</th><th>档位</th><th>覆盖范围</th><th>会话名</th><th>成员拉人</th></tr>' +
+    S.members.map(function (m) {
+      const cls = m.state === 'active' ? 'ok' : (m.state === 'pending' ? 'warn' : '');
+      /* ★老板 10-31 SOP：名单定了之后，平台把每个成员的对接单拼好（自动带工作间路径），
+         用户手动拉人 —— 平台不代发、不代建会话。组长走 UNIT-02，不在这里重复出按钮。 */
+      const pull = m.slot_dir === '_lead'
+        ? '<span class="msg">组长走 UNIT-02</span>'
+        : '<button class="p" onclick="memberKit(' + Number(m.member_seq) + ')">生成对接单</button>';
+      /* D后端-67 §2：actual_name 是**人给的**，没填就没核过 —— 不许显示出"已核对"的样子 */
+      const nameLine = m.actual_name
+        ? '<div class="msg">实际名：' + esc(m.actual_name) +
+          (m.name_check && m.name_check.match === false ? ' <b class="warn">（与名单不一致，只提醒）</b>' : '') + '</div>'
+        : '<div class="msg">未核过实际名</div>';
+      return '<tr><td>' + esc(m.slot_dir) + '<div class="msg">#' + m.member_seq + '</div></td>' +
+        '<td>' + esc(m.harness_id || '—') + '</td>' +
+        '<td class="' + cls + '">' + esc(m.state) + '</td>' +
+        '<td>' + esc(m.tier || '—') + '</td>' +
+        '<td>' + esc(m.verified_scope || '（没写）') + '</td>' +
+        '<td>' + esc(m.session_label || '') + nameLine + '</td>' +
+        '<td>' + pull + '</td></tr>';
+    }).join('') + '</table>';
+  h += '<div class="msg">' + esc(r.data.hint || '') + '</div>';
+  $('slotsOut').innerHTML = head + h;
+
+  const sel = $('dspSeq');
+  const actives = S.members.filter(function (m) { return m.state === 'active'; });
+  /* 空工位不给"能派活"的错觉：选项上写清没接上（点派活会拿到 409 GATE_G5，四要素会说是谁缺什么） */
+  sel.innerHTML = (actives.length ? actives : S.members).map(function (m) {
+    const tag = m.state === 'active' ? '' : '（没接上，不能派活）';
+    return '<option value="' + m.member_seq + '">' + esc(m.slot_dir) + '（' + esc(m.state) + '）' + tag + '</option>';
+  }).join('') || '<option value="">（没有工位）</option>';
+  if (!actives.length && S.members.length) {
+    $('dspOut').innerHTML = banner('warn',
+      mdInline(rs.sentence || '现在没有 active 工位 —— 派活会被 G5 拦住（这是对的）。先接人。') +
+      '<br><span class="msg">只要求一个工位接上就能开工（G4）；没接上的那个不能派活，但不会把整间活儿停住。</span>');
+  }
+}
+
+/* ── 4b. 资料库指向（D后端-60 §2①，第 7–9 步）＋ 成员对接单（§2②，第 3/11 步）── */
+/* 名单定了 → 每个工位拼对接单（后端 POST /members/{seq}/kit 自动带工作间路径/会话名/回执头，
+   **并且**把该成员自己的工位路径拼成「## 桥参数」段放进正文）—— 用户手动拉人，平台不代发。
+   2026-10-31（D后端-64）：原来另起一块拉 bridge-fill 显示同样的参数，两处显示只会对不上，已退役。 */
+async function memberKit(seq) {
+  if (!S.ws) return;
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) +
+    '/members/' + encodeURIComponent(seq) + '/kit', { issue_token: 0 });
+  const box = $('mkOut');
+  if (!box) return;
+  if (!r.ok) { box.hidden = false; box.innerHTML = errHtml(r.data, r.status); return; }
+  const d = r.data || {};
+  box.hidden = false;
+  box.textContent = d.kit || '';
+  const note = $('mkNote');
+  if (note) {
+    const miss = d.member_bridge_missing || [];
+    note.innerHTML = miss.length
+      ? banner('bad', '正文里「## 桥参数」还缺：<b>' + miss.map(esc).join('、') + '</b>' +
+          '（平台不瞎填 —— 先把这个工位的 harness 定下来，再拼一份）')
+      : banner('ok', '桥参数（模板 <code>' + esc(d.member_bridge_template || '—') + '</code>）' +
+          '已拼在正文末尾 —— 填的是<b>它自己的工位路径</b>，整段复制，别手改');
+  }
+  say('rcptMsg', '✓ #' + seq + ' 对接单拼好了（工作间路径 + 会话名 + 回执头 + 桥参数都在这一段里）—— 整段复制发给该成员，手动拉它进来', 'ok');
+}
+
+/* 资料库指向走专用端点 /library-path：平台只记指向、不代建目录；GET /library 按 library_path 列实况。 */
+async function loadLibDir() {
+  if (!S.ws) return;
+  const out = $('libOut'), st = $('libState');
+  if (!out && !st) return;
+  const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) + '/library');
+  if (!r.ok) { if (out) out.innerHTML = errHtml(r.data, r.status); return; }
+  const d = r.data || {};
+  if (st) {
+    const custom = typeof S.libPath === 'string' ? S.libPath.trim() : '';
+    st.innerHTML = '<div class="msg">当前指向：' +
+      (custom ? '自定义 <code>' + esc(d.dir || custom) + '</code>' : '默认 <code>' + esc(d.dir || '') + '</code>（没设过自定义）') +
+      (d.exists ? ' <b class="ok">✓ 目录存在</b>'
+                : ' <b class="bad">✗ 目录不存在 —— 请先去新建它（平台不代建）</b>') + '</div>';
+  }
+  const files = d.files || [], dirs = d.directories || [];
+  out.innerHTML = (files.length || dirs.length)
+    ? '<table><tr><th>资料库实况</th><th>内容</th></tr>' +
+      dirs.map(function (x) {
+        return '<tr><td>📁 ' + esc(x.name || '') + '</td><td class="msg">' +
+          ((x.files || []).map(function (f) { return esc(f.name); }).join('、') || '（空文件夹）') + '</td></tr>';
+      }).join('') +
+      files.map(function (f) {
+        return '<tr><td>' + esc(f.name || '') + '</td><td class="msg">' + (f.size || 0) + ' 字节</td></tr>';
+      }).join('') + '</table>'
+    : '<div class="msg">资料库还是空的 —— 组长把「项目建模 + 分工明细」放进来后，这里能看到实况。</div>';
+}
+
+async function saveLibDir() {
+  if (!S.ws) { say('libMsg', '先选工作间', 'bad'); return; }
+  const p = $('libPath').value.trim();
+  if (!p) { say('libMsg', '要组长给你的资料库文件夹路径（绝对路径）；要回默认请点「清空」', 'bad'); return; }
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) + '/library-path', { path: p });
+  const d = r.data || {};
+  if (!r.ok) {
+    say('libMsg', '没记下：' + (d.error || d.code || ('HTTP ' + r.status)) + (d.next ? (' —— ' + d.next) : ''), 'bad');
+    return;
+  }
+  S.libPath = d.library_path || '';
+  say('libMsg', d.exists ? '✓ 指向已记下 —— 组长可以把建模与分工写进去'
+                         : '指向已记下，但这个目录现在不存在 —— 请先去新建它（平台不代建）', d.exists ? 'ok' : 'bad');
+  $('libPath').value = '';
+  await loadLibDir();
+}
+
+async function clearLibDir() {
+  if (!S.ws) { say('libMsg', '先选工作间', 'bad'); return; }
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) + '/library-path', { path: '' });
+  if (!r.ok) { say('libMsg', '清空失败：' + ((r.data && r.data.error) || ('HTTP ' + r.status)), 'bad'); return; }
+  S.libPath = '';
+  say('libMsg', '✓ 已清空自定义指向，回到默认 工作区/library/', 'ok');
+  await loadLibDir();
+}
+
+/* 2026-10-31（D后端-62/64）：组长与成员的对接单**都**由后端拼进「## 桥参数」段，
+   这里原来单独拉 bridge-fill 显示/复制的块（leadBridgeFill / memberBridgeFill / bridgeFillHTML /
+   bridgeFillText / copyMemberFill）全部退役 —— 同一份数据两处显示只会对不上。 */
+
+/* ── 5b. 派活四步（D后端-65）：卡在哪一步，说清 ─────────────────────────
+   后端钉死的三条语义（别读错）：
+   · `ok`            = **前三步落盘**（任务文件/_notice/manifest），不代表"它接活了"；
+   · `manual_required` = 触达是 C 档人工贴，**正常终态、不是失败**（此时 `stuck_at` 为空）；
+   · `stuck_at`       = 只在**前三步没成**或**触达 failed（真发不出去）**时给值，配 `why` + `next`。 */
+const DSP_STEPS = ['任务文件', '_notice 追加', 'manifest.active_tasks', '触达'];
+
+/* 后端的说明文字里带 `**强调**` 与反引号（对接单同一套写法）；界面别把星号原样吐给用户。 */
+function mdInline(s) {
+  return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+function dspWhatCell(s) {
+  const v = String((s && s.what) || '');
+  if (!v) return '<span class="msg">（后端没给落点）</span>';
+  const pathLike = v.indexOf('\\') >= 0 || v.indexOf('/') >= 0 || v.indexOf('sha256:') === 0;
+  return pathLike && v.length <= 120 ? '<code>' + esc(v) + '</code>'
+                                     : '<span class="msg">' + mdInline(v) + '</span>';
+}
+function dispatchStepsHTML(d) {
+  const steps = (d && d.steps) || [];
+  if (!steps.length) return '';
+  let h = '<table><tr><th>步</th><th>动作</th><th>成没成</th><th>落点 / 为什么</th></tr>';
+  steps.forEach(function (s) {
+    const manual = s.ok === false && s.result === 'manual';
+    const cls = s.ok ? 'ok' : (manual ? 'warn' : 'bad');
+    const mark = s.ok ? '✓' : (manual ? '✗ 人工' : (s.result === 'failed' ? '✗ 失败' : '✗'));
+    const extra = (s.ok && s.result) ? '（' + esc(s.result) + '）' : '';
+    h += '<tr><td>' + esc(String(s.n)) + '</td><td>' + esc(s.name || '') + '</td>' +
+      '<td class="' + cls + '">' + mark + extra + '</td><td>' + dspWhatCell(s) + '</td></tr>';
+  });
+  return h + '</table>';
+}
+/* 一条派活的结论条 + 四步表（派活返回与账本视图共用这一份渲染 —— 两处必须长得一样）。 */
+function dispatchFlowHTML(d, seq) {
+  d = d || {};
+  const stuck = String(d.stuck_at || '').trim();
+  const wake = ((d.steps || [])[3] || {}).result || ((d.wakeup || {}).result) || '';
+  let h = '';
+  if (stuck) {
+    h += banner('bad', '✗ 卡在「' + esc(stuck) + '」' +
+      (d.why ? '<br>为什么：' + mdInline(d.why) : '') +
+      (d.next ? '<br>下一步：' + mdInline(d.next) : ''));
+  } else if (d.manual_required) {
+    h += banner('warn', '⚠ 文件三步都落盘了，就差「触达」—— 这一步<b>只能人工</b>' +
+      '（这是正常终态，<b>不是失败</b>' + (d.manual_hint ? '' : '；平台不假装叫醒它') + '）' +
+      (d.manual_hint ? '<br>' + mdInline(d.manual_hint) : '') +
+      '<div class="row" style="margin-top:8px">' +
+      '<button onclick="confirmPasted(' + Number(seq || 0) + ')">我已贴好，记一笔</button>' +
+      '<span class="msg" id="pasteMsg"></span></div>');
+  } else {
+    h += banner('ok', '✓ 四步都成了 —— 它已被真叫醒（' + esc(wake || 'ok') + '）');
+  }
+  return h + dispatchStepsHTML(d);
+}
+
+/* 账本视图（GET …/dispatch/{seq}）与派活返回同源：这里只渲染，不自己算状态。 */
+async function loadDispatchDetail(seq) {
+  if (!S.ws) { say('dspOut', '先选工作间', 'bad'); return; }
+  const box = $('dspDetail');
+  if (!box) return;
+  const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) +
+    '/dispatch/' + encodeURIComponent(seq));
+  if (!r.ok) { box.innerHTML = errHtml(r.data, r.status); return; }
+  const d = r.data || {};
+  const e = d.entry || {};
+  box.innerHTML = '<div class="msg">T-' + esc(String(seq).padStart(3, '0')) + '「' +
+      esc(e.title || '') + '」的账（与派活返回<b>同源</b> —— 两处不一致就是 bug）' +
+      '　文件在盘上：' + (d.file_exists ? '✓' : '✗') +
+      '　在 manifest.active_tasks：' + (d.in_manifest ? '✓' : '✗') + '</div>' +
+    dispatchFlowHTML(d, seq) +
+    (d.hint ? '<div class="msg">' + mdInline(d.hint) + '</div>' : '');
+  const sec5 = $('sec5');
+  if (sec5 && sec5.scrollIntoView) sec5.scrollIntoView({ block: 'start' });
+}
+
+/* 「我已贴好」：只记**人真的贴了**这一笔（paste_seen），推不推进状态由后端按档位判，
+   推不到 active 就如实说还缺什么 —— 平台不代打勾。 */
+async function confirmPasted(seq) {
+  if (!S.ws) return;
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) +
+    '/members/' + encodeURIComponent(seq) + '/evidence',
+    { paste_seen: true, who: 'user' });
+  const d = r.data || {};
+  if (!r.ok) { say('pasteMsg', '没记上：' + (d.error || d.code || ('HTTP ' + r.status)), 'bad'); return; }
+  say('pasteMsg', '✓ 已记「已贴好」；该工位现在 ' + (d.state || '') + '，还没打勾的档位证据照旧要补' +
+    (d.next ? ' —— ' + d.next : ''), d.state === 'active' ? 'ok' : 'warn');
+  await loadRoster2();
+}
+
+/* ── 5c. 目录校验 ─────────────────────────────────────────── */
+async function verifyDirs() {
+  if (!S.ws) { say('vdMsg', '先选工作间', 'bad'); return; }
+  const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) + '/verify-dirs');
+  if (!r.ok) { $('vdOut').innerHTML = errHtml(r.data, r.status); return; }
+  const d = r.data;
+  if (d.ok) {
+    $('vdOut').innerHTML = banner('ok', '✓ 目录都齐了（检查了 ' + d.checked + ' 项）' +
+      '<br><span class="msg">' + esc(d.next || '可以直接派活') + '</span>');
+    say('vdMsg', '通过', 'ok');
+    return;
+  }
+  $('vdOut').innerHTML = banner('bad', '✗ 缺 ' + d.missing.length + ' 项（平台<b>不代建</b>）') +
+    '<table><tr><th>缺什么</th><th>路径</th><th>谁补 / 怎么做</th></tr>' +
+    d.missing.map(function (m) {
+      const f = m.four || {};
+      return '<tr><td>' + esc(m.what) + '</td><td><code>' + esc(m.path) + '</code></td>' +
+        '<td>' + esc(f.who || '') + '：' + esc(f.how || '') + '</td></tr>';
+    }).join('') + '</table>';
+  say('vdMsg', '缺 ' + d.missing.length + ' 项', 'bad');
+}
+
+async function doDispatch() {
+  if (!S.ws) { say('dspOut', '先选工作间', 'bad'); return; }
+  const seq = parseInt($('dspSeq').value || '0', 10);
+  if (!seq) { $('dspOut').innerHTML = banner('bad', '先有工位再派活'); return; }
+  const body = {
+    member_seq: seq,
+    title: $('dspTitle').value.trim() || '未命名任务',
+    goal: $('dspTitle').value.trim() || '未命名任务',
+    accept: $('dspAccept').value.trim() || ''
+  };
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) + '/dispatch', body);
+  const d = r.data || {};
+  if (!r.ok || !d.ok) {
+    $('dspOut').innerHTML = errHtml(d, r.status) + dispatchStepsHTML(d);
+    return;
+  }
+  const tid = d.task_id || ('T-' + String(d.task_seq || 0).padStart(3, '0'));
+  let h = dispatchFlowHTML(d, seq);
+  h += '<div class="row"><span class="msg">' + esc(tid) + '　任务文件 <code>' +
+      esc(d.file) + '</code>' + (d.file_created ? '（平台代写）' : '（组长自己写的）') + '</span>' +
+    '<button onclick="loadDispatchDetail(' + Number(d.task_seq || 0) + ')">看这条派活（账本同源）</button></div>';
+  $('dspOut').innerHTML = h;
+  await loadTasks();
+}
+
+/* ── 6. 产物 ───────────────────────────────────────────────── */
+async function scanArts() {
+  if (!S.ws) { say('artMsg', '先选工作间', 'bad'); return; }
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) + '/verify-artifacts', {});
+  if (!r.ok) { $('artOut').innerHTML = errHtml(r.data, r.status); return; }
+  const d = r.data;
+  const diff = d.diff || {};
+  let h = banner(d.total ? 'ok' : 'warn',
+    '盘上真扫到 <b>' + d.total + '</b> 个产物文件（' + (d.total ? 'L0' : '空就是空，别把自报当产物') + '）');
+  /* D后端-66 §4：`new`/`changed` 是**相对上一次快照**的增量 —— 先扫过一次再扫会是空的，
+     而文件明明在盘上。所以"有没有交东西"只看盘上现存总数，diff 只当参考。 */
+  const filesNow = [].concat.apply([], Object.keys(d.slots || {}).map(function (slot) {
+    return Object.keys((d.slots[slot] || {}).files || {}).map(function (rel) { return slot + '/' + rel; });
+  }));
+  h += '<div class="msg">盘上现存 <b>' + filesNow.length + '</b> 个文件（判"有没有交东西"只看这个数）</div>';
+  h += '<div class="msg">相对<b>上一次快照</b>：新增 ' + (diff.new || []).length +
+    '　变更 ' + (diff.changed || []).length +
+    '　删除 ' + (diff.removed || []).length + '　未变 ' + (diff.same || 0) +
+    '　—— 「新增」为 0 只说明上次扫过了，<b>不代表没有产物</b></div>';
+  const rows = [];
+  Object.keys(d.slots || {}).forEach(function (slot) {
+    const files = (d.slots[slot] || {}).files || {};
+    Object.keys(files).forEach(function (rel) {
+      rows.push([slot + '/' + rel, files[rel]]);
+    });
+  });
+  if (rows.length) {
+    h += '<table><tr><th>文件</th><th>字节</th><th>sha256</th><th>改于</th></tr>' +
+      rows.slice(0, 50).map(function (r2) {
+        return '<tr><td><code>' + esc(r2[0]) + '</code></td><td>' + esc(r2[1].bytes) + '</td>' +
+          '<td class="msg">' + esc((r2[1].sha256 || '').slice(0, 12)) + '…</td>' +
+          '<td class="msg">' + esc(r2[1].at || '') + '</td></tr>';
+      }).join('') + '</table>';
+  }
+  $('artOut').innerHTML = h;
+  say('artMsg', d.total + ' 个文件', d.total ? 'ok' : 'warn');
+}
+
+/* ── 7. 验收 / 账本 / 归档 ─────────────────────────────────── */
+/* 证据档人话（D后端-66：L1 一律标「平台未核对」—— 平台没去查那个库，不许显示成"已验证"）。 */
+const LEVEL_LABEL = {
+  L0: 'L0（平台实做）',
+  L1: 'L1（人工凭据，平台未核对）',
+  L2: 'L2（平台留痕）',
+  L3: 'L3（自报 —— 一律拒）',
+  L4: 'L4（人眼确认）'
+};
+function levelLabel(lv) { return LEVEL_LABEL[lv] || String(lv || ''); }
+
+/* 四步表：第 1/4 步实心（硬前置 / 收尾），第 2/3 步标成「可作证据：L0/L2」——
+   老板规则是"证据有一档够格就行"，所以**不做成四格进度条**，也不显示"完成度"。 */
+function evidenceStepsHTML(d) {
+  const steps = (d && d.steps) || [];
+  if (!steps.length) return '';
+  const have = (d && d.evidence_have) || [];
+  let h = '<table><tr><th>步</th><th>动作</th><th>状态</th><th>说明</th></tr>';
+  steps.forEach(function (s) {
+    const lv = s.level ? '<div class="msg">可作证据：' + esc(levelLabel(s.level)) + '</div>' : '';
+    h += '<tr><td>' + esc(String(s.n)) + '</td><td>' + esc(s.name || '') + '</td>' +
+      '<td class="' + (s.ok ? 'ok' : 'bad') + '">' + (s.ok ? '✓' : '✗') + lv + '</td>' +
+      '<td>' + mdInline(s.what) + '</td></tr>';
+  });
+  h += '</table>';
+  h += '<div class="msg">现在可用：' + (have.length
+    ? have.map(function (x) { return esc(levelLabel(x)); }).join('、')
+    : '还没有可用档（只能按 L4 人眼确认）') +
+    '　—— 有一档够格就能过，<b>不是四步都要打勾</b></div>';
+  const snap = (d && d.artifacts_snapshot) || {};
+  h += '<div class="msg">上次扫盘：' + (snap.scanned_at ? esc(snap.scanned_at) : '还没扫过') +
+    '　工位目录' + (snap.slot_exists ? '在' : '<b class="bad">不在</b>（多半岗位名与目录名不一致）') +
+    '　盘上文件 <b>' + esc(String(snap.total_files || 0)) + '</b> 个' +
+    ((snap.files_preview || []).length ? '：' + esc(snap.files_preview.join('、')) : '') + '</div>';
+  return h;
+}
+/* 证据卡 = 卡点条 + 四步表（GET …/evidence-view 与验收失败态共用这一份）。 */
+function evidenceViewHTML(d) {
+  d = d || {};
+  let h = '';
+  if (d.blocking) {
+    h += banner('warn', '现在卡在「' + esc(d.blocking) + '」' +
+      (d.who_should_fix ? '（该 <b>' + esc(d.who_should_fix) + '</b> 补）' : '') +
+      (d.why ? '<br>' + mdInline(d.why) : '') +
+      (d.next ? '<br>下一步：' + mdInline(d.next) : ''));
+  } else {
+    h += banner('ok', '四步都齐了' + (d.why ? '：' + mdInline(d.why) : ''));
+  }
+  h += evidenceStepsHTML(d);
+  if (d.given_level) {
+    h += '<div class="msg">预演：按 ' + esc(levelLabel(d.given_level)) + ' 过 —— ' +
+      (d.blocking ? '会卡在「' + esc(d.blocking) + '」' : '卡不住，能过') + '</div>';
+  }
+  if (d.note) h += '<div class="msg">' + esc(d.note) + '</div>';
+  return h;
+}
+
+async function loadEvidenceView() {
+  if (!S.ws) { say('evMsg', '先选工作间', 'bad'); return; }
+  const box = $('evView');
+  if (!box) return;
+  const seq = $('revTask') ? $('revTask').value : '';
+  if (!seq) { box.innerHTML = banner('warn', '先有任务再谈证据 —— 账本是空的，先去 UNIT-05 派活。'); return; }
+  const lv = ($('evLevel') && $('evLevel').value) || '';
+  const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) +
+    '/tasks/' + encodeURIComponent(seq) + '/evidence-view' + (lv ? '?level=' + encodeURIComponent(lv) : ''));
+  if (!r.ok) { box.innerHTML = errHtml(r.data, r.status); return; }
+  box.innerHTML = evidenceViewHTML(r.data);
+  say('evMsg', lv ? ('预演 ' + lv + ' 已算') : '只读视图已取', 'ok');
+}
+
+async function loadTasks() {
+  if (!S.ws) return;
+  const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) + '/tasks');
+  if (!r.ok) { $('taskOut').innerHTML = errHtml(r.data, r.status); return; }
+  const tasks = r.data.tasks || [];
+  $('revTask').innerHTML = tasks.map(function (t) {
+    return '<option value="' + t.task_seq + '">T-' + String(t.task_seq).padStart(3, '0') +
+      '　' + esc(t.title || '') + '（' + esc(t.state) + '）</option>';
+  }).join('') || '<option value="">（还没有任务）</option>';
+  if (!tasks.length) { $('taskOut').innerHTML = banner('warn', '任务账本还是空的 —— 先派活。'); return; }
+  $('taskOut').innerHTML = '<table><tr><th>任务</th><th>工位</th><th>状态</th><th>证据</th>' +
+    '<th>验收备注</th><th>文件</th><th>派活账</th></tr>' + tasks.map(function (t) {
+      const cls = t.state === 'accepted' ? 'ok' : (t.state === 'rework' ? 'warn' : '');
+      return '<tr><td>T-' + String(t.task_seq).padStart(3, '0') + ' ' + esc(t.title || '') + '</td>' +
+        '<td>' + esc(t.slot_dir) + '</td><td class="' + cls + '">' + esc(t.state) + '</td>' +
+        '<td>' + esc(t.evidence_level || '—') + '</td><td>' + esc(t.review_note || '') + '</td>' +
+        '<td><code>' + esc(t.file || '') + '</code></td>' +
+        '<td><button onclick="loadDispatchDetail(' + Number(t.task_seq || 0) + ')">看</button></td></tr>';
+    }).join('') + '</table>';
+  await loadEvidenceView();   /* 选中任务就顺带把证据卡摆出来，别让人先点 */
+}
+
+async function doReview() {
+  if (!S.ws) { say('revMsg', '先选工作间', 'bad'); return; }
+  const seq = $('revTask').value;
+  if (!seq) { say('revMsg', '先有任务', 'bad'); return; }
+  const lv = $('revLevel').value;
+  const proof = ($('revProof') ? $('revProof').value.trim() : '');
+  if (lv === 'L1' && !proof) {
+    /* 后端会把没凭据的 L1 按 L4 算并拒（L1_NEEDS_PROOF）—— 前端先拦一次，别白跑一趟网络 */
+    $('revOut').innerHTML = banner('bad', '✗ L1 是「它库已有」，但没写凭据 —— 平台不会去替你查那个库。<br>' +
+      '下一步：<b>把这个库/会话/谁核的/用什么核的写进「L1 凭据」</b>，或直接把等级改成 L4（人眼确认）。');
+    return;
+  }
+  const body = {
+    result: $('revResult').value,
+    evidence_level: lv,
+    evidence_ref: proof,
+    note: $('revNote').value.trim()
+  };
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) + '/tasks/' + seq + '/review', body);
+  if (!r.ok) {
+    const d0 = r.data || {};
+    $('revOut').innerHTML = errHtml(d0, r.status) +
+      (d0.steps ? evidenceStepsHTML(d0) : '') +
+      (d0.next_detail ? '<div class="msg">下一步：' + mdInline(d0.next_detail) + '</div>' : '');
+    say('revMsg', '没落闸：' + (d0.code || ('HTTP ' + r.status)), 'bad');
+    return;
+  }
+  const d = r.data || {};
+  const arts = d.artifacts || {};
+  let h = banner(d.state === 'accepted' ? 'ok' : 'warn',
+    '任务状态：<b>' + esc(d.state) + '</b>（证据 ' +
+    esc(d.evidence_label || levelLabel(d.evidence_level) || '—') + '）' +
+    (d.evidence_warn ? '<br><span class="msg">' + esc(d.evidence_warn) + '</span>' : '') +
+    (d.next ? '<br>' + mdInline(d.next) : ''));
+  if (d.evidence_level === 'L1') {
+    h += '<div class="msg">L1 的凭据是人给的，<b>平台没有去查那个库</b> —— 别把它当成平台核对过的结论。</div>';
+  }
+  if (arts.total_files !== undefined) {
+    h += '<div class="msg">盘上现存 <b>' + esc(String(arts.total_files)) + '</b> 个文件' +
+      ((arts.files_now || []).length ? '：' + esc(arts.files_now.join('、')) : '') +
+      (arts.new_note ? '<br>' + esc(arts.new_note) : '') + '</div>';
+  }
+  if (d.evidence_view) h += evidenceViewHTML(d.evidence_view);
+  $('revOut').innerHTML = h;
+  say('revMsg', '已记：' + d.state, d.state === 'accepted' ? 'ok' : 'warn');
+  await loadTasks();
+}
+
+async function integrate() {
+  if (!S.ws) return;
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) + '/integrate-report', {});
+  if (!r.ok) { $('revOut').innerHTML = errHtml(r.data, r.status); return; }
+  const s = r.data.summary || {};
+  $('revOut').innerHTML = banner('ok', '✓ 汇总已写：' + esc(r.data.written) +
+    '<br>任务 ' + esc(s.total) + '　通过 ' + esc(s.accepted) + '　未完 ' + esc(s.open) +
+    '<br><span class="msg">只写清单，不动产物文件。</span>');
+}
+
+async function dailyClose() {
+  if (!S.ws) return;
+  const key = $('leadKey').value.trim();
+  if (!key) { say('revMsg', '要 agent_key（日结写给谁的心智根）', 'bad'); return; }
+  const done = [$('revNote').value.trim() || '（今天做了点什么，写在这里）'];
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) + '/daily-close',
+    { agent_key: key, done: done });
+  if (!r.ok) { $('revOut').innerHTML = errHtml(r.data, r.status); return; }
+  $('revOut').innerHTML = banner('ok', '✓ 日结写回根A：' + esc((r.data.written || []).join('、')) +
+    '<br><span class="msg">压缩成 3 行、重写索引是夜间审忆员的活（默认关）。</span>');
+}
+
+async function closeWs() {
+  if (!S.ws) return;
+  if (!confirm('归档会：置 closed + 吊销全部 token。确定？')) return;
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) + '/close', {});
+  if (!r.ok) { $('revOut').innerHTML = errHtml(r.data, r.status); return; }
+  $('revOut').innerHTML = banner('ok', '✓ 已归档（closed）。吊销了 ' +
+    esc((r.data.revoked || []).length) + ' 个 token；工作区目录原样保留。');
+}
+
+/* ── 8. 结构化讨论（AILP 2.0：四类卡片，字段表来自 /api/ailp/types）────── */
+const AILP_LABELS = {
+  proposal: '提案', confidence: '置信度', basis_ids: '依据（指回 msg_id / 任务号）',
+  contradiction: '矛盾（哪两条对不上）', evidence_ids: '证据（指回 msg_id 列表）',
+  target_id: '改哪条（真实 msg_id）', modifications: '改什么', new_confidence: '新置信度',
+  echo_target: '呼应对象', shared_context: '共享上下文',
+  counter_proposal: '反提案（可选）'
+};
+const AILP_COLORS = {
+  PROPOSE: 'var(--accent)', CHALLENGE: 'var(--bad)', REFINE: 'var(--warn)', CONTEXT_ECHO: 'var(--ok)'
+};
+const AILP = { types: null };
+
+function ailpTypeDef(t) {
+  const list = AILP.types || [];
+  for (let i = 0; i < list.length; i++) if (list[i].msg_type === t) return list[i];
+  return null;
+}
+function ailpFieldKind(typeStr) {
+  const s = String(typeStr || '');
+  if (s.indexOf('list') >= 0) return 'list';
+  if (s.indexOf('int') >= 0 || s.indexOf('float') >= 0) return 'number';
+  return 'str';
+}
+async function loadAilpTypes() {
+  if (AILP.types) { renderAilpForm(); return; }
+  const r = await api('GET', '/api/ailp/types');
+  if (!r.ok) { $('ailpForm').innerHTML = errHtml(r.data, r.status); return; }
+  AILP.types = r.data.types || [];
+  renderAilpForm();
+}
+function renderAilpForm() {
+  const def = ailpTypeDef($('ailpType').value);
+  const box = $('ailpForm');
+  if (!box) return;
+  if (!def) { box.innerHTML = '<div class="msg">字段表还没取到（GET /api/ailp/types）。</div>'; return; }
+  box.innerHTML = '<div class="row">' + (def.required_payload || []).map(function (f) {
+    const kind = ailpFieldKind(f.type);
+    const ph = kind === 'list' ? '逗号分隔，例：T-001,T-002' : (kind === 'number' ? '0 ~ 1' : '');
+    return '<label class="f" style="flex:1;min-width:220px">' + esc(AILP_LABELS[f.name] || f.name) +
+      '<input id="aip_' + esc(f.name) + '" data-kind="' + kind + '" placeholder="' + esc(ph) + '"></label>';
+  }).join('') + ((def.optional_payload || []).map(function (f) {
+    const kind = ailpFieldKind(f.type);
+    const ph = kind === 'list' ? '逗号分隔，例：T-001（可选）' : (kind === 'number' ? '0 ~ 1（可选）' : '（可选，留空不发）');
+    return '<label class="f" style="flex:1;min-width:220px">' + esc(AILP_LABELS[f.name] || f.name) +
+      '<input id="aip_' + esc(f.name) + '" data-kind="' + kind + '" data-optional="1" placeholder="' + esc(ph) + '"></label>';
+  }).join('')) + '</div>' +
+    '<div class="msg">这四类的字段来自 <code>GET /api/ailp/types</code>（含 optional_payload，可选字段留空就不发）；' +
+    '依据 / 证据不许空，<code>manifest_ref</code> 必须是本工作间 manifest 里的真实条目。</div>';
+}
+function ailpPayloadFromForm() {
+  const def = ailpTypeDef($('ailpType').value);
+  const payload = {};
+  const bad = [];
+  ((def && def.required_payload) || []).forEach(function (f) {
+    const el = $('aip_' + f.name);
+    if (!el) return;
+    const kind = el.getAttribute('data-kind');
+    const raw = el.value.trim();
+    if (!raw) { bad.push(AILP_LABELS[f.name] || f.name); return; }
+    if (kind === 'list') payload[f.name] = raw.split(/[,，\s]+/).filter(Boolean);
+    else if (kind === 'number') {
+      const n = parseFloat(raw);
+      if (isNaN(n)) { bad.push((AILP_LABELS[f.name] || f.name) + '（要数字）'); return; }
+      payload[f.name] = n;
+    } else payload[f.name] = raw;
+  });
+  ((def && def.optional_payload) || []).forEach(function (f) {
+    const el = $('aip_' + f.name);
+    if (!el) return;
+    const kind = el.getAttribute('data-kind');
+    const raw = el.value.trim();
+    if (!raw) return; /* 可选：留空就不发 */
+    if (kind === 'list') payload[f.name] = raw.split(/[,，\s]+/).filter(Boolean);
+    else if (kind === 'number') {
+      const n = parseFloat(raw);
+      if (isNaN(n)) { bad.push((AILP_LABELS[f.name] || f.name) + '（要数字）'); return; }
+      payload[f.name] = n;
+    } else payload[f.name] = raw;
+  });
+  return { payload: payload, bad: bad };
+}
+
+function ailpCard(it) {
+  const color = AILP_COLORS[it.msg_type] || 'var(--line)';
+  const def = ailpTypeDef(it.msg_type);
+  const p = it.payload || {};
+  const rows = [];
+  const seen = {};
+  ((def && def.required_payload) || []).forEach(function (f) {
+    seen[f.name] = 1;
+    rows.push([AILP_LABELS[f.name] || f.name, p[f.name]]);
+  });
+  Object.keys(p).forEach(function (k) {
+    if (!seen[k]) rows.push([AILP_LABELS[k] || k, p[k]]);
+  });
+  const body = rows.map(function (r2) {
+    const v = r2[1];
+    let txt;
+    if (Array.isArray(v)) txt = v.length ? v.join('、') : '（空）';
+    else if (v === null || v === undefined || v === '') txt = '（空）';
+    else if (typeof v === 'object') txt = JSON.stringify(v);
+    else txt = String(v);
+    return '<div style="margin:2px 0"><span class="msg">' + esc(r2[0]) + '：</span>' + esc(txt) + '</div>';
+  }).join('');
+  return '<div class="card" style="margin:8px 0;padding:10px 12px;border-left:3px solid ' + color + '">' +
+    '<div><b style="color:' + color + '">' + esc(it.msg_type) + '</b>　' +
+    esc(it.sender) + ' → ' + esc(it.target) +
+    '　<span class="msg">' + esc(it.timestamp || '') + '</span></div>' +
+    '<div class="msg">指回：<code>' + esc(it.manifest_ref || '（没写）') + '</code></div>' +
+    body + '</div>';
+}
+
+async function loadAilp() {
+  if (!S.ws) return;
+  await loadAilpTypes();
+  const mf = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) + '/manifest');
+  const refs = [];
+  if (mf.ok && mf.data && mf.data.manifest) {
+    (mf.data.manifest.entry_points || []).forEach(function (x) { refs.push(x); });
+    (mf.data.manifest.active_tasks || []).forEach(function (x) { refs.push(x); });
+  }
+  $('ailpRef').innerHTML = refs.map(function (r) {
+    return '<option value="' + esc(r) + '">' + esc(r) + '</option>';
+  }).join('') || '<option value="">（manifest 里还没有条目）</option>';
+
+  const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) + '/ailp?limit=30');
+  if (!r.ok) { $('ailpOut').innerHTML = errHtml(r.data, r.status); return; }
+  const items = r.data.items || [];
+  if (!items.length) {
+    $('ailpOut').innerHTML = banner('warn',
+      '还没有结构化消息。讨论区只收 AILP 2.0 四类信封，<b>自由聊天会被拒</b>。');
+    return;
+  }
+  const counts = r.data.counts || {};
+  const sum = Object.keys(counts).map(function (k) { return k + ' ' + counts[k]; }).join(' · ');
+  let h = '<div class="msg">共 <b>' + esc(String(r.data.count || items.length)) + '</b> 条' +
+    (sum ? '：' + esc(sum) : '') + '（按时间正序）</div>';
+  h += items.map(ailpCard).join('');
+  $('ailpOut').innerHTML = h;
+}
+
+async function sendAilp() {
+  if (!S.ws) { say('ailpSendMsg', '先选工作间', 'bad'); return; }
+  const got = ailpPayloadFromForm();
+  if (got.bad.length) {
+    say('ailpSendMsg', '这几项没填/填错：' + got.bad.join('、'), 'bad');
+    return;
+  }
+  const body = {
+    ailp_version: '2.0',
+    msg_type: $('ailpType').value,
+    sender: 'user',
+    target: $('ailpTarget').value.trim() || '组长',
+    manifest_ref: $('ailpRef').value,
+    payload: got.payload
+  };
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) + '/ailp', body);
+  if (!r.ok) { $('ailpOut').innerHTML = errHtml(r.data, r.status); return; }
+  $('ailpOut').innerHTML = banner('ok', '✓ 收下了：' + esc(r.data.msg_id) +
+    '<br><span class="msg">平台只校验与记账，没有替你或替它说话。</span>');
+  say('ailpSendMsg', '已提交', 'ok');
+  await loadAilp();
+}
+
+/* ── 9. 闸门自省 ──────────────────────────────────────────── */
+async function checkGate() {
+  if (!S.ws) { say('gateMsg', '先选工作间', 'bad'); return; }
+  const act = $('gateAct').value;
+  const seq = $('dspSeq').value || '0';
+  const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) + '/gate/' + act +
+    '?member_seq=' + encodeURIComponent(seq));
+  if (!r.ok) { $('gateOut').innerHTML = errHtml(r.data, r.status); return; }
+  const d = r.data;
+  if (d.allowed) {
+    $('gateOut').innerHTML = banner('ok', '✓ 这个动作现在能做（' + esc(act) + '）');
+    say('gateMsg', '放行', 'ok');
+    return;
+  }
+  $('gateOut').innerHTML = banner('bad', '✗ 被拦住：' + esc(d.code)) + fourHtml(d.four);
+  say('gateMsg', d.code, 'bad');
+}
+
+/* ── 10. 协议台（V116 §1.1：按层分组，不按"最好"排）────────────── */
+const LAYER_NAMES = {
+  transport_task: '任务语义（能派活 / 查 / 撤 / 回传产物）',
+  transport_session: '会话轮次',
+  transport_tools: '工具面（它调我们的工具）',
+  transport_generic: '通用通道',
+  transport_events: '事件流',
+  transport_local: '本机进程间'
+};
+const LAYER_ORDER = Object.keys(LAYER_NAMES);
+
+function protoStatusBadge(st) {
+  if (st === 'available') return '<span class="ok">可用</span>';
+  if (st === 'partial') return '<span class="warn">部分</span>';
+  return '<span style="color:var(--dim)">未实现</span>';
+}
+
+function protoRows(rows, withLayerCol) {
+  const head = withLayerCol
+    ? '<tr><th>协议</th><th>层</th><th>状态</th><th>语义与边界（后端原话）</th></tr>'
+    : '<tr><th>协议</th><th>状态</th><th>语义与边界（后端原话）</th><th>适合</th></tr>';
+  return '<table>' + head + rows.map(function (p) {
+    return '<tr><td><b>' + esc(p.name || p.id) + '</b><div class="msg">' + esc(p.id) + '</div></td>' +
+      (withLayerCol ? '<td class="msg">' + esc(p.layer || '') + '</td>' : '') +
+      '<td>' + protoStatusBadge(p.status) + '</td>' +
+      '<td>' + esc(p.semantics || '（平台没给语义说明 —— 照实说，界面不编）') + '</td>' +
+      (withLayerCol ? '' : '<td class="msg">' + esc(p.best_for || '') + '</td>') +
+      '</tr>';
+  }).join('') + '</table>';
+}
+
+async function loadProtoPanel() {
+  const r = await api('GET', '/api/protocols');
+  if (!r.ok) { $('protoOut').innerHTML = errHtml(r.data, r.status); return; }
+  const list = r.data.protocols || [];
+  if (!list.length) {
+    $('protoOut').innerHTML = banner('warn', '协议目录是空的（平台没给条目）—— 照实显示，不放假协议。');
+    return;
+  }
+  let h = '';
+  LAYER_ORDER.forEach(function (layer) {
+    const rows = list.filter(function (p) { return p.layer === layer; });
+    if (!rows.length) return;
+    h += '<div class="msg" style="margin-top:10px"><b>' + esc(LAYER_NAMES[layer]) + '</b>' +
+      '　<span class="msg">' + esc(layer) + '</span></div>' + protoRows(rows, false);
+  });
+  const odd = list.filter(function (p) { return LAYER_ORDER.indexOf(p.layer) < 0; });
+  if (odd.length) {
+    h += '<div class="msg" style="margin-top:10px"><b>其它层</b>' +
+      '　<span class="msg">后端新给的层名，界面上还没有固定展示名 —— 照实列出，不猜</span></div>' +
+      protoRows(odd, true);
+  }
+  h += '<div class="msg" style="margin-top:8px">分层口径（V116 §1.1）：身份与任务归属在平台自己的名单与账本里（第①②层），' +
+    '这里列的是第③层「传输与调用」的通道；第④层「触达」见对接单与唤醒结果。<b>不按「哪个协议最好」排序。</b></div>';
+  $('protoOut').innerHTML = h;
+}
+
+async function loadToolingPanel() {
+  const r = await api('GET', '/api/harness-tooling');
+  if (!r.ok) { $('protoToolOut').innerHTML = errHtml(r.data, r.status); return; }
+  const items = r.data.items || [];
+  if (!items.length) {
+    $('protoToolOut').innerHTML = banner('warn', '还没有登记的 harness —— 先去对接中心登记。');
+    return;
+  }
+  $('protoToolOut').innerHTML = '<table><tr><th>harness</th><th>模型</th><th>实测写盘</th><th>来源</th>' +
+    '<th>唤醒</th><th>协议/桥</th><th>能不能当组长</th><th>原因（平台原话）</th><th></th></tr>' +
+    items.map(function (it) {
+      const t = it.tooling || {};
+      const fs = t.fs_write === true ? '<span class="ok">能</span>'
+        : (t.fs_write === false ? '<span class="bad">不能</span>'
+          : '<span style="color:var(--dim)">测不到</span>');
+      const can = it.lead_eligible ? '<span class="ok">能</span>' : '<span class="bad">不能</span>';
+      return '<tr><td>' + esc(it.harness_id) + '<div class="msg">' + esc(it.harness_name || '') + '</div></td>' +
+        '<td>' + esc(it.model || '') + '</td>' +
+        '<td>' + fs + '</td><td>' + esc(t.fs_write_source || '声明') + '</td>' +
+        '<td>' + esc(t.wakeup_method || '') + '</td>' +
+        '<td>' + (t.protocol_call ? '协议 ' : '') + (t.bridge_poll ? '桥' : '') + '</td>' +
+        '<td>' + can + '</td>' +
+        '<td class="msg">' + esc(t.why || '（平台没给原因）') + '</td>' +
+        '<td><button onclick="probePanel(\'' + esc(it.harness_id) + '\')">实测写一次盘</button></td></tr>';
+    }).join('') + '</table>' +
+    '<div class="msg">组长门槛（V116 §9）：<b>能写文件</b> 且 <b>能把回执送回来</b>（协议或桥）。' +
+    '「实测」是平台在自己的数据目录真写一次再读回；它只证明<b>平台侧落点可写</b>，' +
+    '不等于那个 agent 自己有 fs 工具。</div>';
+}
+
+async function probePanel(hid) {
+  const r = await api('POST', '/api/harness/' + encodeURIComponent(hid) + '/probe-tooling', {});
+  if (!r.ok) {
+    $('protoToolOut').innerHTML = errHtml(r.data, r.status) + $('protoToolOut').innerHTML;
+    return;
+  }
+  await loadToolingPanel();
+  await loadTooling();
+  await loadRoster();
+}
+
+/* ── 11. 审忆待审（只读列表 + 看/复制 diff + 记审批 + 落地；平台不代改认知，V117 §9）── */
+/* 落地端点 D后端-55：POST /api/mind/{key}/pending/{name}/apply
+   两段式（老板定的红线）：先「记审批」，approved 之后才允许「落地到基模」。
+   ★D后端-58：列表接口现在读 *.applied.json ⇒ status=applied 是后端真状态（本页不再做任何本地标记）。 */
+
+function pendingKeyOrSay() {
+  const key = $('pdKey').value.trim();
+  if (!key) { say('pdMsg', '要 agent_key（心智根键，建工作间时填的那个）', 'bad'); return ''; }
+  return key;
+}
+
+async function loadPending() {
+  const key = pendingKeyOrSay();
+  if (!key) return;
+  const r = await api('GET', '/api/mind/' + encodeURIComponent(key) + '/pending');
+  if (!r.ok) { $('pdOut').innerHTML = errHtml(r.data, r.status); return; }
+  const d = r.data;
+  let h = '';
+  if (d.hint) h += '<div class="msg">' + esc(d.hint) + '</div>';
+  const items = d.items || [];
+  if (!items.length) {
+    h += banner('warn', 'count=' + esc(String(d.count)) + '：还没有待审项 —— 空就是空，不放假条目。');
+    $('pdOut').innerHTML = h;
+    say('pdMsg', '没有待审项', 'warn');
+    return;
+  }
+  h += '<table><tr><th>待审项</th><th>目标</th><th>状态</th><th>diff</th><th></th></tr>' +
+    items.map(function (it) {
+      let st, applyBtn = '';
+      if (it.status === 'pending') {
+        st = '<span class="warn">待审</span>';
+      } else if (it.status === 'approved') {
+        st = '<span class="ok">已批</span>' +
+          '<div class="msg">' + esc(it.approved_by || '') + ' · ' + esc(it.approved_at || '') + '</div>';
+        /* 落地按钮只在 approved 时出现：没批就让它出现等于诱导跳过审批（红线） */
+        applyBtn = ' <button class="p" onclick="applyPending(\'' + esc(it.name) + '\')">落地到基模</button>';
+      } else if (it.status === 'applied') {
+        /* ★D后端-58：后端读真 *.applied.json —— 已落地的显示双 hash + 归档路径，不可再批再落地 */
+        st = '<span class="ok">已落地</span>' +
+          '<div class="msg">' + esc(it.applied_by || '') + ' · ' + esc(it.applied_at || '') + '</div>' +
+          '<div class="msg">before <code>' + esc(String(it.before_sha256 || '').slice(0, 12)) +
+          '</code> → after <code>' + esc(String(it.after_sha256 || '').slice(0, 12)) + '</code></div>' +
+          (it.archive ? '<div class="msg">原文归档：<code>' + esc(it.archive) + '</code></div>' : '');
+      } else if (it.status === 'applied_record_unreadable') {
+        /* 落地记录读坏 ⇒ 别当 applied，也别再出按钮（D后端-58 §2） */
+        st = '<span class="bad">落地记录读坏了（applied_record_unreadable）—— 不当已落地，落地按钮也不出，先查那条 .applied.json</span>';
+      } else if (it.status === 'approved_record_unreadable') {
+        st = '<span class="bad">审批记录坏了（approved_record_unreadable）—— 照实标，不当已批，不出落地按钮</span>';
+      } else {
+        st = '<span class="bad">审批记录坏了（' + esc(it.status) + '）—— 照实标，不当已批</span>';
+      }
+      const approveBtn = it.status === 'pending'
+        ? ' <button class="p" onclick="approvePending(\'' + esc(it.name) + '\')">记审批</button>'
+        : '';
+      return '<tr><td><code>' + esc(it.name) + '</code><div class="msg">' + esc(it.modified_at || '') +
+        ' · ' + esc(String(it.bytes || 0)) + ' 字节</div></td>' +
+        '<td>' + esc(it.target || '（diff 头里没读出目标）') + '</td>' +
+        '<td>' + st + '</td>' +
+        '<td class="msg">' + esc(String(it.diff_lines || 0)) + ' 行</td>' +
+        '<td><button onclick="showPendingDiff(\'' + esc(it.name) + '\')">看 diff</button>' + approveBtn + applyBtn +
+        '</td></tr>';
+    }).join('') + '</table>' +
+    '<pre id="pdDiff" hidden></pre>' +
+    '<div class="row"><button onclick="copyEl(\'pdDiff\')">复制 diff 原文</button>' +
+    '<span class="msg">看/复制不改任何文件；「落地到基模」只在<b>已批</b>后出现，点一次就真写核心基模（原文先归档）。</span></div>';
+  $('pdOut').innerHTML = h;
+  say('pdMsg', '待审 ' + items.length + ' 项', 'warn');
+}
+
+async function showPendingDiff(name) {
+  const key = pendingKeyOrSay();
+  if (!key) return;
+  const r = await api('GET', '/api/mind/' + encodeURIComponent(key) + '/pending/' + encodeURIComponent(name));
+  const pre = $('pdDiff');
+  if (!r.ok) {
+    if (pre) { pre.hidden = false; pre.textContent = ''; }
+    $('pdActOut').innerHTML = errHtml(r.data, r.status);
+    return;
+  }
+  if (!pre) return;
+  pre.hidden = false;
+  pre.textContent = r.data.text || '';
+  say('pdMsg', 'diff 已展开（' + name + '）', 'ok');
+}
+
+async function approvePending(name) {
+  const key = pendingKeyOrSay();
+  if (!key) return;
+  const who = $('pdApprover').value.trim();
+  if (!who) { say('pdMsg', '「批准人」必填 —— 谁批的要留痕（例：boss / user）', 'bad'); return; }
+  if (!confirm('给 ' + name + ' 记审批（批准人：' + who + '）？\n这只记审批：核心基模不会被平台改动。')) return;
+  const r = await api('POST', '/api/mind/' + encodeURIComponent(key) + '/pending/' +
+    encodeURIComponent(name) + '/approve', { approver: who });
+  if (!r.ok) { $('pdActOut').innerHTML = errHtml(r.data, r.status); return; }
+  const d = r.data;
+  if (d.already) {
+    $('pdActOut').innerHTML = banner('warn',
+      '这条已批过（批准人 ' + esc(d.approved_by || '') + ' · ' + esc(d.approved_at || '') +
+      '）；<b>没有覆盖原记录</b>。');
+  } else {
+    $('pdActOut').innerHTML = banner('ok',
+      '✓ 已记审批 · 批准人 ' + esc(d.approved_by || '') + ' · ' + esc(d.approved_at || '') +
+      '<br><b>核心基模未改 —— 真正写入要人按 diff 手工应用</b>');
+  }
+  say('pdMsg', d.already ? '已批过（不覆盖）' : '审批已记', d.already ? 'warn' : 'ok');
+  await loadPending();
+}
+
+/* 落地到基模（D后端-55）：真写 00_核心基模.md，原文先归档 _archive/。
+   错误码照实显示（errHtml 已渲染 code/error/next）：NOT_APPROVED 要先批、
+   CORE_CHANGED_SINCE_PROPOSAL 说明旧补丁过期、NOT_A_UNIFIED_DIFF 是建议稿不能套、
+   DIFF_DOES_NOT_APPLY 把带行号的 error 原文摊出来。 */
+async function applyPending(name) {
+  const key = pendingKeyOrSay();
+  if (!key) return;
+  const who = $('pdApprover').value.trim();
+  if (!who) { say('pdMsg', '「批准人」必填 —— 谁落的这一笔要留痕（例：boss / user）', 'bad'); return; }
+  if (!confirm('把 ' + name + ' 落地到基模（批准人：' + who + '）？\n\n' +
+    '会真正改写 00_核心基模.md（原文会先归档到 _archive/，可回溯）。\n' +
+    '这一步不是记账：点下去 AI 的认知就变了。')) return;
+  const r = await api('POST', '/api/mind/' + encodeURIComponent(key) + '/pending/' +
+    encodeURIComponent(name) + '/apply', { approver: who });
+  if (!r.ok) {
+    /* 三类 409 给一句人话在上、后端原文在下，别只丢一张错误码表给人猜 */
+    const code = (r.data && r.data.code) || '';
+    const lead = {
+      NOT_APPROVED: '还没批 —— 先点「记审批」，再点「落地到基模」。',
+      CORE_CHANGED_SINCE_PROPOSAL: '基模在批准后被改过，这条旧补丁不能再套；重新让审忆员生成待审项。',
+      NOT_A_UNIFIED_DIFF: '这条是建议稿（说明+改前 hash），不是可套用的补丁 —— 请人按它手改。',
+      DIFF_DOES_NOT_APPLY: 'diff 对不上原文（下面 error 里有具体行号与期望/实际）。',
+      NO_SUCH_PENDING: '这条待审项已经没了 —— 刷新列表。'
+    }[code] || '';
+    $('pdActOut').innerHTML = (lead ? banner('bad', esc(lead)) : '') + errHtml(r.data, r.status);
+    say('pdMsg', '落地失败 · ' + (code || ('HTTP ' + r.status)), 'bad');
+    return;
+  }
+  const d = r.data || {};
+  $('pdActOut').innerHTML = banner('ok',
+    '✓ 已落地 · <code>' + esc(name) + '</code> 已写进核心基模' +
+    '<br>before <code>' + esc(String(d.before_sha256 || '').slice(0, 12)) + '</code> → after <code>' +
+    esc(String(d.after_sha256 || '').slice(0, 12)) + '</code>' +
+    '<br>原文已归档：<code>' + esc(d.archive || '（后端没回 archive 路径）') + '</code>' +
+    '<br><span class="msg">落地人 ' + esc(d.applied_by || who) + ' · ' + esc(d.applied_at || '') +
+    '　—— 这是人拍板之后的落地，平台没有自己改认知。</span>');
+  say('pdMsg', '已落地（基模已变，可回溯）', 'ok');
+  await loadPending();
+}
+
+function locate() {
+  loadWs();
+  loadProtoPanel();
+  loadToolingPanel();
+  loadAilpTypes();
+}
+document.addEventListener('DOMContentLoaded', function () { locate(); });

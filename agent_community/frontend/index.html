@@ -30,7 +30,9 @@ body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSys
 .topbar .ws-dot.offline{background:var(--red)}
 .topbar .spacer{flex:1}
 .topbar .btn{font-size:12px;padding:6px 14px;border:1px solid var(--rule);border-radius:8px;background:var(--bg3);color:var(--ink);cursor:pointer;transition:all .15s;font-weight:500}
-.topbar .btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.topbar .btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);
+  /* ★2026-10-30 子按键色差（老板指令）：hover 挂红蓝对角柔光，与卡片同款 */
+  box-shadow:var(--rgb-glow)}
 /* 主入口：对接中心（2026-10-23 评审：7 个按钮等权时，没有一个是"最该点的"） */
 .topbar .btn.primary{background:rgba(255,53,39,.14);border-color:#FF3527;color:#FF6A5C;font-weight:700}
 .topbar .btn.primary:hover{background:#D4291C;border-color:#D4291C;color:#F9F7F3}
@@ -98,14 +100,20 @@ body.nav-collapsed .workshop-item .wi-ico{display:inline-block;font-size:15px;li
 .hall-empty .he-sub{font-size:12.5px;color:var(--dim)}
 /* 功能入口坞：空白区左上角，未来功能区入口依次往里加（FE-10 修订） */
 .hall-entries{position:absolute;top:16px;left:16px;right:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;z-index:2}
-.hall-entry{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:208px;padding:13px 15px;background:var(--bg2);border:1px solid var(--rule);border-radius:12px;cursor:pointer;text-decoration:none;color:var(--ink);transition:background-color .15s,border-color .15s,transform .15s;text-align:left}
-.hall-entry:hover{background:var(--accent-soft);border-color:var(--accent);transform:translateY(-1px)}
+.hall-entry{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:208px;padding:13px 15px;background:var(--bg2);border:1px solid var(--rule);border-radius:12px;cursor:pointer;text-decoration:none;color:var(--ink);transition:background-color .15s,border-color .15s,transform .15s,box-shadow .18s ease;text-align:left;position:relative}
+.hall-entry:hover{background:var(--accent-soft);border-color:var(--accent);transform:scale(1.015);z-index:3;
+  /* ★2026-10-30 hover 边缘色差（同 v5 卡片）：透明发光，红=左上/蓝=右下柔光；
+     四修：绿色层去掉（老板指令），只留红蓝对角 */
+  box-shadow:-2.6px -2.6px 7px color-mix(in srgb, var(--rgb-r) 40%, transparent),
+             2.6px  2.6px 7px color-mix(in srgb, var(--rgb-b) 40%, transparent)}
 /* 新用户第一件事是「接入一位员工」—— 空状态里它排第一，并且视觉上比「流程说明」重一档 */
 .hall-entry.primary{border-color:rgba(255,53,39,.7);background:rgba(255,53,39,.07)}
 .hall-entry.primary .he-t{color:var(--ink)}
 .hall-entry.primary .he-i{color:var(--accent)}
 .hall-entry .he-i{font-size:20px;color:var(--accent);line-height:1}
-.hall-entry .he-t{font-size:14.5px;font-weight:900}
+.hall-entry .he-t{font-size:14.5px;font-weight:900;letter-spacing:.02em;transition:text-shadow .18s ease}
+/* ★2026-10-30 色差改 hover 触发（老板：只在鼠标位于功能卡片上、卡片放大才出现） */
+.hall-entry:hover .he-t{text-shadow:var(--rgb-split-sec)}
 .hall-entry .he-s{font-size:11px;color:var(--muted);line-height:1.5}
 .view-tab[href]{display:flex;align-items:center;text-decoration:none}
 .hmsg{padding:12px 16px;border-radius:12px;font-size:13px;animation:msgIn .25s ease-out;max-width:84%;border:1px solid rgba(255,255,255,.045);box-shadow:var(--shadow-1)}
@@ -381,6 +389,14 @@ button:focus-visible,.view-tab:focus-visible{outline:none;box-shadow:var(--focus
    这一整块在末尾 ⇒ 可整块删掉回退（另有 tag arch/before-v2-hall-workshop）。
    ══════════════════════════════════════════════════════════════════════════ */
 :root{--t1:20px;--t2:13px;--t3:12px;--s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px}
+/* ★2026-10-30 大厅卡片色差：RGB 通道令牌真源在 hub.css :root（注释最全），
+   本页不引 hub.css，故按 v5.html 先例内联同值副本 —— 改色差请两处同步。
+   对角位移 + 透明发光（老板三修）：红=左上、蓝=右下柔光；绿贴边（文字层被字身遮挡省略） */
+:root{--rgb-r:#C9432F;--rgb-g:#3AA863;--rgb-b:#3B6FC4;
+  --rgb-split-sec: -1.3px -1.3px 2px color-mix(in srgb, var(--rgb-r) 55%, transparent),
+                    1.3px  1.3px 2px color-mix(in srgb, var(--rgb-b) 55%, transparent);
+  --rgb-glow: -2.6px -2.6px 7px color-mix(in srgb, var(--rgb-r) 40%, transparent),
+               2.6px  2.6px 7px color-mix(in srgb, var(--rgb-b) 40%, transparent)}
 
 /* ① 三级字阶：正文 13、辅助 12（消息正文仍 13.5，聊天里太紧会难受） */
 body{font-size:var(--t2)}
@@ -439,17 +455,17 @@ body{font-size:var(--t2)}
 .hall-messages .hmsg.type-notice{border-left:2px solid var(--accent);background:rgba(255,53,39,.07)}
 .hall-messages .hmsg.type-notice .hm-content{font-weight:600}
 </style>
-<link rel="stylesheet" href="/theme-crt.css">
-<script src="/theme-crt.js" defer></script>
+<link rel="stylesheet" href="chrome.css">
 </head>
 <body>
 <div class="app">
-  <div class="topbar">
+  <div class="topbar chrome-top">
     <span class="logo">◈ 外端agent生产合作社</span>
     <div class="ws-status"><span class="ws-dot" id="wsDot"></span><span id="wsText">未连接</span></div>
     <div class="spacer"></div>
     <button class="btn" onclick="location.href='/monitor.html'" title="监控室 · 画面墙（只读快照）">监控室</button>
     <button class="btn primary" onclick="location.href='/docking.html'" title="对接中心 · 把外部 Agent 接进来、并让它跟工作间对上">对接中心</button>
+    <!-- ★2026-10-30（老板）：控制台只对单个工作间生效 ⇒ 大厅不再摆总入口，请从工作间页进（自动带 ?ws=）-->
     <button class="btn" onclick="location.href='/ops.html'" title="运维看板 · 工单审计与Agent在线">看板</button>
     <button class="btn" onclick="location.href='/handover.html'" title="交付回执台 · 无证据不回执">回执</button>
     <button class="btn" onclick="location.href='/booths.html'" title="成员隔间与桥">隔间</button>
@@ -517,9 +533,10 @@ body{font-size:var(--t2)}
           <div class="ds-header"><span class="ds-name" id="dsWorkshopName">工作间</span><span>· 讨论</span><span class="ds-confirm-btn" id="dsConfirmBtn" onclick="confirmStartTask()" style="display:none">✓ 确认开始</span></div>
           <div class="ds-list" id="discussionList"><div style="padding:8px;color:var(--dim);font-size:11px;text-align:center">暂无讨论</div></div>
           <div class="ds-input">
-            <div class="ds-input-row">
-              <textarea id="discussInput" placeholder="深入讨论任务需求..." rows="1" onkeydown="handleDiscussKey(event)" oninput="autoResize(this)"></textarea>
-              <button class="ds-send-btn" onclick="sendDiscussMessage()">发送</button>
+            <!-- ★2026-10-31（老板）：「去结构化讨论」按钮撤掉 —— 名字叫讨论、点开却是工作间对接中心，
+                 语义不通；且按 SOP 讨论在外面做，大厅讨论区只读展示工作间的消息。 -->
+            <div class="ds-input-row" style="align-items:center;gap:10px;padding:8px 10px">
+              <span style="flex:1;font-size:11.5px;line-height:1.5;color:var(--dim)">只读 —— 讨论在外面做（整理好资料再开工作间），这里只显示工作间的消息。</span>
             </div>
           </div>
         </div>
@@ -747,7 +764,7 @@ function openWorkshop(tid){currentWorkshopId=tid;switchView('workshop');_flowWsI
 function renderWorkflow(task){const cv=document.getElementById('workflowCanvas');cv.innerHTML='';let aa=[];try{aa=JSON.parse(task.assigned_agents||'[]')}catch(e){}let result='';try{result=JSON.parse(task.result||'{}').result||task.result||''}catch(e){result=task.result||''}const st=task.status||'pending',isD=st==='completed',isE=st==='executing'||st==='routing',isEr=st==='failed'||st==='budget_cutoff';const nodes=[];nodes.push({id:'start',type:'start',icon:'▶',label:'开始',detail:task.description||task.title||'',status:'done',x:20,y:40});nodes.push({id:'router',type:'router',icon:'⬡',label:'任务路由',detail:`意图: ${task.intent||'general'}\n分派: ${aa.length} 个 Agent`,status:isD||isE?'done':(isEr?'error':'active'),x:240,y:40});let ay=40;aa.forEach((aid,i)=>{const ag=agents.find(a=>a.agent_id===aid);nodes.push({id:`agent-${i}`,type:'agent',icon:'🤖',label:ag?ag.name:aid,detail:`${aid}\n来源: ${ag?ag.software_context:''}`,status:isD?'done':(isE?'active':''),x:460,y:ay});ay+=100});if(isD||result)nodes.push({id:'result',type:'result',icon:'✓',label:'结果',detail:result.substring(0,200)+(result.length>200?'...':''),status:isD?'done':'active',x:680,y:40});const mx=Math.max(...nodes.map(n=>n.x))+220,my=Math.max(...nodes.map(n=>n.y))+120;cv.style.width=mx+'px';cv.style.height=my+'px';const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('wf-svg');svg.setAttribute('width',mx);svg.setAttribute('height',my);const conns=[];conns.push({from:'start',to:'router',status:'done'});aa.forEach((_,i)=>conns.push({from:'router',to:`agent-${i}`,status:isD?'done':(isE?'flowing':'active')}));if(nodes.find(n=>n.id==='result')&&aa.length>0)conns.push({from:`agent-${aa.length-1}`,to:'result',status:isD?'done':''});const nm={};nodes.forEach(n=>nm[n.id]=n);conns.forEach(cn=>{const f=nm[cn.from],t=nm[cn.to];if(!f||!t)return;const x1=f.x+180,y1=f.y+30,x2=t.x,y2=t.y+30,mx2=(x1+x2)/2;const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',`M ${x1},${y1} C ${mx2},${y1} ${mx2},${y2} ${x2},${y2}`);if(cn.status==='flowing')p.classList.add('flowing');else if(cn.status==='done')p.classList.add('done');else if(cn.status==='active')p.classList.add('active');svg.appendChild(p)});cv.appendChild(svg);nodes.forEach(n=>{const el=document.createElement('div');el.className=`wf-node type-${n.type}`;if(n.status==='active')el.classList.add('active');if(n.status==='done')el.classList.add('done');if(n.status==='error')el.classList.add('error');el.style.left=n.x+'px';el.style.top=n.y+'px';const st2=n.status==='done'?'<span class="wn-status" style="background:var(--green-soft);color:var(--green)">完成</span>':n.status==='active'?'<span class="wn-status" style="background:var(--blue-soft);color:var(--blue)">执行中</span>':n.status==='error'?'<span class="wn-status" style="background:var(--red-soft);color:var(--red)">错误</span>':'';el.innerHTML=`<div class="wn-header"><div class="wn-icon">${n.icon}</div><span class="wn-label">${esc(n.label)}</span>${st2}</div><div class="wn-body"><div class="wn-detail">${esc(n.detail)}</div></div>`;cv.appendChild(el)})}
 function renderDiscussion(tid){const l=document.getElementById('discussionList');const ms=taskMessages[tid]||[];if(ms.length===0){l.innerHTML='<div style="padding:8px;color:var(--dim);font-size:11px;text-align:center">暂无讨论</div>';return}l.innerHTML=ms.map(m=>{const f=m.from_agent||'system',t=formatTime(m.timestamp||new Date().toISOString());let c=m.content||'';if(c.length>300)c=c.substring(0,300)+'...';return `<div class="ds-item"><span class="dsi-from">${esc(f)}</span><span class="dsi-time">${t}</span><div>${esc(c)}</div></div>`}).join('');l.scrollTop=l.scrollHeight}
 function addToDiscussion(msg){const l=document.getElementById('discussionList');const h=l.querySelector('div[style*="text-align:center"]');if(h)l.innerHTML='';const f=msg.from_agent||'system',t=formatTime(msg.timestamp||new Date().toISOString());let c=msg.content||'';if(c.length>300)c=c.substring(0,300)+'...';const d=document.createElement('div');d.className='ds-item';d.innerHTML=`<span class="dsi-from">${esc(f)}</span><span class="dsi-time">${t}</span><div>${esc(c)}</div>`;l.appendChild(d);l.scrollTop=l.scrollHeight}
-function renderWorkshops(){const l=document.getElementById('workshopList');document.getElementById('workshopCount').textContent=workshops.length;document.getElementById('statWorkshops').textContent=workshops.length;if(workshops.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无工作间<br><span style="font-size:11px">在大厅发布任务后自动创建</span></div>';renderFlowStrip();return}const sl={draft:'草稿',discussing:'一级讨论',selecting:'选定员工',division:'二级讨论',running:'工作中',review:'三级讨论',done:'已完成'};l.innerHTML=workshops.map(w=>{const s=w.status||'draft',sl2=sl[s]||s;const tm=w.created_at?new Date(w.created_at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';return `<div class="workshop-item ${currentWorkshopId===w.workshop_id?'active':''}" data-ws-id="${w.workshop_id}" onclick="openWorkshopPage('${w.workshop_id}')"><div class="wi-top"><span class="wi-status-dot ${s}"></span><span class="wi-title">${w.pinned?'[置顶] ':''}${esc(w.name||'(无标题)')}</span></div><div class="wi-agents">${(w.members||[]).map(m=>esc(m.role)).join(', ')||'未选员工'}</div><div class="wi-time">${sl2} · ${tm}</div><div class="wi-actions"><button class="wi-act" title="置顶" onclick="event.stopPropagation();togglePin('${w.workshop_id}',${w.pinned?'false':'true'})">${w.pinned?'取消置顶':'置顶'}</button><button class="wi-act" title="重命名" onclick="event.stopPropagation();renameWs('${w.workshop_id}')">重命名</button><button class="wi-act" title="删除" onclick="event.stopPropagation();deleteWs('${w.workshop_id}')">删除</button></div></div>`}).join('');renderFlowStrip()}
+function renderWorkshops(){const l=document.getElementById('workshopList');document.getElementById('workshopCount').textContent=workshops.length;document.getElementById('statWorkshops').textContent=workshops.length;if(workshops.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无工作间<br><span style="font-size:11px">在大厅发布任务后自动创建</span></div>';renderFlowStrip();return}const sl={draft:'草稿',discussing:'定方向',selecting:'选人',division:'分工',running:'干活',review:'验收',done:'已完成'};l.innerHTML=workshops.map(w=>{const s=w.status||'draft',sl2=sl[s]||s;const tm=w.created_at?new Date(w.created_at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';return `<div class="workshop-item ${currentWorkshopId===w.workshop_id?'active':''}" data-ws-id="${w.workshop_id}" onclick="openWorkshopPage('${w.workshop_id}')"><div class="wi-top"><span class="wi-status-dot ${s}"></span><span class="wi-title">${w.pinned?'[置顶] ':''}${esc(w.name||'(无标题)')}</span></div><div class="wi-agents">${(w.members||[]).map(m=>esc(m.role)).join(', ')||((w.gate&&w.gate.members_count)?('名单 '+w.gate.members_count+' 个工位'+(w.gate.members_source?'（来源 '+esc(w.gate.members_source)+'）':'')):'未接成员')}</div><div class="wi-time">${sl2} · ${tm}</div><div class="wi-actions"><button class="wi-act" title="置顶" onclick="event.stopPropagation();togglePin('${w.workshop_id}',${w.pinned?'false':'true'})">${w.pinned?'取消置顶':'置顶'}</button><button class="wi-act" title="重命名" onclick="event.stopPropagation();renameWs('${w.workshop_id}')">重命名</button><button class="wi-act" title="删除" onclick="event.stopPropagation();deleteWs('${w.workshop_id}')">删除</button></div></div>`}).join('');renderFlowStrip()}
 /* ── FE-07 主流程阶段条：task 视角打开 → 一次性反查工作间 → 状态珠 + 入口 ── */
 let _flowWsId=null, _flowWsStatus='', _flowWsErr='';
 function renderFlowStrip(){
@@ -800,6 +817,8 @@ async function recycleStaleWorkshops(){try{const r=await fetch('/api/workshops/s
 async function deleteWs(wid){const w=workshops.find(x=>x.workshop_id===wid);acModal.show({title:'删除工作间',message:'确定删除工作间「'+(w?w.name:'')+'」？此操作不可恢复。',danger:true,onConfirm:async()=>{try{await fetch('/api/workshop/'+wid,{method:'DELETE'});refreshWorkshops()}catch(e){}}})}
 async function refreshWorkshops(){try{const r=await fetch('/api/workshops');const d=await r.json();workshops=d.workshops||[];renderWorkshops()}catch(e){}}
 async function sendCommand(){const inp=document.getElementById('cmdInput'),btn=document.getElementById('sendBtn'),text=inp.value.trim();if(!text||isExecuting)return;isExecuting=true;btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';inp.value='';autoResize(inp);document.getElementById('lastAction').textContent='拉入工作间...';try{const r=await fetch('/api/workshop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hall_content:text})});const d=await r.json();if(d.success&&d.workshop_id){location.href='/workshop.html?ws_id='+d.workshop_id;return}else{appendMessage({from_agent:'system',to_agent:'user',content:d.error||'创建失败',message_type:'text',timestamp:new Date().toISOString()})}}catch(e){appendMessage({from_agent:'system',to_agent:'user',content:'请求失败: '+e.message,message_type:'text',timestamp:new Date().toISOString()})}isExecuting=false;btn.disabled=false;btn.textContent='发布'}
+/* 2026-10-31（老板）：openStructuredDiscussFromHub 已随「去结构化讨论」按钮一并退役 ——
+   讨论在外面做，大厅不再把用户往工作间对接中心的讨论段跳。 */
 async function sendDiscussMessage(){const inp=document.getElementById('discussInput');if(!inp)return;const text=inp.value.trim();if(!text)return;
 /* V-16 修复：原先 `if(!text||!currentWorkshopId)return` 是**静默返回** ——
    没选工作间时点发送，既无动画、也无回复、也无提示（"什么都没发生"）。 */
@@ -811,11 +830,14 @@ try{
 /* V-16 修复：原 `/api/task/{id}/discuss` **只存消息、不调 AI、立刻返回 success** ——
    既无 reply 也无 error，而原代码**没有 else 分支**，于是"没有回复也没有提示"。
    改打工作间讨论端点（真正调平台 AI、失败返回 502 + error）。 */
-const r=await fetch(`/api/workshop/${currentWorkshopId}/discuss`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,from_agent:'user'})});clearTimeout(_wd);const d=await r.json();const t=document.getElementById('dsThinking');if(t)t.remove();
+/* 2026-10-30 修复：openWorkshop 只把 currentWorkshopId 设为 **task_id**，真实 workshop_id
+   回填在 _flowWsId —— 原来这里直接拿 task_id 打 /api/workshop/{id}/discuss 必 404「工作间不存在」。
+   改为优先用 _flowWsId（无工作间时照实落到 task_id，让后端 404 照实显示）。 */
+const r=await fetch(`/api/workshop/${encodeURIComponent(_flowWsId||currentWorkshopId)}/discuss`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,from_agent:'user'})});clearTimeout(_wd);const d=await r.json();const t=document.getElementById('dsThinking');if(t)t.remove();
 if(d.reply){addToDiscussion({from_agent:d.from_agent||'agent',content:d.reply,timestamp:new Date().toISOString()})}
 else if(d.messages&&Array.isArray(d.messages)){d.messages.forEach(m=>addToDiscussion(m))}
-else{/* 原实现缺这一支：失败/404/空结果一律被静默吞掉 */
-addToDiscussion({from_agent:'system',content:'讨论未获得回复：'+(d.error||('HTTP '+r.status))||'服务未返回内容',timestamp:new Date().toISOString()})}
+else{/* 原实现缺这一支：失败/404/空结果一律被静默吞掉；2026-10-30 补 code+next 原样显示 */
+addToDiscussion({from_agent:'system',content:'讨论未获得回复：'+((d.code?d.code+' · ':'')+(d.error||('HTTP '+r.status)))+(((d.next||d.next_step))?('｜后端给的下一步：'+(d.next||d.next_step)):''),timestamp:new Date().toISOString()})}
 /* 恒等式（示例Harness-E 15/16号）：rule_fallback ⇒ action==='select'，select 分支已带【规则兜底判定】前缀；
    此处原「非 select 的 rule_fallback」兜底分支为死代码，已删。 */
 if(d.action==='select'){addToDiscussion({from_agent:'system',content:(d.action_source==='rule_fallback'?'【规则兜底判定】':'')+'需求已明确，可以选定员工了——请在左侧工作间列表进入该工作间，在员工列表点选成员。',timestamp:new Date().toISOString()})}
@@ -1397,5 +1419,6 @@ window.acToast=function(msg,err){var t=document.querySelector('.acm-toast');if(!
 })();
 </script>
 <script src="boot.js"></script>
+<script src="chrome.js" defer></script>
 </body>
 </html>

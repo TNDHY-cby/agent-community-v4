@@ -42,8 +42,27 @@ function dockRegTileVisibility(){
 /* 最近一次总览数据（档案列表 / 脚本激活选员工从这里取，避免重复请求） */
 let DOCK_LAST_OVERVIEW = null;
 
+/** ★2026-10-31（老板）：单间模式下顶栏「工作间」必须回**本间**（?ws_id=）。
+    原来写死 /workshop.html —— 点了掉回工作间列表，语境全丢（等于"回不去"）。
+    总控时保持列表口径不变。 */
+function dockSyncBackLink(){
+  const a = document.getElementById('navWsDock');
+  if (!a) return;
+  if (DOCK_GLOBAL) {
+    a.href = '/workshop.html';
+    a.textContent = '工作间';
+    a.title = '工作间列表';
+    return;
+  }
+  a.href = '/workshop.html?ws_id=' + encodeURIComponent(DOCK_WS);
+  a.textContent = '回本间';
+  a.title = '回到本间工作页（讨论与工作都在那儿）';
+}
+document.addEventListener('DOMContentLoaded', dockSyncBackLink);
+
 async function dockLoad(){
   const q = DOCK_GLOBAL ? '' : ('?ws=' + encodeURIComponent(DOCK_WS));
+  dockSyncBackLink();
   document.getElementById('dockScopeSub').textContent = DOCK_GLOBAL ? '· 总控（全局）' : '· 单间';
   document.getElementById('railScopeSub').textContent = DOCK_GLOBAL ? 'GLOBAL' : 'SINGLE WS';
   document.getElementById('dockApi').textContent = 'GET /api/docking/overview' + q;
@@ -77,10 +96,17 @@ function dockRender(d){
   const hs = d.harnesses || [];
   const dang = d.dangling_bindings || [];
   const wsRows = d.workshops || [];
+  /* ★2026-10-31：单间模式要把**工作间名字**显示出来（原来只显示裸 id，看着像总控）；
+     scope 标签一处算，横幅与刊头 meta 共用。 */
+  const wsOne = wsRows[0] || {};
+  const scopeLabel = (d.scope && d.scope.type === 'workshop')
+    ? ('单间 · ' + (wsOne.name || d.scope.ws || DOCK_WS))
+    : '总控（全局）';
+  const mhScope = document.getElementById('dockMhScope');
+  if (mhScope) mhScope.textContent = scopeLabel;
 
   document.getElementById('dockScopeBanner').innerHTML =
-    '<span class="pulse"></span>◈ 范围：<b>' + (d.scope && d.scope.type === 'workshop'
-      ? ('单间 · ' + esc(d.scope.ws)) : '总控（全局）') + '</b>' +
+    '<span class="pulse"></span>◈ 范围：<b>' + esc(scopeLabel) + '</b>' +
     '　·　已登记员工 <b>' + hs.length + '</b>' +
     '　·　工作间 <b>' + wsRows.length + '</b>' +
     (dang.length ? ('　·　⚠ <b>悬空引用 ' + dang.length + '</b>') : '') +
@@ -105,9 +131,13 @@ function dockRender(d){
   } else {
     pick.innerHTML = '';               // 单间：**没有选择器**（不许越权操作别的间）
     const w = wsRows[0];
-    rail.innerHTML = w ? ('<li>' + esc(w.name||w.ws_id) + '<br><span class="rail-sub">接入 ' + (w.docked||0) +
+    rail.innerHTML = (w ? ('<li>' + esc(w.name||w.ws_id) + '<br><span class="rail-sub">接入 ' + (w.docked||0) +
       ' · 待接 ' + (w.pending||0) + ' · 停用 ' + (w.retired||0) + ' · 掉线 ' + (w.offline||0) + '</span></li>')
-      : '<li class="rail-sub">这个工作间不存在</li>';
+      : '<li class="rail-sub">这个工作间不存在</li>') +
+      /* ★2026-10-31：登记新员工是**全局**动作（V34 §1），单间这里没有入口 —— 明说去哪儿，
+         否则用户在本间对接台转半天找不到「加一个 agent」。 */
+      '<li class="rail-sub" style="margin-top:10px;line-height:1.6">登记新员工是全局动作：' +
+      '<a href="/docking.html">去总控对接中心登记</a></li>';
   }
 
   // ── 点名册（在功能模块下面，不是第一屏主角）
@@ -954,7 +984,7 @@ function wizRender(){
         : '还没认到是哪一位 —— 回第 3 步在列表里选它（或手动填过）。') + '</p>' +
       '<div class="wiz-actions">' +
       '<button class="btn primary" onclick="wizTest()">测一次（请回复：收到）</button>' +
-      (needVisual ? '<button class="btn mini" onclick="wizRunVisual()">让它在对话框里做一次动作</button>' : '') +
+      (needVisual ? '<span class="wiz-hint">这个协议只能人工搬运；要它自己回话，用第⑤步把它挂成 MCP。</span>' : '') +
       '<button class="btn mini quiet" onclick="wizBringFront()">打开它的会话</button>' +
       '<span class="dock-msg" id="wizTestMsg"></span></div>' +
       '<div class="wiz-session-pick"><span class="sub">发到哪条会话：</span>' +
@@ -979,13 +1009,32 @@ function wizRender(){
   }
 
   body.innerHTML =
-    '<p class="wiz-p">叫不醒的协议用这个：平台那句你粘给它，它回的原话你粘回来。</p>' +
+    '<p class="wiz-p"><b>让它把平台挂成 MCP</b>：把下面这段贴到它的 MCP 服务器设置里，然后重启它 —— ' +
+      '之后它就能自己调平台的工具（建工作间 / 看任务 / 交回执）。</p>' +
+      '<div class="wiz-actions"><button class="btn primary" onclick="wizCopyMcpConfig()">复制 MCP 配置（.md）</button>' +
+      '<button class="btn mini quiet" onclick="wizShowMcpJson()">看 JSON 原文</button>' +
+      '<span class="dock-msg" id="wizMcpMsg"></span></div>' +
+      '<pre id="wizMcpPre" class="wiz-pre" hidden></pre>' +
+      '<div class="wiz-mcp-calls"><b>它来没来过</b>（平台留痕：<b>它自己</b>调过我们的工具没有）' +
+        '<button class="btn mini quiet" onclick="wizMcpCalls()">刷新留痕</button>' +
+        '<span class="dock-msg" id="wizCallsMsg"></span>' +
+        '<div id="wizCallsOut" class="wiz-result"></div></div>' +
+      /* ★2026-10-25：发进它会话这件事 —— **让它自己发**（平台不代写） */
+      '<div class="wiz-mcp-notes"><b>让它自己发</b>（平台只把话交给它，发送动作是它的）' +
+        '<div class="wiz-line"><input id="wizNoteText" placeholder="要它在自己会话里说的一句">' +
+        '<button class="btn primary" onclick="wizNoteAdd()">交给它</button>' +
+        '<button class="btn mini quiet" onclick="wizNotesLoad()">刷新</button></div>' +
+        '<span class="dock-msg" id="wizNoteMsg"></span>' +
+        '<div id="wizNotesOut" class="wiz-result"></div></div>' +
+      '<p class="wiz-p">叫不醒的协议还有一条老路：平台那句你粘给它，它回的原话你粘回来。</p>' +
     '<div class="wiz-line"><input id="wizChatSend" readonly placeholder="平台这句话"><button class="btn mini" onclick="wizCopyChat()">复制</button></div>' +
     '<textarea id="wizChatBack" rows="3" placeholder="把它回的那段原话粘进来"></textarea>' +
     '<div class="wiz-actions"><button class="btn primary" onclick="wizConfirmBack()">我确认它回了</button>' +
     '<span class="dock-msg" id="wizChatMsg"></span></div>' +
     '<div id="wizChatOut" class="wiz-result"></div>';
   wizChatInit();
+  wizMcpCalls();     /* 进这一步就顺手拉一次留痕：空的就明写「它还没来过」 */
+  wizNotesLoad();    /* 顺带把「让它自己发」的待办也列出来 */
 }
 
 /** 第 2 步：选中协议后的卡片 + 字段 */
@@ -1312,28 +1361,175 @@ async function wizTest(){
 }
 
 /** 测一次的结果（同一份渲染：刚测完 / 从 last_test 回放，都用它） */
+/** 后端文案里允许带 markdown 强调；我们是纯文本渲染，先剥掉 `**`。 */
+function _wizPlain(x){ return String(x == null ? '' : x).replace(/\*\*/g, ''); }
+
 function _wizTestHtml(d){
   d = d || {};
   const verified = d.verified === true;
-  return '<div class="' + (verified ? 'dock-ok' : 'dock-warn') + '">' +
-    (verified ? '✓ 它接住了（带回口令）'
-              : '⚠ 真打过了，但' + (d.verify_note ? escPlain(d.verify_note) : '没带回口令 ⇒ 不算真接住')) + '</div>' +
+  const ar = d.agent_reply || null;
+  /* ★2026-10-25（老板：「平台在做梦」）：结论分三件事说，不再用一个 verified 糊过去 ——
+     delivery_mode=plugin_db_write ⇒ **插件替它写库，不是发给它**；
+     received ⇒ 我们这句进了它的库；answered ⇒ 库里出现了**它自己生成**的消息（那才是它回话）。 */
+  const _mode = String(d.delivery_mode || '');
+  const _modeTxt = _mode === 'plugin_db_write' ? '插件替它写库（**不是发给它本人**）'
+                 : _mode === 'platform_mcp_server' ? '它自己来调平台（MCP 服务端）'
+                 : _mode === 'tool_call_only' ? '只调通了一个工具（没有任何"落到它会话"的证据）'
+                 : '';
+  const laneHtml = '<div class="wiz-lane">' +
+    '<div class="wiz-lane-row"><b>这次是谁在说话：</b>' + escPlain(_wizPlain(_modeTxt) || '后端没给 delivery_mode（老版本）') + '</div>' +
+    '<div class="wiz-lane-row"><b>接到：</b>' +
+      (d.received === true ? '✓ 我们这句进了它的库（它打开能看到）'
+        : d.received === false ? '✗ 它的库里没有这句'
+        : '— 判不了（没登记它自己的库）') + '</div>' +
+    '<div class="wiz-lane-row"><b>回答：</b>' +
+      (d.answered === true ? '✓ 库里出现了它自己生成的消息'
+        : d.answered === false ? '✗ 它没回答（我们这句之后没有它自己生成的消息）'
+        : '— 判不了（没登记它自己的库）') + '</div>' +
+    (d.app_alive === false
+      ? '<div class="wiz-lane-row dock-err">那个应用没在跑：' + escPlain(String(d.app_alive_why || '')) + '</div>'
+      : '') +
+    (d.honest_note ? '<div class="wiz-lane-note">' + escPlain(_wizPlain(d.honest_note)) + '</div>' : '') +
+    '</div>';
+  const truth = d.truth || null;
+  const truthCode = truth ? Number(truth.code) : null;
+  /* 真伪三态：真在库里 / 库里没有 / 核对不了；没配库不写成失败 */
+  const truthHtml = truth
+    ? (truthCode === 0
+        ? '<div class="dock-ok">✓ 真相核对通过：这句话真在它自己的库里' +
+          (truth.db ? ('（<code>' + escPlain(String(truth.db)) + '</code>）') : '') + '</div>'
+        : (truthCode === 2
+            ? '<div class="wiz-hint">— 真相核对：核对不了（' + escPlain(d.truth_note || (truth && truth.why) || '没配库或读不到') + '）</div>'
+            : '<div class="dock-err">✗ 真相核对没过：' + escPlain(d.truth_note || (truth && truth.why) || '它自己的库里没有这句话') + '</div>'))
+    : '<p class="wiz-hint">还没配它自己的库 —— 配了才能验真假。</p>';
+
+  const replyHtml = ar
+    ? (ar.ok === true
+        ? '<div class="wiz-reply-ok">它回的话（诊断信息 —— 「会话内回答」那条线已停产，不作验收依据）：</div>' + (ar.items || []).map(function (x){
+            return '<pre class="wiz-pre">' + esc(String(x.text || '').slice(0, 600)) + '</pre>';
+          }).join('')
+        : '<div class="wiz-reply-none">' + escPlain(d.agent_reply_note || ar.note || '它没回话') + '</div>')
+    : '';
+
+  const _verdict = d.answered === true ? '✓ 它真的回答了'
+                 : (d.received === true ? '⚠ 只证明「进了它的库」—— 它没有回话'
+                                        : '⚠ 没有证据说它接到了');
+  return laneHtml +
+    '<div class="' + (d.answered === true ? 'dock-ok' : 'dock-warn') + '">' + _verdict +
+    (d.verify_note ? ('　' + escPlain(String(d.verify_note))) : '') + '</div>' +
+    truthHtml +
     (d.at ? ('<p class="wiz-hint">上次测于 ' + escPlain(String(d.at)) + '</p>') : '') +
-    (d.in_session === true ? '<p class="wiz-hint">走的通道：会话内发言（真写进它会话）</p>' : '') +
+    (d.in_session === true && !d.delivery_mode
+      ? '<p class="wiz-hint">走的通道：会话内发言（后端没给 delivery_mode，这句来自老字段）</p>' : '') +
     ((d.reply_session_title || d.reply_session_id)
       ? ('<p class="wiz-hint">它写进了「' + escPlain(d.reply_session_title || d.reply_session_id) + '」' +
          (d.reply_session_title && d.reply_session_id ? ('（<code>' + escPlain(String(d.reply_session_id)) + '</code>）') : '') +
          (d.reply_message_id ? ('　消息 <code>' + escPlain(String(d.reply_message_id)) + '</code>') : '') + '</p>')
       : '') +
-    (d.in_session_verified === true ? '<div class="dock-ok">✓ 平台读回核对通过：这条确实在它的会话里</div>' : '') +
-    (d.in_session_verified === false
-      ? ('<div class="dock-err">✗ 读回核对没过：' + escPlain((d.readback && d.readback.why) || '会话里找不到这条') + '</div>')
-      : '') +
-    (d.in_session_verified == null && d.in_session_note ? ('<div class="dock-warn">⚠ ' + escPlain(d.in_session_note) + '</div>') : '') +
+    (d.in_session_verified_scope ? ('<p class="wiz-hint">' + escPlain(d.in_session_verified_scope) + '</p>') : '') +
+    replyHtml +
     (d.detail ? ('<p class="wiz-hint">' + escPlain(d.detail) + '</p>') : '') +
-    (d.reply ? ('<pre class="wiz-pre">' + esc(String(d.reply).slice(0, 600)) + '</pre>') : '') +
     (d.pick_note ? ('<p class="wiz-hint">' + escPlain(d.pick_note) + '</p>') : '') +
-    (d.tool ? ('<p class="wiz-hint">走的工具：<code>' + escPlain(String(d.tool)) + '</code></p>') : '');
+    (d.tool ? ('<p class="wiz-hint">走的工具：<code>' + escPlain(String(d.tool)) + '</code></p>') : '') +
+    /* 老字段 reply 是我们那句话的回显，不是它说的 —— 折叠并改标题 */
+    (d.reply ? ('<details class="wiz-more"><summary>它自报的原始回包（≠ 回复，这里没有它说的话）</summary>' +
+                '<pre class="wiz-pre">' + esc(String(d.reply).slice(0, 1200)) + '</pre></details>') : '');
+}
+
+/** 第⑤步：把平台当 MCP 服务端的配置复制给它（前端不拼文案，一律取端点） */
+async function wizCopyMcpConfig(){
+  const msg = document.getElementById('wizMcpMsg');
+  if (msg) msg.textContent = '正在取配置…';
+  const res = await dockGetText('/api/harness/mcp-config?format=md');
+  if (!res.ok || !res.text){ if (msg) msg.textContent = '✗ ' + ((res.data && res.data.error) || ('HTTP ' + res.status)); return; }
+  const pre = document.getElementById('wizMcpPre');
+  if (pre){ pre.hidden = false; pre.textContent = res.text; }
+  try { await navigator.clipboard.writeText(res.text); if (msg) msg.textContent = '✓ 已复制（' + res.text.length + ' 字节）—— 贴到它的 MCP 设置里'; }
+  catch (e) { if (msg) msg.textContent = '已取到，浏览器不让复制 —— 从下面那段手选'; }
+}
+async function wizShowMcpJson(){
+  const msg = document.getElementById('wizMcpMsg');
+  const pre = document.getElementById('wizMcpPre');
+  const res = await dockGetText('/api/harness/mcp-config?format=json');
+  if (!res.ok || !res.text){ if (msg) msg.textContent = '✗ ' + ((res.data && res.data.error) || ('HTTP ' + res.status)); return; }
+  if (pre){ pre.hidden = false; pre.textContent = res.text; }
+  if (msg) msg.textContent = 'JSON 原文在下面（解释器/仓库根/平台地址都是运行时算的）';
+}
+
+/** 「挂上之后怎么验」：它来没来过 → 空就是没来过；再让它自己发一句。 */
+async function wizMcpVerify(){
+  const msg = document.getElementById('wizMcpMsg');
+  if (msg) msg.textContent = '正在看它来没来过…';
+  await wizMcpCalls();
+  if (msg) msg.textContent = '';
+}
+
+/** 「让它自己发」：把一句话交给它（平台**不代发**）。 */
+async function wizNoteAdd(){
+  const box = document.getElementById('wizNoteText');
+  const msg = document.getElementById('wizNoteMsg');
+  if (!box || !box.value.trim()){ if (msg) msg.textContent = '先写一句要它说的话'; return; }
+  if (msg) msg.textContent = '正在交给它…';
+  const res = await dockPost('/api/mcp/session-notes', {text: box.value.trim(),
+                                                       harness_id: (WIZ && WIZ.harnessId) || ''});
+  const d = res.data || {};
+  if (!res.ok || !d.ok){ if (msg) msg.textContent = '✗ ' + (d.error || ('HTTP ' + res.status)); return; }
+  if (msg) msg.textContent = '✓ 已交给它（' + (d.note && d.note.id || '') + '）—— 它会在自己那儿发，发完会回报';
+  box.value = '';
+  wizNotesLoad();
+}
+
+/** 看「让它自己发」的这批：待发 / **它说已发**（它自己的自报，不是平台发的）。 */
+async function wizNotesLoad(){
+  const out = document.getElementById('wizNotesOut');
+  if (!out) return;
+  const res = await dockGet('/api/mcp/session-notes?limit=20');
+  const d = res.data || {};
+  if (!res.ok || d.error){ out.innerHTML = '<div class="dock-err">✗ ' + escPlain(d.error || ('HTTP ' + res.status)) + '</div>'; return; }
+  const items = d.notes || [];
+  if (!items.length){
+    out.innerHTML = '<div class="wiz-hint">还没有交给它的话（0 条）。上面写一句点「交给它」。</div>';
+    return;
+  }
+  out.innerHTML = '<p class="wiz-hint">' + escPlain(d.hint || '') + '</p>' + items.map(function (n){
+    const sent = n.state === 'sent';
+    const t = sent ? ('它说已发 ' + _dockClock(n.sent_at ? new Date(n.sent_at).toISOString() : '')
+                      + (n.client ? ('　（' + n.client + ' 报的）') : ''))
+                   : '待发（还没人说发过）';
+    return '<div class="wiz-call-row"><b>' + (sent ? '✓ ' : '· ') + escPlain(String(n.text || '')) + '</b>' +
+      '<span class="sub">　' + escPlain(t) + '</span>' +
+      (sent && n.said && n.said !== n.text ? ('<div class="sub">它回的原话：' + escPlain(String(n.said)) + '</div>') : '') +
+      '</div>';
+  }).join('');
+}
+
+/** 「它来没来过」：读平台留痕（`GET /api/mcp/calls`）—— 空就是它一次都没来调过。 */
+async function wizMcpCalls(){
+  const msg = document.getElementById('wizCallsMsg');
+  const out = document.getElementById('wizCallsOut');
+  if (!out) return;
+  if (msg) msg.textContent = '正在取留痕…';
+  const res = await dockGet('/api/mcp/calls?limit=20');
+  const d = res.data || {};
+  if (!res.ok || d.error){
+    if (msg) msg.textContent = '✗ ' + escPlain(d.error || ('HTTP ' + res.status));
+    out.innerHTML = '';
+    return;
+  }
+  if (msg) msg.textContent = '';
+  const calls = d.calls || [];
+  if (!calls.length){
+    out.innerHTML = '<div class="dock-warn">它还没来调过平台（0 次）—— ' +
+      '把平台挂成它的 MCP 服务器、它真用过一次工具之后，这里才会有东西。</div>';
+    return;
+  }
+  out.innerHTML = '<p class="wiz-hint">留痕 ' + (d.count || calls.length) + ' 条（新的在前）：</p>' +
+    calls.map(function (c){
+      const ok = (c.kind === 'tools/call') ? (c.ok === false ? '✗ 失败' : '✓ 成功') : '';
+      return '<div class="wiz-call-row"><code>' + escPlain(String(c.client || '（未知客户端）')) + '</code>　' +
+        escPlain(String(c.tool || c.kind || '')) + '　' + ok + '　' +
+        '<span class="sub">' + escPlain(String(c.at || '')) + '</span></div>';
+    }).join('');
 }
 
 function wizChatInit(){

@@ -87,6 +87,13 @@ async def api_workshop_parallel_limit_set(ws_id: str, request: Request):
 _KNOWN_CREATE_FIELDS = frozenset({
     "name", "hall_content", "members", "mode", "parallel_limit",
     "debate_enabled", "budget_default", "pinned",
+    # ★2026-10-25（`V104` 跑 MCP 全链路时抓到的真缺陷）：MCP 工具 `create_workshop` 的说明写着
+    #   「发起新任务并广播」，实际只建了个**空工作间**，一个 Task 都没有（`/api/tasks` 空、
+    #   `origin_task_id` 空）⇒ 对方按协议"建间干活"，建完却没有任务号可回报，**看着成功其实跑不通**。
+    #   现在：带 `create_task: true` 就在建间的同时建出这条任务并挂上 `origin_task_id`。
+    #   ⚠️ 与 `/api/command` 的区别：这条**不广播、不叫 AI**（大厅发布才广播），
+    #      适合外部 agent 按协议"先建活、再干活、再回执"；要广播仍然走大厅 `/api/command`。
+    "create_task", "task_title", "task_description", "task_id",
 })
 
 
@@ -101,10 +108,35 @@ async def create_workshop(request: Request):
     # 工作间以工作内容命名：未传 name 或仍为默认值时，用任务内容截断
     if not name or name in ("员工工作间", "未命名工作间", "默认工作间"):
         name = hall.strip().replace("\n", " ")[:20] or "未命名工作间"
+    # ★2026-10-27（`V109` §6 / `V117` §2）：**工作区路径可以由调用方指定**
+    #   以前一律平台自造 `<WORKSHOP_BASE>/ws_xxx` ⇒ 根B（工作区）永远落在平台数据目录里，
+    #   既没法与根A（心智根）分开，也没法让用户挑盘 —— 双根就是空话。
+    #   规则：给了 `workshop_path`（旧名 `workspace_dir` 也认）就用它，必须是**绝对路径**且可写；
+    #   不给就照旧自造。**不猜、不吞错**：建不出来就说清哪个路径、为什么。
+    _requested = str(body.get("workshop_path") or body.get("workspace_dir") or "").strip()
+    _ws_dir = str(WORKSHOP_BASE / f"ws_{uuid4().hex[:8]}")
+    if _requested:
+        _p = Path(_requested)
+        if not _p.is_absolute():
+            return Utf8JSONResponse({"success": False, "code": "BAD_WORKSHOP_PATH",
+                                     "error": "workshop_path 必须是绝对路径",
+                                     "next": "传绝对路径（例：D:/coop/项目A 或 /home/me/coop/项目A）"},
+                                    status_code=400)
+        try:
+            _p.mkdir(parents=True, exist_ok=True)
+            _probe = _p / ".ac_write_probe"
+            _probe.write_text("", encoding="utf-8")
+            _probe.unlink()
+        except OSError as e:
+            return Utf8JSONResponse({"success": False, "code": "WORKSHOP_PATH_NOT_WRITABLE",
+                                     "error": "这个工作区路径建不了/写不了：%s（%s: %s）"
+                                              % (_p, type(e).__name__, e),
+                                     "next": "换一个有写权限的目录，或先手动建好它"}, status_code=400)
+        _ws_dir = str(_p)
     ws = Workshop(
         workshop_id=uuid4().hex[:8],
         name=name,
-        workspace_dir=str(WORKSHOP_BASE / f"ws_{uuid4().hex[:8]}"),
+        workspace_dir=_ws_dir,
         hall_content=hall,
         members=[
             WorkshopMember(
@@ -155,6 +187,38 @@ async def create_workshop(request: Request):
     save_state()
     out = {"success": True, "workshop_id": ws.workshop_id, "workspace_dir": ws.workspace_dir,
            "name": ws.name}
+    # ★`create_task`：外部 agent 按协议建活时，工作间背后**必须真有一条任务**
+    #   （否则它没法回报 `task_id`，平台也没处收结果 —— MCP 全链路判据先抓到这个洞，
+    #     2026-10-25 又发现 **A2A / gRPC 的"派任务"是同一个洞**：它们把客户端给的 task_id
+    #     塞进 `/api/workshop`，而这里根本不认 ⇒ 建出来的还是空房间）。
+    #   现在认 `task_id`（客户端指定就用它，**幂等**：已存在就复用），并挂上 `origin_task_id`。
+    #   只建任务与关联，**不广播、不叫 AI**（广播走大厅 `/api/command`）。
+    _want_tid = str(body.get("task_id") or "").strip()
+    if body.get("create_task") or _want_tid:
+        try:
+            from ..server import Task, TaskStatus, tasks
+
+            _title = (str(body.get("task_title") or "").strip()
+                      or (hall.strip().splitlines()[0][:40] if hall.strip() else "") or ws.name)
+            _desc = str(body.get("task_description") or "").strip() or hall.strip() or _title
+            _task = tasks.get(_want_tid) if _want_tid else None
+            _reused = _task is not None
+            if _task is None:
+                _task = Task(id=(_want_tid or None), title=_title[:80], description=_desc,
+                             status=TaskStatus.CREATED, created_by="external_agent") \
+                    if _want_tid else Task(title=_title[:80], description=_desc,
+                                           status=TaskStatus.CREATED, created_by="external_agent")
+                tasks[_task.id] = _task
+            ws.origin_task_id = _task.id
+            save_state()
+            _audit_log.record("workshop.create_task", actor="harness", target=ws.workshop_id,
+                              detail="task=%s%s" % (_task.id, "（复用已有）" if _reused else ""),
+                              extra={"task_id": _task.id, "workshop_id": ws.workshop_id})
+            out.update({"task_id": _task.id, "task_title": _task.title, "task_reused": _reused,
+                        "task_status": str(getattr(_task.status, "value", _task.status))})
+        except Exception as e:                                 # noqa: BLE001 — 建不了任务要如实说
+            out["task_error"] = "工作间建好了，但任务没建出来：%s: %s" % (type(e).__name__, e)
+            out["next"] = "重试一次；还不行就先只建工作间，用「大厅发布」建任务"
     # ★2026-10-22 夜场三（我拿 `title` 建间、结果得到一个「未命名工作间」才发现）：
     #   这个端点的名字字段叫 **`name`**，传 `title` 会被**静默忽略** ⇒ 用户/前端以为命名成功，
     #   大厅里却是一排「未命名工作间」。**失败要说话**：认不出的字段一律回 warning 说清该叫什么。
@@ -461,6 +525,20 @@ async def workshop_connect_artifact(ws_id: str, request: Request):
             "artifact": out, "harness_id": hid, "guidance": _g}
 
 
+def effective_library_dir(ws) -> str:
+    """**资料库指向**的有效值（老板 2026-10-30 流程第 7-9 步）。
+
+    规则：`ws.library_path` 非空就以它为准（**可以在工作区之外**——那是"人写的资产"，
+    不是一次性产物，所以允许外置）；空则默认 `<工作区>/library/`。
+    """
+    custom = str(getattr(ws, "library_path", "") or "").strip()
+    if custom:
+        return custom
+    from ..workshop import LIBRARY_DIRNAME
+
+    return str(Path(str(getattr(ws, "workspace_dir", "") or "")) / LIBRARY_DIRNAME)
+
+
 @router.get("/api/workshop/{ws_id}/library")
 async def workshop_library(ws_id: str):
     """**共享资料库**（老板主流程 ⑥）的只读视图：目录 + 文件实况 + 内容预览。
@@ -474,7 +552,7 @@ async def workshop_library(ws_id: str):
     ws = workshops.get(ws_id)
     if not ws:
         return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
-    d = Path(ws.workspace_dir) / LIBRARY_DIRNAME
+    d = Path(effective_library_dir(ws))
     files = []
     if d.is_dir():
         for p in sorted(d.iterdir()):
@@ -532,6 +610,43 @@ async def workshop_library(ws_id: str):
                  "内含 `assignment.md`（他该做什么，附 `assignment_preview`）——外端 agent 拿路径自己去看。"),
     }
 
+
+
+@router.post("/api/workshop/{ws_id}/library-path")
+async def workshop_library_path(ws_id: str, request: Request):
+    """**设置/清空「资料库指向」**（老板流程第 9 步；body `{path}`，空串 = 回默认 `<根B>/library/`）。
+
+    只**存指向**不代建目录：用户自己在外面新建文件夹（可以在工作区之外），
+    组长把「项目建模 + 分工明细」放进去；这里只校验"绝对路径 + 目录存在"。
+    """
+    from ..server import Utf8JSONResponse, save_state
+
+    ws = workshops.get(ws_id)
+    if not ws:
+        return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:                                        # noqa: BLE001 — 没 body 就按空
+        body = {}
+    raw = str((body or {}).get("path") or "").strip()
+    if not raw:
+        ws.library_path = ""
+        save_state()
+        return {"ok": True, "library_path": "", "effective": effective_library_dir(ws),
+                "note": "已清空自定义指向，回到默认 `<工作区>/library/`"}
+    p = Path(raw)
+    if not p.is_absolute():
+        return Utf8JSONResponse({"ok": False, "code": "PATH_NOT_ABSOLUTE",
+                                 "error": "资料库指向必须是**绝对路径**（收到：%s）" % raw,
+                                 "next": "填你新建的那个文件夹的完整路径，例如 `D:/项目资料`"}, 400)
+    # 允许"稍后再建"：不存在就**如实说没找到**，但仍记下（用户可以先去建，回来再点一次）
+    exists = p.is_dir()
+    ws.library_path = str(p)
+    save_state()
+    return {"ok": True, "library_path": ws.library_path, "effective": effective_library_dir(ws),
+            "exists": exists,
+            "note": ("指向已记下；目录存在，组长可以把建模与分工写进去" if exists
+                     else "指向已记下，但**这个目录现在不存在** —— 请先去新建它（平台不代建）")}
 
 @router.post("/api/workshop/{ws_id}/library/update")
 async def workshop_library_update(ws_id: str, request: Request):
@@ -739,6 +854,26 @@ async def workshop_compartments(ws_id: str):
         "path_authority": "dir 由后端给出，前端不要自行推导路径（会随公式改动漂移）。",
     }
 
+def _v5_roster_view(ws) -> dict:
+    """给旧界面看的 v5 名单摘要（**只读、不含凭据**）；取不到就如实说 empty + why。
+
+    `roster_summary` 是**一句人话**（名单 X 人 / 已接上 Y / 还差 Z（哪几个空工位）），
+    与 `GET …/roster` 用同一个函数 `v5_roster.roster_summary()`（规则 20：一处真相）。
+    """
+    try:
+        from .. import v5_roster as _rw
+
+        wid = getattr(ws, "workshop_id", "") or ""
+        eff = _rw.effective_members(wid)
+        snap = _rw.roster(wid)
+        return {"members_v5": eff["members"], "members_source": eff["source"],
+                "roster_counts": snap.get("counts", {}),
+                "roster_summary": _rw.roster_summary(wid)}
+    except Exception as e:                                   # noqa: BLE001 — 名单坏了不该让详情 500
+        return {"members_v5": [], "members_source": "unknown",
+                "roster_counts": {}, "roster_summary": {},
+                "roster_why": "名单取不到：%s" % str(e)[:120]}
+
 @router.get("/api/workshop/{ws_id}")
 async def get_workshop(ws_id: str, after_seq: int = -1):
     from ..server import Utf8JSONResponse, _normalize_discussion
@@ -779,6 +914,10 @@ async def get_workshop(ws_id: str, after_seq: int = -1):
             for m in ws.members
         ],
         "resources": ws.resources,
+        # ★2026-10-30：**v5 名单摘要（只读）**。旧 `members` 是 v4 模型，和 v5 工位并存期间
+        #   只读它 ⇒ 界面显示"未选员工"、闸门判"没有成员"，而实际有 active 工位（真机实测到）。
+        #   这里只**加字段**，不动旧 `members` 的形状，也不做对象替换（那是待拍板的迁移）。
+        **_v5_roster_view(ws),
     }
 
 @router.get("/api/workshop/{ws_id}/decision-mode")

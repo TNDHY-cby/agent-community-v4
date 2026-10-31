@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import urllib.request
+import urllib.error
 import urllib.parse
 import uuid
 
@@ -47,6 +48,13 @@ def _headers() -> dict:
     h = {"Content-Type": "application/json", "Accept": "application/json"}
     if TOKEN:
         h["Authorization"] = f"Bearer {TOKEN}"
+    # ★2026-10-25（V104 全链路判据抓到）：这个 harness 一旦被签发了 Agent-Token，
+    #   平台的 /api/harness/task-result 就要求带 X-Agent-Token —— 原来这里不带，
+    #   于是**外部 agent 通过 MCP 交回执一律 401**（看着该通的，其实交不上）。
+    #   令牌从环境变量读（不写进配置文件、不经过模型）。
+    ht = os.environ.get("AC_HARNESS_TOKEN", "").strip()
+    if ht:
+        h["X-Agent-Token"] = ht
     return h
 
 
@@ -54,12 +62,31 @@ def _call(method: str, path: str, payload: dict | None = None, timeout: int = 30
     url = BASE_URL + path
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(url, data=data, headers=_headers(), method=method)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read().decode("utf-8", "replace")
+    # ★2026-10-25（V104 全链路判据抓到）：4xx/5xx 原来直接抛 HTTPError，
+    #   客户端只看到一句 "HTTP Error 409: Conflict"，**平台说的原因全丢了**
+    #   （比如闸门成员都还没接上：m0、“消息不能为空”这类可执行的下一步）。
+    #   现在把响应体解析出来一并返回，让调用方（模型/人）看得到真实原因。
     try:
-        return json.loads(raw)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", "replace")
+            status = getattr(resp, "status", 200)
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", "replace") or ""
+        try:
+            body = json.loads(raw) if raw.strip() else {}
+        except json.JSONDecodeError:
+            body = {"raw": raw}
+        if isinstance(body, dict):
+            body.setdefault("http_status", int(e.code))
+            body.setdefault("error", body.get("error") or ("HTTP %s" % e.code))
+        return body
+    try:
+        out = json.loads(raw)
     except json.JSONDecodeError:
-        return {"raw": raw}
+        out = {"raw": raw}
+    if isinstance(out, dict) and status >= 400:
+        out.setdefault("http_status", int(status))
+    return out
 
 
 def _get(path: str, timeout: int = 20):
@@ -75,6 +102,34 @@ def _text(obj) -> str:
 
 
 # ── 工具实现 ───────────────────────────────────────────────────
+
+def t_pending_session_notes(args: dict) -> str:
+    """取「平台请你自己发到你会话里」的话（**由你来发，平台不代发**）。"""
+    lim = int(args.get("limit", 5) or 5)
+    return _text(_get("/api/mcp/session-notes?pending=1&limit=%d" % max(1, min(lim, 20))))
+
+
+def t_report_session_sent(args: dict) -> str:
+    """回报「这条我已经在自己的会话里发了」（平台记下时间与你的客户端名；这是你的自报）。"""
+    nid = str(args.get("note_id", "")).strip()
+    if not nid:
+        return _text({"error": "缺少 note_id（先用 pending_session_notes 取一条）"})
+    payload = {"text": str(args.get("text", "")).strip(),
+               "harness_id": str(args.get("harness_id", "")).strip(),
+               "client": "mcp-client"}
+    return _text(_post("/api/mcp/session-notes/%s/sent" % urllib.parse.quote(nid), payload))
+
+
+def t_report_progress(args: dict) -> str:
+    """**干活时每步报一次**：让用户直接在「工作过程」里看到你在干嘛。"""
+    payload = {"text": str(args.get("text", "")).strip(),
+               "harness_id": str(args.get("harness_id", "")).strip(),
+               "task_id": str(args.get("task_id", "")).strip(),
+               "kind": str(args.get("kind", "") or "step").strip()}
+    if not payload["text"]:
+        return _text({"error": "缺少 text（一句话说明你这步干了什么）"})
+    return _text(_post("/api/progress", payload))
+
 
 def t_status(_: dict) -> str:
     return _text(_get("/api/status"))
@@ -100,14 +155,24 @@ def t_get_task(args: dict) -> str:
 
 
 def t_create_workshop(args: dict) -> str:
-    payload = {
-        "title": str(args.get("title", "")).strip(),
-        "description": str(args.get("description", "")).strip(),
-        "task_id": str(args.get("task_id", "")).strip() or None,
-        "max_participants": int(args.get("max_participants", 0) or 0),
-    }
-    if not payload["title"]:
+    """建工作间 + **同时建出背后那条任务**（V104 全链路判据抓到：原来只建空房间）。
+
+    /api/command（大厅发布）会**广播并叫 AI**，不适合外部 agent 按协议自己建活；
+    所以这里走 /api/workshop + create_task: true：只建任务与关联，不广播。
+    """
+    title = str(args.get("title", "")).strip()
+    if not title:
         return _text({"error": "缺少 title"})
+    desc = str(args.get("description", "")).strip()
+    payload = {
+        "name": title[:40],
+        "hall_content": desc or title,
+        "create_task": True,
+        "task_title": title,
+        "task_description": desc or title,
+    }
+    if args.get("max_participants"):
+        payload["max_participants"] = int(args.get("max_participants") or 0)
     return _text(_post("/api/workshop", payload))
 
 
@@ -116,7 +181,8 @@ def t_workshop_discuss(args: dict) -> str:
     content = str(args.get("content", "")).strip()
     if not ws_id or not content:
         return _text({"error": "缺少 ws_id 或 content"})
-    payload = {"content": content, "agent": str(args.get("agent", "")).strip() or "user"}
+    # ⚠️ 这个端点的正文字段叫 message（content 会被当空 → 400「消息不能为空」）。
+    payload = {"message": content, "agent": str(args.get("agent", "")).strip() or "user"}
     return _text(_post(f"/api/workshop/{urllib.parse.quote(ws_id)}/discuss", payload))
 
 
@@ -160,16 +226,53 @@ def t_submit_task_result(args: dict) -> str:
     payload = {
         "task_id": task_id,
         "ok": bool(args.get("ok", True)),
+        # 平台的正文字段叫 `result`（另兼容 text/reply/content）；两个都带最稳。
+        "result": str(args.get("content", "")).strip(),
         "content": str(args.get("content", "")).strip(),
         "artifacts": list(args.get("artifacts", []) or []),
         "confidence": float(args.get("confidence", 1.0) or 1.0),
     }
+    # ★2026-10-25（V104）：带上 workshop_id（如果这条活是在某个工作间里）回执才会落进讨论区、
+    #   才可能推进任务；不带就只有留痕（平台会在返回里如实说状态不会变）。
+    for _k in ("workshop_id", "member_id"):
+        _v = str(args.get(_k, "")).strip()
+        if _v:
+            payload[_k] = _v
     return _text(_post("/api/harness/task-result", payload))
 
 
 # ── 工具注册表 ─────────────────────────────────────────────────
 
 TOOLS: list[dict] = [
+    {
+        "name": "report_progress",
+        "description": "**干活时每步报一次**（一句话：做了什么/结果怎样）—— 用户能在「工作过程」里直接看到；kind=step/note/block/done",
+        "inputSchema": {"type": "object",
+                        "properties": {"text": {"type": "string", "description": "一句话：这步干了什么、结果怎样"},
+                                       "task_id": {"type": "string", "description": "可选：属于哪条任务"},
+                                       "harness_id": {"type": "string", "description": "可选：你的 harness_id"},
+                                       "kind": {"type": "string", "description": "step / note / block / done"}},
+                        "required": ["text"]},
+        "fn": t_report_progress,
+    },
+    {
+        "name": "pending_session_notes",
+        "description": "取「平台请你自己发到你会话里」的话：**由你来发，平台不代发**",
+        "inputSchema": {"type": "object",
+                        "properties": {"limit": {"type": "integer", "description": "最多几条，默认 5"}},
+                        "required": []},
+        "fn": t_pending_session_notes,
+    },
+    {
+        "name": "report_session_sent",
+        "description": "回报「这条我已经在自己的会话里发了」——平台只记录你的自报与时间，不代写",
+        "inputSchema": {"type": "object",
+                        "properties": {"note_id": {"type": "string", "description": "待办 id"},
+                                       "text": {"type": "string", "description": "你实际发出去的原话（可选）"},
+                                       "harness_id": {"type": "string", "description": "可选：你的 harness_id"}},
+                        "required": ["note_id"]},
+        "fn": t_report_session_sent,
+    },
     {
         "name": "status",
         "description": "查询平台运行状态：版本、已注册/在线 Agent 数、任务总数、Harness 数",
@@ -297,7 +400,10 @@ TOOLS: list[dict] = [
 #: `browser` / `devices` / `plan` 目前**还没有工具** —— 如实留空组，不编占位工具。
 TOOLSETS: dict = {
     "api": ['status', 'list_harnesses', 'list_agents'],
-    "task": ['list_tasks', 'get_task', 'create_workshop', 'workshop_discuss', 'workshop_review', 'workshop_continue', 'workshop_interject', 'submit_task_result'],
+    "task": ['list_tasks', 'get_task', 'create_workshop', 'workshop_discuss', 'workshop_review',
+             'workshop_continue', 'workshop_interject', 'submit_task_result',
+             # 2026-10-25：**让它自己发**那两个工具归"干活"这组（不另开组，免得用户多记一个开关）
+             'pending_session_notes', 'report_session_sent', 'report_progress'],
     "bridge": [],
     "browser": [],
     "devices": [],

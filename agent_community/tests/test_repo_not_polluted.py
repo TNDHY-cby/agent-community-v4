@@ -71,3 +71,48 @@ def test_roster_tests_do_not_leave_workspace_dir_empty():
         encoding="utf-8")
     assert 'workspace_dir=""' not in src, "这个测试又用空 workspace_dir 了 ⇒ 会把资料库写进仓库根"
     assert "tmp_path" in src, "它应该用 tmp_path 当工作区"
+
+def _load_conftest():
+    """把 conftest 当模块加载（只为拿 `_fingerprint`，不跑 fixture）。"""
+    import importlib.util
+
+    p = Path(_ROOT) / "agent_community" / "tests" / "conftest.py"
+    spec = importlib.util.spec_from_file_location("ac_conftest", p)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_conftest_fingerprint_exemption_is_narrow(tmp_path):
+    """运行时产物被豁免，业务文件**必须仍然纳入**（豁免放宽 = 守卫失效）。"""
+    cf = _load_conftest()
+    root = tmp_path / "data"
+    files = {
+        # 该豁免（服务自己边跑边写）
+        "run/platform.lease.json": "{}",
+        "run/platform.lock": "pid",
+        "monitor/watched.json": "{}",
+        "audit.json": '{"a":1}',
+        "logs/a.log": "x",
+        "backups/state_20261030-000000_auto/_meta.json": "{}",
+        # 不该豁免（用户数据）
+        "workshops/ws_1/_meta/roster.json": "{}",
+        "v5_roster.json": "{}",
+        "policy.json": "{}",
+        "credentials.json": "{}",
+        "workshops/ws_1/hall.md": "hi",
+    }
+    for rel, body in files.items():
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(body, encoding="utf-8")
+    fp = cf._fingerprint(root)
+    # 指纹键用平台分隔符（Windows 是 `\\`）⇒ 归一后再比，别让分隔符把判据搞红
+    sep = chr(92)                      # Windows 路径分隔符；不写字面量，免得转义打架
+    keys = {k.replace(sep, "/") for k in fp}
+    for rel in ("workshops/ws_1/_meta/roster.json", "v5_roster.json", "policy.json",
+                "credentials.json", "workshops/ws_1/hall.md"):
+        assert rel in keys, "业务文件被误豁免了：%s（豁免放宽＝守卫失效）" % rel
+    for rel in ("run/platform.lease.json", "run/platform.lock", "monitor/watched.json",
+                "audit.json", "logs/a.log", "backups/state_20261030-000000_auto/_meta.json"):
+        assert rel not in keys, "运行时产物应豁免：%s" % rel

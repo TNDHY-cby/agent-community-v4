@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0B0A08">
+<title>工作间对接中心 · 从接组长到验收</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="boot.css">
+<link rel="stylesheet" href="hub.css?v=20261029b">
+<style>
+  /* v5 工作间对接中心 · 机械巨构版（2026-10-29 二轮，老板「没什么特别改变」后重构版面）
+     设计语言：近黑暖底 + 骨白 + 红（安全色）+ 蓝（信息）+ 琥珀（警戒），直角，硬阴影，零图片。
+     本版三处结构级改动：① 64px 巨构刊头（红立柱+警戒带+实时刻度）
+                          ② 左侧常驻舱段导轨（滚动高亮当前舱段，替代原顶部跳转条）
+                          ③ 卡片改制装甲面板（面板头横条 + 刻蚀编号 + 斜切角 + 螺栓） */
+  html{scroll-behavior:smooth}
+  body{background:#0B0A08;color:var(--ink);
+       font-family:-apple-system,BlinkMacSystemFont,"Noto Sans SC","Segoe UI","Microsoft YaHei",sans-serif;
+       font-size:16px;line-height:1.6}
+  /* ── 顶栏（fixed：划到哪都在） ── */
+  .topbar{position:fixed;top:0;left:0;right:0;z-index:60;background:#080706;border-bottom:1px solid var(--rule)}
+  .topbar .logo{color:var(--ink)}
+  .topbar .logo-mark{color:var(--accent);font-size:15px}
+  .topbar .logo .sub{font-size:11px;color:var(--muted);font-weight:400;margin-left:6px}
+  .topbar .position{border-left:2px solid var(--accent);font-size:12px;color:var(--muted)}
+  .topbar .live-links a{border-radius:4px;background:#161311;padding:8px 12px;min-height:40px;display:inline-flex;align-items:center;
+    transition:box-shadow .18s ease, transform .18s ease, background-color .18s ease}
+  .topbar .live-links a:hover{background:var(--info-soft);color:var(--info);border-color:var(--navy-lit,#4A76BE);
+    box-shadow:0 0 18px rgba(45,92,175,.28),0 4px 12px rgba(0,0,0,.4);transform:scale(1.02)}
+  .topbar .live-links a[aria-current]{color:var(--accent);border-color:rgba(255,53,39,.5)}
+  .topbar .hdrws{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
+  /* ★2026-10-31（老板「回不去刚才那个工作间」）：顶栏给一个**带 ws_id 的回程键**——
+     原来「工作间」那枚只跳 /workshop.html（列表页），等于回不到本间。
+     点击区 44px 起（硬规则：≥44×44），和 live-links 同一套 hover。 */
+  .topbar .hdr-back{font-size:12px;color:var(--ink);background:#161311;border:1px solid var(--rule);
+    border-radius:4px;padding:0 12px;min-height:44px;display:inline-flex;align-items:center;gap:6px;
+    text-decoration:none;white-space:nowrap;transition:box-shadow .18s ease,transform .18s ease,background-color .18s ease}
+  .topbar .hdr-back:hover{background:var(--info-soft);color:var(--info);border-color:var(--navy-lit,#4A76BE);
+    box-shadow:0 0 18px rgba(45,92,175,.28),0 4px 12px rgba(0,0,0,.4);transform:scale(1.02)}
+  .topbar .hdr-back[hidden]{display:none}
+  @media (prefers-reduced-motion:reduce){.topbar .hdr-back{transition:none}.topbar .hdr-back:hover{transform:none}}
+  /* 状态 LED（仪表台） */
+  .hdrws::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;
+    margin-right:6px;background:var(--led-off);vertical-align:1px}
+  .hdrws[data-led="ok"]::before{background:var(--led-ok);box-shadow:0 0 5px var(--led-ok)}
+  .hdrws[data-led="warn"]::before{background:var(--led-warn);box-shadow:0 0 5px var(--led-warn)}
+  /* ── 巨构刊头 ── */
+  .masthead{position:relative;background:linear-gradient(180deg,#14110F 0%,#0B0A08 100%);
+            border-bottom:1px solid var(--rule);overflow:hidden}
+  .masthead::before{content:"";position:absolute;left:0;top:0;bottom:10px;width:8px;
+    background:var(--accent);box-shadow:var(--glow-engine)}          /* 红立柱＝发动机点火（全页唯一强发光） */
+  .masthead::after{content:"";position:absolute;right:-40px;top:-60px;width:340px;height:340px;
+    background:radial-gradient(circle,rgba(255,53,39,.14),transparent 62%);pointer-events:none}  /* 远处结构体透出的光晕 */
+  .mh-in{max-width:1320px;margin:0 auto;padding:34px 28px 26px 32px;position:relative;z-index:1}
+  .mh-tag{font-family:var(--mono);font-size:11px;letter-spacing:.22em;color:var(--muted)}
+  .mh-tag b{color:var(--accent);font-weight:800}
+  .masthead h1{font-size:clamp(40px,6.4vw,64px);font-weight:900;line-height:.95;
+    letter-spacing:.08em;margin:12px 0 14px;color:var(--ink);
+    /* RGB split：与 chrome.css 共用 hub.css 的 --rgb-split-h1（由外到内 红→绿→蓝） */
+    text-shadow:var(--rgb-split-h1)}
+  .masthead h1 .slash{color:var(--accent);font-weight:900;padding:0 .06em}
+  .mh-meta{display:flex;flex-wrap:wrap;gap:6px 22px;font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  .mh-meta span::before{content:"▪";color:var(--dim);margin-right:7px}
+  .mh-meta #mhClock{color:var(--ink)}
+  /* ★2026-10-31（老板「从本间对接中心进来，看着像通用的」）：刊头挂一块**本间铭牌**——
+     带进来的工作间名字直接写在这儿，一眼能看出这页在干哪个间的活。 */
+  .mh-ws{display:inline-flex;align-items:center;gap:8px;margin:0 0 4px;padding:4px 12px;
+    background:var(--bg3);border:1px solid var(--rule);border-left:3px solid var(--led-off);
+    font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .mh-ws::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--led-off)}
+  .mh-ws[data-led="ok"]{color:var(--ink);border-left-color:var(--accent)}
+  .mh-ws[data-led="ok"]::before{background:var(--led-ok);box-shadow:0 0 5px var(--led-ok)}
+  .mh-ws b{font-weight:800}
+  .mh-hazard{height:8px;background:var(--stripe)}                      /* 警戒带：全页 2 处预算之一 */
+  /* ── 双栏骨架：导轨 + 主舱 ── */
+  .shell{display:grid;grid-template-columns:232px minmax(0,1fr);max-width:1320px;margin:0 auto;align-items:start}
+  .bay-rail{position:sticky;top:calc(var(--tb,56px));max-height:calc(100vh - var(--tb,56px));
+        overflow-y:auto;border-right:1px solid var(--rule);padding:18px 0 40px}
+  .bay-rail-h{font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;color:#89847C;
+          padding:0 18px 10px;border-bottom:1px solid var(--rule);margin-bottom:8px}
+  .bay-rail-h span{color:var(--muted)}
+  .bay-rail a{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:center;
+          padding:8px 16px 8px 14px;border-left:3px solid transparent;text-decoration:none;
+          color:var(--muted);font-size:13px;transition:none}
+  .bay-rail a b{font-family:var(--mono);font-size:10.5px;font-weight:800;color:#89847C;letter-spacing:.04em}
+  .bay-rail a:hover{color:var(--ink);background:#141110}
+  .bay-rail a.active{border-left-color:var(--accent);color:var(--ink);background:#181411}
+  .bay-rail a.active b{color:var(--accent)}                                /* 红只标「当前舱段」——红回到信息位 */
+  /* 无工作间语境时收起舱段（老板 2026-10-30「只能从工作间进入」）——用类切换，别写死 inline display */
+  .ws-out{display:none!important}
+  .main{padding:24px 28px 96px;min-width:0;
+    background-image:repeating-linear-gradient(0deg,rgba(232,228,219,.028) 0 1px,transparent 1px 48px),
+                     repeating-linear-gradient(90deg,rgba(232,228,219,.028) 0 1px,transparent 1px 48px)}
+  /* ── 面板：常态隐框，hover 浮起泛光（2026-10-29 老板反馈「直角+直接框不好看」）──
+     去掉 clip-path 斜切：它既造成生硬直角，又会裁掉 box-shadow 使浮起投影做不出来。 */
+  .card{position:relative;background-color:#181512;
+        border:1px solid rgba(232,228,219,.055);border-radius:10px;
+        padding:16px;margin:0 0 20px;scroll-margin-top:calc(var(--tb,56px) + 16px);
+        box-shadow:inset 0 0 0 1px rgba(232,228,219,.03);
+        transition:box-shadow .18s ease, transform .18s ease, border-color .18s ease;
+        background-image:
+          radial-gradient(circle 2px,#5A544A 1.5px,transparent 1.9px),
+          radial-gradient(circle 2px,#5A544A 1.5px,transparent 1.9px),
+          radial-gradient(circle 2px,#5A544A 1.5px,transparent 1.9px),
+          radial-gradient(circle 2px,#5A544A 1.5px,transparent 1.9px);
+        background-repeat:no-repeat;
+        background-size:4px 4px,4px 4px,4px 4px,4px 4px;
+        background-position:24px 10px,calc(100% - 10px) 10px,10px calc(100% - 10px),calc(100% - 24px) calc(100% - 10px)}
+  /* 零高锚点（D后端-54）：段 id 归导轨的 sec8，这里放一个锚点避免一元素两 id。
+     （2026-10-31：工作间页/大厅的「去结构化讨论」指路按钮已撤，#ailp 深链只剩页内导航在用。） */
+  .v5-anchor{display:block;height:0;scroll-margin-top:calc(var(--tb,56px) + 16px)}
+  /* ★老板 2026-10-29 二次调整：卡片不要蓝光、不要彩色顶条，保持深色。
+     hover 只在深炭色内部做极轻受光 + 微放大，不做发光。 */
+  .card:hover{
+    z-index:3;filter:brightness(1.06);
+    /* ★2026-10-30 五修（老板：不要增强白框了）：描边与内白框一律不再提亮，
+       常态那圈极淡白边保持不变，hover 反馈只由红蓝对角柔光 + 明度微提承担 */
+    box-shadow:var(--rgb-glow),
+               inset 0 -1px 0 rgba(0,0,0,.5),
+               0 6px 14px rgba(0,0,0,.5),
+               0 16px 34px rgba(0,0,0,.65);
+    transform:scale(1.015)}
+  .card:hover .v5-sec{text-shadow:var(--rgb-split-sec)}
+  .howto{box-shadow:inset 0 0 0 1px rgba(232,228,219,.09),0 4px 14px rgba(0,0,0,.35)}
+  /* 顶部琥珀警戒条已按老板要求取消：功能卡片保持深色，不放彩色条 */
+  /* 面板头：横条 + 刻蚀编号 + 虚线延长线（把 .v5-sec 拉出卡片内距成为通栏） */
+  .v5-sec{display:flex;align-items:center;gap:12px;margin:-16px -16px 14px;padding:11px 16px;
+          background:#1E1A16;border-bottom:1px solid #322D26;font-size:19px;font-weight:900;letter-spacing:.02em;
+          transition:text-shadow .18s ease}
+          /* ★2026-10-30 色差改为 hover 触发（老板：色差只在鼠标位于功能卡片上、
+             卡片放大才出现）—— 常态保持干净，见 .card:hover 处 */
+  .v5-sec:before{content:"";width:9px;height:9px;border:2px solid var(--muted);flex:none}
+  .v5-sec .n{color:#918877;font-family:var(--mono);font-size:16px;font-weight:800;letter-spacing:.06em;white-space:nowrap;
+             text-shadow:none}  /* 铭牌编号摘出色差：弱灰等宽字叠色差会糊成蓝绿团（1x 实测），保持刻蚀稳定感 */
+  .v5-sec:after{content:"";flex:1;height:2px;
+    background:repeating-linear-gradient(90deg,#3A342C 0 10px,transparent 10px 16px)}
+  /* 当前段不再用红连线（老板 2026-10-29「不要上边缘红条」）：
+     改为面板头在深炭色内提亮一档，定位仍由左侧舱段导轨的 active 红边负责 */
+  .card.is-current .v5-sec{background:#241F1A}
+  .card.is-current{border-color:#4A443B}
+  .v5-sub{font-size:12.5px;color:var(--muted);font-weight:400;letter-spacing:0;margin:0 0 10px}
+  .howto ol{margin:6px 0 0;padding-left:20px}
+  .howto li{font-size:13px;color:var(--muted);margin:4px 0}
+  .howto li b{color:var(--ink)}
+  /* ── 表单件 ── */
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+  label.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted)}
+  .row > label{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding:3px 0;min-height:28px}
+  /* 常态：不画常驻实框，靠背景明度分层，只留一条极淡底线暗示「可填写」 */
+  input,select,textarea{background:#100E0C;color:var(--ink);
+        border:1px solid rgba(232,228,219,.075);border-bottom-color:rgba(232,228,219,.20);
+        border-radius:4px;padding:8px 10px;font:inherit;min-width:180px;
+        transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease}
+  /* 聚焦（老板 2026-10-29「亮蓝突兀、把输入框框起来没高级感」）：
+     去掉亮蓝 2px 闭合粗框，改「藏蓝底边受光线 + 两层藏蓝柔光晕 + 背景微提亮」——发光而不闭合。 */
+  input:not([type=checkbox]):focus,select:focus,textarea:focus{
+        outline:none;border-color:rgba(232,228,219,.10);background:#151821;
+        box-shadow:inset 0 -2px 0 rgba(74,118,190,.78),
+                   0 0 26px rgba(45,92,175,.40),
+                   0 0 52px rgba(30,62,130,.24)}
+  /* 键盘焦点：把光晕再提一档即可满足 WCAG 2.4.7 可见性。
+     绝不补闭合 outline——那条 1px 环会和底边受光线叠成「双线/重影」，
+     正是老板说的「把输入框框起来了」的观感来源。 */
+  input:not([type=checkbox]):focus-visible,select:focus-visible,textarea:focus-visible{
+        outline:none;
+        box-shadow:inset 0 -3px 0 rgba(74,118,190,.86),
+                   0 0 30px rgba(45,92,175,.50),
+                   0 0 60px rgba(30,62,130,.30)}
+  .row > label input[type=checkbox]{min-width:0;width:22px;height:22px;margin:0;accent-color:var(--navy-lit,#4A76BE)}
+  input[type=checkbox]{accent-color:var(--navy-lit,#4A76BE);width:22px;height:22px;min-width:0}
+  input[type=checkbox]:focus-visible{outline:2px solid var(--navy-lit,#4A76BE);outline-offset:2px}
+  textarea{width:100%;min-height:88px;font-family:var(--mono);font-size:13px}
+  /* 机械感改由「按下瞬时位移」承载；hover 用泛光+微放大，不再靠硬边直角、不再上浮 */
+  button{background:#241F1A;color:var(--ink);border:1px solid #4A443B;border-radius:4px;
+         min-height:44px;padding:7px 14px;font:inherit;cursor:pointer;
+         box-shadow:var(--shadow-hard-sm);
+         transition:box-shadow .18s ease, transform .18s ease, background-color .18s ease}
+  button:hover{background:#2E2822;
+         /* ★2026-10-30 五修（老板：不要增强白框了）：描边不再翻白、撤掉白色泛光，
+            按钮 hover 只留红蓝对角柔光 + 投影 —— 白框不再是一种响应语言 */
+         border-color:rgba(232,228,219,.28);
+         box-shadow:var(--rgb-glow),0 6px 16px rgba(0,0,0,.5);
+         transform:scale(1.02)}
+  button:active{transform:translate(1px,1px);box-shadow:none;transition:none}
+  button.p{background:var(--accent);border:2px solid #000;color:#0F0E0C;font-weight:800}
+  button.p:hover{background:var(--accent-strong)}
+  button:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+  @media (prefers-reduced-motion: reduce){
+    button:active{transform:none}
+    .card:hover{transform:none;transition:none}
+    html{scroll-behavior:auto}
+  }
+  .msg{font-size:12.5px;color:var(--muted)}
+  .ok{color:var(--green)} .bad{color:var(--red)} .warn{color:var(--yellow)}
+  pre{background:#100E0C;border:1px solid #3A342C;border-radius:4px;padding:10px;
+      overflow:auto;max-height:280px;font-size:12px;white-space:pre-wrap}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{border-bottom:1px solid #322D26;padding:6px 8px;text-align:left;vertical-align:top}
+  th{color:var(--muted);font-weight:600}
+  .banner{border-radius:4px;padding:8px 10px;font-size:12.5px;margin:8px 0;border:1px solid}
+  .banner.bad{background:var(--red-soft);border-color:rgba(255,53,39,.5);color:var(--red)}
+  .banner.ok{background:var(--green-soft);border-color:rgba(134,179,148,.5);color:var(--green)}
+  .banner.warn{background:var(--yellow-soft);border-color:rgba(217,171,83,.5);color:var(--yellow)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  code{background:#100E0C;border:1px solid #3A342C;border-radius:4px;
+       padding:1px 5px;font-size:12px;font-family:var(--mono)}
+  [id$="Out"]{overflow-x:auto}
+  /* ── 窄屏：导轨降为顶部横向舱段条 ── */
+  @media (max-width:1180px){
+    .topbar .position{display:none}  /* 1024 档顶栏会折两行（125px），先收掉标语 */
+  }
+  @media (max-width:980px){
+    .shell{grid-template-columns:1fr}
+    /* 舱段条：必须显式 flex-direction:row（第四轮评审 Blocker：继承旧组件竖排，首屏被导航吃光） */
+    .bay-rail{position:static;max-height:none;display:flex;flex-direction:row;gap:0;overflow-x:auto;
+          border-right:0;border-bottom:1px solid var(--rule);padding:0;-webkit-overflow-scrolling:touch}
+    .bay-rail-h{display:none}
+    .bay-rail a{grid-template-columns:auto auto;gap:6px;padding:10px 12px;
+            border-left:0;border-bottom:3px solid transparent;white-space:nowrap}
+    .bay-rail a.active{border-bottom-color:var(--accent);border-left-color:transparent}
+    .main{padding:16px 16px 80px}
+    .mh-in{padding:16px 16px 14px 20px}
+    .masthead h1{font-size:34px}
+    .grid2{grid-template-columns:1fr}
+    /* 顶栏收单行（High：原来 202px 占视口 25%）：藏标语/副标，链接压紧 */
+    .topbar{padding:8px 12px;gap:8px;flex-wrap:nowrap;overflow-x:auto}
+    .topbar > *{flex:none}                      /* 第五轮 High：原来子项被压缩，刷新按钮折成两行(93px) */
+    .topbar button{white-space:nowrap}
+    .topbar .live-links{flex-wrap:nowrap}       /* hub.css:54 的 wrap 会把窄容器里的链接挤成竖排 */
+    .topbar .position{display:none}
+    .topbar .logo .sub{display:none}
+    .topbar .logo{font-size:14px}
+    .topbar .hdrws{max-width:104px;overflow:hidden;text-overflow:ellipsis}
+    .topbar .live-links{gap:4px}
+    .topbar .live-links a{padding:6px 9px;min-height:36px;font-size:11px}
+    .topbar .live-links a:nth-child(n+3){display:none}   /* 手机上只留「实时大厅」「工作间」 */
+  }
+  @media (max-width:600px){
+    .topbar .hdrws{display:none}     /* 第六轮 High：360 下顶栏横向裁切 81px，先省掉状态读数 */
+    .v5-sec{font-size:17px}
+    .v5-sec:after{display:none}      /* 折行时虚线与斜切不协调（Nitpick），窄屏直接收掉 */
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="logo"><span class="logo-mark" aria-hidden="true">▣</span> 工作间对接中心<span class="sub">v5 · 本间专属</span></div>
+  <div class="position">从零到派活一屏走完 · 每步都过闸门，平台不代你拍板</div>
+  <div class="spacer"></div>
+  <!-- ★2026-10-31：回程键 —— 带着 ?ws_id= 回**刚才那个工作间**（不是列表页）。未绑定时隐藏。 -->
+  <a class="hdr-back" id="backWs" href="/" hidden title="回到本间工作页（讨论与工作都在那儿）">← 回本间</a>
+  <span class="hdrws" id="hdrWs">未选工作间</span>
+  <button onclick="locate()" title="重新拉取工作间列表与当前状态">刷新</button>
+  <nav class="live-links">
+    <a href="/" title="回到实时大厅">实时大厅</a>
+    <a href="/workshop.html" id="navWs" title="工作间（讨论与工作）">工作间</a>
+    <a href="/docking.html" id="navDock" title="对接中心 · 把外部 Agent 接进来">对接中心</a>
+    <a href="/mind.html" title="心智档案 · 根A 实况（记忆/日志/死胡同）">心智档案</a>
+    <a href="/hub.html" title="全流程说明（只讲不做）">流程说明</a>
+  </nav>
+</header>
+
+<div class="masthead">
+  <div class="mh-in">
+    <div class="mh-tag"><b>■</b> SYSTEM // 外端 Agent 生产合作社 · 工作间对接中心</div>
+    <h1>工作间<span class="slash">/</span>对接中心</h1>
+    <!-- ★2026-10-31（老板）：本间铭牌 —— 从工作间页带 ?ws= 进来就把**那个工作间的名字**写在这儿，
+         没带参数时明说「未绑定」，免得这页看着像通用的一页。 -->
+    <div class="mh-ws" id="mhWs" data-led="off">未绑定工作间</div>
+    <div class="mh-meta">
+      <span>十一步 · 一屏走完</span>
+      <span>平台不代你拍板</span>
+      <span>每步过闸门</span>
+      <span id="mhClock">--:--:--</span>
+    </div>
+  </div>
+  <div class="mh-hazard" aria-hidden="true"></div>
+</div>
+
+<div class="shell">
+  <nav class="bay-rail" aria-label="舱段索引">
+    <div class="bay-rail-h">舱段 <span>/ BAY</span></div>
+    <a href="#sec0" data-target="sec0"><b>00</b><span>建间</span></a>
+    <a href="#sec1" data-target="sec1"><b>01</b><span>方向·组长</span></a>
+    <a href="#sec2" data-target="sec2"><b>02</b><span>对接单</span></a>
+    <a href="#sec3" data-target="sec3"><b>03</b><span>接组长</span></a>
+    <a href="#secLib" data-target="secLib"><b>03b</b><span>资料库</span></a>
+    <a href="#sec4" data-target="sec4"><b>04</b><span>名单</span></a>
+    <a href="#sec5" data-target="sec5"><b>05</b><span>派活</span></a>
+    <a href="#sec6" data-target="sec6"><b>06</b><span>产物</span></a>
+    <a href="#sec7" data-target="sec7"><b>07</b><span>验收</span></a>
+    <a href="#sec8" data-target="sec8"><b>08</b><span>讨论</span></a>
+    <a href="#sec9" data-target="sec9"><b>09</b><span>闸门</span></a>
+    <a href="#secProto" data-target="secProto"><b>P-A</b><span>协议台</span></a>
+    <a href="#secMind" data-target="secMind"><b>P-B</b><span>审忆</span></a>
+  </nav>
+  <main class="main">
+<!-- ★2026-10-30（老板）：「工作间控制台只能从工作间进入」。
+     URL 没带 ?ws=（直接从地址栏/旧书签进来）⇒ 只留 UNIT-00 选间，其余舱段收起 ——
+     派活 / 产物 / 验收 / 讨论 都是**针对某个工作间**的动作，没有工作间语境不该能按。 -->
+<div class="card" id="noWsNotice" style="display:none">
+  <div class="v5-sec"><span class="n">SCOPE</span>这张页是「某个工作间」的操盘页</div>
+  <div class="v5-sub">请从<b>工作间页</b>点「本间对接中心」进来 —— 会自动带上 <code>?ws=</code>，
+    并把本间路径 / 方向 / 名单填好。直接打开本页时没有工作间语境，01–09 已先收起。</div>
+  <div class="row">
+    <button class="p" onclick="location.href='/'">去大厅选工作间</button>
+    <span class="msg">在下面下拉里选中一个工作间后，本页会自动展开 01–09。</span>
+  </div>
+</div>
+<div class="card howto">
+    <div class="v5-sec"><span class="n">MANUAL</span>这张页怎么用（先读这四句）</div>
+    <ol>
+      <li>这是<b>发起人（你）的操盘页</b>：从建工作间到验收归档，按 <b>0 → 9</b> 顺序往下走，每张卡就是一步，卡与卡之间有先后依赖。</li>
+      <li>跟 agent 的互动发生在<b>外部会话</b>里：第 2 步生成对接单，<b>整段复制</b>到组长的会话里发给它；它做完动作，你回这里打勾记证据。</li>
+      <li>每一步都过<b>闸门</b>：缺东西平台会拦，并告诉你缺什么、去哪补（第 9 步可随时自查）。<b>平台不推荐人选、不代你拍板、也不替 agent 说话</b>。</li>
+      <li>末尾两张 <b>◈</b> 卡（协议台 / 审忆）是信息面板，<b>不阻塞流程</b>，随时看。</li>
+    </ol>
+  </div>
+
+  <div class="card" id="sec0">
+    <div class="v5-sec"><span class="n">UNIT-00</span>选一个工作间（或新建）</div>
+    <div class="v5-sub">每个活儿一个工作间。第一次来：右边填三项 → 点蓝色按钮；回来接着干：下拉里选一个。</div>
+    <div class="row">
+      <select id="wsSel" onchange="pickWs()"></select>
+      <button onclick="loadWs()">刷新列表</button>
+      <span class="msg" id="wsMsg"></span>
+    </div>
+    <div class="grid2">
+      <div>
+        <div class="row">
+          <label class="f">工作间名字<input id="newName" placeholder="例：报销系统"></label>
+          <label class="f">工作区路径（根B）<input id="newPath" placeholder="绝对路径（你机器上的目录，例：/data/coop/项目A）"></label>
+        </div>
+        <div class="row">
+          <label class="f">心智根键（agent_key）<input id="newMind" placeholder="例：A-01"></label>
+          <button class="p" onclick="createWs()">建工作间 + 建心智根</button>
+        </div>
+      </div>
+      <div>
+        <div class="msg">建好后平台会自动：① 建心智根骨架（宪章/基模/索引/memories/日志/死胡同）
+          ② 落 <code>manifest.json</code>（两个根写死）。<b>manifest 不合法就不让往下走（G0）</b>。</div>
+      </div>
+    </div>
+    <div id="mkOut" class="msg"></div>
+  </div>
+
+  <div class="card" id="sec1">
+    <div class="v5-sec"><span class="n">UNIT-01</span>方向 + 组长（平台不推荐，你自己点）</div>
+    <div class="v5-sub">把你在别处谈好的方向原样存进来；「看组长候选」列出的是本机实测过的心智根，选谁你拍板。</div>
+    <div class="row">
+      <label class="f" style="flex:1">方向长文（外部谈好的，原样贴）
+        <textarea id="dirBrief" placeholder="粘贴你在外部谈好的方向原文；平台只存不体检"></textarea>
+      </label>
+    </div>
+    <div class="row">
+      <label class="f">方向下拉（至少一项）<input id="dirEnum" placeholder="例：编程/后端,编程/前端"></label>
+      <button onclick="saveDirection()">存方向</button>
+      <button onclick="loadRoster()">看组长候选</button>
+      <span class="msg" id="dirMsg"></span>
+    </div>
+    <div class="banner warn" id="rosterNote" hidden></div>
+    <div id="rosterOut"></div>
+  </div>
+
+  <div class="card" id="sec2">
+    <!-- ★2026-10-31（老板「我要一个打开对接中心后预填好路径的组长列表，一键复制去拉人」）：
+         打开本间对接中心就自动拉组长候选，每行一个能当组长的壳，对接单（含本间路径）平台预填好，
+         点「复制」就能去外面拉人 —— 不用先手填 agent_key 再点生成。 -->
+    <div class="v5-sec"><span class="n">UNIT-02</span>组长拉人列表（预填好路径，一键复制去拉）</div>
+    <div class="v5-sub">打开对接中心就按<b>本间</b>把能当组长的壳列出来，每行一份对接单 —— 路径<b>和桥参数</b>平台都已预填。选中意中人点「复制对接单」，去它的外部会话里粘贴发送，<b>手动拉它进来</b>。拉完回 UNIT-03 打勾记证据。</div>
+    <div id="leadPullList"><div class="msg">正在列组长候选……</div></div>
+
+    <div class="row" style="margin-top:10px;border-top:1px dashed var(--dim);padding-top:8px">
+      <span class="msg">要 A 档一次性 token（拉完即焚）才用下面这排 —— 平时拉人用上面的列表就行。</span>
+    </div>
+    <div class="v5-sub">选中心智根后点「生成对接单」，把出现的<b>整段文字</b>复制到组长的外部会话里发出去——这是它接入的唯一凭据。</div>
+    <div class="row">
+      <label class="f">agent_key（心智根键）<input id="leadKey" placeholder="与上面一致，例：A-01"></label>
+      <label class="f"><span>要不要现签 A 档 token</span>
+        <select id="leadTok"><option value="0">不要（B/C 档）</option><option value="1">要（A 档）</option></select>
+      </label>
+      <button class="p" onclick="leadKit()">生成对接单</button>
+      <button onclick="copyEl('leadKitOut')">复制</button>
+      <span class="msg" id="kitMsg"></span>
+    </div>
+    <pre id="leadKitOut" hidden></pre>
+    <!-- ★2026-10-31（D后端-62）：组长那份桥参数已拼进对接单正文（「## 桥参数」段）——
+         原来这里单独「拉桥模板参数」的块退役，两处显示同一份数据只会对不上。 -->
+  </div>
+
+  <div class="card" id="sec3">
+    <div class="v5-sec"><span class="n">UNIT-03</span>接组长（打勾 + 写覆盖范围 → 才可能 active）</div>
+    <div class="v5-sub">组长照对接单做完动作后，回这里<b>如实打勾</b>：没做的步不许勾。证据不够平台只记 acked，不算真接上。</div>
+    <div class="row">
+      <label class="f">组长会话名（照对接单改）<input id="leadLabel" placeholder="WS-…-组长-01"></label>
+      <label class="f">档位
+        <select id="leadTier">
+          <option value="c_visual">C 视觉（粘贴+回车+改名）</option>
+          <option value="a_protocol">A 协议（能调 tools/list）</option>
+          <option value="b_bridge">B 桥（桥取件过）</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="evPaste"> 已粘贴</label>
+      <label><input type="checkbox" id="evPress"> 已回车</label>
+      <label><input type="checkbox" id="evRename"> 已改名</label>
+      <label><input type="checkbox" id="evProto"> A 档已真调通</label>
+      <label><input type="checkbox" id="evBridge"> B 档桥通（生成桥 + 取件成功）</label>
+      <label><input type="checkbox" id="evMailbox" title="老板 SOP：只通没有取件，最高只记 acked"> B 档真从 _inbox 取走一次</label>
+    </div>
+    <div class="row">
+      <label class="f" style="flex:1">覆盖范围（必填，写清到哪一段）
+        <input id="evScope" placeholder="例：粘贴+回车+改名，未验证它能回话">
+      </label>
+      <label class="f">它现在实际叫什么（可选，填了就比）
+        <input id="evActual" placeholder="从那个应用里抄会话标题；不填 = 平台没核过">
+      </label>
+      <button class="p" onclick="markEvidence()">记证据并判定</button>
+      <span class="msg" id="evMsg"></span>
+    </div>
+    <div id="evOut"></div>
+  </div>
+
+  <!-- ★2026-10-31（D后端-60 §3-1 权威顺序）：资料库指向 = 第 7–9 步，排在**接组长之后、名单之前**
+       （组长建模落资料 → 交名单回执是第 10 步，顺序不能反）。改走专用端点
+       POST /library-path（平台只记指向、不代建目录），不再往 resources 里塞 kind=dir。 -->
+  <div class="card" id="secLib">
+    <div class="v5-sec"><span class="n">LIB</span>资料库指向（组长建模与分工的落点 · 第 7–9 步）</div>
+    <div class="v5-sub">接上组长后：你在系统里<b>新建一个文件夹当资料库</b>（可以放在工作区之外），把整理好的资料给组长，组长把「项目建模 + 分工明细」写进去、把路径给你。你把路径填在这里 —— <b>平台只记指向，不代建目录</b>；不填则用默认的 <code>工作区/library/</code>。</div>
+    <div class="row">
+      <label class="f" style="flex:1">资料库文件夹路径（组长给你的，绝对路径）<input id="libPath" placeholder="把组长给你的资料库文件夹路径原样粘进来"></label>
+      <button class="p" onclick="saveLibDir()">设置指向</button>
+      <button onclick="clearLibDir()">清空（回默认）</button>
+      <span class="msg" id="libMsg"></span>
+    </div>
+    <div id="libState"></div>
+    <div id="libOut"></div>
+  </div>
+
+  <div class="card" id="sec4">
+    <div class="v5-sec"><span class="n">UNIT-04</span>名单（组长发回执；整单原子）</div>
+    <div class="v5-sub">组长收完对接单会发一段<b>名单回执</b>回来——原样贴进下面的框，平台整单原子记账，不替你改一个字。</div>
+    <div class="row"><span class="msg">把组长发回的那段回执原样贴进来（C 档要打勾确认）</span></div>
+    <textarea id="rcptText" placeholder="#回执 v1&#10;类型: 名单&#10;工作间: …&#10;成员: 组长&#10;凭据:&#10;序号: 1&#10;---&#10;岗位: 前端组/员工01 | harness: h_x | model: m | 人数: 1&#10;---&#10;行数: 1"></textarea>
+    <div class="row">
+      <label><input type="checkbox" id="rcptConfirm"> 我确认：这段是它发回来的</label>
+      <button class="p" onclick="submitRcpt()">提交回执</button>
+      <button onclick="loadRoster2()">刷新工位</button>
+      <span class="msg" id="rcptMsg"></span>
+    </div>
+    <div id="slotsOut"></div>
+    <div class="row"><span class="msg">名单定了之后：每个工位点「生成对接单」——平台把<b>工作间路径</b>、会话名、回执头，以及<b>它自己工位的桥参数</b>（填在正文末尾「## 桥参数」）都拼好，你整段复制给对应成员，<b>手动拉它进来</b>。组长的对接单在 UNIT-02。</span>
+      <button onclick="copyEl('mkOut')">复制对接单</button></div>
+    <pre id="mkOut" hidden></pre>
+    <div id="mkNote"></div>
+  </div>
+
+  <div class="card" id="sec5">
+    <div class="v5-sec"><span class="n">UNIT-05</span>目录校验 + 派活</div>
+    <div class="v5-sub">先「校验目录」（平台只 stat、不代建），再填标题和验收要点派给某个工位——写文件 + 通知 + 激活一次做完。派完会<b>逐步列出四步成没成</b>：前三步落盘、第四步触达；触达只能人工时是<b>正常终态</b>，平台会写清怎么贴。</div>
+    <div class="row">
+      <button onclick="verifyDirs()">校验目录（只 stat，不代建）</button>
+      <span class="msg" id="vdMsg"></span>
+    </div>
+    <div id="vdOut"></div>
+    <div class="row">
+      <label class="f">派给哪个工位<select id="dspSeq"></select></label>
+      <label class="f">标题<input id="dspTitle" placeholder="例：接口对接"></label>
+      <label class="f">验收要点<input id="dspAccept" placeholder="例：每个端点写清错误码"></label>
+      <button class="p" onclick="doDispatch()">派活（写文件+notice+manifest+激活）</button>
+    </div>
+    <div id="dspOut"></div>
+    <div id="dspDetail"></div>
+  </div>
+
+  <div class="card" id="sec6">
+    <div class="v5-sec"><span class="n">UNIT-06</span>产物清单（目录 diff，L0）</div>
+    <div class="v5-sub">扫工作区目录，看它<b>真的动了哪些文件</b>——这是验收证据的起点；没扫到就说没有。注意：「新增/变更」只是<b>相对上一次快照</b>的增量，先扫过一次再看会是空的；<b>判有没有交东西只看盘上现存数</b>。</div>
+    <div class="row">
+      <button onclick="scanArts()">扫产物</button>
+      <span class="msg" id="artMsg"></span>
+    </div>
+    <div id="artOut"></div>
+  </div>
+
+  <div class="card" id="sec7">
+    <div class="v5-sec"><span class="n">UNIT-07</span>验收（证据有一档够格就行；L3 一律拒）</div>
+    <div class="v5-sub">给结论前先看<b>证据四步表</b>：第 1、4 步是硬前置与收尾（派活记录 / 人拍板），第 2、3 步是<b>可用证据档</b>（产物真在盘上 ⇒ L0，有回执留痕 ⇒ L2）——<b>不是四步都要打勾</b>，画成进度条就是撒谎。L1 是「它库已有」，必须写凭据，界面一律标<b>平台未核对</b>；L3（大模型自报）永远拒。</div>
+    <div class="row">
+      <label class="f">任务<select id="revTask" onchange="loadEvidenceView()"></select></label>
+      <label class="f">预演档位
+        <select id="evLevel">
+          <option value="">（不预演 —— 只看现在有什么）</option>
+          <option value="L0">打算按 L0 过</option><option value="L1">打算按 L1 过</option>
+          <option value="L2">打算按 L2 过</option><option value="L4">打算按 L4 过</option>
+        </select>
+      </label>
+      <button onclick="loadEvidenceView()">看证据卡（只读，不扫盘）</button>
+      <span class="msg" id="evMsg"></span>
+    </div>
+    <div id="evView"></div>
+    <div class="row">
+      <label class="f">结论
+        <select id="revResult">
+          <option value="通过">通过</option><option value="返工">返工</option><option value="拒收">拒收</option>
+        </select>
+      </label>
+      <label class="f">证据等级
+        <select id="revLevel">
+          <option value="">（不填 —— 通过会被拒）</option>
+          <option value="L0">L0 平台实做</option>
+          <option value="L1">L1 人工凭据（平台未核对）</option>
+          <option value="L2">L2 平台留痕</option><option value="L4">L4 人眼确认</option>
+        </select>
+      </label>
+      <label class="f">L1 凭据<input id="revProof" placeholder="哪个库/哪个会话/谁核的/用什么核的（选 L1 必填）"></label>
+      <label class="f">备注<input id="revNote" placeholder="例：接口写清楚了"></label>
+      <button class="p" onclick="doReview()">提交验收</button>
+      <span class="msg" id="revMsg"></span>
+    </div>
+    <div id="revOut"></div>
+    <div class="row">
+      <button onclick="loadTasks()">刷新任务账本</button>
+      <button onclick="integrate()">汇总（写 integrate.json，不动产物）</button>
+      <button onclick="dailyClose()">日结（写回根A）</button>
+      <button onclick="closeWs()">归档（closed + 吊销 token）</button>
+    </div>
+    <div id="taskOut"></div>
+  </div>
+
+  <div class="card" id="sec8">
+    <span id="ailp" class="v5-anchor" aria-hidden="true"></span>
+    <div class="v5-sec"><span class="n">UNIT-08</span>结构化讨论（AILP 2.0，自由聊天会被拒）</div>
+    <div class="v5-sub">讨论区只认四类信封（提案/质疑/改进/呼应），选类型 → 表单会按字段表生成 → 发一条；闲聊发不进来。</div>
+    <div class="row">
+      <label class="f">类型
+        <select id="ailpType" onchange="renderAilpForm()">
+          <option value="PROPOSE">PROPOSE 提案</option>
+          <option value="CHALLENGE">CHALLENGE 质疑</option>
+          <option value="REFINE">REFINE 改进</option>
+          <option value="CONTEXT_ECHO">CONTEXT_ECHO 呼应</option>
+        </select>
+      </label>
+      <label class="f">发给<input id="ailpTarget" placeholder="组长 / 员工01"></label>
+      <label class="f">manifest_ref（必须真实条目）<select id="ailpRef"></select></label>
+      <button onclick="loadAilp()">刷新讨论</button>
+    </div>
+    <div id="ailpForm"></div>
+    <div class="row">
+      <button class="p" onclick="sendAilp()">发一条</button>
+      <span class="msg" id="ailpSendMsg"></span>
+    </div>
+    <div class="msg">字段表由 <code>GET /api/ailp/types</code> 提供（唯一真源）；平台只校验与记账，不生成内容；
+      讨论区只认这四类信封，<b>自由聊天会被拒（422）</b>。</div>
+    <div id="ailpOut"></div>
+  </div>
+
+  <div class="card" id="sec9">
+    <div class="v5-sec"><span class="n">UNIT-09</span>闸门自省（被拦住时缺什么）</div>
+    <div class="v5-sub">哪步被拦了就选对应动作查一下：平台会告诉你<b>缺什么、去哪补</b>，不用猜。</div>
+    <div class="row">
+      <select id="gateAct">
+        <option value="fill_direction">fill_direction 填方向</option>
+        <option value="start_modeling">start_modeling 组长接上</option>
+        <option value="start_running">start_running 至少一人 active</option>
+        <option value="dispatch">dispatch 派活</option>
+        <option value="change_path">change_path 改路径</option>
+      </select>
+      <button onclick="checkGate()">查这个动作能不能做</button>
+      <span class="msg" id="gateMsg"></span>
+    </div>
+    <div id="gateOut"></div>
+  </div>
+
+  <div class="card" id="secProto">
+    <div class="v5-sec"><span class="n">PANEL-A</span>协议台 · 按层分组（协议不是一条高低线，V116 §1.1）</div>
+    <div class="v5-sub">信息面板：哪些协议能用、边界在哪、本机 harness 能不能当组长——照后端原话显示。</div>
+    <div class="msg">分组只说明「这一层回答什么」，<b>不代表好坏排序</b>；状态、语义与边界都是
+      <code>GET /api/protocols</code> 的原话，界面照实显示、不另写一套。</div>
+    <div id="protoOut"></div>
+    <div class="v5-sec" style="margin-top:16px"><span class="n">PANEL-A2</span>本机 harness 能不能当组长（实测说了算）</div>
+    <div id="protoToolOut"></div>
+  </div>
+  <div class="card" id="secMind">
+    <div class="v5-sec"><span class="n">PANEL-B</span>审忆待审（夜间审忆员的待拍板项：先记账，人批了才落地）</div>
+    <div class="v5-sub">信息面板：夜里审忆员攒下的待批项在这看 diff、记审批；<b>已批的才出「落地到基模」</b>——
+      点它会真的改写 <code>00_核心基模.md</code>（原文先归档 <code>_archive/</code>，可回溯）。这是人拍板之后的落地，平台不自己改认知。
+      只想看一个根的记忆/日志/死胡同 → <a href="/mind.html">心智档案页</a>。</div>
+    <div class="row">
+      <label class="f">agent_key（心智根键）<input id="pdKey" placeholder="例：A-01"></label>
+      <label class="f">批准人（记审批时必填）<input id="pdApprover" placeholder="例：boss"></label>
+      <button onclick="loadPending()">刷新待审列表</button>
+      <span class="msg" id="pdMsg"></span>
+    </div>
+    <div id="pdActOut"></div>
+    <div id="pdOut"></div>
+  </div>
+  </main>
+</div>
+
+<script src="v5.js"></script>
+<script>
+/* 顶栏 fixed：正文与锚点偏移按实高补偿（窄屏换行也算准） */
+(function () {
+  var tb = document.querySelector('.topbar');
+  if (!tb) return;
+  function fit() {
+    var h = tb.offsetHeight;
+    document.documentElement.style.setProperty('--tb', h + 'px');
+    document.body.style.paddingTop = h + 'px';
+  }
+  window.addEventListener('resize', fit);
+  fit();
+})();
+/* 舱段导轨：滚到哪段亮哪段（第六轮重写——废弃 IntersectionObserver 与 scrollIntoView：
+   前者会在短卡/滚底时选错段，后者会把整个文档拉回导轨位置导致窄屏滚不动） */
+(function () {
+  var links = [].slice.call(document.querySelectorAll('.bay-rail a[data-target]'));
+  if (!links.length) return;
+  var rail = document.querySelector('.bay-rail');
+  var cur = null, queued = false;
+
+  function apply(id) {
+    if (!id || id === cur) return;
+    cur = id;
+    links.forEach(function (a) {
+      var on = a.getAttribute('data-target') === id;
+      a.classList.toggle('active', on);
+      if (on) { a.setAttribute('aria-current', 'true'); } else { a.removeAttribute('aria-current'); }
+      var card = document.getElementById(a.getAttribute('data-target'));
+      if (card) card.classList.toggle('is-current', on);
+      /* 窄屏舱段条：只横向滚容器本身，绝不滚文档（第六轮 Blocker 的修法） */
+      if (on && rail && rail.scrollWidth > rail.clientWidth + 4) {
+        rail.scrollTo({ left: a.offsetLeft - (rail.clientWidth - a.offsetWidth) / 2, behavior: 'smooth' });
+      }
+    });
+  }
+
+  function pick() {
+    var line = window.innerHeight * 0.3;              /* 判定线：视口 30% 处，取「最后一条越过该线的段」 */
+    var linksArr = links;
+    var best = linksArr[0].getAttribute('data-target');
+    for (var i = 0; i < linksArr.length; i++) {
+      var el = document.getElementById(linksArr[i].getAttribute('data-target'));
+      if (el && el.getBoundingClientRect().top <= line) best = linksArr[i].getAttribute('data-target');
+    }
+    var maxY = document.documentElement.scrollHeight - window.innerHeight;
+    if (maxY - window.scrollY <= 4) best = linksArr[linksArr.length - 1].getAttribute('data-target');
+    apply(best);
+  }
+
+  function onScroll() {
+    if (queued) return;
+    queued = true;
+    window.requestAnimationFrame(function () { queued = false; pick(); });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  pick();
+})();
+/* 刊头实时刻度（仪表感；纯文本，无动画） */
+(function () {
+  var el = document.getElementById('mhClock');
+  if (!el) return;
+  function tick() {
+    var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; };
+    el.textContent = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  tick(); setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>

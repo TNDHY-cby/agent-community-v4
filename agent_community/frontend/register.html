@@ -157,7 +157,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:ra
 
 .acm-input{width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--rule);border-radius:8px;padding:9px 12px;color:var(--ink);font-size:12.5px;font-family:var(--mono,monospace);outline:none;transition:border-color .15s,box-shadow .15s;resize:vertical;min-height:64px}
 
-.acm-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,53,39,.25)}
+/* ★2026-10-30 视觉铺开：旧红 focus 退役（红纪律），聚焦交 chrome.css 藏蓝发光层 */
 
 .acm-foot{display:flex;justify-content:flex-end;gap:10px;padding:12px 18px;border-top:1px solid var(--rule)}
 
@@ -183,6 +183,8 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:ra
 
 </style>
 
+<link rel="stylesheet" href="chrome.css">
+<script src="chrome.js" defer></script>
 </head>
 
 <body class="">
@@ -643,7 +645,8 @@ body: {"message": "你的问题（如：这个任务该怎么做？工作间三�
       <p>回报协议（harness 有联网能力时可直接 POST，无需桥）：
 
         激活 <code>POST /api/harness/activation-result</code> body: <code>{"workshop_id","member_id","status":"entered"}</code>；
-        <b>平台要等全员 <code>entered</code> 才开始派任务</b>，不回报 = 工作间不开工。
+        <b>平台至少要有一个成员接上（<code>active</code>）才允许开工</b>；没接上的工位不能派活，
+        但不会把整间活儿停住（G4 刻意这么定：一个 agent 抽风不该停掉整间）。回执/证据到位后点「重新判定」即可。
 
         <b>可选三字段</b>（V-15 新增，向后兼容，不发也行、发了更准确）：
         <code>session_id</code>（本次会话 id，缺了平台无法跨重启记住会话）、

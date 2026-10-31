@@ -14,7 +14,7 @@
 ::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
 html,body{height:100%;overflow:hidden}
 body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
-.app{display:grid;grid-template-rows:52px 1fr 26px;height:100vh}
+.app{display:grid;grid-template-rows:auto 1fr 26px;height:100vh}
 /* topbar */
 .topbar{display:flex;align-items:center;gap:12px;padding:0 16px;background:linear-gradient(180deg,#1d2026,#181a20);border-bottom:1px solid var(--rule);min-width:0}
 .topbar .logo{font-size:15px;font-weight:800;color:var(--accent);letter-spacing:.03em;display:flex;align-items:center;gap:8px;white-space:nowrap}
@@ -135,7 +135,7 @@ body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSys
 @media (max-width:1399px){.main{grid-template-columns:minmax(0,1fr) 380px}}
 @media (max-width:1099px){
   html,body{overflow:auto}
-  .app{height:auto;min-height:100vh;grid-template-rows:52px auto 26px}
+  .app{height:auto;min-height:100vh;grid-template-rows:auto auto 26px}
   .main{grid-template-columns:1fr;overflow:visible}
   .panel-form{order:-1}
   .panel{min-height:340px}
@@ -143,12 +143,11 @@ body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSys
   .ev-grid{grid-template-columns:1fr}
 }
 </style>
-<link rel="stylesheet" href="/theme-crt.css">
-<script src="/theme-crt.js" defer></script>
+<link rel="stylesheet" href="chrome.css">
 </head>
 <body class="">
 <div class="app">
-  <header class="topbar">
+  <header class="topbar chrome-top">
     <div class="logo">🧾 交付回执台<span class="sub">· 交接体系</span></div>
     <div class="health checking" id="health"><span class="dot"></span><span id="healthText">检测中…</span></div>
     <div class="spacer"></div>
@@ -553,5 +552,6 @@ loadTemplate();
 tick(false);
 startTimer();
 </script>
+<script src="chrome.js" defer></script>
 </body>
 </html>

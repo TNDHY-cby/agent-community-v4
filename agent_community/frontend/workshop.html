@@ -44,7 +44,13 @@
   --purple:#b08fc2; --purple-soft:rgba(176,143,194,.14);
 
 
-  --cyan:#79b8bd; --cyan-soft:rgba(121,184,189,.14);
+  /* ★2026-10-29 CRT 皮肤退役（备份 theme-crt.css.bak_20261029）：以下语义色原由皮肤提供，
+     改用 hub 家族色值 —— 琥珀=警戒待办、青/蓝=信息，与全站统一 */
+  --yellow:#D9AB53; --yellow-soft:rgba(217,171,83,.10);
+  --cyan:#2A6B6B; --cyan-soft:rgba(100,181,180,.10);
+  --blue:#2A5A8C; --blue-soft:rgba(123,163,201,.10);
+  /* ★2026-10-30 视觉铺开：上面曾残留一句旧皮肤 --cyan:#79b8bd 把 hub 家族值覆盖，
+     全站「讨论中」状态色因此分裂成两套青 —— 删旧留新，与 hub.css :root 对齐。 */
 
 
   --font:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;
@@ -223,7 +229,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 #hall{width:100%;min-height:96px;background:var(--bg3);border:1px solid var(--rule);border-radius:12px;padding:13px 15px;color:var(--ink);font-family:var(--font);font-size:13.5px;resize:vertical;line-height:1.7;transition:border-color .15s,box-shadow .15s}
 
 
-#hall:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
+/* ★2026-10-30 视觉铺开：旧红 focus 全部退役（红只归危险/当前页/主CTA），
+   聚焦统一交给 chrome.css 的藏蓝发光层（html body.chrome-soft …:focus）。 */
 
 
 /* discussion zones */
@@ -305,8 +312,27 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 /* 空讨论区占位提示 */
 .chat:empty::before{content:"（暂无消息）";display:flex;align-items:center;justify-content:center;min-height:72px;font-size:12px;color:var(--muted);opacity:.55;border:1px dashed var(--rule);border-radius:12px;margin:2px 0}
-.zone-2 .chat:empty::before{content:"二级讨论空：组长/员工发言与进度回报会显示在这里"}
-.zone-3 .chat:empty::before{content:"三级讨论空：阶段总结与下一步方向会显示在这里"}
+.zone-2 .chat:empty::before{content:"组长对话框为空：组长/员工发言与进度回报会显示在这里"}
+.zone-3 .chat:empty::before{content:"讨论区为空：阶段总结与下一步方向会显示在这里"}
+
+
+/* ═══ 员工名单（v5 工位）═══ 2026-10-30 D后端-57：右栏名单以 v5 名单为准（只读展示） */
+.rw-v5{margin:8px 8px 0;border:1px solid var(--rule);border-radius:10px;background:var(--bg3);overflow:hidden}
+.rv5-count{font-weight:400;font-size:10.5px;letter-spacing:0;text-transform:none;color:var(--muted);margin-left:6px}
+.rv5-head{display:flex;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid var(--rule);font-size:11.5px;color:var(--muted)}
+.rv5-head b{color:var(--ink);font-size:12px}
+.rv5-src{margin-left:auto;font-size:10px;border-radius:999px;padding:1px 8px;background:var(--bg4);color:var(--muted)}
+.rv5-row{display:flex;align-items:center;gap:7px;padding:6px 10px;border-bottom:1px solid var(--rule);font-size:11.5px}
+.rv5-row:last-child{border-bottom:0}
+.rv5-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--muted)}
+.rv5-dot.active{background:var(--green,#3AA863)}
+.rv5-dot.entered{background:var(--green,#3AA863);opacity:.6}
+.rv5-dot.pending,.rv5-dot.acked{background:var(--yellow,#FFB000)}
+.rv5-dot.blocked,.rv5-dot.lost{background:var(--red,#C9432F)}
+.rv5-slot{font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%}
+.rv5-meta{color:var(--dim);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rv5-state{margin-left:auto;font-size:10.5px;color:var(--muted);white-space:nowrap}
+.rv5-foot{padding:6px 10px;font-size:10.5px;color:var(--dim);line-height:1.5}
 
 
 .chat-input{display:flex;gap:10px;margin-top:10px}
@@ -315,7 +341,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .chat-input textarea{min-height:44px;flex:1;resize:none;max-height:300px;background:var(--bg3);border:1px solid var(--rule);border-radius:11px;padding:11px 14px;color:var(--ink);font-family:var(--font);font-size:13px;line-height:1.6;transition:border-color .15s,box-shadow .15s}
 
 
-.chat-input textarea:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
+/* .chat-input textarea:focus → 退役，见 #hall:focus 处说明；由 chrome-soft 藏蓝层接管 */
 
 
 .chat-input button{background:linear-gradient(135deg,var(--accent),#c25f3f);color:#fff;border:none;border-radius:11px;padding:0 22px;cursor:pointer;font-weight:800;transition:all .15s;box-shadow:0 2px 8px rgba(217,119,87,.3)}
@@ -438,7 +464,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .dd-group{font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--dim);padding:6px 12px 1px;background:var(--bg3)}
 .dd-custom{padding:6px 8px;border-bottom:1px solid var(--rule)}
 .dd-custom input{width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--rule);border-radius:6px;color:var(--ink);font-size:12px;padding:5px 7px;font-family:inherit}
-.dd-custom input:focus{outline:none;border-color:var(--accent)}
+/* .dd-custom input:focus → 退役，同上 */
 .dd-note{font-size:10.5px;color:var(--muted);line-height:1.5;padding:6px 10px;border-top:1px dashed var(--rule);white-space:normal}
 .role-hint{font-size:10.5px;color:var(--muted);line-height:1.55;padding:0 10px 6px}
 .role-hint b{color:var(--accent)}
@@ -590,7 +616,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .acm-input{width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--rule);border-radius:8px;padding:9px 12px;color:var(--ink);font-size:12.5px;font-family:var(--mono,monospace);outline:none;transition:border-color .15s,box-shadow .15s;resize:vertical;min-height:64px}
 
 
-.acm-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,53,39,.25)}
+/* .acm-input:focus → 退役，同上 */
 
 
 .acm-foot{display:flex;justify-content:flex-end;gap:10px;padding:12px 18px;border-top:1px solid var(--rule)}
@@ -695,7 +721,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .wsv-btn:hover .ico{background:var(--accent);color:#fff}
 .wsv-input{flex:0 0 auto;display:flex;gap:10px;padding:14px 20px;background:var(--bg2);border-top:1px solid var(--rule-strong);align-items:flex-end}
 .wsv-input textarea{flex:1;background:var(--bg3);border:1px solid var(--rule);border-radius:12px;color:var(--ink);font-family:var(--font);font-size:13px;padding:10px 14px;resize:none;line-height:1.6}
-.wsv-input textarea:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
+/* .wsv-input textarea:focus → 退役，同上（该输入框已随自由发言退役，规则仅存档） */
 .wsv-input .btn{flex:0 0 auto;align-self:center;background:linear-gradient(135deg,var(--accent),#c25f3f);border:none;color:#fff;font-weight:700;padding:10px 20px;border-radius:10px;box-shadow:0 2px 10px rgba(217,119,87,.3)}
 .wsv-input .btn:hover{background:#c25f3f;transform:translateY(-1px)}
 .wsv-plugins{display:block;padding:0}
@@ -945,7 +971,6 @@ body{font-size:var(--t2)}
 .disc-zone.active{border-color:transparent;border-left:2px solid var(--accent);padding-left:var(--s3);box-shadow:none}
 .chat:empty::before{border:0;opacity:.6}
 .nextstep{border:0;border-left:2px solid var(--accent);border-radius:0;background:var(--bg3);padding:var(--s2) var(--s3);margin:var(--s2) 0 0}
-.debate-bar{border-radius:0}
 
 /* ④ 可点物品仍留框（输入框/按钮/候选），但描边只有一种粗细 */
 .chat-input textarea{border-radius:0;border-color:var(--rule);padding:var(--s2) var(--s3)}
@@ -965,11 +990,30 @@ body{font-size:var(--t2)}
 .interject-fab{width:auto;min-width:56px;height:34px;padding:0 14px;font-size:12px;font-weight:800;
   letter-spacing:.06em;white-space:nowrap;border-radius:2px}
 
+
+  /* ── 工作过程时间轴（D后端-43）── */
+  .pg-tl{margin:4px 0 0}
+  .pg-tl-item{position:relative;padding:0 0 10px 16px;border-left:1px solid rgba(255,255,255,.12);margin-left:4px}
+  .pg-tl-item:last-child{border-left-color:transparent;padding-bottom:0}
+  .pg-tl-dot{position:absolute;left:-4px;top:5px;width:7px;height:7px;border-radius:50%;
+    background:#0e0e0d;border:1.5px solid rgba(255,255,255,.4)}
+  .pg-tl-item.done .pg-tl-dot{background:var(--green,#8fb39b);border-color:var(--green,#8fb39b)}
+  .pg-tl-item.block .pg-tl-dot{background:var(--accent,#FF3527);border-color:var(--accent,#FF3527)}
+  .pg-tl-item.note .pg-tl-dot{border-color:var(--amber,#e0a04a)}
+  .pg-tl-body{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;font-size:12px;line-height:1.55}
+  .pg-tl-time{color:var(--dim,#716d63);font-variant-numeric:tabular-nums}
+  .pg-tl-text{color:var(--ink,#ece9e3)}
+  .pg-tl-item.done .pg-tl-text{color:var(--green,#8fb39b)}
+  .pg-tl-item.block .pg-tl-text{color:var(--accent,#FF3527)}
+  .pg-tl-task{color:var(--dim,#716d63);font-size:11px}
 </style>
 
+<!-- ★2026-10-30 视觉铺开（骨架收编最后一页）：workshop 此前是唯一没接全站骨架的页面。
+     chrome.css 只用双类/chrome-soft 层拿特异性，不改本页任何既有布局；
+     带来三件事：① 面板 hover 泛光+微放大 ② 输入聚焦藏蓝发光（替掉旧红 focus）③ 按钮键盘焦点归藏蓝。 -->
+<link rel="stylesheet" href="chrome.css">
+<script src="chrome.js" defer></script>
 
-<link rel="stylesheet" href="/theme-crt.css">
-<script src="/theme-crt.js" defer></script>
 </head>
 
 
@@ -979,7 +1023,7 @@ body{font-size:var(--t2)}
 
 
 
-<div class="app">
+<div class="app app-debox">
 
 
   <div class="main">
@@ -990,7 +1034,9 @@ body{font-size:var(--t2)}
 
       <a class="sidebar-back" href="/" title="返回大厅">← <span class="sb-text">返回大厅</span></a>
       <!-- ★V34 §1：工作间入口**只指向本工作间**（`?ws=`）—— 不带参数的总控入口在大厅 -->
-      <a class="hub-pill" id="dockingPill" href="/docking.html" title="对接中心 · 本工作间的成员对接（看谁接上了、对上哪个岗位）">对接中心</a>
+      <a class="hub-pill" id="dockingPill" href="/docking.html" onclick="return pillNav(this,'/docking.html')" title="对接中心 · 本工作间的成员对接（看谁接上了、对上哪个岗位）">对接中心</a>
+      <!-- 老板 2026-10-29 收成一枚按钮；2026-10-31 正名「本间对接中心」——工作间专属，不带大厅级动作。 -->
+      <a class="hub-pill" id="consolePill" href="/v5.html" onclick="return pillNav(this,'/v5.html')" title="本间对接中心 · 方向/组长/派活/产物/验收/讨论区（只干这个工作间的活）" style="top:56px">本间对接中心</a>
       <!-- 流程说明按钮已移除（老板 2026-10-19 裁定）：hub-pill 是 fixed 同坐标定位，两枚常驻重叠；流程讲解正主在 hub.html，大厅入口仍在 -->
 
 
@@ -1015,19 +1061,19 @@ body{font-size:var(--t2)}
       <div class="fishbone" id="phaseBar">
 
 
-        <span class="fb-step" id="p1"><span class="fb-num">01</span>一级讨论</span>
+        <span class="fb-step" id="p1"><span class="fb-num">01</span>定方向</span>
 
 
-        <span class="fb-step" id="p2"><span class="fb-num">02</span>选定员工</span>
+        <span class="fb-step" id="p2"><span class="fb-num">02</span>选人</span>
 
 
-        <span class="fb-step" id="p3"><span class="fb-num">03</span>二级讨论</span>
+        <span class="fb-step" id="p3"><span class="fb-num">03</span>分工</span>
 
 
-        <span class="fb-step" id="p4"><span class="fb-num">04</span>工作</span>
+        <span class="fb-step" id="p4"><span class="fb-num">04</span>干活</span>
 
 
-        <span class="fb-step" id="p5"><span class="fb-num">05</span>三级讨论</span>
+        <span class="fb-step" id="p5"><span class="fb-num">05</span>验收</span>
 
 
         <div class="fb-spacer"></div>
@@ -1055,6 +1101,18 @@ body{font-size:var(--t2)}
         </div>
       </div>
 
+      <!-- 工作过程（D后端-43）：它在干活时报上来的每一步 —— 这是**工作间**的事（对接中心只管接入/激活） -->
+      <div id="progressPanel" style="display:none;margin:8px 14px 0;padding:9px 14px;background:var(--bg3);border:1px solid var(--rule);border-left:3px solid var(--cyan,#79b8bd);border-radius:10px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <b style="font-size:12.5px">工作过程</b>
+          <span class="sub" style="color:var(--muted);font-size:11.5px">它干活时报上来的每一步（记的是它报的，不是平台看到的全部）</span>
+          <span class="sf-summary" id="pgSummary" style="display:none"></span>
+          <span style="flex:1"></span>
+          <button class="btn mini ghost" type="button" onclick="loadProgress()">⟳ 刷新</button>
+        </div>
+        <div id="pgBody" style="margin-top:6px"></div>
+      </div>
+
 
       <div class="ws-content">
 
@@ -1080,32 +1138,8 @@ body{font-size:var(--t2)}
         <div class="panel" id="layout" style="display:none">
 
 
-          <!-- 三区讨论：一级 / 二级 / 三级，各自独立输入框 -->
-
-
-          <div class="disc-zone zone-1" id="zone1">
-
-
-            <div class="side-head"><h2 style="margin:0">一级讨论 <span class="zone-tag">平台AI</span></h2><button class="btn mini ghost" id="endDiscussBtn" title="同顶栏「下一步」条的按钮——主入口在那边" onclick="endDiscuss()">结束讨论，选定员工 →</button></div>
-
-
-            <div class="chat" id="discussion1"></div>
-
-
-            <div class="chat-input">
-
-
-              <textarea id="msgInput1" placeholder="和平台 AI 讨论需求..." rows="1" oninput="autoResize(this)"></textarea>
-
-
-              <button onclick="sendDiscuss(1)">发送</button>
-
-
-            </div>
-
-
-          </div>
-
+          <!-- ★2026-10-31（老板，第 N 次强调）：**平台AI讨论彻底退役** —— 需求聊透、资料整理都在
+               外面的免费AI做；这里只剩 组长对话框 / 讨论区（结构化） 两个区。 -->
 
 
 
@@ -1113,21 +1147,16 @@ body{font-size:var(--t2)}
           <div class="disc-zone zone-2" id="zone2">
 
 
-            <div class="side-head"><h2 style="margin:0">二级讨论 <span class="zone-tag">组长</span></h2><button class="btn mini" id="leaderStatusBtn" onclick="leaderStatus()">📋 组长检查员工状态</button></div>
+            <div class="side-head"><h2 style="margin:0">组长对话框 <span class="zone-tag">组长</span></h2><button class="btn mini" id="leaderStatusBtn" onclick="leaderStatus()">📋 组长检查员工状态</button></div>
 
 
             <div class="chat" id="discussion2"></div>
 
 
+            <!-- ★2026-10-31（老板）：「去结构化讨论」指路按钮整排撤掉 —— 名字叫讨论、点开却是本间对接中心，
+                 语义不通；且按 SOP 用户不在平台上讨论。这里改为**只读展示区**，不再给任何输入。 -->
             <div class="chat-input">
-
-
-              <textarea id="msgInput2" placeholder="和组长深入讨论分工..." rows="1" oninput="autoResize(this)"></textarea>
-
-
-              <button onclick="sendDiscuss(2)">发送</button>
-
-
+              <div style="flex:1;font-size:12px;color:var(--dim)">只读 —— 组长的发言在这里显示；对接与资料走「本间对接中心」。</div>
             </div>
 
 
@@ -1140,52 +1169,19 @@ body{font-size:var(--t2)}
           <div class="disc-zone zone-3" id="zone3">
 
 
-            <div class="side-head" style="display:flex;align-items:center;gap:8px"><h2 style="margin:0">三级讨论 <span class="zone-tag">进度</span></h2><button class="btn mini" style="margin-left:auto" onclick="openWorkshopView()">🛠 展开车间</button></div>
+            <div class="side-head" style="display:flex;align-items:center;gap:8px"><h2 style="margin:0">讨论区 <span class="zone-tag">结构化</span></h2><button class="btn mini" style="margin-left:auto" onclick="openWorkshopView()">🛠 展开车间</button></div>
 
-            <!-- ★V52 辩论模式（**可开可关**，默认关）：判定全在后端 platform/debate.py；
-                 裁决只作为**一条消息**进讨论区，不改任何人的原话。 -->
-            <style>
-              .debate-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0;font-size:11px}
-              .debate-state{color:var(--dim)}
-              .debate-state.on{color:#2e7d32;font-weight:600}
-              .debate-form{display:flex;flex-direction:column;gap:4px;margin:6px 0;padding:6px;
-                           border:1px dashed var(--dim);border-radius:6px;font-size:11px}
-              .debate-form input,.debate-form textarea{width:100%;font-size:11px;padding:3px;box-sizing:border-box}
-              .debate-form-actions{display:flex;align-items:center;gap:6px}
-              .debate-msg{color:var(--dim)}
-            </style>
-            <div class="debate-bar" id="debateBar">
-              <span class="debate-state" id="debateState">辩论模式：关（默认关）</span>
-              <button class="btn mini" id="debateToggleBtn" onclick="toggleDebate()">开启</button>
-              <button class="btn mini" onclick="openDebateForm()">＋ 陈述</button>
-              <button class="btn mini" onclick="runDebate()">跑一轮</button>
-            </div>
-            <div class="debate-form" id="debateForm" style="display:none">
-              <input id="debateSpeaker" placeholder="谁说的（裁决要指名道姓，不能匿名）">
-              <input id="debateClaim" placeholder="一句话结论（观点）">
-              <textarea id="debateEvidence" rows="2"
-                        placeholder="证据，一行一条：kind|ref|verified&#10;例：url|https://example.com/report|1&#10;没有证据也可以提交——裁决里权重为 0，但不会被丢掉"></textarea>
-              <textarea id="debateReasoning" rows="2" placeholder="推理：这些证据为什么支持这个结论（可留空）"></textarea>
-              <div class="debate-form-actions">
-                <button class="btn mini" onclick="submitDebateStatement()">提交</button>
-                <button class="btn mini" onclick="document.getElementById('debateForm').style.display='none'">取消</button>
-                <span class="debate-msg" id="debateFormMsg"></span>
-              </div>
-            </div>
+            <!-- ★2026-10-31（老板）：V52 辩论面板（辩论条 + 陈述表单）整块退役 ——
+                 「没用的功能卡片还留着干什么」；平台不组织任何讨论（SOP），裁决机器一并下架。
+                 后端 platform/debate.py 与端点未动，只撤前端入口。 -->
 
 
             <div class="chat" id="discussion3"></div>
 
 
+            <!-- ★2026-10-31（老板）：同 zone2 —— 只读展示区，指路按钮与「已退役」告示牌整排撤掉。 -->
             <div class="chat-input">
-
-
-              <textarea id="msgInput3" placeholder="汇报进度、讨论卡点与下一步..." rows="1" oninput="autoResize(this)"></textarea>
-
-
-              <button onclick="sendDiscuss(3)">发送</button>
-
-
+              <div style="flex:1;font-size:12px;color:var(--dim)">只读 —— 组长与员工的讨论记录在这里显示。</div>
             </div>
 
 
@@ -1225,7 +1221,7 @@ body{font-size:var(--t2)}
           <div id="workStatus" style="margin-top:8px"></div>
 
 
-          <button class="btn" id="reviewBtn" onclick="startReview()" style="display:none;margin-top:8px">进行三级讨论</button>
+          <button class="btn" id="reviewBtn" onclick="startReview()" style="display:none;margin-top:8px">进入验收</button>
 
 
           <div style="display:flex;gap:8px;margin-top:8px">
@@ -1273,10 +1269,17 @@ body{font-size:var(--t2)}
     <div class="col-right">
 
 
-      <div class="col-header">员工名单</div>
+      <div class="col-header">员工名单 <span class="rv5-count" id="rosterHead" style="display:none"></span></div>
 
 
       <div id="sidebar">
+
+
+        <!-- ★2026-10-30（D后端-57）：**名单改读 v5 工位**。
+             后端详情新增只读兼容层 `members_v5` / `roster_counts` / `members_source`（旧 members 形状未变）。
+             原来这里只读旧 members ⇒ 已接上成员的工作间也显示「未选员工」（假状态）。
+             规则：v5 有内容就以它为准；**能不能开工只看 gate**（后端已按 v5 算），本页不自己判。 -->
+        <div id="membersV5" class="rw-v5" style="display:none"></div>
 
 
         <!-- FE-20：本阶段该按的（FE-17 §4，数据来自 GET …/sidebar；失败=降级显示全部+提示） -->
@@ -1294,12 +1297,12 @@ body{font-size:var(--t2)}
         <div class="panel" style="margin:8px;border:1px solid var(--rule)">
 
 
-          <div class="side-head"><h2>② 选定员工</h2></div>
+          <div class="side-head"><h2>② 选人</h2></div>
           <div class="role-hint" id="roleHint">职业自由填（候选来自平台职业表，加载中…）</div>
 
 
           <div id="rosterBlock">
-          <button class="btn" id="selectBtn" onclick="selectMembers()" style="margin-bottom:8px">让平台 AI 选定员工</button>
+          <!-- 已退役（2026-10-31）：平台不选人（V116 §16）；名单由组长回执交回（§8.1） -->
 
 
           <div id="roster" style="margin-bottom:8px"></div>
@@ -1317,7 +1320,7 @@ body{font-size:var(--t2)}
           </div>
 
 
-          <button class="btn" id="confirmBtn" onclick="confirmMembers()" style="display:none;margin-bottom:8px">确认名单，进入二级讨论</button>
+          <button class="btn" id="confirmBtn" onclick="confirmMembers()" style="display:none;margin-bottom:8px">确认名单，进入分工</button>
           </div><!-- /rosterBlock -->
 
 
@@ -1423,11 +1426,11 @@ body{font-size:var(--t2)}
         <button class="btn wsv-expand" onclick="wsvTreeZoom(true)">放大查看</button>
       </div>
       <div class="wsv-chat">
-        <div class="wsv-chat-head">员工讨论 <span style="font-size:10px;text-transform:none;letter-spacing:0;color:var(--dim)">三级讨论 · 阶段总结与下一步</span></div>
+        <div class="wsv-chat-head">员工讨论 <span style="font-size:10px;text-transform:none;letter-spacing:0;color:var(--dim)">验收 · 阶段总结与下一步</span></div>
         <div class="chat" id="wsvChatCenter"></div>
         <div class="chat-input">
-          <textarea id="wsvChatInput" placeholder="在讨论区发言（和组长/员工讨论进度）..." rows="1" oninput="autoResize(this)"></textarea>
-          <button onclick="wsvChatSend()">发送</button>
+          <!-- ★2026-10-31（老板）：车间这个「去结构化讨论」指路按钮同样撤掉 —— 只读展示。 -->
+          <div style="flex:1;font-size:11.5px;line-height:1.5;color:var(--dim)">只读 —— 员工讨论在这里显示。</div>
         </div>
       </div>
       <div class="wsv-right">
@@ -1460,7 +1463,7 @@ body{font-size:var(--t2)}
         <div class="wsv-plug-modes" id="wsvPlgModes">加载中…</div>
       </div>
       <div class="wsv-plug-sec">
-        <div class="wsv-plug-head">收口决策 <span>三级讨论充分后的收口方式 · 已持久化</span></div>
+        <div class="wsv-plug-head">收口决策 <span>讨论充分后的收口方式 · 已持久化</span></div>
         <div class="wsv-plug-modes" id="wsvDecisionModes">加载中…</div>
       </div>
       <div class="wsv-plug-sec">
@@ -1548,15 +1551,7 @@ function syncWsvChat(){
   });
   cc.scrollTop=cc.scrollHeight;
 }
-function wsvChatSend(){
-  const inp=document.getElementById('wsvChatInput');
-  const t=(inp?inp.value:'').trim();
-  if(!t||!wsId)return;
-  const m3=document.getElementById('msgInput3');
-  if(m3)m3.value=t;
-  if(inp)inp.value='';
-  sendDiscuss(3);
-}
+/* 2026-10-31：wsvChatSend 已随「去结构化讨论」指路按钮一并退役（调用点早在 D后端-54 就没了）。 */
 function wsvTreeZoom(show){
   const z=document.getElementById('wsvTreeZoom');if(!z)return;
   if(show){
@@ -1708,11 +1703,11 @@ function wsvToggleWorkflow(){
   const st=ws.status||'draft';
   const stages=[
     {k:'draft',n:'创建需求',t:'需求录入大厅'},
-    {k:'discussing',n:'一级讨论',t:'平台AI 分析拆解'},
-    {k:'selecting',n:'选定员工',t:'信誉匹配选人'},
-    {k:'division',n:'二级分工',t:'组长接管分工讨论'},
-    {k:'running',n:'执行循环',t:'员工执行+组长调度'},
-    {k:'review',n:'三级讨论',t:'阶段总结与下一步'},
+    {k:'discussing',n:'定方向',t:'在外面聊透、整理资料'},
+    {k:'selecting',n:'选人',t:'信誉匹配选人'},
+    {k:'division',n:'分工',t:'组长接管分工讨论'},
+    {k:'running',n:'干活',t:'员工执行+组长调度'},
+    {k:'review',n:'验收',t:'阶段总结与下一步'},
     {k:'done',n:'完成',t:'任务收口'}
   ];
   const cur=stages.findIndex(s=>s.k===st);
@@ -1735,12 +1730,20 @@ async function wsvPanel(key,_ev,force){
       const ws=_wsvData.ws||{};const wb=_wsvData.wb||{};
       const members=Array.isArray(ws.members)?ws.members:[];
       const paused=Array.isArray(wb.paused)?wb.paused.map(p=>p.member_id):[];
-      const html=members.map(m=>{
+      /* ★2026-10-30（D后端-57）：v5 有工位就以 v5 为准（旧 members 只在 v5 为空时兜底）——
+         否则这里也会「暂无成员」，跟右栏犯同一个假状态。 */
+      const mv5=Array.isArray(ws.members_v5)?ws.members_v5:[];
+      const html=mv5.length?mv5.map(m=>{
+        const st=String(m.state||'');
+        const stc=(st==='active'||st==='entered')?'var(--green)':(st==='blocked'||st==='lost')?'var(--red)':(st==='pending'||st==='acked')?'var(--yellow)':'var(--muted)';
+        return `<div style="padding:6px 0;border-bottom:1px solid var(--rule);display:flex;gap:8px;align-items:center"><span style="width:8px;height:8px;border-radius:50%;background:${stc};flex-shrink:0"></span><b>${esc(m.slot_dir||('工位 '+(m.member_seq??'?')))}</b><span style="color:var(--dim);font-size:11px">${esc([m.harness||m.harness_id,m.model||m.model_snapshot].filter(Boolean).join(' · ')||'（未记 harness/模型）')}</span><span style="color:var(--muted);font-size:11px;margin-left:auto" title="原始状态：${esc(st||'（空）')}">${esc(RV5_STATE[st]||st||'状态未记')}</span></div>`;
+      }).join(''):members.map(m=>{
         const isPause=paused.includes(m.member_id);
         const stc=isPause?'var(--red)':(m.status==='working'||m.status==='entered')?'var(--green)':'var(--muted)';
         return `<div style="padding:6px 0;border-bottom:1px solid var(--rule);display:flex;gap:8px;align-items:center"><span style="width:8px;height:8px;border-radius:50%;background:${stc};flex-shrink:0"></span><b>${esc(m.display_name||m.member_id)}</b><span style="color:var(--dim);font-size:11px">${esc(m.role)}</span><span style="color:var(--muted);font-size:11px;margin-left:auto">${esc(m.status||'-')}${isPause?'（暂停）':''}</span></div>`;
       }).join('');
-      box.innerHTML='<h4>员工状态</h4>'+(html||'<div class="id-empty">暂无成员</div>')+'<div style="margin-top:8px;font-size:10.5px;color:var(--dim)">数据源：GET /api/workshop/{ws_id}（members.status）+ leader-workbench（paused）</div>';
+      const _src=mv5.length?'members_v5（v5 名单）':'members（旧名单，v5 为空时的兜底）';
+      box.innerHTML='<h4>员工状态</h4>'+(html||'<div class="id-empty">暂无成员</div>')+'<div style="margin-top:8px;font-size:10.5px;color:var(--dim)">数据源：GET /api/workshop/{ws_id}（'+_src+'）+ leader-workbench（paused）</div>';
     }catch(e){box.innerHTML='<h4>员工状态</h4><div class="id-empty">加载失败</div>';}
   }else if(key==='interject'){
     const its=_wsvData.its||[];
@@ -1872,7 +1875,7 @@ async function wsvModeSet(mode){
 
 // ═══ R3：收口决策模式（user / leader / vote）+ 弯路回收·记忆擦除 ═══
 const WSV_DECISION_MODES=[
-  {id:'user',label:'用户决定',desc:'三级讨论充分后，由你手动点「继续工作 / 任务已完成」。'},
+  {id:'user',label:'用户决定',desc:'讨论充分后，由你手动点「继续工作 / 任务已完成」。'},
   {id:'leader',label:'组长独裁',desc:'讨论充分后自动向组长派发裁决，组长回报 decision 后按裁决收口。'},
   {id:'vote',label:'最终方案举手',desc:'讨论充分后向全员广播表决邀请，全员举手后按多数裁决收口。'},
 ];
@@ -1964,7 +1967,6 @@ function setPhase(n){
   // 三个讨论区间上下排列；只高亮当前阶段对应的区间（不隐藏历史记录）
 
 
-  document.getElementById('zone1').classList.toggle('active', n<=1);
 
 
   document.getElementById('zone2').classList.toggle('active', n===2||n===3||n===4);
@@ -2102,7 +2104,7 @@ function applyStageGates(stage){
   const hb=document.getElementById('harnessBlock');
   const op=document.getElementById('offlinePanel');
   const fab=document.getElementById('interjectFab');
-  const sBtn=document.getElementById('selectBtn');
+  /* selectBtn 已退役（平台不选人，2026-10-31） */
   const aBtn=document.getElementById('addMemberBtn');
   const cfBtn=document.getElementById('confirmBtn');
   if(!sbOk){
@@ -2137,11 +2139,10 @@ function renderActList(box, acts){
 function runStageAction(id){
   const M={
     discuss:()=>{
-      const target=document.getElementById(sbStageId==='discuss2'?'msgInput2':sbStageId==='review'?'msgInput3':'msgInput1');
+      const target=null; /* 已退役：三个自由发言框都不再存在（2026-10-29） */
       if(target){ target.focus(); target.scrollIntoView({block:'center',behavior:'smooth'}); }
     },
     finish_discuss:()=>endDiscuss(),
-    select_members:()=>selectMembers(),
     add_member:()=>addMemberRow(),
     save_roster:()=>saveMembers(),
     confirm_members:()=>confirmMembers(),
@@ -2251,7 +2252,7 @@ function renderOrphans(o){
       '<div class="os-row">· '+esc((x.role||x.member_id)+(x.display_name?('（'+x.display_name+'）'):''))
       +'<div>'+esc(x.text||'')+'</div>'
       +'<div class="os-advice">'+esc(x.advice||'')+'</div></div>').join('')
-    +'<button class="btn" type="button" id="osGoRoster" style="margin-top:7px">去名单移除（选定员工区）</button>';
+    +'<button class="btn" type="button" id="osGoRoster" style="margin-top:7px">去名单移除（选人区）</button>';
   const b=document.getElementById('osGoRoster');
   if(b) b.onclick=()=>{
     const t=document.getElementById('rosterBlock');
@@ -2259,6 +2260,43 @@ function renderOrphans(o){
       t.style.outline='2px solid var(--accent)'; setTimeout(()=>{t.style.outline='';},1600); }
   };
   if(sbOk) applyStageGates({id:sbStageId});   /* 孤儿时放开名单（FE-20 门控联动） */
+}
+
+/* ── 工作过程（D后端-43）：它在自己回合里报的每一步；同一份 GET /api/progress ── */
+let _pgTimer=null;
+async function loadProgress(){
+  const panel=document.getElementById('progressPanel');
+  const body=document.getElementById('pgBody');
+  const sum=document.getElementById('pgSummary');
+  if(!panel||!body)return;
+  if(!wsId){panel.style.display='none';return;}
+  panel.style.display='';
+  try{
+    const tid=window._wsTaskId||'';
+    const q='?limit=30'+(tid?('&task_id='+encodeURIComponent(tid)):'');
+    const d=await fetch('/api/progress'+q).then(x=>x.json());
+    if(d&&d.error){body.innerHTML='';body.append(sfEl('div','sf-err','读取失败：'+d.error));return;}
+    const items=(d&&d.items)||[];
+    if(sum){sum.style.display='';sum.className='sf-summary'+(items.length?' ok':'');sum.textContent=items.length?(items.length+' 条'):'0 条';}
+    body.innerHTML='';
+    if(!items.length){
+      const t=sfEl('div','sf-empty',(d&&d.hint)?d.hint:'它还没报过工作过程 —— 让它干活时调 report_progress。');
+      body.append(t);return;
+    }
+    const wrap=sfEl('div','pg-tl');
+    items.forEach(it=>{
+      const row=sfEl('div','pg-tl-item '+String((it&&it.kind)||'step'));
+      row.append(sfEl('span','pg-tl-dot'));
+      const b=sfEl('div','pg-tl-body');
+      b.append(sfEl('span','pg-tl-time',String((it&&it.at)||'').replace('T',' ').slice(0,19)));
+      b.append(sfEl('span','pg-tl-text',String((it&&it.text)||'')));
+      if(it&&it.task_id) b.append(sfEl('span','pg-tl-task','任务 '+it.task_id));
+      row.append(b); wrap.append(row);
+    });
+    body.append(wrap);
+  }catch(e){
+    body.innerHTML='';body.append(sfEl('div','sf-err','读取失败：'+e.message));
+  }
 }
 
 async function loadSessionFlow(){
@@ -2278,6 +2316,7 @@ async function loadSessionFlow(){
     }
     renderSessionFlow(r);
     await loadOrphans();   /* FE-23：成员卡孤儿字段来自 members-status；横幅另拉 /orphans（读接口） */
+    loadProgress();        /* D后端-43：工作过程（它在自己回合里报的） */
   }catch(e){
     body.innerHTML='';body.append(sfEl('div','sf-err','加载失败：'+e.message));
   }
@@ -2292,7 +2331,7 @@ function renderSessionFlow(r){
     else{sum.className='sf-summary warn';sum.textContent=((r.summary.manual_members||[]).length)+' 名成员有需人工步骤';}
   }else{sum.style.display='none';}
   body.innerHTML='';
-  if(!members.length){body.append(sfEl('div','sf-empty','尚无成员（先选定员工）。'));return;}
+  if(!members.length){body.append(sfEl('div','sf-empty','尚无成员（先去选人）。'));return;}
   members.forEach(m=>body.appendChild(_sfCard(m)));
 }
 function _sfCard(m){
@@ -2353,7 +2392,12 @@ function _sfCard(m){
   const b2=sfEl('button','btn','送出具体桥 5'+_sfFgSuffix(m.steps,'5_deliver'));
   b2.type='button';
   b2.onclick=()=>sfDeliver(m.member_id,b2);
-  acts.append(b1,b2);
+  /* ★2026-10-26：开工闸让人"对每个成员点「自检」"，可页面里一直没有这个按钮 ⇒ 永远过不了闸。
+     这里补上（协议型成员靠它判"能不能被派活"；桌面类也用它看窗口/桥是否真的在位）。 */
+  const b3=sfEl('button','btn','自检（它现在能不能接活）');
+  b3.type='button';
+  b3.onclick=()=>sfSelfCheck(m.member_id,b3);
+  acts.append(b1,b2,b3);
   card.append(acts);
   const res=sfEl('div','sf-res');
   res.id='sfRes_'+m.member_id;
@@ -2362,10 +2406,55 @@ function _sfCard(m){
   if(last)_sfShowResult(res,last.r,last.kind);
   return card;
 }
+/** 自检：真打 `POST …/member/{id}/self-check`，把 ok/why/next 原样贴出来（不粉饰） */
+async function sfSelfCheck(mid, btn){
+  const res=document.getElementById('sfRes_'+mid);
+  if(btn)btn.disabled=true;
+  if(res){res.className='sf-res show';res.innerHTML='';res.append(sfEl('div','sf-badge','正在自检…'));}
+  try{
+    const r=await fetch(`/api/workshop/${wsId}/member/${mid}/self-check`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(x=>x.json());
+    if(res){
+      _sfLast[mid]={r:r,kind:'selfcheck'};      /* 重画卡片后还能看到这次结果 */
+      res.innerHTML='';
+      const ok=r&&r.ok===true;
+      res.classList.add(ok?'ok':'fail');
+      res.append(sfEl('div','sf-badge', ok?'✔ 自检通过：它能被派活':'✗ 自检没过：'+(r&&(r.why||r.error)||'没回原因')));
+      const meta=[];
+      if(r&&r.state)meta.push('state='+r.state);
+      if(r&&r.protocol)meta.push('协议='+r.protocol);
+      if(r&&r.url)meta.push('地址='+r.url);
+      if(r&&r.member_status)meta.push('成员状态='+r.member_status);
+      if(r&&r.entry_state)meta.push('接入='+r.entry_state);
+      if(meta.length)res.append(sfEl('div','sf-meta',meta.join(' · ')));
+      if(r&&r.next)res.append(sfEl('div','sf-line','下一步：'+r.next));
+    }
+  }catch(e){
+    if(res){res.className='sf-res show fail';res.innerHTML='';res.append(sfEl('div','sf-badge','✗ 自检请求失败：'+e.message));}
+  }finally{
+    if(btn)btn.disabled=false;
+    loadSessionFlow();          /* 状态可能变了（entry_state/status） */
+    loadStageBar&&loadStageBar();
+  }
+}
+
 function _sfShowResult(res,r,kind){
   res.className='sf-res show';
   res.innerHTML='';
   /* 失败路径（网络错/HTTP非2xx）：与 verified:false 的"待人工"严格分开——失败是失败 */
+  if(kind==='selfcheck'&&r){
+    const ok=r.ok===true;
+    res.classList.add(ok?'ok':'pending');
+    res.append(sfEl('div','sf-badge', ok?'✔ 自检通过：它能被派活':'✗ 自检没过：'+(r.why||r.error||'没回原因')));
+    const meta=[];
+    if(r.state)meta.push('state='+r.state);
+    if(r.protocol)meta.push('协议='+r.protocol);
+    if(r.url)meta.push('地址='+r.url);
+    if(r.member_status)meta.push('成员状态='+r.member_status);
+    if(r.entry_state)meta.push('接入='+r.entry_state);
+    if(meta.length)res.append(sfEl('div','sf-meta',meta.join(' · ')));
+    if(r.next)res.append(sfEl('div','sf-line','下一步：'+r.next));
+    return;
+  }
   if(kind==='err'||!r||(r.error&&r.success!==true)){
     res.classList.add('fail');
     res.append(sfEl('div','sf-badge','✗ 请求失败：'+((r&&(r.error||r.detail))||'网络错误')));
@@ -2858,7 +2947,9 @@ function renderGateBanner(gate){
   if(!bar)return;
   if(!gate || gate.ok===true){ bar.style.display='none'; return; }
   document.getElementById('gateWhy').textContent=gate.why||'';
-  document.getElementById('gateNext').textContent=gate.next_step?('下一步：'+gate.next_step):'';
+  const _nsTxt=gate.next_step?('下一步：'+gate.next_step):'';
+  /* 后端的措辞是「验一次」，本页的按钮叫「自检」—— 别让人去找一个不存在的按钮 */
+  document.getElementById('gateNext').textContent = _nsTxt + (_nsTxt.includes('验一次') ? '（本页这个按钮叫「自检」，在右侧成员卡上）' : '');
   const go=document.getElementById('gateGo');
   if(go) go.style.display=(gate.state==='no_members'||gate.state==='no_verified_member')?'inline-block':'none';
   bar.style.display='block';
@@ -2877,11 +2968,11 @@ function renderNextStep(){
     /* 通道 90 号缺陷：大厅发过任务的间（hall_content 非空）status 仍是 draft，
        原 draft 文案却让人"回大厅发布任务" ⇒ 自相矛盾。有任务 ⇒ 按一级讨论指引走。 */
     draft: _wsHall
-      ? ['任务已发布。下一步：与平台AI明确需求，或直接点「结束讨论，选定员工 →」进入选人。',[['结束讨论，选定员工 →',()=>endDiscuss()]]]
+      ? ['任务已发布。下一步：在外面把方向聊透、资料整理好，回来在「本间对接中心」填方向、手动选组长；要选人就点「结束讨论，去选人 →」。',[['结束讨论，去选人 →',()=>endDiscuss()]]]
       : ['该工作间尚在草稿；回大厅发布任务继续。',[['回大厅',()=>{location.href='/';}]]],
-    discussing:['与平台AI明确需求；说“开始选人”，或点按钮结束讨论去选人。',[['结束讨论，选定员工 →',()=>endDiscuss()]]],
-    selecting:['在右侧员工列表初选：点「让平台 AI 选定员工」或手工勾选；名单确认后进入二级讨论。',[['确认成员',()=>_nsFlash('confirmBtn')]]],
-    division:['分工安排已按当前名单更新（library/plan.md）。在讨论里发一条「分工可以，开始工作」，等平台AI回复「分工已明确，可以开始工作」后点「开始工作」。',[['📚 资料库',()=>_nsOpen('#libPanel')],['🏗 隔间与桥',()=>_nsOpen('')],['开始工作',()=>_nsFlash('startWorkBtn')]]],
+    discussing:['方向在外面整理好（平台不参与讨论）；定稿后点「结束讨论，去选人 →」。',[['结束讨论，去选人 →',()=>endDiscuss()]]],
+    selecting:['在右侧员工名单填人（标准路径：组长交名单回执；也可「+ 添加职位」手动补录）；名单确认后进入分工。',[['确认成员',()=>_nsFlash('confirmBtn')]]],
+    division:['分工安排已按当前名单更新（library/plan.md）。跟组长确认分工后点「开始工作」。',[['📚 资料库',()=>_nsOpen('#libPanel')],['🏗 隔间与桥',()=>_nsOpen('')],['开始工作',()=>_nsFlash('startWorkBtn')]]],
     running:['成员在各自隔间作业；完成后走 review 收口。',[['🏗 隔间与桥',()=>_nsOpen('')],['📚 资料库',()=>_nsOpen('#libPanel')]]],
     review:['完成复核与收口；可查隔间成果。',[['🏗 隔间与桥',()=>_nsOpen('')]]],
     done:['任务完成；隔间与资料库可回看留档。',[['🏗 隔间与桥',()=>_nsOpen('')]]]
@@ -2900,134 +2991,8 @@ function renderNextStep(){
     act.appendChild(b);
   });
 }
-async function sendDiscuss(zone){
-
-
-  zone=zone||1;
-
-
-  const inp=document.getElementById('msgInput'+zone);
-
-
-  if(!inp)return;
-
-
-  const text=inp.value.trim();
-
-
-  if(!text || !wsId) return;
-
-
-  inp.value='';
-
-
-  addMsg('user', text, zone);
-
-
-  const think=document.createElement('div');
-
-
-  think.className='msg ai';
-
-
-  think.id='thinking';
-
-
-  think.innerHTML='<span class="spinner"></span>思考中...';
-
-
-  const d=document.getElementById('discussion'+zone);
-
-
-  d.appendChild(think);
-
-
-  d.scrollTop=d.scrollHeight;
-
-
-  if(zone===3){
-    const cc=document.getElementById('wsvChatCenter');
-    if(cc){const th=think.cloneNode(true);th.removeAttribute('id');cc.appendChild(th);cc.scrollTop=cc.scrollHeight;}
-  }
-
-
-  try{
-
-
-    const r=await fetch(`/api/workshop/${wsId}/discuss`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})}).then(x=>x.json());
-
-
-    const t=document.getElementById('thinking'); if(t)t.remove();
-
-
-    if(r.reply){
-
-
-      const who=(r.stage==='leader'||r.stage==='leader_pending')?'leader':(r.stage==='orchestrator'?'ai':'ai');
-      const rz=(typeof r.zone==='number')?r.zone:zone;
-      addMsg(who, r.reply, rz);
-      if(r.stage==='leader_pending' && r.dispatched){ startMsgPolling(); }
-
-
-      const act=(r&&r.action)?r.action:'';
-      const asrc=(r&&r.action_source)?r.action_source:'';
-      _wsStatus=r.status||_wsStatus; renderNextStep();
-      /* 恒等式（示例Harness-E 15/16号实测）：后端 _l1_action_by_rule() 只返回 "select"
-         ⇒ rule_fallback ⇒ action==='select'。非 select 分支无需 rule_fallback 提示（原死代码已删）。 */
-      if(act==='select'){
-        setPhase(2);
-        showSidebar();
-        loadHarnesses().then(hs=>renderHarnessList(hs));
-        addMsg('notice', asrc==='rule_fallback'
-          ? '⚑ 推进提示（规则兜底 rule_fallback）：需求已明确，可以选定员工了。注意——上方 AI 回复仍可能在聊细节，推进是规则判定的，别把它的话当成「已同意」。请直接在左侧员工列表点选成员。'
-          : '✅ 需求已明确，可以选定员工了——请在左侧员工列表点选成员（AI 初选可改，确认后进入下一阶段）。', rz);
-      }else if(act==='start'){
-        setPhase(3);
-        document.getElementById('startWorkBtn').style.display='';
-        syncManualActBtn();
-      }else if(act==='continue'){
-        syncReviewButtons();
-      }else if(act==='complete'){
-        syncReviewButtons();
-      }else{
-        if(r.reply.includes('需求已明确，可以选定员工')){
-          setPhase(2);
-          showSidebar();
-          loadHarnesses().then(hs=>renderHarnessList(hs));
-        }else if(r.reply.includes('分工已明确，可以开始工作')){
-          setPhase(3);
-          document.getElementById('startWorkBtn').style.display='';
-          syncManualActBtn();
-        }else if(r.reply.includes('可以继续工作')){
-          syncReviewButtons();
-        }else if(r.reply.includes('任务已完成')){
-          syncReviewButtons();
-        }
-      }
-
-
-    }else{
-
-
-      addMsg('ai', '（讨论失败：'+(r.error||'未知')+'）', zone);
-
-
-    }
-
-
-  }catch(e){
-
-
-    const t=document.getElementById('thinking'); if(t)t.remove();
-
-
-    addMsg('ai', '（讨论请求失败：'+e.message+'）', zone);
-
-
-  }
-
-
-}
+/* 2026-10-31（老板）：openStructuredDiscuss 与死代码 sendDiscuss 整体退役 ——
+   「去结构化讨论」指路按钮已撤，四类表单在 v5 对接中心里自有一席，这里不再跳转。 */
 
 
 async function leaderStatus(){
@@ -3036,11 +3001,12 @@ async function leaderStatus(){
   const old=btn.textContent; btn.disabled=true; btn.textContent='已通知组长检查...';
   try{
     const d=await fetch('/api/workshop/'+wsId).then(x=>x.json());
-    if(d.status!=='division'&&d.status!=='running'){ acToast('仅在二级讨论/工作阶段可让组长检查状态'); return; }
+    if(d.status!=='division'&&d.status!=='running'){ acToast('仅在分工/干活阶段可让组长检查状态'); return; }
     // 真实唤起组长（不伪造组长发言）：消息不含任何钩子/角色词，仅作为普通事件派发给组长
-    const r=await fetch(`/api/workshop/${wsId}/discuss`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'检查员工状态。'})}).then(x=>x.json());
+    const r={ ok:false, status:410, text:async()=>'' }; /* ★2026-10-29 退役：自由发言不再可用，检查状态请看控制台/账本 */ r.then(x=>x.json());
     if(r.stage==='leader_pending'||r.stage==='leader'){ acToast('已通知组长检查，组长的真实回报将实时出现'); startMsgPolling(); }
-    else acToast(r.error||'已发送');
+    else if(r.error){ acToast('失败：'+(r.code?r.code+' · ':'')+r.error+((r.next||r.next_step)?(' · 下一步：'+(r.next||r.next_step)):'')); }
+    else acToast('未获得回复');
   }catch(e){ acToast('发送失败：'+e.message); }
   btn.disabled=false; btn.textContent=old;
 }
@@ -3282,6 +3248,57 @@ function makeRosterRow(member, harnesses){
 document.addEventListener('click',()=>document.querySelectorAll('.dd-list.open').forEach(l=>l.classList.remove('open')));
 
 
+/* ★2026-10-30（D后端-57）：员工名单改读 v5 工位。
+   后端 `GET /api/workshop/{id}` 新增只读兼容层：
+     members_v5    [{member_seq, slot_dir, state, harness, model}]（不含凭据）
+     roster_counts {pending/acked/entered/active/blocked/lost, slot_proposed}
+     members_source `v5` / `legacy` / `empty`（取不到时另有 roster_why）
+   ⇒ 有 v5 名单就以它为准；**能不能开工不在这里算**，横幅只读 `gate`（后端已按 v5 判）。
+   状态中文只是**显示映射**，原始 state 保留在 title 里（口径以后端为准，前端不新增语义）。 */
+const RV5_STATE={pending:'待接',acked:'已收唤醒',entered:'已进入',active:'接上了',blocked:'受阻',lost:'失联'};
+const RV5_SRC={v5:'v5',legacy:'旧名单（v5 为空）',empty:'空',unknown:'取不到'};
+function renderMembersV5(d){
+  const box=document.getElementById('membersV5');
+  const head=document.getElementById('rosterHead');
+  if(!box) return;
+  d=d||{};
+  const mem=Array.isArray(d.members_v5)?d.members_v5:[];
+  const cnt=(d.roster_counts&&typeof d.roster_counts==='object')?d.roster_counts:{};
+  const src=String(d.members_source||'');
+  if(!mem.length){
+    box.style.display='none';
+    if(head){head.style.display='none';head.textContent='';}
+    return;
+  }
+  const n=mem.length, act=Number(cnt.active||0), prop=Number(cnt.slot_proposed||0);
+  if(head){
+    head.style.display='';
+    head.textContent='名单 '+n+' 人（接上 '+act+'）· 来源 '+(RV5_SRC[src]||src||'未知');
+    head.title='数据源：GET /api/workshop/{ws_id} 的 members_v5 / roster_counts / members_source（只读，不含凭据）';
+  }
+  let h='<div class="rv5-head"><b>名单 '+n+' 人</b><span>接上 '+act+'</span>'+
+    '<span class="rv5-src" title="后端 gate 按同一口径算：v5 名单优先，旧名单只在 v5 为空时兜底">来源 '+
+    esc(RV5_SRC[src]||src||'未知')+'</span></div>';
+  h+=mem.map(m=>{
+    const st=String(m.state||'');
+    /* 只读兜底：后端 effective_members 现在读 `harness`/`model`，而 v5_roster 落库用的是
+       `harness_id`/`model_snapshot` ⇒ 两个名字都认（已在回执里请他统一，前端不另立语义）。 */
+    const meta=[m.harness||m.harness_id,m.model||m.model_snapshot].filter(Boolean).map(esc).join(' · ')||'（未记 harness/模型）';
+    return '<div class="rv5-row" title="原始状态：'+esc(st||'（空）')+'">'+
+      '<span class="rv5-dot '+esc(st)+'"></span>'+
+      '<span class="rv5-slot" title="'+esc(m.slot_dir||'')+'">'+esc(m.slot_dir||('工位 '+(m.member_seq??'?')))+'</span>'+
+      '<span class="rv5-meta">'+meta+'</span>'+
+      '<span class="rv5-state">'+esc(RV5_STATE[st]||st||'状态未记')+'</span></div>';
+  }).join('');
+  const foot=[];
+  if(prop>0) foot.push('另有 '+prop+' 个岗位**还没人**（slot 有人才有工位，只有工位参与闸门）');
+  if(d.roster_why) foot.push('后端说明：'+esc(d.roster_why));
+  foot.push('能不能开工看上方「还不能开工」横幅（读 gate），本表不参与判断。');
+  h+='<div class="rv5-foot">'+foot.join('；')+'</div>';
+  box.innerHTML=h;
+  box.style.display='';
+}
+
 async function renderRoster(members, harnesses){
 
 
@@ -3359,7 +3376,22 @@ function syncMembers(){
       document.getElementById('saveMembersBtn').style.display='';
 
 
-      document.getElementById('lastAction').textContent='名单已同步到后端';
+      let m='名单已同步到后端';
+
+
+      /* ★D后端-59：v5_sync 照实回显（同 saveMembers 的口径） */
+      const v=d.v5_sync;
+      if(v){
+        if(v.ok){
+          const n=(v.counts&&v.counts.total!=null)?v.counts.total:((v.slots_created||[]).length+(v.slots_updated||[]).length);
+          m+=`，已同步进工位名单（${n} 个岗位）`;
+        }else{
+          m+=`，⚠️ 工位名单没同步：${v.why||v.note||'（后端没给原因）'}`;
+        }
+      }
+
+
+      document.getElementById('lastAction').textContent=m;
 
 
       loadSessionFlow();
@@ -3443,6 +3475,18 @@ function saveMembers(){
       if((d.removed||[]).length>0) msg+=` 移除 ${d.removed.length} 人已终止接入。`;
 
 
+      /* ★D后端-59：响应里的 v5_sync 照实回显 —— ok=true 说同步了几个岗位；失败给 why/note（不吞） */
+      const v=d.v5_sync;
+      if(v){
+        if(v.ok){
+          const n=(v.counts&&v.counts.total!=null)?v.counts.total:((v.slots_created||[]).length+(v.slots_updated||[]).length);
+          msg+=` 已同步进工位名单（${n} 个岗位）。`;
+        }else{
+          msg+=` ⚠️ 工位名单没同步：${v.why||v.note||'（后端没给原因）'}`;
+        }
+      }
+
+
       acToast(msg);
 
 
@@ -3470,8 +3514,7 @@ function showSelectionNotice(reason,advice,registerUrl){
     box=document.createElement('div');box.id='selectionNotice';
     box.setAttribute('role','status');
     box.style.cssText='margin:8px 0;padding:10px;border:1px solid var(--rule);border-radius:8px;line-height:1.6';
-    const btn=document.getElementById('selectBtn');
-    if(btn)btn.insertAdjacentElement('afterend',box);
+    /* selectBtn 已退役（平台不选人，2026-10-31） */
   }
   box.replaceChildren();
   const text=document.createElement('div');text.textContent=reason||'';box.appendChild(text);
@@ -3499,62 +3542,11 @@ function updateSelectionReadiness(hs){
   if(hs.length===0){
     showSelectionNotice('还没有接入员工。任务和讨论已保留，你可以先把需求聊清楚。','选人前，请先接入一个能执行任务的 agent。','/docking.html');
   }else{
-    showSelectionNotice('已接入 '+hs.length+' 个员工，可以按任务需要选人。','点击「让平台 AI 选定员工」，或手工指定名单。');
+    showSelectionNotice('已接入 '+hs.length+' 个员工，可以按任务需要选人。','按组长分工回执填名单；或点「+ 添加职位」手动补录。');
   }
 }
-async function selectMembers(){
+/* 已退役（2026-10-31）：平台不选人；此函数随按钮一起删除（见 D后端-61） */
 
-
-  const btn=document.getElementById('selectBtn'); btn.disabled=true; btn.textContent='选定中...';
-
-
-  let r;
-  try{
-    const response=await fetch(`/api/workshop/${wsId}/select-members`,{method:'POST'});
-    r=await response.json();
-    if(!response.ok)throw new Error(r.error||r.reason||'HTTP '+response.status);
-  }catch(error){
-    btn.disabled=false;btn.textContent='重试选人';
-    showSelectionNotice('选人失败：'+error.message,'当前名单未改动，请重试。');
-    return;
-  }
-
-
-  btn.disabled=false; btn.textContent='重新选定';
-
-
-  const hs=await loadHarnesses();
-
-
-  renderHarnessList(hs);
-
-
-  if(r.success){
-
-
-    _wsStatus='selecting'; renderNextStep(); loadSessionFlow(); loadOfflineReport(); loadStageBar();
-    renderRoster(r.members, hs);
-    setPhase(2);
-    showSelectionNotice(r.reason||(r.members.length?'已生成候选名单，请检查后确认。':'本次没有选出员工。'),r.advice,r.register_url);
-
-
-    document.getElementById('confirmBtn').style.display='';
-
-
-    document.getElementById('saveMembersBtn').style.display='';
-
-
-  }else{
-
-
-    showSelectionNotice(r.reason||r.error||'本次未能选定员工。',r.advice||'请检查接入员工后重试。',r.register_url);
-    acToast('选定失败：'+(r.reason||r.error||'请查看选人区提示'), true);
-
-
-  }
-
-
-}
 
 
 // ── 手动激活模板（复制粘贴激活组长 / 组长转发员工模板）────────
@@ -3593,9 +3585,9 @@ async function manualActRender(){
     if(leader){
       html+='<div class="mab-title">👑 组长激活模板 <button class="btn" onclick="manualActCopy(\'leader\')">复制组长模板</button></div>';
       html+='<pre class="mab-pre">'+esc(fill(leader))+'</pre>';
-      html+='<div class="mab-tip">把上方模板复制粘贴给组长 harness。组长接入回复「收到，已进入工作状态。」后，即可在本页二级讨论区与组长交流选定成员；随后由组长把下方各员工模板发送给对应员工完成激活。</div>';
+      html+='<div class="mab-tip">把上方模板复制粘贴给组长 harness。组长接入回复「收到，已进入工作状态。」后，即可在本页组长对话框与组长交流选定成员；随后由组长把下方各员工模板发送给对应员工完成激活。</div>';
     }else{
-      html+='<div class="mab-empty">员工名单中未找到「组长」角色，请先在选定员工阶段指定组长。</div>';
+      html+='<div class="mab-empty">员工名单中未找到「组长」角色，请先在选人阶段指定组长。</div>';
     }
     html+='</div>';
     if(rest.length>0){
@@ -3679,7 +3671,7 @@ function pollWorkStatus(){
       clearInterval(pollWorkStatus._t);
 
 
-      addMsg('notice','全部员工已回报/就绪，可进入三级讨论复盘进展。',2);
+      addMsg('notice','全部员工已回报/就绪，可进入验收复盘进展。',2);
 
 
       document.getElementById('reviewBtn').style.display='';
@@ -3733,99 +3725,11 @@ async function confirmHumanEnter(btn){
 
 
 // ══════════════════════════════════════════════════════════════════════
-// ★V52 辩论模式（**可开可关**，默认关）
-//   判定全在后端 `platform/debate.py`（纯逻辑内核）；这里只做三件事：
-//   读状态 / 开关 / 提交陈述 / 触发一轮。**没有在前端重算任何权重或分数** ——
-//   否则就是"两套口径"，界面上看到的会和裁决书不一致。
+// ★V52 辩论模式已**整体退役**（2026-10-31，老板：「没用的功能卡片还留着干什么」）：
+//   debateInfo / loadDebate / paintDebateBar / openDebateForm / parseDebateEvidence /
+//   submitDebateStatement / toggleDebate / runDebate 与 zone3 的辩论条+陈述表单一并撤除。
+//   后端 platform/debate.py 与端点未动。
 // ══════════════════════════════════════════════════════════════════════
-let debateInfo = {enabled:false, round:0, statement_count:0};
-
-async function loadDebate(){
-  try{
-    const d = await fetch(`/api/workshop/${wsId}/debate`).then(r=>r.json());
-    debateInfo = d || {};
-    paintDebateBar(d);
-  }catch(e){ /* 读不到就保持原样，不假装知道 */ }
-}
-
-function paintDebateBar(d){
-  const st = document.getElementById('debateState');
-  const btn = document.getElementById('debateToggleBtn');
-  if(!st) return;
-  const on = !!(d && d.enabled);
-  st.textContent = on
-    ? `辩论模式：开 · 第 ${d.round||0} 轮 · 已收陈述 ${d.statement_count||0} 条`
-    : '辩论模式：关（默认关）';
-  st.className = 'debate-state' + (on ? ' on' : '');
-  if(btn) btn.textContent = on ? '关闭' : '开启';
-  // 只在三级讨论里能跑（后端也会拒，这里只是别让按钮骗人）
-  const runBtn = [...document.querySelectorAll('#debateBar .btn')].find(b=>b.textContent.includes('跑一轮'));
-  if(runBtn) runBtn.title = (d && d.in_review) ? '跑一轮证据裁决' : '辩论只在三级讨论（review）里跑';
-}
-
-function openDebateForm(){
-  const f = document.getElementById('debateForm');
-  if(f) f.style.display = 'flex';
-  const s = document.getElementById('debateSpeaker');
-  if(s && !s.value){
-    // 默认填第一个成员名字，省一次输入（**能改**，不是写死）
-    const first = document.querySelector('#roster .roster-item .ri-name');
-    s.value = (first && first.textContent.trim()) || '';
-  }
-}
-
-function parseDebateEvidence(txt){
-  const out = [];
-  (txt||'').split('\n').forEach(line=>{
-    const t = line.trim();
-    if(!t) return;
-    const parts = t.split('|');
-    const kind = (parts[0]||'url').trim() || 'url';
-    const ref = (parts[1]||'').trim();
-    if(!ref) return;
-    out.push({kind, ref, verified: (parts[2]||'').trim() === '1' || /^(true|yes|是)$/i.test((parts[2]||'').trim())});
-  });
-  return out;
-}
-
-async function submitDebateStatement(){
-  const msg = document.getElementById('debateFormMsg');
-  const body = {
-    speaker: (document.getElementById('debateSpeaker').value||'').trim(),
-    claim:   (document.getElementById('debateClaim').value||'').trim(),
-    evidence: parseDebateEvidence(document.getElementById('debateEvidence').value),
-    reasoning: (document.getElementById('debateReasoning').value||'').trim(),
-  };
-  if(!body.claim){ if(msg) msg.textContent = '结论不能为空'; return; }
-  if(!body.speaker){ if(msg) msg.textContent = '要说清楚是谁说的（裁决要指名道姓）'; return; }
-  const r = await fetch(`/api/workshop/${wsId}/debate/statements`,
-    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const d = await r.json().catch(()=>({}));
-  if(!r.ok){ if(msg) msg.textContent = d.error || ('提交失败 HTTP '+r.status); return; }
-  if(msg) msg.textContent = `已记录（共 ${d.statement_count} 条）` + (d.evidence_count ? '' : '｜注意：这条没有证据，裁决里权重为 0');
-  document.getElementById('debateClaim').value = '';
-  document.getElementById('debateEvidence').value = '';
-  document.getElementById('debateReasoning').value = '';
-  loadDebate();
-}
-
-async function toggleDebate(){
-  const want = !(debateInfo && debateInfo.enabled);
-  const r = await fetch(`/api/workshop/${wsId}/debate`,
-    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:want})});
-  const d = await r.json().catch(()=>({}));
-  if(!r.ok){ alert(d.error || ('操作失败 HTTP '+r.status)); return; }
-  await loadDebate();
-}
-
-async function runDebate(){
-  const r = await fetch(`/api/workshop/${wsId}/debate/run`,
-    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_asked:true})});
-  const d = await r.json().catch(()=>({}));
-  if(!r.ok){ alert(d.error || ('裁决失败 HTTP '+r.status)); return; }   // 后端的三道闸门都有中文原因
-  await loadDebate();
-  loadWorkshop(wsId);          // 裁决是**追加**一条消息，刷新即可看到（不改任何人的原话）
-}
 
 function startReview(){
   document.getElementById('reviewBtn').style.display='none';
@@ -3908,7 +3812,7 @@ function confirmMembers(){
       document.getElementById('confirmBtn').style.display='none';
 
 
-      // 进入二级讨论：平台 AI 退出，组长接管（后端 confirm-members 已真实派发组长激活任务）
+      // 进入分工：平台 AI 退出，组长接管（后端 confirm-members 已真实派发组长激活任务）
       _wsStatus=d.status||'division'; renderNextStep(); loadSessionFlow(); loadOfflineReport(); loadStageBar();
 
 
@@ -3948,6 +3852,11 @@ function loadWorkshop(id){
     showLayout();
 
 
+    /* ★2026-10-30（D后端-57）：首屏就把 v5 工位名单画出来（不依赖"选人以后"那段分支——
+       原来取名单只发生在 selecting 之后，v5 名单在这里根本没人读，右栏永远「未选员工」）。 */
+    renderMembersV5(d);
+
+
     const msgs=d.discussion||[];
 
 
@@ -3974,16 +3883,21 @@ function loadWorkshop(id){
 
 
       addMsg('user', d.hall_content, 1);
-      /* V-15 补丁：大厅广播拉入工作间后，平台AI回复前显示「思考中...」加载动画 */
-      const think=document.createElement('div');
-      think.className='msg ai';
-      think.id='thinking';
-      think.innerHTML='<span class="spinner"></span>平台AI思考中...';
+      /* ★2026-10-29 老板：三个级的讨论区换成结构化讨论 —— 不再自动发自由发言
+         （原来这里会打 /discuss 拿 410 并留一个"平台AI思考中"转圈） */
       const dEl=document.getElementById('discussion1');
-      if(dEl){ dEl.appendChild(think); dEl.scrollTop=dEl.scrollHeight; }
+      if(dEl){
+        const _n=document.createElement('div');
+        _n.className='msg notice';
+        _n.textContent='这间还没开始讨论。讨论在外面做（SOP）—— 平台不再提供讨论入口，这里只读。';
+        dEl.appendChild(_n); dEl.scrollTop=dEl.scrollHeight;
+      }
       try{
-        const r=await fetch(`/api/workshop/${id}/discuss`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:d.hall_content})}).then(x=>x.json());
+        const r={};
         if(r.reply) addMsg('ai', r.reply, (typeof r.zone==='number')?r.zone:1);
+        /* 2026-10-30：补失败分支——自由发言退役后这里 410，原来静默吞掉；照实显示 code+next */
+        else if(r&&r.error){ addMsg('notice','⚠ 未发出：'+(r.code?r.code+' · ':'')+r.error
+          +(((r.next||r.next_step))?('\n后端给的下一步：'+(r.next||r.next_step)):''),(typeof r.zone==='number')?r.zone:1); }
         /* 90 号：讨论回来刷新真实 status；但用户若已推进到选人/之后阶段，迟到的 draft/discussing 不许把条翻回去 */
         if(r&&r.status){
           stAuto=r.status;
@@ -4054,12 +3968,10 @@ function loadWorkshop(id){
     loadHarnesses();
     await loadStageBar();   /* FE-20：拉权威阶段并施门控（放在最后，保证门控生效顺序） */
     await loadOrphans();    /* FE-23：孤儿横幅（并联动放开名单） */
-    loadDebate();           /* V52：辩论模式状态（开关/轮次/陈述数）—— 默认关，读不到就保持原样 */
+    /* V52 辩论面板已退役（2026-10-31），loadDebate() 调用随之撤销。 */
     /* V34 §1：工作间那个入口**必须带上本间 id**，否则它就成了总控（能看/动别的间）—— 串范围。 */
-    (function(){
-      const pill = document.getElementById('dockingPill');
-      if (pill) pill.href = '/docking.html?ws=' + encodeURIComponent(id);
-    })();
+    /* 2026-10-31：改由 syncWsPills 统一写（boot 时已写过一次，这里用真 id 校正）。 */
+    syncWsPills(id);
 
 
   });
@@ -4299,6 +4211,10 @@ setInterval(()=>{if(drawerOpen()){refreshInterjects();refreshWorkbench();refresh
 const _p=new URLSearchParams(location.search);
 
 
+/* ★2026-10-31（老板「从本间对接中心进去，却像是通用的那一页」的根因）：
+   入口的 ?ws= 原来只在 loadWorkshop 的 fetch 回来之后才写进 href —— 页面刚打开时它还是裸 /v5.html，
+   加载中点一下（或那次请求失败）就落到不带语境的通用页。这里 boot 时**同步**写死，fetch 回来再校正一次。 */
+syncWsPills(_p.get('ws_id')||_p.get('ws')||'');
 if(_p.get('ws_id')) loadWorkshop(_p.get('ws_id'));
 
 
@@ -4317,7 +4233,7 @@ let workshops=[],agents=[];
 const WS_ICON={draft:'📝',discussing:'💬',selecting:'👥',division:'🧩',running:'⚙️',review:'📋',done:'✅'};
 
 
-const WS_LABEL={draft:'草稿',discussing:'一级讨论',selecting:'选定员工',division:'二级讨论',running:'工作中',review:'三级讨论',done:'已完成'};
+const WS_LABEL={draft:'草稿',discussing:'定方向',selecting:'选人',division:'分工',running:'干活',review:'验收',done:'已完成'};
 
 
 function setWSStatus(s){const d=document.getElementById('wsDot'),t=document.getElementById('wsText');if(!d||!t)return;d.className='ws-dot '+s;t.textContent=s==='online'?'已连接':s==='offline'?'已断开':'连接中...';}
@@ -4332,11 +4248,35 @@ function toggleNav(){const c=document.body.classList.toggle('nav-collapsed');con
 function initNav(){try{if(localStorage.getItem('navCollapsed')==='1'){document.body.classList.add('nav-collapsed');const b=document.getElementById('navToggle');if(b)b.textContent='▶'}}catch(e){}}
 
 
-function renderWorkshops(){const l=document.getElementById('workshopList');const cnt=document.getElementById('workshopCount');const st=document.getElementById('statWorkshops');if(cnt)cnt.textContent=workshops.length;if(st)st.textContent=workshops.length;if(!l)return;if(workshops.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无工作间<br><span style="font-size:11px">在大厅发布任务后自动创建</span></div>';return}l.innerHTML=workshops.map(w=>{const s=w.status||'draft',sl2=WS_LABEL[s]||s;const tm=w.created_at?new Date(w.created_at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';const active=wsId===w.workshop_id;return `<div class="workshop-item ${active?'active':''}" data-ws-id="${w.workshop_id}" onclick="openWs('${w.workshop_id}')"><div class="wi-top"><span class="wi-status-dot ${s}"></span><span class="wi-title">${w.pinned?'[置顶] ':''}${esc(w.name||'(无标题)')}</span></div><div class="wi-agents">${(w.members||[]).map(m=>esc(m.role)).join(', ')||'未选员工'}</div><div class="wi-time">${sl2} · ${tm}</div><div class="wi-actions"><button class="wi-act" title="置顶" onclick="event.stopPropagation();togglePin('${w.workshop_id}',${w.pinned?'false':'true'})">${w.pinned?'取消置顶':'置顶'}</button><button class="wi-act" title="重命名" onclick="event.stopPropagation();renameWs('${w.workshop_id}')">重命名</button><button class="wi-act wi-act-danger" title="删除工作间（不可恢复）" onclick="event.stopPropagation();deleteWs('${w.workshop_id}')">删除</button></div></div>`}).join('')}
+function renderWorkshops(){const l=document.getElementById('workshopList');const cnt=document.getElementById('workshopCount');const st=document.getElementById('statWorkshops');if(cnt)cnt.textContent=workshops.length;if(st)st.textContent=workshops.length;if(!l)return;if(workshops.length===0){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">暂无工作间<br><span style="font-size:11px">在大厅发布任务后自动创建</span></div>';return}l.innerHTML=workshops.map(w=>{const s=w.status||'draft',sl2=WS_LABEL[s]||s;const tm=w.created_at?new Date(w.created_at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';const active=wsId===w.workshop_id;return `<div class="workshop-item ${active?'active':''}" data-ws-id="${w.workshop_id}" onclick="openWs('${w.workshop_id}')"><div class="wi-top"><span class="wi-status-dot ${s}"></span><span class="wi-title">${w.pinned?'[置顶] ':''}${esc(w.name||'(无标题)')}</span></div><div class="wi-agents">${(w.members||[]).map(m=>esc(m.role)).join(', ')||((w.gate&&w.gate.members_count)?('名单 '+w.gate.members_count+' 个工位'+(w.gate.members_source?'（来源 '+esc(w.gate.members_source)+'）':'')):'未接成员')}</div><div class="wi-time">${sl2} · ${tm}</div><div class="wi-actions"><button class="wi-act" title="置顶" onclick="event.stopPropagation();togglePin('${w.workshop_id}',${w.pinned?'false':'true'})">${w.pinned?'取消置顶':'置顶'}</button><button class="wi-act" title="重命名" onclick="event.stopPropagation();renameWs('${w.workshop_id}')">重命名</button><button class="wi-act wi-act-danger" title="删除工作间（不可恢复）" onclick="event.stopPropagation();deleteWs('${w.workshop_id}')">删除</button></div></div>`}).join('')}
 
 
 async function refreshWorkshops(){try{const d=await fetch('/api/workshops').then(x=>x.json());workshops=d.workshops||[];renderWorkshops()}catch(e){}}
 
+
+/* 两枚常驻入口（对接中心 / 本间对接中心）**只指向本间**：
+   boot 时按 URL 里的 ws_id 同步写死，loadWorkshop 回来后用真 id 再校正一次。
+   这样"刚打开就点"和"加载完再点"拿到的是同一个工作间，不会掉到通用的 /v5.html。 */
+function syncWsPills(id){
+  if(!id)return;
+  const q='?ws='+encodeURIComponent(id);
+  const pill=document.getElementById('dockingPill');
+  if(pill)pill.href='/docking.html'+q;
+  const cpill=document.getElementById('consolePill');
+  if(cpill){
+    cpill.href='/v5.html'+q;
+    cpill.title='本间对接中心 · '+id+'（只干这个工作间的活）';
+  }
+}
+
+/* 点击时再校一次：万一在 boot 脚本跑起来之前就被点到（页面还没解析完），也不能掉到通用页 */
+function pillNav(a,base){
+  const p=new URLSearchParams(location.search);
+  const id=(p.get('ws_id')||p.get('ws')||'').trim();
+  const cur=a.getAttribute('href')||'';
+  if(id&&cur.indexOf('?ws=')<0)a.href=base+'?ws='+encodeURIComponent(id);
+  return true;   /* 照常跳转 */
+}
 
 function openWs(wid){if(wid===wsId)return;location.href='/workshop.html?ws_id='+wid}
 

@@ -16,6 +16,15 @@
 """
 from __future__ import annotations
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _legacy_ai_select_on(monkeypatch):
+    """★2026-10-31：`select-members` 已退役（默认 410）；本文件测的是**旧行为的诚实性**，
+    所以显式打开兼容开关，别让退役把判据挡住。"""
+    monkeypatch.setenv("AC_ALLOW_LEGACY_AI_SELECT", "1")
+
 import asyncio
 
 import pytest
@@ -93,6 +102,7 @@ def select_env(monkeypatch):
     state_mod.workshops.pop(ws.workshop_id, None)
 
 
+@pytest.mark.skip(reason="端点在 2026-10-31 已退役（默认 410 AI_SELECT_RETIRED）；「失败要说话」的判据改由 test_v5_roster.py::test_ai_select_is_retired 承担")  # skip_retired_select
 def test_select_members_reports_ai_failure_honestly(select_env):
     """★核心：AI 报 402 时，**不许**回 success=True + 空名单 + "可能是 AI 返回空名单"。"""
     from agent_community.platform.routers import workshops_assign as wa

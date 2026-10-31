@@ -173,6 +173,11 @@ def test_workshop_missing_returns_404(name):
 # 二、discuss：校验 / 敏感拦截 / AI 分支 / action 判定
 # ═══════════════════════════════════════════════════════════════
 class TestDiscuss:
+    # ★2026-10-29：v4 自由发言讨论区已退役（默认 410 FREECHAT_RETIRED，见 `/discuss` 的 docstring）
+    # 这一组测的是**兼容开关**下的老行为，所以显式打开；默认行为另有一条 test_retired_by_default。
+    @pytest.fixture(autouse=True)
+    def _legacy_discuss_on(self, monkeypatch):
+        monkeypatch.setenv("AC_ALLOW_LEGACY_DISCUSS", "1")
 
     def test_empty_message_400_and_nothing_written(self, mkws, monkeypatch):
         set_ai_provider(monkeypatch, FakeAI())
@@ -543,3 +548,19 @@ class TestStateMachineEndpoints:
         assert p2["event"]["note"] == "terminal:dropped"
         assert p2["event"]["state"] == "dropped"
         assert sm.get_state("ws_t") == "dropped", "dropped 是终态，不得被 resume 复活"
+
+def test_retired_by_default(mkws, monkeypatch):
+    """默认（没开兼容开关）**必须 410**，并且不落库、不驱动 AI。
+
+    这是"三个级的讨论区已换成结构化讨论"的行为级判据（真机版见
+    `tools/discussion_retire_check.py` 的 ⑩ 格）。
+    """
+    monkeypatch.delenv("AC_ALLOW_LEGACY_DISCUSS", raising=False)
+    ws = mkws(status="discussing")
+    status, payload = unpack(run(wd.workshop_discuss("ws_t", FakeRequest({"message": "聊聊"}))))
+    assert status == 410, "默认必须是 410（退役），实得 %s" % status
+    assert payload["code"] == "FREECHAT_RETIRED"
+    assert payload["legacy"] is False
+    assert "/ailp" in payload["next"], "必须告诉调用方改用哪个新入口"
+    assert ws.discussion == [], "退役入口不许写讨论区"
+

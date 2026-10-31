@@ -603,6 +603,35 @@ async def harness_register_prompt(request: Request):
                              "note": out["note"]})
 
 
+@router.get("/api/harness/mcp-config")
+async def harness_mcp_config(request: Request):
+    """**把本平台挂成 MCP 服务器**的配置（老板 2026-10-25：「MCP 不用折腾了，直接按 MCP 协议用」）。
+
+    MCP 的方向是「应用来调工具」：平台**不能**反向让对方的模型开口。正确用法是
+    **平台当服务端**（`agent_community/mcp_server.py`，stdio、零第三方依赖）、对方的 agent 当客户端挂上它；
+    挂上之后用户在那边正常说话，agent 就在**自己的会话里回话**，需要平台数据时调平台工具。
+
+    这里回的是**可以照抄**的配置：解释器＝当前跑平台的解释器（`sys.executable`）、
+    包路径＝本仓库根目录（`PYTHONPATH`，不依赖 cwd）、地址认 `AC4_BASE_URL`；
+    **令牌不写进配置**（只给环境变量名与说明）。一处真相在 `platform/mcp_client_config.py`。
+
+    query：`format=json|md`（默认 json；`md` 给界面「复制」按钮用）
+    """
+    from ..mcp_client_config import build, build_md
+    from .workshops_common import _platform_base_url_safe
+
+    try:
+        base = _platform_base_url_safe()
+    except Exception:                                       # noqa: BLE001 — 拿不到就让它自己按默认来
+        base = ""
+    fmt = (request.query_params.get("format") or "json").strip().lower()
+    if fmt == "md":
+        from fastapi.responses import PlainTextResponse
+
+        return PlainTextResponse(build_md(base_url=base), media_type="text/markdown; charset=utf-8")
+    return build(base_url=base)
+
+
 @router.get("/api/harness/{harness_id}/action-scripts")
 async def harness_action_scripts(harness_id: str):
     """**给界面用**：这个 harness 的哪些流程步骤**能自动**、哪些**只能人工**（V26 §5 第 3 条）。

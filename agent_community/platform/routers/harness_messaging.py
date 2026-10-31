@@ -136,8 +136,12 @@ async def harness_task_result(request: Request):
                 if len(_pkeys) == 1:
                     _did = _pkeys[0]
         if _hid:
+            # ★2026-10-25（V104）：content 也是常见叫法（MCP 客户端/示例都爱用），
+            #   原来只认 result/text/reply ⇒ 带 content 的回报**内容被吞成空串**，
+            #   平台收下了却什么也没有（假成功）。
             _reply_content = _sanitize_harness_content(
-                str(body.get("result") or body.get("text") or body.get("reply") or "")
+                str(body.get("result") or body.get("text") or body.get("reply")
+                    or body.get("content") or "")
             )  # V-14：外部内容提示注入防护
             _reply_msg = HarnessMessage(
                 harness_id=_hid,
@@ -286,7 +290,25 @@ async def harness_task_result(request: Request):
                     print(f"[debate] 已收成员陈述：{_st['speaker']}（证据 {len(_st['evidence'])} 项）", flush=True)
             except Exception as _e:  # noqa: BLE001
                 print(f"[debate] 收集成员陈述失败（不影响回报）: {_e}", flush=True)
-    return {"success": True}
+    # ★2026-10-25（V104 MCP 全链路判据抓到）：原来无论发生了什么都回 {"success": True} ——
+    #   只带 	ask_id、没带 workshop_id 的回报（**MCP 客户端最常见**）其实什么也没落到可查的地方，
+    #   任务状态也不会变 ⇒ 对方以为交上了，平台里查不到（典型假成功）。
+    #   现在把**真实发生了什么**说清：落到哪、任务状态变没变、要推进该怎么做。
+    _out = {"success": True}
+    _tid_r = str(body.get("task_id") or "")
+    _out["task_id"] = _tid_r
+    _out["delegation_id"] = _did or ""
+    if _tid_r:
+        _t_r = tasks.get(_tid_r)
+        _st_raw = getattr(_t_r, "status", "") if _t_r is not None else ""
+        _out["task_state"] = str(getattr(_st_raw, "value", _st_raw) or "")
+        _out["task_found"] = _t_r is not None
+        _out["task_state_changed"] = False
+        if _t_r is not None and not _did:
+            _out["note"] = ("回报已收下并留痕（审计 harness.task_result）；但这条任务没有进行中的委托、"
+                            "回报里也没带 workshop_id ⇒ 任务状态不会因此改变。"
+                            "要推进：把这条活派给成员（派活后回执会自动推进），或在它的工作间里整合。")
+    return _out
 
 @router.post("/api/harness/api-probe")
 async def harness_api_probe(request: Request):

@@ -15,7 +15,7 @@
 ::-webkit-scrollbar-thumb:hover{background:var(--bg5)}
 html,body{height:100%;overflow:hidden}
 body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
-.app{display:grid;grid-template-rows:52px 1fr 26px;height:100vh}
+.app{display:grid;grid-template-rows:auto 1fr 26px;height:100vh}
 /* ===== topbar ===== */
 .topbar{display:flex;align-items:center;gap:12px;padding:0 16px;background:linear-gradient(180deg,#1d2026,#181a20);border-bottom:1px solid var(--rule);box-shadow:0 1px 0 rgba(255,255,255,.03);min-width:0}
 .topbar .logo{font-size:15px;font-weight:800;color:var(--accent);letter-spacing:.03em;display:flex;align-items:center;gap:8px;white-space:nowrap}
@@ -190,20 +190,19 @@ body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSys
 @media (max-width:1279px){.q3-grid{grid-template-columns:1fr}.q3-panel{max-height:420px}}
 @media (max-width:1099px){
   html,body{overflow:auto}
-  .app{height:auto;min-height:100vh;grid-template-rows:52px auto 26px}
+  .app{height:auto;min-height:100vh;grid-template-rows:auto auto 26px}
   .main{grid-template-columns:1fr;grid-template-rows:auto minmax(420px,55vh) minmax(320px,auto);overflow:visible}
   .panel{min-height:0}
   .filters input{width:100%;flex:1 1 140px}
 }
 @media (max-width:1099px) and (min-width:0px){.tl-panel{min-height:420px}}
 </style>
-<link rel="stylesheet" href="/theme-crt.css">
-<script src="/theme-crt.js" defer></script>
+<link rel="stylesheet" href="chrome.css">
 </head>
 <body class="">
 <div class="app">
   <!-- ===== topbar ===== -->
-  <header class="topbar">
+  <header class="topbar chrome-top">
     <div class="logo">📡 运维看板<span class="sub">· 工单审计</span></div>
     <div class="health checking" id="health" title="后端健康状态"><span class="dot"></span><span id="healthText">检测中…</span></div>
     <div class="spacer"></div>
@@ -838,5 +837,6 @@ window.__opsQ3={
 tick(false);
 startTimer();
 </script>
+<script src="chrome.js" defer></script>
 </body>
 </html>

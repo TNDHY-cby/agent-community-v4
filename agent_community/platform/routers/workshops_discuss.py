@@ -70,10 +70,32 @@ def _l1_action_by_rule(user_msg: str, ws) -> str:
 
 @router.post("/api/workshop/{ws_id}/discuss")
 async def workshop_discuss(ws_id: str, request: Request):
+    """v4 自由发言（一级/二级/三级讨论共用的写入口）—— **已退役**。
+
+    ★2026-10-29（老板：「不是要把三个级的讨论区换掉吗」）：
+      v4 的「三级讨论」其实是**三个阶段共用这一条自由发言**（`draft→discussing` 方案讨论、
+      `division` 分工讨论、`review` 复盘）。`V116` §18 早已拍板：**一级删除 · 二级改组长对话框 ·
+      三级改名讨论区**；v5 又把讨论区收敛为 **AILP 2.0 结构化消息**（`POST …/ailp`）。
+      ⇒ 这条入口默认 **410 Gone**，**不落库、不驱动 AI**，并把新路径直接告诉调用方。
+      兼容口子：`AC_ALLOW_LEGACY_DISCUSS=1`（旧前端/老客户），响应里带 `legacy: true`。
+    """
     from ..server import Utf8JSONResponse, _activate_by_hooks, _append_msg, _discussion_ctx, _dispatch_leader_review_discuss, _leader_division_discuss, _member_progress_summary, _review_sufficiency_check
+    from .. import env_spec as _env
+
+    _legacy = _env.get_bool("AC_ALLOW_LEGACY_DISCUSS", False)
     ws = workshops.get(ws_id)
     if not ws:
         return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
+    if not _legacy:
+        return Utf8JSONResponse(
+            {"ok": False, "code": "FREECHAT_RETIRED", "legacy": False,
+             "error": "v4 的自由发言讨论区已退役（三级讨论不再收自由文本）",
+             "why": "一级讨论已删除、二级改成组长对话框、三级（复盘）改名为「讨论区」并换成结构化消息",
+             "next": "改用 POST /api/workshop/%s/ailp（AILP 2.0 四类消息；字段表 GET /api/ailp/types）"
+                     "；参数 `manifest_ref` 必须指向 manifest 里的真实条目" % ws_id,
+             "how_to_still_use_old": "临时兼容：环境变量 AC_ALLOW_LEGACY_DISCUSS=1 后重启（响应会标 legacy）",
+             "docs": "V116 §18 + V117 §7-5"},
+            status_code=410)
     body = await request.json()
     user_msg = (body.get("message") or "").strip()
     if not user_msg:
@@ -92,7 +114,9 @@ async def workshop_discuss(ws_id: str, request: Request):
     _g = _gate.check(ws)
     if not _g["ok"]:
         return Utf8JSONResponse({"success": False, "error": _g["why"],
-                                 "next_step": _g["next_step"], "gate": _g["state"]},
+                                 "next_step": _g["next_step"], "gate": _g["state"],
+                                 # 兼容分支同样标 legacy（走的是老逻辑，别让调用方以为这是新路径）
+                                 "legacy": True},
                                 status_code=409)
     if ws.status not in ("division", "review", "running"):
         ws.status = "discussing"
@@ -181,7 +205,11 @@ async def workshop_discuss(ws_id: str, request: Request):
         if _rule:
             action, action_source = _rule, "rule_fallback"
     return {"success": True, "reply": reply, "status": ws.status, "stage": "orchestrator",
-            "zone": user_zone, "action": action, "action_source": action_source}
+            "zone": user_zone, "action": action, "action_source": action_source,
+            # ★2026-10-29：这个分支只有在兼容开关 AC_ALLOW_LEGACY_DISCUSS=1 时才会执行到
+            "legacy": True,
+            "legacy_note": ("v4 自由发言（一级/二级/三级讨论共用入口）已退役；"
+                             "新路径 POST /api/workshop/{id}/ailp（AILP 2.0 四类结构化消息）")}
 
 @router.post("/api/workshop/{ws_id}/review")
 async def workshop_review(ws_id: str):

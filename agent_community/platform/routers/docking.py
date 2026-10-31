@@ -1414,6 +1414,394 @@ async def docking_protocol_tree():
     return protocol_tree.build()
 
 
+# ── 「它回的话」（老板 2026-10-25：「我要看回复」）──────────────────────────
+# 事实（2026-10-25 拿**它自己的库**核实过）：插件的 `session_post` 只往库里插一条消息，
+# 返回体里的 `reply` 字段就是**我们发出去那句**的回显 —— 会话里的模型**不会**因此开口。
+# 所以"回复"只能来自两处：① 读回会话里**我们那条之后**新出现的消息；② 走视觉投递让它自己生成。
+# 这个段落只做 ①（能读到就显示，读不到就**如实说它没回**，绝不把我们自己的话当它的回复）。
+
+def _text_of_message(m) -> str:
+    """从一条消息里取正文（认 `text` / `content` / `parts[{type:text,text}]` 几种形状）。"""
+    if isinstance(m, str):
+        return m.strip()
+    if not isinstance(m, dict):
+        return ""
+    for k in ("text", "content", "message", "body"):
+        v = m.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    parts = m.get("parts")
+    if isinstance(parts, list):
+        joined = "".join(str(p.get("text") or "") for p in parts if isinstance(p, dict)).strip()
+        if joined:
+            return joined
+    return ""
+
+
+def _ms_of_message(m) -> int:
+    """消息时间（毫秒）。认不到就 0（**不猜**，交给调用方决定怎么比）。"""
+    if not isinstance(m, dict):
+        return 0
+    for k in ("created_at", "at", "ts", "time", "timestamp"):
+        v = m.get(k)
+        if v in (None, ""):
+            continue
+        try:
+            n = float(v)
+        except (TypeError, ValueError):
+            continue
+        return int(n if n > 1e11 else n * 1000)          # 秒 / 毫秒都认
+    return 0
+
+
+def _messages_from_blob(blob: str) -> list:
+    """把"读会话"工具返回的文本拆成消息列表（认 `messages` / `data` / 顶层数组 / 纯文本一行）。"""
+    blob = str(blob or "").strip()
+    if not blob:
+        return []
+    obj = None
+    if blob.startswith("{") or blob.startswith("["):
+        try:
+            obj = json.loads(blob)
+        except ValueError:                                   # 不是合法 JSON：下面按纯文本处理
+            obj = None
+    if isinstance(obj, list):
+        return [m for m in obj if isinstance(m, dict)]
+    if isinstance(obj, dict):
+        for k in ("messages", "data", "items", "list", "rows"):
+            v = obj.get(k)
+            if isinstance(v, list):
+                return [m for m in v if isinstance(m, (dict, str))]
+    # 纯文本：整段当成一条（**不编消息 id / 时间**）
+    return [{"text": blob}]
+
+
+def _normalize_text(t: str) -> str:
+    return " ".join(str(t or "").split())
+
+
+def _extract_agent_reply(blob: str, *, nonce: str = "", our_text: str = "",
+                         since_ms: int = 0, limit: int = 3) -> dict:
+    """从读回的内容里挑出**它自己说的话**（排除我们刚写进去的那句）。
+
+    判据（三条都要过）：① 不是我们这句（不带这次口令、也不是同一段文字）；
+    ② 时间在我们那条**之后**（时间认不出来时只按 ①判，并在 note 里写明）；
+    ③ 有正文。
+    """
+    our_norm = _normalize_text(our_text)
+    items, skipped_ours, unknown_time = [], 0, 0
+    for m in _messages_from_blob(blob):
+        text = _text_of_message(m)
+        if not text:
+            continue
+        if (nonce and nonce in text) or (our_norm and _normalize_text(text) == our_norm):
+            skipped_ours += 1
+            continue
+        ms = _ms_of_message(m)
+        if not ms:
+            unknown_time += 1
+        elif since_ms and ms < since_ms:
+            continue                                          # 比我们这条还早 ⇒ 是旧消息
+        items.append({"text": text[:600],
+                      "role": str((m.get("role") if isinstance(m, dict) else "") or ""),
+                      "id": str((m.get("id") if isinstance(m, dict) else "") or ""),
+                      "at_ms": ms})
+    items = items[-max(1, int(limit)):]
+    # 角色可用时：**用户自己输入的那句不算"它的回复"**（两类人分不清时宁可不显示）
+    _roles = [i["role"].lower() for i in items if i["role"]]
+    if _roles:
+        items = [i for i in items if i["role"].lower() not in ("user", "human", "me")]
+    if items:
+        note = "它回了 %d 条：" % len(items) + " ｜ ".join(i["text"][:120] for i in items)
+    elif skipped_ours:
+        note = ("它**没回话**：会话里只多出我们这句（%s），我们这条之后没有它的新消息 —— "
+                "这个应用不会因为我们往它库里写一句就自己生成回复"
+                % ("口令 " + nonce if nonce else "刚发的那句"))
+    else:
+        note = "读回的内容里没找到任何消息（读会话的工具可能返回空/只回了状态）"
+    return {"ok": bool(items), "items": items, "note": note,
+            "skipped_ours": skipped_ours, "unknown_time": unknown_time}
+
+
+# ── 真相核对（`V102`）────────────────────────────────────────────────────
+# 老板 2026-10-25 的教训（`V101`）：对方回的 `ok/in_session/message_id`、
+# 甚至它自己的"读回"工具，**都不算证据**（可能读的是它的缓存）。
+# 唯一骗不过的：直接读**对方应用自己的库**。逻辑在 `platform/session_truth.py`（一处真相）。
+
+def _app_alive(harness_id: str) -> dict:
+    """**那个应用本身还在跑吗**（老板 2026-10-25：「我都关掉它的进程了，点测试还能回答收到，这分明就是平台在骗人」）。
+
+    为什么必须有这一条：插件（MCP 服务端）是**独立进程**，它直接往应用的数据库里插行 ——
+    应用关掉了它照样写。于是"口令带回 + 读回找得到 + 库里真有"全都能成立，
+    而**用户界面上什么都没有**（应用都没开）。那不叫通，那叫平台在骗人。
+
+    只用**能真查到的信号**，查不到就如实说"判不了"：
+      ① 用户绑过窗口（`input_anchor`）⇒ 那个窗口**还在不在**（真枚举窗口）；
+      ② 绑的是浏览器目标（`ws`）⇒ 这里判不了（如实 None）；
+      ③ 没绑过 ⇒ None（不知道它是哪个应用，不猜）。
+    """
+    try:
+        from .. import input_anchor
+
+        b = input_anchor.get_bind(harness_id) or {}
+    except Exception as e:                                    # noqa: BLE001 — 读绑定失败要如实说判不了
+        return {"alive": None, "why": "读绑定失败：%s: %s" % (type(e).__name__, e), "source": ""}
+    hwnd = str(b.get("hwnd") or "")
+    if hwnd:
+        try:
+            from .. import visual_launch
+
+            now = {str(x.get("hwnd"))
+                   for x in ((visual_launch.list_windows() or {}).get("windows") or [])}
+        except Exception as e:                                # noqa: BLE001 — 枚举失败也算判不了
+            return {"alive": None, "why": "枚举窗口失败：%s: %s" % (type(e).__name__, e),
+                    "source": "bind"}
+        if hwnd in now:
+            return {"alive": True, "why": "你绑的那个窗口还在", "source": "bind",
+                    "hwnd": hwnd, "title": str(b.get("title") or "")}
+        return {"alive": False, "source": "bind", "hwnd": hwnd,
+                "title": str(b.get("title") or ""),
+                "why": "你绑的那个窗口已经不在了（应用关了/窗口换了）—— 它到底接没接住，你在界面上是看不到的"}
+    if b.get("ws"):
+        return {"alive": None, "source": "bind(ws)",
+                "why": "绑的是浏览器页面目标，这里判不了它开没开"}
+    return {"alive": None, "source": "",
+            "why": "不知道它是哪个应用窗口（没绑定过）⇒ 平台判不了它开没开；"
+                   "在对接中心把它的窗口「绑定到这个员工」之后，这里就能判了"}
+
+
+def _truth_cfg(info) -> dict:
+    """这个 harness 的真相核对配置（存在档案 `metadata.truth`，没配过就是关着）。"""
+    from .. import session_truth as _st
+
+    raw = {}
+    try:
+        raw = dict((getattr(info, "metadata", None) or {}).get("truth") or {})
+    except (TypeError, ValueError):                            # 档案被写坏就当没配（下面的 enabled/json 会兜）
+        raw = {}
+    cfg = {"configured": bool(raw.get("db_path")), "enabled": bool(raw.get("enabled")),
+           "db_path": str(raw.get("db_path") or ""),
+           "table": str(raw.get("table") or _st.DEFAULTS["table"]),
+           "text_col": str(raw.get("text_col") or _st.DEFAULTS["text_col"]),
+           "time_col": str(raw.get("time_col") or _st.DEFAULTS["time_col"]),
+           "session_col": str(raw.get("session_col") or _st.DEFAULTS["session_col"]),
+           "defaults": dict(_st.DEFAULTS),
+           "last_truth": raw.get("last_truth") or None,
+           "hint": "库文件由你填，平台只读**拷贝**、不改人家的库；填了才会在「测一次」后自动核对"}
+    return cfg
+
+
+def _truth_run(cfg: dict, needle: str, session: str = "") -> dict:
+    """跑一次真核（同步，调用方用 `asyncio.to_thread` 包起来：要拷库）。
+
+    返回 `{raw, ui}`：`raw` 是完整结果（落档案），`ui` 是界面照抄的三态。
+    """
+    from .. import session_truth as _st
+
+    raw = _st.check(cfg.get("db_path") or "", needle,
+                    table=cfg.get("table", ""), text_col=cfg.get("text_col", ""),
+                    time_col=cfg.get("time_col", ""), session_col=cfg.get("session_col", ""),
+                    session=session)
+    return {"raw": raw, "ui": _st.describe_for_user(raw)}
+
+
+def _truth_after_test(info, nonce: str, since_ms: int = 0, session: str = "") -> dict:
+    """`test-now` 的自动核对：配了库就拿这次的口令去库里找，**并分清"谁写的"**。
+
+    ★2026-10-25（老板：「我都关掉它的进程了，点击测试还能回答收到，这分明就是平台在骗人」）：
+    口令能被插件带回来，只说明**插件**（独立进程）往库里插了一行 —— 它替应用"说话"，不代表应用在说话。
+    真正的"能不能回答"只有一个证据：库里出现 **它自己生成** 的消息（`model_id`/`stats` 有值，
+    与插件插入的只有 `parts` 的行明显不同，见 `session_truth.recent_app_messages`）。
+
+    `没配就不出现 truth 字段`（默认关）；配了但没口令 ⇒ 如实说核不了。
+    无论配没配，都补 `in_session_verified_scope` —— `V101` §4 第 1 条。
+    """
+    out = {"in_session_verified_scope":
+           "只代表对方的读回工具看到了这句话；**不代表它的界面真的显示**"
+           "（对方可能读的是自己的缓存）"}
+    cfg = _truth_cfg(info)
+    if not cfg.get("enabled") or not cfg.get("db_path"):
+        return out
+    if not nonce:
+        out["truth"] = {"code": 2, "found": False, "ok": False,
+                        "db": cfg["db_path"], "needle": "",
+                        "why": "这次没有口令（没给 text 的纯探活），核对不了",
+                        "verdict": "核对不了：这次没有口令"}
+        out["truth_verified"] = False
+        out["truth_note"] = "? 核对不了：这次没有口令"
+        return out
+    got = _truth_run(cfg, nonce)
+    out["truth"] = got["raw"]
+    out["truth_verified"] = bool(got["ui"].get("ok"))
+    out["truth_note"] = got["ui"].get("note", "")           # 自带 ✓/✗/?
+    # ★「它有没有回答」：只认它**自己生成**的消息（插件代写的行不算）
+    from .. import session_truth as _st2
+
+    apps = _st2.recent_app_messages(cfg["db_path"], since_ms=since_ms, session=session,
+                                    limit=3, table=cfg.get("table", ""),
+                                    text_col=cfg.get("text_col", ""),
+                                    time_col=cfg.get("time_col", ""),
+                                    session_col=cfg.get("session_col", ""))
+    out["app_answered"] = bool(apps)
+    out["app_messages"] = apps
+    out["agent_reply"] = {"ok": bool(apps), "items": [
+        {"text": m["text"], "role": "assistant", "id": "", "at_ms": m["at_ms"]} for m in apps],
+        "note": ("它真的回答了（库里出现了 %d 条**它自己生成**的消息）" % len(apps) if apps
+                 else "它**没有回答**：这次口令之后，库里没有任何**由它自己生成**的新消息"
+                      "（只有插件代写的那一行）⇒ 插件替它写≠它在回话")}
+    out["agent_reply_note"] = out["agent_reply"]["note"]
+    return out
+
+
+def _truth_save(info, cfg_paths: dict, last_truth: dict | None = None) -> dict:
+    """把真相核对配置（和/或上次结果）写进档案；返回新的完整配置。"""
+    md = dict(getattr(info, "metadata", None) or {})
+    cur = dict(md.get("truth") or {})
+    cur.update(cfg_paths)
+    if last_truth is not None:
+        cur["last_truth"] = last_truth
+    md["truth"] = cur
+    info.metadata = md
+    return _truth_cfg(info)
+
+
+@router.get("/api/docking/harness/{harness_id}/truth-config")
+async def docking_harness_truth_config(harness_id: str):
+    """**这个 harness 的真相核对怎么配的**（只读；没配过就 `configured=false`，其余字段不编）。"""
+    from ..server import Utf8JSONResponse
+    from ..harness_adapter import harness_manager
+
+    sess = harness_manager.sessions.get(str(harness_id or ""))
+    if sess is None:
+        return Utf8JSONResponse({"error": "这个 harness 不在登记表里"}, status_code=404)
+    return _truth_cfg(sess.info)
+
+
+@router.post("/api/docking/harness/{harness_id}/truth-config")
+async def docking_harness_truth_config_set(harness_id: str, request: Request):
+    """**登记对方应用的库文件**（真相核对的入口，`V102` §3.2）。
+
+    保存前**真打开一次**（拷副本真读）：文件在不在、是不是 SQLite、表/列在不在。
+    不对就 400 并说清（把库里**实际**有哪些表/列列出来），**不许"看起来保存成功"**。
+    传 `{db_path:""}` 或 `{enabled:false}` ⇒ 关掉（并回 `enabled=false`，不静默）。
+    """
+    import asyncio
+
+    from ..server import Utf8JSONResponse, save_state
+    from ..harness_adapter import harness_manager
+    from .. import session_truth as _st
+
+    sess = harness_manager.sessions.get(str(harness_id or ""))
+    if sess is None:
+        return Utf8JSONResponse({"error": "这个 harness 不在登记表里"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001 — 没 body 就是清空配置
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    db_path = str(body.get("db_path") or "").strip()
+    want = {"table": str(body.get("table") or "").strip(),
+            "text_col": str(body.get("text_col") or "").strip(),
+            "time_col": str(body.get("time_col") or "").strip(),
+            "session_col": str(body.get("session_col") or "").strip()}
+    enabled = body.get("enabled")
+    enabled = True if enabled is None else bool(enabled)
+
+    if not db_path or not enabled:
+        # 关掉：**保留**上一次的路径（下次开不用重填），但明确 enabled=false
+        saved = _truth_save(sess.info, {"enabled": False})
+        try:
+            await asyncio.to_thread(save_state)
+        except Exception as e:                                 # noqa: BLE001 — 存不了要如实说
+            return Utf8JSONResponse({"error": "配置没写进档案：%s: %s" % (type(e).__name__, e),
+                                     "enabled": False, "next": "重试一次；还是不行就重启平台"},
+                                    status_code=500)
+        out = dict(saved)
+        out.update({"ok": True, "enabled": False,
+                    "note": "已关掉真相核对（「测一次」之后不再自动去库里核对）"})
+        return out
+
+    probe = await asyncio.to_thread(_st.probe, db_path, table=want["table"],
+                                    text_col=want["text_col"], time_col=want["time_col"],
+                                    session_col=want["session_col"])
+    if not probe.get("ok"):
+        return Utf8JSONResponse(
+            {"error": "这个库现在核不了：%s" % (probe.get("why") or "原因不明"),
+             "why": probe.get("why") or "",
+             "tables": probe.get("tables") or [],
+             "columns": probe.get("columns") or [],
+             "next": "路径/表名/列名按上面库里的实际情况改一下；平台只支持 SQLite "
+                     "（其它存储形态如实不支持）"},
+            status_code=400)
+    saved = _truth_save(sess.info, {"db_path": db_path, "enabled": True,
+                                    "table": want["table"], "text_col": want["text_col"],
+                                    "time_col": want["time_col"], "session_col": want["session_col"]})
+    try:
+        await asyncio.to_thread(save_state)
+    except Exception as e:                                     # noqa: BLE001 — 存不了要如实说
+        return Utf8JSONResponse({"error": "配置没写进档案：%s: %s" % (type(e).__name__, e),
+                                 "next": "重试一次；还是不行就重启平台"}, status_code=500)
+    out = dict(saved)
+    out.update({"ok": True, "probe": {"ok": True, "why": probe.get("why"),
+                                      "rows": probe.get("rows"), "last_at": probe.get("last_at"),
+                                      "tables": probe.get("tables"),
+                                      "columns": probe.get("columns")},
+                "note": "已登记：%s。之后每次「测一次」都会去这个库里找口令，找到才亮绿勾"
+                        % (probe.get("why") or db_path)})
+    return out
+
+
+@router.post("/api/docking/harness/{harness_id}/truth-check")
+async def docking_harness_truth_check(harness_id: str, request: Request):
+    """**现在就去库里查一次**（`V102` §3.3）。口令默认取这次/上次「测一次」用的那个。
+
+    三档结论（与 `tools/verify_session_truth.py` 的退出码同义）：
+    `code` 0=库里有 / 1=库里没有（它在自报）/ 2=核对不了（无文件/非 SQLite/表列不对）。
+    **`code` 2 不许被当成"通过"，也不许被当成"库里没有"**。
+    """
+    import asyncio
+
+    from ..server import Utf8JSONResponse, save_state
+    from ..harness_adapter import harness_manager
+
+    sess = harness_manager.sessions.get(str(harness_id or ""))
+    if sess is None:
+        return Utf8JSONResponse({"error": "这个 harness 不在登记表里"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001 — 没 body 就用上次的口令
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    cfg = _truth_cfg(sess.info)
+    if not cfg.get("db_path"):
+        return Utf8JSONResponse(
+            {"error": "还没登记对方应用的库文件 —— 没有库就没法核对（对方说的不算）",
+             "next": "先点「真相核对」填库文件路径；不知道在哪就先问那个应用自己的设置/数据目录"},
+            status_code=400)
+    needle = str(body.get("needle") or "").strip()
+    if not needle:
+        try:
+            needle = str(((getattr(sess.info, "metadata", None) or {}).get("last_test") or {}).get("nonce") or "")
+        except (TypeError, ValueError):                        # 档案坏了就当没有口令
+            needle = ""
+    if not needle:
+        return Utf8JSONResponse(
+            {"error": "没有可核对的口令", "db": cfg["db_path"],
+             "next": "先点「测一次」（平台会带一次性口令），拿到口令再来核对；"
+                     "或者直接把口令填进 needle"},
+            status_code=400)
+    got = await asyncio.to_thread(_truth_run, cfg, needle, str(body.get("session") or "").strip())
+    raw, ui = got["raw"], got["ui"]
+    try:
+        _truth_save(sess.info, {}, last_truth=dict(raw, ui=ui, at=_now_iso()))
+        await asyncio.to_thread(save_state)
+    except Exception as e:                                     # noqa: BLE001 — 存不了不影响这次结论
+        raw["persist_note"] = "结果没写进档案（%s: %s）" % (type(e).__name__, e)
+    raw["ui"] = ui
+    raw["note"] = ui.get("note", "")                        # 自带 ✓/✗/?
+    return raw
+
+
 @router.post("/api/docking/harness/{harness_id}/test-now")
 async def docking_harness_test_now(harness_id: str, request: Request):
     """**即刻测一次**（按协议自动选测法）—— 对接中心每行一个按钮，老板 2026-10-25 要求。
@@ -1462,6 +1850,7 @@ async def docking_harness_test_now(harness_id: str, request: Request):
     kind = getattr(getattr(info, "wakeup_method", ""), "value", kind)     # 枚举兼容
     url = str(getattr(info, "api_base_url", "") or getattr(info, "callback_url", "") or "").strip()
     started = time.time()
+    _posted_ms = 0                       # 我们那条"发出去"的时刻（判"之后的新消息"用）
     ok, detail, extra = False, "", {}
     try:
         if kind == "mcp":
@@ -1502,6 +1891,7 @@ async def docking_harness_test_now(harness_id: str, request: Request):
                             if _want_sid and "session_id" in _props_send:
                                 args["session_id"] = _want_sid
                             call = await _mc.mcp_call_tool(url, str(pick.get("name")), args)
+                            _posted_ms = int(time.time() * 1000)   # 我们这条"发出去"的时刻（判"之后的新消息"用）
                             reply = str((call or {}).get("text") or "").strip()
                             ok = bool((call or {}).get("ok"))
                             extra.update({"reply": reply, "tool": pick.get("name"),
@@ -1537,6 +1927,13 @@ async def docking_harness_test_now(harness_id: str, request: Request):
                             _read_pick = _pick_session_read_tool(tools)
                             if pick.get("_in_session") and _read_pick:
                                 try:
+                                    # 老板 2026-10-25「我要看回复」：给它一点时间把话说完，再读。
+                                    # `wait_ms` 可传（0＝不等待）；默认 1200ms（只在真有 text 时等）。
+                                    _wait_ms = (int((_body or {}).get("wait_ms") or 0)
+                                                if (_body or {}).get("wait_ms") is not None
+                                                else (1200 if _text else 0))
+                                    if _wait_ms > 0:
+                                        await asyncio.sleep(min(_wait_ms, 15000) / 1000.0)
                                     _props_r = (_read_pick.get("inputSchema") or {}).get("properties") or {}
                                     _rargs = {}
                                     for _k in ("session_id", "limit", "count", "n"):
@@ -1549,6 +1946,11 @@ async def docking_harness_test_now(harness_id: str, request: Request):
                                     extra["readback"] = {"tool": _read_pick.get("name"),
                                                          "found": extra["in_session_verified"],
                                                          "excerpt": _blob[:300]}
+                                    # ★「它回的话」：从读回里挑出**它不是我们**的那些消息
+                                    extra["agent_reply"] = _extract_agent_reply(
+                                        _blob, nonce=_nonce, our_text=_text_sent,
+                                        since_ms=_posted_ms, limit=3)
+                                    extra["agent_reply_note"] = extra["agent_reply"].get("note", "")
                                     if not extra["in_session_verified"]:
                                         extra["in_session_note"] = (
                                             "它说发出去了（in_session=true），但用 %s 读回来的最近消息里"
@@ -1609,6 +2011,25 @@ async def docking_harness_test_now(harness_id: str, request: Request):
         if ok and not extra["verified"]:
             extra["verify_note"] = ("对方回了话，但**没带回口令**（%s）⇒ 不能算「真接住」，"
                                     "可能是缓存/老回包/固定应答" % _nonce)
+    # ★★2026-10-25（老板：「我都关掉它的进程了，点击测试还能回答收到，这分明就是平台在骗人」）：
+    #   **那个应用开着没有，也必须是判据的一部分**。插件是独立进程，应用关掉了它照样能
+    #   往数据库插行、照样能把口令带回来 ⇒ 绿勾全亮而用户界面上什么都没有。
+    #   现在：应用**确定没在跑**时，`verified` 一律拉回 false 并说清为什么；
+    #   判不了（没绑窗口）就如实标 `app_alive=null` + 为什么，而不是默认"它活着"。
+    try:
+        _alive = await asyncio.to_thread(_app_alive, str(harness_id or ""))
+    except Exception as e:                                     # noqa: BLE001 — 判不了也要说话
+        _alive = {"alive": None, "why": "判不了（%s: %s）" % (type(e).__name__, str(e)[:120]),
+                  "source": ""}
+    extra["app_alive"] = _alive.get("alive")
+    extra["app_alive_why"] = _alive.get("why", "")
+    extra["app_alive_source"] = _alive.get("source", "")
+    if _alive.get("alive") is False and extra.get("verified"):
+        extra["verified"] = False
+        extra["verify_note"] = (
+            "**那个应用根本没在跑**（%s）。这条「带回了口令」只能证明**插件**（独立进程）"
+            "往它的库里写了一行，它的界面上你什么也看不到 ⇒ 平台不算「它接住了」。"
+            % _alive.get("why", ""))
     # ★硬信号（老板 2026-10-25「会话里只有之前回复的」）：
     #   两次不同的口令，它返回的 message_id 却一模一样 ⇒ 返回的是**旧结果**（没真写）。
     try:
@@ -1621,9 +2042,61 @@ async def docking_harness_test_now(harness_id: str, request: Request):
                 "⇒ 很可能**没有真的写**，返回的是上一次的结果" % _cm[:36])
     except Exception:                                          # noqa: BLE001 — 判断不了就不下结论
         pass
+    # ★V102 真相核对（`V101` 的铁律）：对方回的 ok/in_session 与它自己的"读回"都不算证据；
+    #   配了**对方库**就顺手去库里找这次的口令 —— 找到才是绿勾（`truth_verified`）。
+    #   没配就不出现 `truth` 字段（默认关）；无论配没配都补 `in_session_verified_scope` 的限定。
+    try:
+        extra.update(await asyncio.to_thread(_truth_after_test, info, _nonce,
+                                             _posted_ms,
+                                             str((_body or {}).get("session_id") or "")))
+    except Exception as e:                                     # noqa: BLE001 — 核对不了要如实说
+        extra["truth_verified"] = False
+        extra["truth_note"] = "? 核对不了（平台内部出错）：%s: %s" % (type(e).__name__, str(e)[:160])
+        extra["in_session_verified_scope"] = (
+            "只代表对方的读回工具看到了这句话；**不代表它的界面真的显示**")
+    # ★「库里真有」也不等于「你看得到」：应用没在跑时，那条只是**插件写进库里的**一行。
+    if _alive.get("alive") is False and extra.get("truth_verified"):
+        extra["truth_note"] = ("✗ 库里确实有这句，但**那个应用没在跑**（%s）⇒ 它写进库了你也看不见，"
+                               "不能算「它接住了」" % _alive.get("why", ""))
+        extra["truth_verified"] = False
+    # ★★「能不能回答」是硬证据，不是"口令带回来了"：
+    #   配了对方库、但库里**没有它自己生成的新消息** ⇒ 它没回答；这时**不许**亮「它接住了」。
+    #   （老板 2026-10-25：应用都关了，点测试还回"收到" —— 那是插件替它写的。）
+    if "app_answered" in extra and extra.get("app_answered") is False and extra.get("verified"):
+        extra["verified"] = False
+        extra["verify_note"] = (
+            "**它没有回答**：口令能被插件带回，但库里没有任何**由它自己生成**的新消息"
+            "（`model_id`/token 计数都没有）⇒ 只证明插件往库里插了一行，不证明它在回话。"
+            "要它回答：在它自己的界面上发一句（或等它自己的回合），再测一次。")
     result = {"ok": bool(ok), "kind": kind, "detail": detail, "elapsed_ms": elapsed,
               "at": _now_iso()}
+    # ★给界面两个**各管一件事**的判据（老板 2026-10-25：「我要的是测对方能不能回答，能不能接到」）：
+    #   · `received`：我们这句**进了它的库**没有（进了 ⇒ 它打开就能看到；这是"接到"）
+    #   · `answered`：它**自己生成**了回复没有（`model_id`/stats 那种行；这是"能不能回答"）
+    #   两个都只在**配了对方库**时才有依据；没配就是 None（不猜）。
+    if "truth" in extra:
+        result["received"] = bool((extra.get("truth") or {}).get("code") == 0)
+        result["answered"] = bool(extra.get("app_answered"))
     result.update(extra)
+    # ★★2026-10-25（老板：「测到它在，就用平台乱给的幻觉；其实根本没给到它，只是平台在做梦」）：
+    #   **必须让界面一眼看出"这条到底是谁在说话"** ——
+    #   `plugin_db_write`：平台调它的插件，**插件替它往库里写了一行**（不是发给它本人，它甚至可能没开）；
+    #   `agent_reply`：库里出现了它**自己生成**的消息（那才是它在回话）；
+    #   `platform_mcp_server`：它**主动调平台工具**（平台是服务端 ⇒ 平台真收到过它的请求）。
+    _mode = None
+    if kind in ("mcp", "http", "http_api", "a2a", "grpc", "ws"):
+        _mode = "plugin_db_write" if extra.get("in_session") else "tool_call_only"
+    result["delivery_mode"] = _mode
+    result["delivered_to_agent"] = False if _mode in ("plugin_db_write", "tool_call_only") else None
+    if _mode == "plugin_db_write":
+        result["honest_note"] = (
+            "（「会话内回答」这条线**已停止开发**：下面这些只作诊断信息，**不作验收依据**。）"
+            "**这次不是「发给它」**：平台调的是它的插件，插件**替它**往会话库里写了一行。"
+            "它自己有没有看到、会不会回话，这条结论里没有证据"
+            + ("（库里确认：**没有**它自己生成的新消息）" if extra.get("app_answered") is False
+               else "（没配对方的库，判不了）") + "。"
+            "要真的给到它：让它**自己来调平台的工具**（`GET /api/harness/mcp-config` 把它挂上），"
+            "或在它自己的界面上收下这句话。")
     # ★纯协议（mcp/http/…）：**没有"去它会话里看"这回事** —— 回复只回到平台，先说清楚，
     #   别让界面挂一个点了没用的「打开它的会话」（老板 2026-10-25 追问的那条）。
     if kind in ("mcp", "http", "http_api", "a2a", "grpc", "ws"):
@@ -1633,6 +2106,13 @@ async def docking_harness_test_now(harness_id: str, request: Request):
     try:
         md = dict(getattr(info, "metadata", None) or {})
         md["last_test"] = result
+        # 真相核对的结果也单独留一份（界面上"上次核对是什么时候/结果如何"要能回放）
+        if isinstance(result.get("truth"), dict):
+            _t = dict(md.get("truth") or {})
+            _t["last_truth"] = dict(result["truth"], ui={"note": result.get("truth_note", ""),
+                                                         "ok": bool(result.get("truth_verified"))},
+                                    at=_now_iso())
+            md["truth"] = _t
         info.metadata = md
         await asyncio.to_thread(save_state)
     except Exception as e:                                     # noqa: BLE001 — 存不了不影响这次结论

@@ -11,12 +11,12 @@ const CHAPTERS = [
   { no:'台', id:'dockflow', t:'前台怎么接一个 agent（从对接中心搬来的讲解）', s:'对接中心＝前台 · 当场办', api:'登记 / 探测 / 激活 / 架桥', render:chDockFlow },
   { no:'0', id:'register', t:'0 · 注册 harness', s:'必填两项 · 报错可照做', api:'POST /api/harness/register', render:chRegister },
   { no:'1', id:'hall', t:'1 · 广播任务建工作间', s:'大厅发任务 · 平台自动建间', api:'POST /api/workshop', render:chHall },
-  { no:'2', id:'d1', t:'2 · 一级讨论', s:'AI 主持定方向 · 规则兜底', api:'POST …/discuss', render:chD1 },
-  { no:'3', id:'members', t:'3 · 选成员', s:'能力初选或手工名单', api:'select-members · confirm-members', render:chMembers },
+  { no:'2', id:'d1', t:'2 · 定方向（在外面谈好，平台不再讨论）', s:'资料自己整理 · 平台只记方向字段', api:'方向字段（平台对话区已退役）', render:chD1 },
+  { no:'3', id:'members', t:'3 · 定名单', s:'组长交名单回执 / 你手动补录', api:'members · confirm-members（AI 选人已 410）', render:chMembers },
   { no:'4–8', id:'channel', t:'4·5·6·7·8 · 通道与隔间', s:'建会话→送桥→隔间邮箱→命名', api:'onboard · establish · deliver', render:chChannel },
   { no:'按', id:'retire', t:'（按需）停用 / 新建通道', s:'停用≠删除 · 先停用再新建', api:'channel/retire · channel/establish', render:chRetire },
   { no:'9', id:'visual', t:'9 · 更新视觉脚本', s:'现状：只做到“名字进数据”', api:'session_aliases（独立视觉脚本未做）', render:chVisual },
-  { no:'10', id:'d23', t:'10 · 二三级讨论', s:'二级=与组长+建模 · 三级=全员', api:'library/model.md（五块）', render:chD23 },
+  { no:'10', id:'d23', t:'10 · 深入讨论（与组长 · 产出项目模型）', s:'项目建模 + 分工明细进资料库', api:'library/model.md（五块）', render:chD23 },
   { no:'尾', id:'integrate', t:'收尾 · 阶段整合', s:'收 output 清单 · 无产物如实显示', api:'POST …/integrate', render:chIntegrate },
   { no:'公', id:'peers', t:'11 · 和别的公司协作', s:'登记对端 → 验证 → 派活 · 隧道只管地址通', api:'/api/peers 家族', render:chPeers },
   { no:'随', id:'rescue', t:'随时 · 掉线抢救', s:'空闲是正常态 · 硬信号才说联系不上', api:'offline-report · recover', render:chRescue },
@@ -33,8 +33,8 @@ function chOverview(){
     <p class="lead">《<b>外端Agent生产合作社 · 流程说明</b>》——把<b>从启动到交付</b>的全流程按 <b>0→10</b> 讲清楚：
       每一步<b>做什么、谁做、去哪个页面做、平台会做什么、怎么算成功、失败会怎么显示</b>。
       本页<b>只讲不做</b>：所有操作给正主页面入口，本页<b>不发任何写请求</b>。</p>
-    <p class="sub" style="margin-top:10px"><b>编号口径（老板权威 0→10）</b>：0 注册 / 1 广播+建工作间 / 2 一级讨论 / 3 选成员 /
-      4 建会话 / 5 送桥 / 6 对接隔间邮箱 / 7 命名 / 8 重命名 / 9 更新视觉脚本 / 10 二三级讨论；（按需）停用/新建通道<b>不占编号</b>。</p>
+    <p class="sub" style="margin-top:10px"><b>编号口径（老板权威 0→10）</b>：0 注册 / 1 广播+建工作间 / 2 定方向（在外面谈好） / 3 定名单 /
+      4 建会话 / 5 送桥 / 6 对接隔间邮箱 / 7 命名 / 8 重命名 / 9 更新视觉脚本 / 10 与组长深入讨论+项目模型；（按需）停用/新建通道<b>不占编号</b>。</p>
   </div>
   <div class="card">
     <h3><span class="dot"></span>操作都去哪（正主页面）</h3>
@@ -149,19 +149,21 @@ function chHall(){
 function chD1(){
   return `
   <div class="card">
-    <h3><span class="dot"></span>2 · 一级讨论（在工作间）</h3>
-    <p class="lead"><b>做什么</b>：平台 AI 主持讨论，<b>先搞清楚任务方向</b>。</p>
-    <p class="lead" style="margin-top:8px">AI 不可用时走<b>规则兜底</b>（响应里会标）——<b>不挡路</b>。</p>
-    <p class="sub" style="margin-top:8px">产出：任务方向的共识（下一站是选成员）。入口：${link('/workshop.html','工作间 →')}</p>
+    <h3><span class="dot"></span>2 · 定方向（在外面谈，平台不再有讨论区）</h3>
+    <p class="lead"><b>老板口径（2026-10-31）</b>：<b>平台不再和 AI 讨论</b>。你在外面用网页版 AI 把资料整理好，
+      自己开一个工作间进来，把理顺好的方向填进工作间的<b>方向字段</b>。</p>
+    <p class="lead" style="margin-top:8px"><b>平台只做已经说定的那几件事</b>：记账（方向 / 名单 / 资料库指向 / 证据），
+      不替你出主意、不替你选人。</p>
+    <p class="sub" style="margin-top:8px">产出：一条写清楚的方向（下一站是<b>挑组长</b>：对接中心的组长拉人列表，一键复制去拉）。入口：${link('/v5.html','工作间对接中心 →')}</p>
   </div>
   <div class="grid2">
     <div class="card">
       <h3><span class="dot"></span>什么算成功</h3>
-      <p class="lead">讨论有结论、能进入"选成员"；规则兜底时响应带标记，界面如实显示走的是哪条路。</p>
+      <p class="lead">方向写得能验收（做什么 / 到什么程度算完）；组长照这份方向去建模与分工。</p>
     </div>
     <div class="card">
-      <h3><span class="dot"></span>失败怎么显示</h3>
-      <p class="lead">AI 调不通 ⇒ 显示规则兜底标记与中文原因，<b>不装"AI 已处理"</b>。</p>
+      <h3><span class="dot"></span>平台不做什么</h3>
+      <p class="lead">不主持讨论、不代拟方向、不选人 —— 原来那段"平台 AI 主持的一级讨论"<b>已整体退役</b>，别再找了。</p>
     </div>
   </div>`;
 }
@@ -169,11 +171,14 @@ function chD1(){
 function chMembers(){
   return `
   <div class="card">
-    <h3><span class="dot"></span>3 · 选成员（在工作间）</h3>
-    <p class="lead"><b>做什么</b>：按 harness 能力<b>初选</b>，或你<b>手工给名单</b>，然后<b>确认名单</b>。</p>
-    <p class="lead" style="margin-top:8px"><b>没配 AI 也能走</b>：平台会说明原因，手工路径照样可用（<b>不挡路</b>）。</p>
-    <p class="sub" style="margin-top:8px">关联：<code>select-members</code> / <code>members</code> / <code>confirm-members</code>
-      ；入口：${link('/workshop.html','工作间 · 选人/分工 →')}</p>
+    <h3><span class="dot"></span>3 · 定名单（在工作间）</h3>
+    <p class="lead"><b>标准路径</b>：组长按分工<b>交回名单回执</b>，你核对后<b>确认名单</b>；不够就点
+      <b>「+ 添加职位 / harness」手动补录</b>（写进 v5 名单，标 <code>manual</code>，<b>不冒充</b>组长回执）。</p>
+    <p class="lead" style="margin-top:8px"><b>平台不选人</b>：原来那个「让平台 AI 选人」<b>已前后端一起退役</b>
+      （<code>V116</code> §16：平台无 AI，只剩规则；名单由组长按分工交回）。</p>
+    <p class="sub" style="margin-top:8px">关联：<code>members</code> / <code>confirm-members</code>
+      （<code>select-members</code> 现为 <code>410 AI_SELECT_RETIRED</code>）
+      ；入口：${link('/workshop.html','工作间 · 员工名单 →')}</p>
   </div>
   <div class="card">
     <h3><span class="dot"></span>确认名单之后</h3>
@@ -264,25 +269,20 @@ function chD23(){
   return `
   <div class="grid2">
     <div class="card">
-      <h3><span class="dot"></span>二级讨论 —— 与组长，产出「项目模型」</h3>
-      <p class="lead"><b>做什么</b>：与<b>组长</b>讨论项目要求与分工 ⇒ 产出 <b>项目模型</b>（资料库 <code>model.md</code>，<b>五块</b>：
-        目标与验收／组成分解／分工对应／依赖与顺序／产物落点；<b>缺块要显示"未完成"</b>）。</p>
+      <h3><span class="dot"></span>与组长深入讨论 —— 产出「项目模型」</h3>
+      <p class="lead"><b>做什么</b>：把你整理好的资料交给<b>组长</b>，和它把项目要求与分工谈细 ⇒ 产出 <b>项目模型</b>
+        （资料库 <code>model.md</code>，<b>五块</b>：目标与验收／组成分解／分工对应／依赖与顺序／产物落点；
+        <b>缺块要显示"未完成"</b>）。</p>
       <p class="sub" style="margin-top:8px">界面：隔间页资料库面板可<b>建立 / 编辑</b>（五块表单或整篇，记录执笔人；每次保存前自动备份）。</p>
       <p class="sub" style="margin-top:6px">入口：${link('/booths.html','成员隔间与桥 · 资料库面板 →')}</p>
     </div>
     <div class="card">
-      <h3><span class="dot"></span>三级讨论 —— 全员上场</h3>
-      <p class="lead"><b>做什么</b>：<b>全员</b>上场，各居自己隔间。</p>
-      <p class="lead" style="margin-top:8px"><b>组长不被员工隔间框住</b>：组长可读共享资料库 + 全员状态，并可执笔项目模型；
-        普通成员只写自己隔间。</p>
-      <p class="lead" style="margin-top:8px"><b>辩论模式（可开可关，默认关）</b>：
-        三级讨论里可以开一层"按证据说话"的裁决 —— 每个人的发言按 <b>观点 → 证据 → 推理</b> 三段提交，
-        平台按<b>证据来源的重叠度</b>给权重（<b>同一个来源的多人发言会合并降权</b>），
-        <b>没有证据的发言权重为 0</b>（原话照旧留在讨论区，不会被删）。<b>它不是投票</b>：
-        结论由证据质量决定，同分就<b>如实并列</b>，不硬选一个。默认关；开了也只在
-        "结论互相冲突 / 与工具计算结果矛盾 / 错误代价高"时才真的跑一轮，最多 3 轮。
-        入口：工作间 → 三级讨论区（开关与"＋陈述"在讨论区上方）</p>
-      <p class="sub" style="margin-top:8px">入口：${link('/workshop.html','工作间 →')}</p>
+      <h3><span class="dot"></span>讨论在哪儿发生（2026-10-31 口径）</h3>
+      <p class="lead"><b>不在平台里讨论</b>：讨论在你和组长的<b>外部会话</b>里进行（组长照对接单接入后，你直接跟它说），
+        平台只收<b>结论</b>：项目模型进资料库、名单回执进名单、验收进证据。</p>
+      <p class="lead" style="margin-top:8px"><b>原来的"三级讨论区 + 辩论模式"已退役</b>（前端入口已撤）；
+        平台不再提供站内讨论面板，也不再按证据裁决发言。</p>
+      <p class="sub" style="margin-top:8px">入口：${link('/workshop.html','工作间（只读讨论记录）→')}</p>
     </div>
   </div>`;
 }
@@ -354,8 +354,8 @@ function chCheat(){
     ['接入注册','POST /api/harness/register','接入页'],
     ['建会话/送桥/批量','establish · deliver · onboard-members','工作间'],
     ['开工（工作决策）','POST …/start','工作间'],
-    ['选人','select-members / members / confirm-members','工作间'],
-    ['讨论','POST …/discuss（message）','工作间'],
+    ['定名单','members / confirm-members（select-members 已 410 退役）','工作间'],
+    ['讨论（结构化）','POST …/ailp（四类信封；自由聊天 422）','工作间'],
     ['通道停用/新建','POST …/channel/retire · establish（V28 已实现）','工作间'],
     ['成员卡数据','GET …/members-status','只读'],
     ['隔间实况','GET …/compartments','只读'],

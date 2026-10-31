@@ -188,7 +188,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     });
     if (/[A-Za-z]:\\Users\\/.test(bodyTxt)) fail.push('出现本机用户目录盘符路径');
     const badReq = nonGet.filter(u =>
-      !/\/api\/workshop\/[^/]+\/(members|discuss|select-members|confirm-members)$/.test(u));
+      !/\/api\/workshop\/[^/]+\/(members|discuss|confirm-members)$/.test(u));
     if (badReq.length) fail.push('非白名单写请求: ' + badReq.join(','));
     if (errors.length) fail.push('Console 红错 ' + errors.length);
 

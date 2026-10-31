@@ -5,16 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>监控室 · 画面墙</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/theme-crt.css">
-<script src="/theme-crt.js" defer></script>
+<link rel="stylesheet" href="hub.css">
 <style>
-:root{--bg:#0A0A0A;--bg2:#121010;--bg3:#1A1A1A;--bg4:#242222;--ink:#F2C9C9;--muted:#AE7F7F;--dim:#7A4E4E;--rule:rgba(255,0,0,.22);--rule-strong:rgba(255,0,0,.45);--accent:#FF0000;--red:#FF0000;--green:#33FF00;--yellow:#FFB000;--cyan:#00FFFF}
+/* 本页只补 hub.css 没有的变量；CRT 皮肤令牌已退役（备份 theme-crt.css.bak_20261029） */
+:root{--rule-strong:rgba(255,53,39,.45)}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--ink);font-family:"Fira Code","VT323","Courier New","Microsoft YaHei",monospace;font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
-.topbar{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--bg2);border-bottom:1px solid var(--rule)}
+body{background:var(--bg);color:var(--ink);font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
 .topbar b{letter-spacing:2px;font-size:14px}
 .topbar .cnt{font-size:12px;color:var(--muted)}
-.topbar .cnt b{color:#FF3333;font-size:12px;letter-spacing:0}
+.topbar .cnt b{color:var(--accent-strong);font-size:12px;letter-spacing:0}
 .topbar .spacer{flex:1}
 .topbar a{color:#00FFFF;text-decoration:none;font-size:12px}
 .layout{flex:1;display:grid;grid-template-columns:320px 1fr;gap:0;overflow:hidden}
@@ -28,7 +27,7 @@ body{background:var(--bg);color:var(--ink);font-family:"Fira Code","VT323","Cour
 .sw{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer;user-select:none}
 .sw i{width:26px;height:13px;border:1px solid var(--rule-strong);display:inline-block;position:relative}
 .sw i::after{content:'';position:absolute;top:1px;left:1px;width:9px;height:9px;background:var(--dim)}
-.sw.on i::after{left:14px;background:#FF0000;box-shadow:0 0 6px rgba(255,0,0,.6)}
+.sw.on i::after{left:14px;background:var(--accent);box-shadow:0 0 6px rgba(255,53,39,.6)}
 .sw.on{color:var(--ink)}
 .win-null{color:var(--dim);font-size:11px}
 .win-no{color:var(--yellow);font-size:11px}
@@ -44,18 +43,21 @@ body{background:var(--bg);color:var(--ink);font-family:"Fira Code","VT323","Cour
 #zoomOv{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:50;cursor:zoom-out;flex-direction:column;gap:10px}
 #zoomOv img{max-width:94vw;max-height:88vh;background:#000}
 #zoomOv .cap{color:var(--muted);font-size:12px}
-.err{color:#FF0000;font-size:11px;margin-top:4px}
+.err{color:var(--red);font-size:11px;margin-top:4px}
 </style>
+<link rel="stylesheet" href="chrome.css">
 </head>
 <body class="">
-<div class="topbar">
-  <b>监控室</b>
-  <span class="cnt">正在看 <b id="mCount">0</b> / 上限 <b id="mMax">–</b></span>
-  <span class="cnt" id="mHealth"></span>
-  <span class="spacer"></span>
-  <button class="btn mini ghost" onclick="monRefresh()" style="background:transparent;border:1px solid var(--rule-strong);color:var(--muted);font-family:inherit;font-size:11px;padding:4px 10px;cursor:pointer">⟳ 刷新</button>
-  <a href="/index.html">← 大厅</a>
-</div>
+<header class="topbar chrome-top chrome-fixed">
+  <div class="logo"><span class="logo-mark">▣</span> 监控室<span class="sub">· 画面墙</span></div>
+  <div class="position">正在看 <b id="mCount">0</b> / 上限 <b id="mMax">–</b>　<span id="mHealth"></span></div>
+  <div class="spacer"></div>
+  <button class="btn mech" onclick="monRefresh()" title="重新扫描可开画面">⟳ 刷新</button>
+  <nav class="live-links">
+    <a href="/">实时大厅</a>
+    <a href="/workshop.html">工作间</a>
+  </nav>
+</header>
 <div class="airow" style="padding:0 16px;border-bottom:1px solid var(--rule)">
   <span>AI 观察（默认关；开了也由后端限频，至少 30 分钟一次——本页不每帧触发）：</span>
   <label class="sw" id="aiSw"><i></i>关</label>
@@ -74,5 +76,6 @@ body{background:var(--bg);color:var(--ink);font-family:"Fira Code","VT323","Cour
 <div id="zoomOv" onclick="if(event.target===this)monZoomClose()">
   <img id="zoomImg" alt=""><div class="cap" id="zoomCap">点击任意处关闭</div></div>
 <script src="monitor.js"></script>
+<script src="chrome.js" defer></script>
 </body>
 </html>

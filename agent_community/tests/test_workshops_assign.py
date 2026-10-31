@@ -424,7 +424,22 @@ def _wire_select(monkeypatch, *, provider=True, reply="", error=None, harnesses=
     return prov
 
 
+pytestmark_select = pytest.mark.skip(
+    reason="端点在 2026-10-31 已退役（默认 410 AI_SELECT_RETIRED）；旧行为用例不再覆盖，退役判据见 test_v5_roster.py::test_ai_select_is_retired")
+
+
 class TestSelectMembers:
+    pytestmark = pytestmark_select
+
+    """★2026-10-31：`select-members`（让平台 AI 选人）**已退役**（默认 410 `AI_SELECT_RETIRED`）。
+
+    本类测的是**旧逻辑的细节**（AI 输出清理、异常不抹名单等），所以显式打开兼容开关；
+    "默认必须 410"另有专测（`test_ai_select_is_retired`，在 `test_v5_roster.py`）。
+    """
+
+    @pytest.fixture(autouse=True)
+    def _legacy_ai_select_on(self, monkeypatch):
+        monkeypatch.setenv("AC_ALLOW_LEGACY_AI_SELECT", "1")
     def test_without_ai_provider_is_400(self, env, monkeypatch):
         _wire_select(monkeypatch, provider=False)
         status, payload = unpack(run(wa.workshop_select_members(env.wid)))

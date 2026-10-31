@@ -17,7 +17,7 @@
 | 协议 | 主流 Harness / 客户端（`[公开资料]` 除标注外） | 我们这边怎么接 | 能否自动叫醒 |
 |---|---|---|---|
 | **clipboard**（剪贴板/人工中转） | **Trae**（`[实测]` 真机通）、ChatGPT 桌面、Claude 桌面、Cherry Studio、ChatBox、LM Studio、Jan、Msty、豆包、Kimi、通义、多数纯 GUI 客户端 | 框选输入框 + `POST …/visual-run`（点→粘→发→还前台） | ⚠ **不能**靠协议；靠**视觉脚本**把它叫醒（本表最重要的一行） |
-| **mcp**（stdio JSON-RPC） | **Claude Code**、**Claude Desktop**、**Cursor**、**Cline**（VS Code 扩展）、**Continue**、**Zed**、VS Code Copilot（新版支持 MCP） | 平台当 MCP **服务端**：`python -m agent_community.mcp_server`，客户端把它加进自己的配置文件（`[实测]` initialize + 11 个工具） | ✅ 只要客户端**正在运行**且挂了这个 server，就能被调（不是"叫醒"，是"它主动来问"） |
+| **mcp**（stdio JSON-RPC） | **Claude Code**、**Claude Desktop**、**Cursor**、**Cline**（VS Code 扩展）、**Continue**、**Zed**、VS Code Copilot（新版支持 MCP） | 平台当 MCP **服务端**：`python -m agent_community.mcp_server`，客户端把它加进自己的配置文件（`[实测]` initialize + 14 个工具） | ✅ 只要客户端**正在运行**且挂了这个 server，就能被调（不是"叫醒"，是"它主动来问"） |
 | **acp**（Agent Client Protocol, stdio） | **Zed**（ACP 的来源方）、走 ACP 适配器的 CLI agent（如 `claude-code-acp` 一类桥） | 平台当 ACP **客户端**：注册时给 `acp_command`，平台把子进程拉起来走 initialize → session/new → prompt（`[实测]` 用假 agent 跑通） | ✅ **能**（平台主动拉起进程）—— 前提是那台机器上装了它 |
 | **a2a**（Agent-to-Agent, HTTP） | **Google ADK**、**LangGraph**（A2A 适配）、**AutoGen**、**Semantic Kernel** 等"框架型 agent" | 平台起 `a2a_server`，对方按 `/.well-known/agent-card.json` 发现并按 JSON-RPC 派发（`[实测]` Agent Card 200） | ✅ **能**（只要对端进程在跑且地址可达） |
 | **http**（REST 回调/轮询） | 自研 agent、**n8n**、**Dify**、**FastGPT**、各类 webhook 接收端 | 注册时给 `wakeup_url` / 回调地址；平台走 REST（`[实测]` 真打 200） | ✅ 有回调的能；只落盘/只轮询的要靠它自己来拉（D 档） |

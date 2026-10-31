@@ -1,0 +1,346 @@
+/* ============================================================
+   chrome.css —— 全站骨架层（2026-10-29）
+   来源：v5.html 七轮评审定稿的顶栏 / 刊头 / 装甲面板规格抽取。
+   铁律：
+     ① 只提供「新类名」，不重定义各页既有的 .card / .topbar 等单类规则
+        —— 全部用双类组合（.card.armor）拿特异性 (0,2,0)，
+        赢过各页内联 <style> 里的 (0,1,0)，且删类即回退，不伤原样式。
+     ② 依赖 hub.css 令牌（--ink/--accent/--info/--rule/--stripe/--glow-engine…），
+        本文件只补机械层自己的材质令牌。
+     ③ 零图片零外链，全部几何。
+   引入位置：各页 </head> 前最后一只 <link>（在页面内联 <style> 之后）。
+   ============================================================ */
+
+:root{
+  /* 顶栏高度：chrome.js 实测后写回，作为 fixed 偏移的唯一真源 */
+  --tb:56px;
+  /* 机械层材质（取自 v5 定稿值，令牌化便于全站统一调色） */
+  --armor-bg:#181512;        /* 装甲面板底：比页面底 #0B0A08 略亮，形成层次而不靠阴影 */
+  --armor-line:#322D26;      /* 面板 2px 边框 */
+  --armor-line-hi:#4A443B;   /* hover / 当前态边框 */
+  --armor-head:#1E1A16;      /* 面板头横条 */
+  --etch:#918877;            /* 刻蚀编号：实测 4.9:1 on --armor-head（正文阈值 4.5:1）*/
+  --plate:#080706;           /* 顶栏钢板：比页面更暗，fixed 后不抢内容 */
+  --chamfer:16px;            /* 面板斜切角 */
+}
+
+/* ========== 1. 顶栏 ========== */
+/* .chrome-top = 视觉统一（钢板底/导航/LED），不改变布局位置；
+   .chrome-fixed = 额外脱离文档流（只有「页面会滚走顶栏」的页面才加）。
+   老板 2026-10-29 反馈「划到下面就不能直接返回大厅」只对可滚页面成立；
+   内部滚动页（回执台/监控室）顶栏本来就常驻，加 fixed 反而破坏 grid 行高。 */
+.topbar.chrome-top{
+  background:var(--plate); border-bottom:1px solid var(--rule);
+  display:flex; align-items:center; gap:16px; padding:11px 20px;
+  flex-wrap:wrap;
+}
+.topbar.chrome-fixed{
+  position:fixed; top:0; left:0; right:0; z-index:60;
+}
+.topbar.chrome-top .logo{color:var(--ink); white-space:nowrap}
+.topbar.chrome-top .logo-mark{color:var(--accent)}
+.topbar.chrome-top .logo .sub{font-size:11px; color:var(--muted); font-weight:400; margin-left:6px}
+.topbar.chrome-top .position{
+  font-size:12px; color:var(--muted); min-width:0;
+  border-left:2px solid var(--accent); padding-left:10px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:46ch;
+}
+.topbar.chrome-top .live-links{display:flex; gap:4px; flex-wrap:wrap}
+/* 点击区 44px（WCAG 2.5.5 / 本项目硬性阈值）——用 padding+min-height 撑到 40~44 */
+.topbar.chrome-top .live-links a{
+  font-size:11.5px; color:var(--muted); text-decoration:none;
+  border:1px solid var(--rule); border-radius:4px; background:#161311;
+  padding:8px 12px; min-height:40px; display:inline-flex; align-items:center;
+  white-space:nowrap; transition:box-shadow .18s ease, transform .18s ease, background-color .18s ease;
+}
+/* 导航 hover 归蓝：红只留给「当前页 / 主 CTA / 危险」三处；
+   同时给一层淡蓝泛光 + 轻微放大，跟面板的反馈语言一致（不再上浮） */
+.topbar.chrome-top .live-links a:hover{
+  background:var(--info-soft); color:var(--info); border-color:var(--navy-lit,#4A76BE);
+  box-shadow:0 0 18px rgba(45,92,175,.28),0 4px 12px rgba(0,0,0,.4);
+  transform:scale(1.02);
+}
+.topbar.chrome-top .live-links a[aria-current="page"]{
+  color:var(--accent); border-color:rgba(255,53,39,.5); background:var(--accent-soft);
+}
+/* 状态 LED（仪表台读数）：颜色不单独承载信息，同时带文字 */
+.topbar.chrome-top .hdrws{font-family:var(--mono); font-size:11px; color:var(--muted); white-space:nowrap}
+.topbar.chrome-top .hdrws::before{
+  content:""; display:inline-block; width:7px; height:7px; border-radius:50%;
+  margin-right:6px; background:var(--led-off); vertical-align:1px;
+}
+.topbar.chrome-top .hdrws[data-led="ok"]::before{background:var(--led-ok); box-shadow:0 0 5px var(--led-ok)}
+.topbar.chrome-top .hdrws[data-led="warn"]::before{background:var(--led-warn); box-shadow:0 0 5px var(--led-warn)}
+
+/* --- 顶栏占位：两种模式由 chrome.js 判定 ---
+   a) chrome-offset：普通文档流页面，顶部留出顶栏高度
+   b) chrome-fh：固定视口高页面（内部滚动），不能加 padding 会顶出视口，
+      改用 margin 外推 + calc 减高，合计仍是整屏。
+   特异性 (0,1,1) 赢过各页的 body (0,0,1)，无需 !important。 */
+body.chrome-offset{padding-top:var(--tb)}
+body.chrome-fh{
+  margin-top:var(--tb);
+  height:calc(100vh - var(--tb));
+  height:calc(100dvh - var(--tb));
+}
+
+/* --- 页面网格适配 ---
+   hub.css 的 .app 是三行 grid（顶栏/声明条/主体）+ min-height:100vh。
+   插进刊头后变四行；min-height 必须减掉顶栏高度，否则整页多出一条 56px 滚动。 */
+.app.has-masthead{grid-template-rows:auto auto auto 1fr}
+body.chrome-offset .app{min-height:calc(100vh - var(--tb))}
+
+/* ========== 2. 巨构刊头 ========== */
+.masthead{
+  position:relative; overflow:hidden;
+  background:linear-gradient(180deg,#14110F 0%,#0B0A08 100%);
+  border-bottom:1px solid var(--rule);
+}
+/* 红立柱＝发动机点火，全页唯一强发光（发光预算：整页只此一处） */
+.masthead::before{
+  content:""; position:absolute; left:0; top:0; bottom:10px; width:8px;
+  background:var(--accent); box-shadow:var(--glow-engine);
+}
+/* 远处结构体透出的光晕：不给焦点，只给纵深 */
+.masthead::after{
+  content:""; position:absolute; right:-40px; top:-60px; width:340px; height:340px;
+  background:radial-gradient(circle,rgba(255,53,39,.14),transparent 62%);
+  pointer-events:none;
+}
+.mh-in{max-width:1320px; margin:0 auto; padding:34px 28px 26px 32px; position:relative; z-index:1}
+.mh-tag{font-family:var(--mono); font-size:11px; letter-spacing:.22em; color:var(--muted)}
+.mh-tag b{color:var(--accent); font-weight:800}
+.masthead h1{
+  font-size:clamp(40px,6.4vw,64px); font-weight:900; line-height:.95;
+  /* 字距由 -.035em 放开到 +.08em：RGB split 最外层红带位移 8.2px，
+     负字距下会伸进相邻汉字被白字盖掉，三色带读不全。 */
+  letter-spacing:.08em; margin:12px 0 14px; color:var(--ink);
+  /* RGB split（RGB channel separation）：红绿蓝三通道物理位移，零模糊硬边，
+     由外到内 红→绿→蓝；令牌与声明顺序见 hub.css :root 的 --rgb-split-h1 注释。
+     纯静态视觉签名，不铺全站。 */
+  text-shadow:var(--rgb-split-h1);
+}
+.masthead h1 .slash{color:var(--accent); font-weight:900; padding:0 .06em}
+.mh-meta{display:flex; flex-wrap:wrap; gap:6px 22px; font-family:var(--mono); font-size:11.5px; color:var(--muted)}
+.mh-meta span::before{content:"▪"; color:var(--dim); margin-right:7px}
+.mh-hazard{height:8px; background:var(--stripe)}   /* 警戒带预算：整页 2 处（此处 + 说明面板） */
+
+/* ========== 3. 面板：常态隐框，hover 浮起泛光 ==========
+   老板 2026-10-29 反馈「直角不好看、直接视觉上的框也不好看，不如鼠标落上去时
+   边缘泛光或阴影突起」—— 故不再用常驻粗框划格子，改为「明度分层 + 交互反馈」：
+     常态：靠背景明度差分层，只有一条 .055 透明度的内线，几乎看不见
+     hover：边缘骨白泛光 + 下方柔和投影 + 上浮 2px（三层叠加＝突起感）
+   ★技术：必须去掉 clip-path 斜切。它会把 box-shadow 一并裁掉，浮起投影做不出来；
+     同时斜切本身就是直角的一种，与「不要生硬直角」冲突。改 6px 小圆角。
+   四角螺栓保留（机械锚点，不参与 hover，避免抢泛光）。 */
+.card.armor,.panel.armor,.acard.armor,.tile.armor{
+  position:relative; background-color:var(--armor-bg);
+  border:1px solid rgba(232,228,219,.055); border-radius:10px;
+  box-shadow:inset 0 0 0 1px rgba(232,228,219,.03);
+  transition:box-shadow .18s ease, transform .18s ease, border-color .18s ease, background-color .18s ease;
+  /* 四角螺栓：必须配 background-size，否则渐变铺满整卡压住正文 */
+  background-image:
+    radial-gradient(circle 2px,#5A544A 1.5px,transparent 1.9px),
+    radial-gradient(circle 2px,#5A544A 1.5px,transparent 1.9px),
+    radial-gradient(circle 2px,#5A544A 1.5px,transparent 1.9px),
+    radial-gradient(circle 2px,#5A544A 1.5px,transparent 1.9px);
+  background-repeat:no-repeat;
+  background-size:4px 4px,4px 4px,4px 4px,4px 4px;
+  background-position:24px 10px,calc(100% - 10px) 10px,
+                     10px calc(100% - 10px),calc(100% - 24px) calc(100% - 10px);
+}
+/* ★老板 2026-10-29 二次调整：「功能卡片不要上边缘红条和蓝光，保持深色」。
+   卡片 hover 不再发蓝光、不再提亮到发灰，只在深炭色内部做极轻的受光变化 + 微放大。 */
+.card.armor:hover,.panel.armor:hover,.acard.armor:hover,.tile.armor:hover{
+  z-index:3; filter:brightness(1.08);
+  border-color:rgba(232,228,219,.20);
+  box-shadow:
+    inset 0 1px 0 rgba(232,228,219,.18),
+    inset 0 -1px 0 rgba(0,0,0,.5),
+    inset 0 0 0 1px rgba(232,228,219,.13),
+    0 6px 14px rgba(0,0,0,.5),
+    0 16px 34px rgba(0,0,0,.65);
+  transform:scale(1.015);
+}
+/* 重点面板（怎么用 / 必读）：常态稍亮一档；顶部警戒条已按老板要求取消 */
+.armor.armor-hi{box-shadow:inset 0 0 0 1px rgba(232,228,219,.09),0 4px 14px rgba(0,0,0,.35)}
+.armor.armor-hi:hover{
+  z-index:3; filter:brightness(1.08);
+  border-color:rgba(232,228,219,.20);
+  box-shadow:inset 0 1px 0 rgba(232,228,219,.18),inset 0 -1px 0 rgba(0,0,0,.5),
+             inset 0 0 0 1px rgba(232,228,219,.13),
+             0 6px 14px rgba(0,0,0,.5),0 16px 34px rgba(0,0,0,.65);
+  transform:scale(1.015);
+}
+
+/* ========== 3b. 全局面板层（chrome.js 自动给 body 加 chrome-soft） ==========
+   覆盖各页原生面板类名，8 页零改动即可统一交互反馈。
+   只挑「内容面板」，刻意排除列表项/菜单项/流程节点（它们有自己的选中逻辑）。
+   用 html body.chrome-soft 拿 (0,2,1) 特异性，压过各页内联的 (0,1,0)/(0,2,0)。 */
+html body.chrome-soft :is(.card,.panel,.acard,.tile,.mcard,.agent-card,.bc-panel,
+  .bridge-panel,.budget-panel,.setup-panel,.setup-think-card,.h-card,.of-card,.sf-card,
+  .wsv-panel,.ev-card,.tl-panel){
+  border-radius:10px;
+  border-color:rgba(232,228,219,.075);
+  box-shadow:inset 0 0 0 1px rgba(232,228,219,.025);
+  transition:box-shadow .18s ease, transform .18s ease, border-color .18s ease, background-color .18s ease;
+}
+html body.chrome-soft :is(.card,.panel,.acard,.tile,.mcard,.agent-card,.bc-panel,
+  .bridge-panel,.budget-panel,.setup-panel,.setup-think-card,.h-card,.of-card,.sf-card,
+  .wsv-panel,.ev-card,.tl-panel):hover{
+  /* ★四条实测结论（老板 2026-10-29 定稿）：
+     ① 黑投影在近黑底上几乎不可见，且会被相邻面板盖住 → hover 抬 z-index:3 压过邻居；
+     ② 表达「前移」靠极轻的表面受光，不靠更黑的影子；
+     ③ 垂直上浮观感差 → 取消 translateY，改为原地 scale(1.015) 微微放大；
+     ④ 卡片不要蓝光、不要彩色顶条、保持深色 → 蓝色预算只留给「输入框聚焦 / 导航 hover」，
+        卡片 hover 只用骨白受光边 + 极淡提亮（仍是深炭色），不做发光。 */
+  z-index:3;
+  border-color:rgba(232,228,219,.20);
+  background-image:linear-gradient(180deg,rgba(232,228,219,.06),rgba(232,228,219,.035));
+  box-shadow:
+    inset 0 1px 0 rgba(232,228,219,.18),      /* 顶部受光边 */
+    inset 0 -1px 0 rgba(0,0,0,.5),            /* 底部背光边 */
+    inset 0 0 0 1px rgba(232,228,219,.13),    /* 极淡骨白内线，不构成亮框 */
+    0 6px 14px rgba(0,0,0,.5),
+    0 16px 34px rgba(0,0,0,.65);
+  transform:scale(1.015);
+}
+/* 例外：右栏成员卡是「通栏列表项」而非独立卡片——它有 border-bottom 分隔线，
+   贴着 .col-right 右边缘，而 .col-right 的 overflow-y:auto 会连带裁掉水平溢出。
+   放大既破坏分隔线对齐、又会被切掉右缘圆角 → 这里只保留极淡提亮，不缩放。 */
+html body.chrome-soft .col-right .agent-card:hover{transform:none}
+
+/* ========== 3b-2. 去框分区例外（workshop 的「顶线 + 留白」语言） ==========
+   workshop.html 2026-10-29 的分段语法把 .panel/.disc-zone 刻意去框：
+   无边框（只剩一条顶线）、无底色、直角 —— 与装甲圆角卡是两个刻意的方向。
+   在这分区上做「hover 圆角浮卡」会变成一整个突兀的气泡（2026-10-30 CDP 实测）。
+   ⇒ 页面在 .app 上加 .app-debox 声明自己走顶线语言：
+     hover 不缩放、不铺渐变、不画浮卡，只把那条顶线提亮一档（线的受光，即「分区被点亮」）。 */
+html body.chrome-soft .app-debox :is(.panel,.disc-zone){border-radius:0}
+html body.chrome-soft .app-debox :is(.panel,.disc-zone):hover{
+  transform:none;
+  background-image:none;
+  box-shadow:none;
+  border-top-color:rgba(232,228,219,.32);
+}
+@media (prefers-reduced-motion:reduce){
+  /* 保留极淡提亮（静态反馈仍有效），只去掉缩放/位移与过渡 */
+  html body.chrome-soft :is(.card,.panel,.acard,.tile,.mcard,.agent-card,.bc-panel,
+    .bridge-panel,.budget-panel,.setup-panel,.setup-think-card,.h-card,.of-card,.sf-card,
+    .wsv-panel,.ev-card,.tl-panel):hover,
+  .card.armor:hover,.panel.armor:hover,.acard.armor:hover,.tile.armor:hover,
+  .armor.armor-hi:hover{transform:none;transition:none}
+}
+
+/* ========== 3c. 表单聚焦：藏蓝发光，全站统一 ==========
+   老板 2026-10-29：「这个蓝色很突兀，不如发光的藏蓝，而且把输入框框起来了，没有高级感」。
+   ① 常态去掉常驻实框——靠背景明度分层，只留一条极淡底线暗示「可填写」；
+   ② 聚焦不画闭合亮边——改「底边藏蓝受光线 + 近/远两层柔光晕 + 背景微提亮」，发光而不闭合；
+   ③ 旧页（handover/ops/booths/index/workshop…）原本把 focus 做成红色实线，
+      既违反「红只归危险/当前/主CTA」，也和骨架语言不一致 → 一并归藏蓝；
+   ④ 文字/图标仍用 --info（亮一档保可读），藏蓝只负责「发光」不负责「描亮」。
+   用 html body.chrome-soft 拿 (0,3,3) 特异性压过各页内联；v5 不引 chrome.js，见其页内同规格规则。 */
+html body.chrome-soft :is(input,select,textarea):not([type=checkbox]):not([type=range]){
+  border-color:rgba(232,228,219,.075);
+  border-bottom-color:rgba(232,228,219,.20);
+  transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease;
+}
+html body.chrome-soft :is(input,select,textarea):not([type=checkbox]):not([type=range]):focus{
+  outline:none;
+  border-color:rgba(232,228,219,.10);
+  background-color:#151821;
+  box-shadow:inset 0 -2px 0 rgba(74,118,190,.78),
+             0 0 26px rgba(45,92,175,.40),
+             0 0 52px rgba(30,62,130,.24);
+}
+/* 键盘焦点只加强光晕，不补闭合 outline（闭合细环 + 底边线 = 双线重影，观感像被框住） */
+html body.chrome-soft :is(input,select,textarea):not([type=checkbox]):focus-visible{
+  outline:none;
+  box-shadow:inset 0 -3px 0 rgba(74,118,190,.86),
+             0 0 30px rgba(45,92,175,.50),
+             0 0 60px rgba(30,62,130,.30);
+}
+/* 按钮/页签的键盘焦点同样归藏蓝，替换旧页的红色 --focus-ring（红纪律） */
+html body.chrome-soft :is(button,.view-tab):focus-visible{
+  outline:2px solid var(--navy-lit,#4A76BE); outline-offset:2px;
+  box-shadow:0 0 0 3px var(--navy-soft,rgba(36,69,127,.20)),
+             0 0 20px var(--navy-glow,rgba(45,92,175,.34));
+}
+/* 例外：桥接响应框属「警戒待办」，保留琥珀语义（特异性高于上面的通用规则） */
+html body.chrome-soft .bridge-panel .bp-response-area textarea:focus{
+  border-color:rgba(217,171,83,.34);
+  box-shadow:inset 0 -2px 0 var(--yellow,#D9AB53),
+             0 0 0 3px rgba(217,171,83,.14),0 0 22px rgba(217,171,83,.24);
+}
+
+/* ========== 4. 面板头（通栏横条 + 刻蚀编号） ========== */
+/* .v5-sec 是 v5 既定类名，保留兼容；.panel-h 为通用别名，两者同规则 */
+.v5-sec,.panel-h{
+  display:flex; align-items:center; gap:12px;
+  margin:-16px -16px 14px; padding:11px 16px;
+  background:var(--armor-head); border-bottom:1px solid var(--armor-line);
+  font-size:19px; font-weight:900; letter-spacing:-.01em;
+}
+.v5-sec::before,.panel-h::before{content:""; width:9px; height:9px; border:2px solid var(--muted); flex:none}
+.v5-sec .n,.panel-h .n,.panel-h .no{
+  color:var(--etch); font-family:var(--mono); font-size:16px; font-weight:800;
+  letter-spacing:.06em; white-space:nowrap;
+}
+.v5-sec::after,.panel-h::after{
+  content:""; flex:1; height:2px;
+  background:repeating-linear-gradient(90deg,#3A342C 0 10px,transparent 10px 16px);
+}
+
+/* ========== 5. 机械按压按钮 ========== */
+/* 平时 2px 硬偏移阴影 → 按下位移 2px 且阴影消失；无过渡（机械感靠瞬时反馈） */
+.btn.mech{
+  background:#241F1A; color:var(--ink); border:1px solid var(--armor-line-hi);
+  border-radius:4px; min-height:44px; padding:7px 14px; cursor:pointer;
+  box-shadow:var(--shadow-hard-sm,2px 2px 0 #000);
+  transition:box-shadow .18s ease, transform .18s ease, background-color .18s ease;
+  font-weight:700;
+}
+.btn.mech:hover{
+  background:#2E2822; border-color:var(--ink); color:var(--ink);
+  box-shadow:0 0 16px rgba(232,228,219,.16),0 6px 16px rgba(0,0,0,.5);
+  transform:scale(1.02);
+}
+/* 按下仍保留机械按压的瞬时位移，无过渡由 :active 覆盖 */
+.btn.mech:active{transform:translate(1px,1px); box-shadow:none; transition:none}
+.btn.mech.p{background:var(--accent); border:2px solid #000; color:#0F0E0C; font-weight:800}
+.btn.mech.p:hover{background:var(--accent-strong); color:#0F0E0C}
+
+/* ========== 6. 无障碍与降级 ========== */
+:focus-visible{outline:2px solid var(--navy-lit,#4A76BE); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){
+  .btn.mech:active{transform:none}
+  html{scroll-behavior:auto}
+}
+
+/* ========== 7. 响应式 ========== */
+@media (max-width:1180px){
+  /* 1024 档顶栏会折两行（实测 125px，吃掉 12% 视口），先收标语 */
+  .topbar.chrome-top .position{display:none}
+}
+@media (max-width:980px){
+  .mh-in{padding:14px 16px 12px 22px}
+  .masthead h1{font-size:34px; margin:8px 0 10px}
+  .mh-meta{font-size:11px; gap:4px 16px}
+  /* 顶栏收单行：flex 容器会压缩子项（实测把刷新按钮挤成两行 93px），故 flex:none */
+  .topbar.chrome-top{padding:8px 12px; gap:8px; flex-wrap:nowrap; overflow-x:auto}
+  .topbar.chrome-top > *{flex:none}
+  .topbar.chrome-top button{white-space:nowrap}
+  .topbar.chrome-top .live-links{flex-wrap:nowrap; gap:4px}
+  .topbar.chrome-top .logo .sub{display:none}
+  .topbar.chrome-top .logo{font-size:14px}
+  .topbar.chrome-top .hdrws{max-width:104px; overflow:hidden; text-overflow:ellipsis}
+  .topbar.chrome-top .live-links a{padding:6px 9px; min-height:36px; font-size:11px}
+  /* 手机只留前两项导航，其余进各页自己的入口 */
+  .topbar.chrome-top .live-links a:nth-child(n+3){display:none}
+  .v5-sec,.panel-h{font-size:17px}
+  .v5-sec::after,.panel-h::after{display:none}
+}
+@media (max-width:600px){
+  /* 360 宽下状态读数会把顶栏横向撑破（实测裁切 81px），先省掉 */
+  .topbar.chrome-top .hdrws{display:none}
+}

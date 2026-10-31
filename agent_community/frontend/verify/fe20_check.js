@@ -207,7 +207,7 @@ const act = (id, label) => ({ id, label, kind: 'primary', effects: '按了会发
       if (!vp[name]) fail.push(name + ' 横向破版');
     }
     step('7 视口', vp);
-    const badReq = nonGet.filter(u => !/\/api\/workshop\/[^/]+\/(discuss|channel\/retire|channel\/establish|library\/update|select-members|members|confirm-members|start|recover-scan|leader-status|resources|review|continue|complete|integrate|halt-and-reset)/.test(u));
+    const badReq = nonGet.filter(u => !/\/api\/workshop\/[^/]+\/(discuss|channel\/retire|channel\/establish|library\/update|members|confirm-members|start|recover-scan|leader-status|resources|review|continue|complete|integrate|halt-and-reset)/.test(u));
     if (badReq.length) fail.push('非白名单写请求: ' + badReq.join(','));
     if (errors.length) fail.push('Console 红错 ' + errors.length);
 

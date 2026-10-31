@@ -79,6 +79,10 @@ SPEC: dict[str, Var] = {v.name: v for v in [
         default="0.0.0.0", kind="core", example="127.0.0.1"),
     Var("AC_DATA_DIR", "运行数据目录（工作间/审计/记忆/桥产物都落这里）。**换目录不改代码**就靠它",
         default="<仓库>/agent_community/data", kind="core", example="/var/lib/agent-community"),
+    Var("AC_MIND_ROOT",
+        "**心智根（根A）目录**：每个 agent 的永久记忆（宪章/记忆索引/memories/日志/死胡同）都在这。"
+        "空＝默认 `<AC_DATA_DIR>/minds`。它**必须与工作区（根B）分开**——工作区可整根归档，记忆不能跟着丢",
+        default="", kind="core", example="/var/lib/ac-minds"),
     Var("AC4_TOKEN", "平台访问令牌（跨机/对外访问时必设；空=仅本机可用）",
         default="", kind="core", example="sk-your-token",
         required_when="对外暴露平台（AC_HOST 非回环）时"),
@@ -112,6 +116,14 @@ SPEC: dict[str, Var] = {v.name: v for v in [
     Var("AC_STATE_BACKUP_KEEP",
         "状态快照保留最近多少份（默认 20；超出的删最旧的）",
         default="20", kind="feature", example="50"),
+    Var("AC_ALLOW_LEGACY_DISCUSS",
+        "**兼容口子（默认 0）**：v4 的自由发言讨论区已被结构化讨论（AILP 2.0）取代。"
+        "只有设 1 才允许 `POST /api/workshop/{id}/discuss` 走旧逻辑（响应里会标 `legacy: true`）；"
+        "新前端/新客户一律用 `POST /api/workshop/{id}/ailp`（四类结构化消息）",
+        default="0", kind="dev", example="1"),
+    Var("AC_ALLOW_LEGACY_AI_SELECT",
+        "**兼容口子（默认 0）**：`POST /api/workshop/{id}/select-members`（让平台 AI 选人）已于 2026-10-31 退役 —— 平台不选人（`V116` §16），名单由组长回执交回（§8.1）。置 1 可临时恢复旧行为（响应会标 `legacy`）。",
+        default="0", kind="dev", example="1"),
     Var("AC_STATE_ALLOW_EMPTY",
         "**故意清库**的专用口子（默认 0）：只有设 1 才允许「没加载过状态的进程」用空内存覆盖已有数据。"
         "正常运行时**不要**开——它是 2026-10-23 数据被清事故的防线",

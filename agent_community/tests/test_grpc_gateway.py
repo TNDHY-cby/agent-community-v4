@@ -90,7 +90,10 @@ class _H(BaseHTTPRequestHandler):
         elif self.path == "/api/harness/message":
             self._reply({"success": True})
         elif self.path == "/api/workshop":
-            self._reply({"success": True, "workshop_id": "ws_grpc_1"})
+            # ★2026-10-25（V106）：平台现在建间会**同时建任务**并回 	ask_id；
+            #   假上游也照这个形状回，否则下面的契约测试测的是不存在的世界。
+            self._reply({"success": True, "workshop_id": "ws_grpc_1",
+                         "task_id": "task_grpc_1"})
         elif self.path == "/api/harness/task-result":
             self._reply({"success": False, "error": "缺少 member_id"})
         else:
@@ -224,10 +227,16 @@ class TestEnvelopeForwarding:
         assert out.ok is True and out.error == ""
         assert CALLS[-1]["body"] == {"text": "hi"}
 
-    def test_submit_task_maps_workshop_id_to_task_id(self, stub):
+    def test_submit_task_returns_task_id_not_workshop_id(self, stub):
+        """★2026-10-25 契约变更（V106）：	ask_id 必须回**任务号**，不是工作间号。
+
+        原来回工作间号 ⇒ 客户端拿它调 GetTask 永远 	ask not found
+        （真对端判据 	ools/protocol_peer_check.py 抓到的）。工作间号仍在平台的返回体里，
+        想用就自己从 /api/workshop 的响应里取，别塞进 	ask_id。
+        """
         out = stub.SubmitTask(pb2.SubmitTaskRequest(task_id="t1",
                                                    payload_json='{"title":"x"}'))
-        assert out.ok is True and out.task_id == "ws_grpc_1"
+        assert out.ok is True and out.task_id == "task_grpc_1", out.task_id
 
     def test_get_task_returns_status(self, stub):
         out = stub.GetTask(pb2.GetTaskRequest(task_id="task-42"))

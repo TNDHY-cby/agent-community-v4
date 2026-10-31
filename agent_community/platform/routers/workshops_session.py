@@ -614,6 +614,58 @@ async def workshop_delivery_status(ws_id: str):
     return _ds.workshop_status(ws, compartments=comps)
 
 
+def _harness_info(hid: str):
+    """取 harness 档案（没登记就返回 None）。"""
+    from ..harness_adapter import harness_manager
+
+    sess = harness_manager.sessions.get(str(hid or ""))
+    return getattr(sess, "info", None) if sess is not None else None
+
+
+async def _protocol_member_probe(hid: str, wake: str) -> dict:
+    """**协议型成员"接上了没有"**：真调一次它的接口（不是看配置、不是跑脚本）。
+
+    - `mcp`：真 `tools/list`（与派活同一处真相 `mcp_client`）；
+    - `http` / `http_api`：真 `GET api_base_url`（<500 算活着；5xx 不算）；
+    - 其余（a2a/grpc/ws/pipe/file_poll）：**如实说不在这里判**，不假装通过。
+    """
+    info = _harness_info(hid)
+    if info is None:
+        return {"ok": False, "state": "not_registered",
+                "why": "这个 harness 不在登记表里（可能已注销）",
+                "next": "去对接中心重新登记一个"}
+    url = str(getattr(info, "api_base_url", "") or getattr(info, "callback_url", "") or "").strip()
+    if not url:
+        return {"ok": False, "state": "no_url",
+                "why": "这个 harness 没填接口地址（api_base_url），探不了",
+                "next": "在对接中心给它补上地址，再点自检"}
+    try:
+        if wake == "mcp":
+            from .. import mcp_client as _mc
+
+            valid, why = _mc.validate_mcp_url(url)
+            if not valid:
+                return {"ok": False, "state": "bad_url", "why": "地址不合法：%s" % why,
+                        "next": "地址形如 http://主机:端口/mcp"}
+            tools = await _mc.mcp_list_tools(url)
+            names = [str((t or {}).get("name") or "") for t in (tools or []) if isinstance(t, dict)]
+            return {"ok": True, "state": "ok", "url": url, "tools": names,
+                    "why": "MCP tools/list 通了，回 %d 个工具（%s）"
+                           % (len(names), "、".join(names[:5]) or "无")}
+        import httpx
+
+        async with httpx.AsyncClient(timeout=10, follow_redirects=False) as c:
+            resp = await c.get(url)
+        ok = resp.status_code < 500
+        return {"ok": bool(ok), "state": "ok" if ok else "server_error", "url": url,
+                "why": "GET %s → HTTP %s" % (url, resp.status_code),
+                "next": "" if ok else "它的服务在报错（5xx），先让它自己恢复"}
+    except Exception as e:                                 # noqa: BLE001 — 探不通要如实说
+        return {"ok": False, "state": "unreachable", "url": url,
+                "why": "连不上：%s: %s" % (type(e).__name__, str(e)[:160]),
+                "next": "确认那个 agent 的接口在跑、端口对不对"}
+
+
 @router.post("/api/workshop/{ws_id}/member/{member_id}/self-check")
 async def member_bridge_self_check(ws_id: str, member_id: str, request: Request):
     """★V38 §3 第 3 步 + V37 §4.2 第 4 步：**"你的 agent 到底通没通"** —— 一次可判定的动作。
@@ -649,6 +701,39 @@ async def member_bridge_self_check(ws_id: str, member_id: str, request: Request)
         wait = 8.0
 
     hid = _member_harness_id(m)
+
+    # ★2026-10-25（`V104` MCP 全链路判据抓到）：**协议型成员原来没有"接上了"的可判定动作** ——
+    #   下面这套自检走的是**邮箱桥**，而 MCP/HTTP/A2A 这类根本不架桥 ⇒ 它们永远验不过，
+    #   讨论闸门就一直 409「成员都还没接上」（正是老板说的「MCP 适配的 harness 拉不进工作间」）。
+    #   现在：协议型 ⇒ **真探一次它的接口**（MCP 真 tools/list、HTTP 真 GET），
+    #   通了就把这个成员标成接上了（`status=idle` / `entry_state=entered`），闸门据此放行。
+    _info = _harness_info(hid)
+    _wake = str(getattr(_info, "wakeup_method", "") or "")
+    _wake = str(getattr(getattr(_info, "wakeup_method", ""), "value", _wake) or "").lower()
+    from ..workshop_gate import PROTOCOL_KINDS as _PK
+
+    if hid and _wake in _PK:
+        out = await _protocol_member_probe(hid, _wake)
+        if out.get("ok"):
+            m.status = "idle"          # 接上了（协议型不需要人开会话）
+            m.entry_state = "entered"
+            m.entry_reason = ""
+            try:
+                save_state()
+            except Exception as _e:                     # noqa: BLE001 — 状态没落盘要如实说
+                out["persist_note"] = "状态没落盘：%s: %s" % (type(_e).__name__, _e)
+            try:
+                _audit_log.record("workshop.member.self_check", actor="user", target=ws_id,
+                                  detail="member=%s 协议型自检通过（%s）" % (m.member_id, _wake),
+                                  extra={"member_id": m.member_id, "harness_id": hid,
+                                         "state": "ok", "protocol": _wake})
+            except Exception:                           # noqa: BLE001 — 审计失败不影响这次结论
+                pass
+        out.update({"workshop_id": ws_id, "member_id": m.member_id, "harness_id": hid,
+                    "protocol": _wake, "member_status": m.status,
+                    "entry_state": m.entry_state})
+        return out
+
     inbox = str(mailbox_dir(ws.workspace_dir, m.role, m.member_id, "inbox"))
     out = _sc.selfcheck(inbox, harness_id=hid or "", workshop_id=ws_id,
                         member_id=m.member_id, role=m.role, wait=wait)

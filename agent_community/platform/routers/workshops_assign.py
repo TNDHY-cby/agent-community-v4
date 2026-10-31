@@ -171,14 +171,49 @@ async def workshop_leader_assignments(ws_id: str):
 
 @router.post("/api/workshop/{ws_id}/select-members")
 async def workshop_select_members(ws_id: str):
+    """**已退役（2026-10-31）**：平台不选人 —— 选人是组长的活（`V116 §8.1` SOP + §16 平台无 AI）。
+
+    默认 `410 AI_SELECT_RETIRED`，带 `why`/`next`；临时兼容 `AC_ALLOW_LEGACY_AI_SELECT=1`（会标 `legacy`）。
+    """
+    import os as _os
     from ..server import Utf8JSONResponse, _discussion_ctx
     """平台 AI 根据任务+讨论内容，从已注册 harness 里初步选定员工填名单。"""
     ws = workshops.get(ws_id)
     if not ws:
         return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
-    if not _sv().ai_provider:
+    # ★2026-10-31：**退役判据排在 404 之后** —— 工作间不存在仍应 404（不是 410）
+    if _os.environ.get("AC_ALLOW_LEGACY_AI_SELECT", "0") != "1":
+        from fastapi.responses import JSONResponse as _JR
+
+        return _JR({"ok": False, "code": "AI_SELECT_RETIRED", "legacy": False,
+                    "error": "「让平台 AI 选人」已退役：平台不选人，只剩规则",
+                    "why": ("① `V116` §16：平台无 AI、只剩规则；"
+                            "② 老板 2026-10-30 SOP：名单由**组长按分工回执**交回（`§8.1`）"),
+                    "next": ("走标准路径：控制台 → 选组长 → 组长对接单 → 组长交名单回执 → "
+                             "`POST /api/workshop/{id}/intake`；或手动补录 `+ 添加职位`（写 v5 名单，标 manual）"),
+                    "how_to_still_use_old": "临时兼容：AC_ALLOW_LEGACY_AI_SELECT=1 后重启（响应会标 legacy）",
+                    "docs": "V116 §8.1 / §8.2 / §16"}, status_code=410)
+    # ★2026-10-31：`_sv()` 是 `sys.modules["__main__"]`（uvicorn 跑的实例）；测试/TestClient 下
+    #   它是 pytest，没有 `ai_provider` ⇒ 用 getattr 兜住，取不到就如实说未配置（不许 500）
+    _provider = getattr(_sv(), "ai_provider", None)
+    if not _provider:
         return Utf8JSONResponse({"error": "AI Provider 未配置"}, status_code=400)
-    harnesses = harness_manager.list_sessions()
+    try:
+        return await _legacy_ai_select(ws, _provider)
+    except Exception as _e:                                  # noqa: BLE001 — 应急口子炸了要说清楚
+        return Utf8JSONResponse({"ok": False, "code": "LEGACY_AI_SELECT_FAILED", "legacy": True,
+                                 "error": "应急口子（让平台 AI 选人）执行失败：%s: %s"
+                                          % (type(_e).__name__, str(_e)[:160]),
+                                 "why": "这条端点已退役，兼容分支只在生产（uvicorn 跑的实例）里完整可用",
+                                 "next": "用标准路径：组长交名单回执 POST …/intake；或手动补录 + 添加职位"},
+                                status_code=500)
+
+
+async def _legacy_ai_select(ws, _provider):
+    """旧逻辑原文（退役后仅作应急口子；从 `workshop_select_members` 里原样搬出来）。"""
+    from ..harness_adapter import harness_manager as _hm
+    from ..server import Utf8JSONResponse as _JR
+    harnesses = _hm.list_sessions()
     # ★2026-10-11（V40 走查发现 P0）：**一个 harness 都没有时，别去问 AI**。
     #   实测（全新空实例）：点「让平台 AI 选定员工」→ 这里照常调 AI → AI 回空名单 →
     #   用户看到的原因却是「可能已注册 harness 与任务需求不匹配」——**误导**：
@@ -222,7 +257,7 @@ async def workshop_select_members(ws_id: str):
     )
     try:
         reply = await ai_external_run_ai_call(
-            _sv().ai_provider.chat(system, f"已注册 harness：\n{harness_desc}\n\n{context}"),
+            _provider.chat(system, f"已注册 harness：\n{harness_desc}\n\n{context}"),
             label="server.member_select",
         )
         # ★2026-10-11 实测缺陷修复：**AI 调用失败是以文本返回的，不是抛异常**，例如
@@ -293,6 +328,44 @@ async def workshop_select_members(ws_id: str):
         ],
         **_selected_note,
     }
+
+def _sync_v5_roster(ws, rows: list) -> dict:
+    """把界面这份名单**单向覆盖**到 v5 名单（v5 为准；旧 `ws.members` 只是投影）。
+
+    规则（老板 2026-10-30 SOP）：界面加的员工也算这个工作间的人，所以必须落在 v5 名单里，
+    否则闸门/派活/控制台看不见（`V116 §0-11`）。
+    幂等：同一 `slot_dir` 不重复建；人数按行里的 `人数`（默认 1）。
+    """
+    try:
+        from .. import v5_roster as _rw
+    except Exception as e:                                   # noqa: BLE001 — 名单模块坏了不该让保存 500
+        return {"ok": False, "why": "v5 名单模块加载失败：%s" % e}
+    slots = []
+    for m in rows:
+        role = str(getattr(m, "role", "") or "").strip() or "员工"
+        hid = (getattr(m, "harness_ids", None) or [None])[0]
+        slots.append({"岗位": role, "harness": hid or "", "人数": 1})
+    if not slots:
+        return {"ok": True, "slots": 0,
+                "note": "名单为空：没有要新增的岗位；**删除不会**从 v5 名单里删（名单以组长回执为准）"}
+    try:
+        out = _rw.add_slots(ws.workshop_id, slots, source="manual")
+        # 手动加的人不该覆盖已 active 的证据：这里不碰 state，`add_slots` 只保证有工位
+        mirror = _rw.write_mirror(ws.workshop_id, str(getattr(ws, "workspace_dir", "") or ""))
+        # ⚠️ 键名按 add_slots 的真实返回（slots_created/slots_updated/members_created）——
+        #    之前写成 created/updated ⇒ 响应里永远是空数组，等于报了个假的空结果
+        return {"ok": True,
+                # ★故意不对称（老板 SOP §8.1）：**界面删人不自动删 v5 名单** ——
+                #   名单真源是组长回执，用户随手编辑旧界面不该把组长交的名单抹掉。
+                "note": "界面新增/改名会同步进 v5 名单；**删除不会**（名单以组长回执为准，删除走组长或迁移流程）",
+                "slots_created": out.get("slots_created", []),
+                "slots_updated": out.get("slots_updated", []),
+                "members_created": out.get("members_created", []),
+                "mirror": mirror,
+                "counts": (out.get("roster") or {}).get("counts", {})}
+    except Exception as e:                                   # noqa: BLE001 — 同步失败要说，但不阻断保存
+        return {"ok": False, "why": "v5 名单同步失败：%s: %s" % (type(e).__name__, e)}
+
 
 @router.post("/api/workshop/{ws_id}/members")
 async def workshop_save_members(ws_id: str, request: Request):
@@ -372,10 +445,13 @@ async def workshop_save_members(ws_id: str, request: Request):
         _wl(ws)
     except Exception as _e:  # noqa: BLE001
         print(f"[library] 加/删成员后刷新 plan.md 失败: {_e}", flush=True)
+    # ★2026-10-30 老板 SOP：**界面加的员工也要进 v5 名单**（v5 为准，旧 members 是投影）
+    _v5_sync = _sync_v5_roster(ws, ws.members)
     save_state()
     return {
         "success": True,
         "members": [m.member_id for m in ws.members],
+        "v5_sync": _v5_sync,
         "added": added,
         "removed": removed,
     }

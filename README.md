@@ -1,7 +1,7 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.37.1`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.38.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
@@ -65,7 +65,7 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 | 想看什么 | 去这里 |
 |---|---|
 | **项目到底在做什么、边界在哪** | [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) |
-| **全部设计稿（140 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
+| **全部设计稿（162 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
 | **本地优先 + 中心中转**（当前架构方向） | [`design-docs/V66_本地优先与中心中转架构设计.md`](design-docs/V66_本地优先与中心中转架构设计.md) |
 | **派活与回执走中转 / 一个 Hub 服务多家公司** | [`V67`](design-docs/V67_派活与回执走中转_M2设计.md) · [`V68`](design-docs/V68_一个Hub服务多家公司_公司隔离设计.md) |
 | **没有公网服务器怎么当中转**（三条路） | [`design-docs/RUNBOOK_没有公网服务器怎么当中转.md`](design-docs/RUNBOOK_没有公网服务器怎么当中转.md) |
@@ -207,6 +207,7 @@ python -m agent_community.cli agents list
 | `AC_PORT` | 平台监听端口（**端口因人而异**，命令行 `--port` 优先级更高） | `18920` | 否 |
 | `AC_HOST` | 平台监听地址。默认 0.0.0.0（容器/局域网可达）；只想本机访问填 127.0.0.1 | `0.0.0.0` | 否 |
 | `AC_DATA_DIR` | 运行数据目录（工作间/审计/记忆/桥产物都落这里）。**换目录不改代码**就靠它 | `<仓库>/agent_community/data` | 否 |
+| `AC_MIND_ROOT` | **心智根（根A）目录**：每个 agent 的永久记忆（宪章/记忆索引/memories/日志/死胡同）都在这。空＝默认 `<AC_DATA_DIR>/minds`。它**必须与工作区（根B）分开**——工作区可整根归档，记忆不能跟着丢 | `（空）` | 否 |
 | `AC4_TOKEN` | 平台访问令牌（跨机/对外访问时必设；空=仅本机可用） | `（空）` | 条件必需（对外暴露平台（AC_HOST 非回环）时） |
 | `AC_EXTERNAL_READONLY` | 外部访问只读档：=1 时**非本地**请求只放行查看类 GET，写操作一律 403（默认 0） | `0` | 否 |
 | `AC4_SHUTDOWN_PIN` | 关停口令（空=关停端点仅允许本机来源 + 二次确认） | `（空）` | 否 |
@@ -294,6 +295,8 @@ python -m agent_community.cli agents list
 | `AC_ACP_CWD` | ACP 命令的工作目录 | `（空）` | 否 |
 | `AC_ACP_REPO` | ACP 仓库根（部分 harness 需要） | `（空）` | 否 |
 | **— 开发/测试内部 —** | | | |
+| `AC_ALLOW_LEGACY_DISCUSS` | **兼容口子（默认 0）**：v4 的自由发言讨论区已被结构化讨论（AILP 2.0）取代。只有设 1 才允许 `POST /api/workshop/{id}/discuss` 走旧逻辑（响应里会标 `legacy: true`）；新前端/新客户一律用 `POST /api/workshop/{id}/ailp`（四类结构化消息） | `0` | 否 |
+| `AC_ALLOW_LEGACY_AI_SELECT` | **兼容口子（默认 0）**：`POST /api/workshop/{id}/select-members`（让平台 AI 选人）已于 2026-10-31 退役 —— 平台不选人（`V116` §16），名单由组长回执交回（§8.1）。置 1 可临时恢复旧行为（响应会标 `legacy`）。 | `0` | 否 |
 | `AC_STATE_ALLOW_EMPTY` | **故意清库**的专用口子（默认 0）：只有设 1 才允许「没加载过状态的进程」用空内存覆盖已有数据。正常运行时**不要**开——它是 2026-10-23 数据被清事故的防线 | `0` | 否 |
 | `AC_VERIFY_NO_START_BRIDGE` | 接入自检时**不**自动起桥（测试/排障用） | `（空）` | 否 |
 | `AC_FAKE_REPLY` | 假回复（离线跑测试用；**生产别设**） | `（空）` | 否 |

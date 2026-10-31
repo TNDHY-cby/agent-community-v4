@@ -101,6 +101,24 @@ python tools/inject_probe_check.py    # 视觉拉起**真机**判据：真窗口
 python tools/vision_capture_check.py  # 视觉抓图**真机**判据：抓的必须是**整扇窗** —— 真造一个自己声明 DPI 的靶子窗，比"抓图尺寸 vs 真值"（150% 缩放下不声明 DPI 只抓得到左上 2/3；本机 100% 缩放会**如实说这里测不出**，不假绿）
 python tools/frontend_endpoint_check.py  # 前端接线判据：前端 JS 里出现的每个 `/api/…` 都必须**真的挂在后端**（路由自省、参数段按 `{}` 通配、允许"前缀+拼接"写法）；前端改了调用路径就跑它，防"点了按钮 404"
 python tools/protocol_call_check.py      # ★**逐个协议真调一次接口**（与 protocol_matrix 分工：那个测接入流程，这个测协议接口本身）：HTTP 真打 / WS 真连 / MCP 真走 JSON-RPC stdio / ACP 真拉起子进程握手 / A2A 真起 sidecar 读 Agent Card / gRPC 真起网关真发 RPC；pipe 与 sse 如实跳过并说明为什么
+python tools/verify_session_truth.py --db <对方库> --needle <口令>   # ★**真相核对**（V101/V102）：对方说"我写进去了"不算 —— 去**它自己的库**里查，exit 0 才通；1=库里没有 / 2=核对不了（只读拷贝，库+`-wal`+`-shm` 一起拷）
+python tools/in_session_check.py         # 它能不能在**自己的会话**里说话（session_post 那族工具）；`--send` 时只认读回核对，自报不算
+python tools/truth_check.py              # ★真相核对**真机**十格（V102）：真注册一个临时 harness + 真 SQLite（WAL）库，绿勾/红字/灰字/400 四态都要真出现，跑完删掉临时 harness
+python tools/mcp_loop_check.py           # ★**MCP 高级协议全链路十五格**（V104）：自己起临时实例（换端口+换数据目录），一个真 MCP 客户端走完 建活→看活→加成员→自检→发言→交回执；`--peer-url` 指一个真 MCP 对端才谈得上"自检通"
+python tools/mcp_tools_check.py            # ★**MCP 工具面十九格**（V105；⚠️ MCP 只是「调工具」，不是协作协议 —— 见 V116 §1.1）：临时实例上一个真 MCP 客户端把平台 14 个工具**逐个真调**（建间带任务/发言进讨论区/回执说清结果），最后核对留痕；跑完删临时实例
+python tools/protocol_peer_check.py       # ★**高级协议真对端二十七格**（V106 + V119 批 B）：A2A / gRPC 各起一个真对端，派活 → 平台真建任务 → 同一条查得到 → 真回报；含不带令牌必被拒（fail-closed）；
+                                        #   A2A 追加六格：卡上如实声明「不流式但可长轮询」/ tasks/watch 超时如实说没变 / 未声明能力 -32004 / **产物（v5 目录 diff+sha256）与验收结论（L1）随任务一起出去**
+python tools/acp_check.py                 # ★**ACP 落地九格**：真拉起 / 多轮上下文不丢 / 多会话不串 / 重启后旧会话被明确拒（fresh-only 不假装续上）/ 拉起失败立刻报（带 stderr，不挂 30s）
+python tools/protocol_parity_check.py     # ★**三档同账十三格**：同一份回执走 A(令牌)/B(桥文件)/C(人工) 落库一致、坏单同一错误码、重发幂等、坏单原文留痕；外加「目录说 available 就必须有判据工具」+「MCP=工具面 / A2A·gRPC=任务语义」
+python tools/receipt_check.py          # ★**外端回执十六格**（V110/P1）：临时实例上 A 档真 token、B 档真桥文件、C 档人工确认；坏单整单拒 + 原文留痕；幂等与序号回跳都要真出现
+python tools/roster_check.py           # ★**v5 双层名单 + 闸门十四格**（P2）：名单回执真落 slots/members、证据阶梯（缺项就停在 acked）、给未接上的工位派活要拦住且四要素齐全、旧数据迁移列 legacy_unknown
+python tools/mind_root_check.py         # ★**双根十四格**（V117/P2.5）：心智根（宪章/索引/memories/日志/死胡同）＋ manifest G0（缺文件/嵌套/入口不存在都要拒）＋ Boot Prompt 两个根真实存在 ＋ 日结追加不覆盖
+python tools/dispatch_check.py         # ★**P3 派活十八格**：任务文件/附加 notice/**平台 append manifest**/三步激活（A 真 POST、B 写标记、C 人工）/B 档超时降 manual/正文不进球/任务号不复用
+python tools/p4_check.py               # ★**P4 十七格**：verify-dirs（只 stat 不代建）/产物目录 diff（L0，sha256）/验收落闸（无证据拒、L3 拒、**L1 无凭据拒 L1_NEEDS_PROOF**、L2+空目录拒）/integrate-report 不动产物/close 吊销 token/审忆员 dry-run 不写、apply 先归档、核心基模只进 `_pending`（**真补丁 @@ hunk + `.note.md` 里带改前 hash**）
+python tools/p5_check.py               # ★**P5 入口十三格**：lead_eligible 算出来（fs_write+协议）/只列能当组长的且明说不是推荐/选不能当的 409/对接单两次逐字相同/两个根写死无占位符/不给 token 就不签/成员 kit 命名 N+1
+python tools/p6_check.py               # ★**P6 十五格**：AILP 2.0 四类结构化消息（自由聊天 422）/manifest_ref 强校验（不在 manifest 就拒并列出可用项）/依据不许空/置信度 0~1/重放幂等/无 manifest 不开讨论区/probe-tooling 真写一次盘让组长候选不再为 0
+python tools/discussion_retire_check.py  # ★**三级讨论区已退役十格**：旧自由发言 `POST …/discuss` 默认 **410 FREECHAT_RETIRED**（带 why/next、**不落库、不驱动 AI**）/新入口 `/ailp` 真能用且拒自由聊天/`manifest_ref` 强校验/兼容开关 `AC_ALLOW_LEGACY_DISCUSS=1` 时标 `legacy`
+python tools/roster_dual_check.py  # ★**两套名单体检**（旧 Workshop.members vs v5 名单）：「旧有新无」⇒ exit 1（派活/验收会派不出去）；--fix 把旧名单同步进 v5（标 manual，只增不删、不触发激活）
 python tools/state_restore.py --list     # 状态快照（data/backups/）：列快照 / --verify 校验完整性（sha256）/ --backup-now 立刻拍 / --restore <名> 恢复（先校验快照、再给当前状态拍一张，然后逐文件回读校验）
                                         #   机制在 platform/state_backup.py：启动必拍一张 + 每 AC_STATE_BACKUP_MINUTES(30) 分钟一张，保留 AC_STATE_BACKUP_KEEP(20) 份
 python -m pytest -q                     # 全部回归（含双平台守卫）

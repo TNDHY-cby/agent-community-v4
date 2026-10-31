@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
-"""**假 ACP agent**：给"acp 档能不能真被一条命令拉起来"提供可复现的对端（只用于测试/体检，不是产品）。
+"""**假 ACP agent（可多轮、可多会话、可记上下文）**：给 `V119` 批 C 提供可复现对端。
 
 协议口径照抄 `platform/acp_harness_bridge.py` 的客户端实现（一处真相）：
-  · 收 `initialize`            → 回 `{protocolVersion, agentCapabilities:{}}`
-  · 收 `session/new {cwd}`     → 回 `{sessionId:"s-fake"}`
-  · 收 `session/prompt`        → 先推一条 `session/update`（agent_message_chunk）再回 `{stopReason:"end_turn"}`
+  · `initialize`     → `{protocolVersion, agentCapabilities:{}}`
+  · `session/new`    → `{sessionId:"s-<n>"}`（**每条会话一个号**，支持并行多会话）
+  · `session/prompt` → **先记进本会话的历史**，再推 `session/update`（回复里带回"我记住了什么"），
+                       最后回 `{stopReason:"end_turn"}`
 
-被拉起的证据：进程启动时把 pid 写进 `AC_FAKE_ACP_MARK`（如果设了）；每收一个请求追加一行到同目录的 `.log`。
+为什么升级成有状态：`V119` 批 C 要判的是「**多轮上下文不丢**」和「多会话不串」，
+无状态的假 agent 测不出这两条（它的回复永远是同一句 = 假绿）。
+
+被拉起的证据：`AC_FAKE_ACP_MARK` 指向的文件里追加每一件事（含 pid / 会话号 / 每轮收到的文本）。
 """
+
 from __future__ import annotations
 
 import json
@@ -16,7 +21,6 @@ import sys
 from pathlib import Path
 
 PROTOCOL_VERSION = 1
-SESSION_ID = "s-fake"
 
 
 def _mark(text: str) -> None:
@@ -35,34 +39,65 @@ def _send(obj: dict) -> None:
     sys.stdout.flush()
 
 
+class _Agent:
+    def __init__(self) -> None:
+        self.sessions: dict[str, list] = {}
+        self.seq = 0
+
+    def new_session(self) -> str:
+        self.seq += 1
+        sid = "s-%d" % self.seq
+        self.sessions[sid] = []
+        return sid
+
+    def reply(self, sid: str, text: str) -> str:
+        """把这一轮记进会话历史，回复里**回显**历史（这样多轮/串会话都能被真判出来）。"""
+        hist = self.sessions.setdefault(sid, [])
+        hist.append(text)
+        return "收到第%d轮。本会话记得：%s" % (len(hist), " / ".join(hist))
+
+
 def main() -> int:
     _mark("[fake-acp] started pid=%d cwd=%s" % (os.getpid(), Path.cwd()))
+    agent = _Agent()
     for line in sys.stdin:
         line = line.strip()
         if not line:
             continue
         try:
             req = json.loads(line)
-        except Exception:                                   # noqa: BLE001
+        except ValueError:
             continue
         method = str(req.get("method") or "")
         rid = req.get("id")
+        params = req.get("params") or {}
         _mark("[fake-acp] recv %s id=%s" % (method, rid))
+
         if method == "initialize":
             _send({"jsonrpc": "2.0", "id": rid,
                    "result": {"protocolVersion": PROTOCOL_VERSION, "agentCapabilities": {}}})
         elif method == "session/new":
-            _send({"jsonrpc": "2.0", "id": rid, "result": {"sessionId": SESSION_ID}})
+            sid = agent.new_session()
+            _mark("[fake-acp] session/new -> %s cwd=%s" % (sid, params.get("cwd")))
+            _send({"jsonrpc": "2.0", "id": rid, "result": {"sessionId": sid}})
         elif method == "session/prompt":
-            params = req.get("params") or {}
-            # 先推一条流式通知（客户端靠它拼回复文本）
+            sid = str(params.get("sessionId") or "")
+            text = ""
+            for block in params.get("prompt") or []:
+                text += str(block.get("text") or "")
+            if sid not in agent.sessions:
+                # 未知会话必须明确报错（客户端据此判定"旧会话已释放"，不假装续上）
+                _send({"jsonrpc": "2.0", "id": rid,
+                       "error": {"code": -32001, "message": "unknown session: %s" % sid}})
+                _mark("[fake-acp] prompt on unknown session %s (rejected)" % sid)
+                continue
+            reply = agent.reply(sid, text)
             _send({"jsonrpc": "2.0", "method": "session/update",
-                   "params": {"sessionId": params.get("sessionId") or SESSION_ID,
+                   "params": {"sessionId": sid,
                               "update": {"sessionUpdate": "agent_message_chunk",
-                                         "content": {"type": "text",
-                                                     "text": "收到，已进入工作状态。"}}}})
+                                         "content": {"type": "text", "text": reply}}}})
             _send({"jsonrpc": "2.0", "id": rid, "result": {"stopReason": "end_turn"}})
-            _mark("[fake-acp] prompted ok")
+            _mark("[fake-acp] prompted sid=%s turn=%d" % (sid, len(agent.sessions[sid])))
         else:
             if rid is not None:
                 _send({"jsonrpc": "2.0", "id": rid,

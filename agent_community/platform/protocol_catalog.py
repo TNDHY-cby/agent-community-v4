@@ -40,6 +40,8 @@ def _grpc_available() -> bool:
 _PROTOCOLS: list[dict[str, Any]] = [
     {
         "id": "http",
+        "layer": "transport_generic",
+        "semantics": "通用通道：注册/心跳/回报和全部 REST。**不表达**身份与任务归属，那些在平台的名单与账本里",
         "name": "HTTP REST",
         "direction": "bidirectional",      # inbound / outbound / bidirectional
         "kind": "http",
@@ -50,6 +52,8 @@ _PROTOCOLS: list[dict[str, Any]] = [
     },
     {
         "id": "ws",
+        "layer": "transport_events",
+        "semantics": "事件流（平台→对端/前端单向推）。**不承载**请求与回执语义",
         "name": "WebSocket",
         "direction": "outbound",
         "kind": "ws",
@@ -60,6 +64,8 @@ _PROTOCOLS: list[dict[str, Any]] = [
     },
     {
         "id": "pipe",
+        "layer": "transport_local",
+        "semantics": "本机进程间交换。跨机器无意义",
         "name": "Pipe（本地进程间）",
         "direction": "outbound",
         "kind": "pipe",
@@ -70,6 +76,8 @@ _PROTOCOLS: list[dict[str, Any]] = [
     },
     {
         "id": "acp",
+        "layer": "transport_session",
+        "semantics": "会话轮次（拉起进程→initialize→session→prompt）：**有回合语义**，但对端必须是可被拉起的进程",
         "name": "ACP（Agent Client Protocol）",
         "direction": "outbound",
         "kind": "stdio",
@@ -80,6 +88,8 @@ _PROTOCOLS: list[dict[str, Any]] = [
     },
     {
         "id": "mcp",
+        "layer": "transport_tools",
+        "semantics": "**工具面**：它调用平台的工具与技能（14 个）。**不表达**身份、任务归属与验收责任，也不能让平台反过来驱动它的模型",
         "name": "MCP（Model Context Protocol）",
         "direction": "bidirectional",
         "kind": "stdio",
@@ -90,6 +100,8 @@ _PROTOCOLS: list[dict[str, Any]] = [
     },
     {
         "id": "a2a",
+        "layer": "transport_task",
+        "semantics": "**对等任务语义**：AgentCard 发现、任务派发/查询/撤回、产物回传（一元）。离「让对端干完整活」最近，但不含验收与证据规则",
         "name": "A2A（Agent-to-Agent）",
         "direction": "bidirectional",
         "kind": "http",
@@ -104,6 +116,8 @@ _PROTOCOLS: list[dict[str, Any]] = [
     },
     {
         "id": "sse",
+        "layer": "transport_events",
+        "semantics": "事件流（未实现）。客户端来问就如实说不支持",
         "name": "SSE（Server-Sent Events）",
         "direction": "outbound",
         "kind": "http",
@@ -114,6 +128,8 @@ _PROTOCOLS: list[dict[str, Any]] = [
     },
     {
         "id": "grpc",
+        "layer": "transport_task",
+        "semantics": "与 A2A 同一套任务语义的二进制绑定（一元 RPC），适合高频/跨机",
         "name": "gRPC",
         "direction": "outbound",
         "kind": "grpc",

@@ -39,6 +39,9 @@ def _ps(script: str) -> str:
     # 这里的平台分支就是那句"如实说"的实现。
     if os.name != "nt":
         raise RuntimeError("这个平台没有 .lnk（Windows 快捷方式）")
+    # 中文路径必须让 PowerShell 按 UTF-8 吐回来：系统 ANSI 是 GBK，
+    # 不设这句，read_lnk 回读的路径全是乱码 ⇒ --check 误报"文件不存在"（10-29 实咬过）。
+    script = "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; " + script
     r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode != 0:

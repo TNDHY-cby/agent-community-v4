@@ -261,6 +261,18 @@ def test_entry_scope_is_taken_from_the_url():
     assert "docking.html?ws=" in js, "总控没给出带 ?ws= 的单间链接（点了会回到总控）"
 
 
+def test_single_mode_has_way_back_to_that_workshop():
+    """★老板 2026-10-31：单间模式要把人送回**本间**（?ws_id=），不是丢回工作间列表。"""
+    js = _read("docking.js")
+    html = _read("docking.html")
+    assert 'id="navWsDock"' in html, "顶栏「工作间」缺锚点 —— 运行时改不了目标"
+    assert "function dockSyncBackLink" in js, "单间模式没有回程链接逻辑"
+    i = js.find("function dockSyncBackLink")
+    body = js[i:i + 900]
+    assert "workshop.html?ws_id=" in body, "回程链接没带 ?ws_id=（点了会掉回工作间列表）"
+    assert "DOCK_GLOBAL" in body, "总控/单间没有分开处理（总控该回列表）"
+
+
 def test_failures_are_shown_not_swallowed():
     """失败必须显示原因，**不许**把错误显示成"没有内容"（准则⑤）。
 
@@ -348,9 +360,13 @@ def test_workshop_entry_carries_the_workshop_id():
     """★工作间入口**必须带 `?ws=`**：不带就变成总控，能看别的间（串范围）。"""
     ws = _read("workshop.html")
     assert "dockingPill" in ws, "工作间没有对接中心入口"
-    assert "docking.html?ws=" in ws, "工作间入口没带 ?ws= —— 会退化成总控（能越权看别的间）"
+    # href 由 syncWsPills 现拼（'/docking.html' + '?ws=' + id）—— 查拼装处，不查字面量
+    assert "function syncWsPills" in ws, "缺 syncWsPills：入口的 ?ws= 没人写"
+    i = ws.find("function syncWsPills")
+    body = ws[i:i + 500]
+    assert "'/docking.html'" in body and "'?ws='" in body and "encodeURIComponent(id)" in body, \
+        "入口 href 没按工作间 id 拼 ?ws=（会退化成总控，能越权看别的间）"
     m = re.search(r"function loadWorkshop\(id\)\{", ws)
     assert m, "找不到 loadWorkshop（前端结构变了，请同步本守卫）"
-    body = ws[m.start():m.start() + 8000]
-    assert "dockingPill" in body and "encodeURIComponent(id)" in body, \
-        "入口的 href 没有在加载工作间时按 id 绑定"
+    tail = ws[m.start():m.start() + 8000]
+    assert "syncWsPills(id)" in tail, "加载工作间后没有用真 id 校正入口链接"

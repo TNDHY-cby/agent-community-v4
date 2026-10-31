@@ -168,6 +168,16 @@ class AcpHarnessBridge:
         with self._lock:
             self._next_id += 1
             req_id = self._next_id
+        # ★2026-10-28（V119 批 C 判据）：**子进程已经死了就别干等到超时**。
+        # 原来命令不存在/一启动就退出时，`initialize` 会静静等满 30s 再返回 {}，
+        # 调用方看到的是"空结果"而不是"它根本没起来" —— 典型"看起来成功"的死状态。
+        if self.proc is None:
+            raise RuntimeError("ACP 子进程没起来（bridge 未 start 或已 close）")
+        if self.proc.poll() is not None:
+            _tail = self.stderr_tail().strip().splitlines()[-3:]
+            raise RuntimeError(
+                "ACP 子进程已退出（returncode=%s），没能完成 %s。stderr 末几行：%s"
+                % (self.proc.returncode, method, " | ".join(_tail) or "（没有输出）"))
         self._send({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params})
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -175,6 +185,11 @@ class AcpHarnessBridge:
                 resp = self._responses.pop(req_id, None)
             if resp is not None:
                 return resp
+            if self.proc is not None and self.proc.poll() is not None:
+                _tail = self.stderr_tail().strip().splitlines()[-3:]
+                raise RuntimeError(
+                    "ACP 子进程在等 %s 的回复时退出了（returncode=%s）。stderr 末几行：%s"
+                    % (method, self.proc.returncode, " | ".join(_tail) or "（没有输出）"))
             time.sleep(0.05)
         return None
 

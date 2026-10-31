@@ -5,105 +5,78 @@
 为什么要有它（2026-10-25 真事）：
 - 平台调对方的 `session_post`，它回 `ok/in_session/message_id`；
 - 平台再用对方的 `session_messages` 读回，**也找到了口令**；
-- 但用户在 Cherry Studio 界面上**什么都看不到** —— 因为它读回的是**它自己的缓存**，
-  真实的对话库（SQLite）里根本没有这条。
+- 但用户在界面上**什么都看不到** —— 因为它读回的是**它自己的缓存**，真实对话库里根本没有这条。
 
 ⇒ 唯一骗不过的判据：**直接读对方应用自己的数据库文件**（只读副本，绝不改人家库）。
 
+**一处真相**：逻辑在 `agent_community/platform/session_truth.py`
+（对接中心「测一次」之后**自动**跑的是同一份）。本文件只是它的命令行外壳 ——
+两边结论不一致就是 bug，别在这儿再写第二套 sqlite 逻辑。
+
 用法：
-    python tools/verify_session_truth.py --db "<对方库文件>" --needle 8E7F73
-    python tools/verify_session_truth.py --db "<库>" --needle 8E7F73 --session 8d3b2a97 --last 5
+    python tools/verify_session_truth.py --db "<对方库文件>" --needle 收到-8E7F73
+    python tools/verify_session_truth.py --db "<库>" --needle 收到-8E7F73 --session 8d3b2a97 --last 5
 
 退出码：0＝库里真有这句；1＝库里没有（对方在自报）；2＝库打不开/没这张表（如实说）。
 
-⚠️ 通用性：库文件路径、表名、文本列都可传参；默认给的是本机 Cherry Studio 的结构，
+⚠️ 通用性：库路径、表名、几个列名都可传参；默认值是**常见 SQLite 消息表结构**（不是某个应用专属），
    换别的应用就换参数 —— **不在代码里写死任何人的路径**。
 """
 from __future__ import annotations
 
 import argparse
-import datetime
 import os
-import shutil
-import sqlite3
 import sys
-import tempfile
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-
-def _open_copy(db: str) -> sqlite3.Connection:
-    """**只读副本**：先把库拷到临时目录再读，避免锁住正在运行的应用、也避免手滑写坏。"""
-    tmp = os.path.join(tempfile.mkdtemp(), "truth.sqlite")
-    shutil.copy2(db, tmp)
-    return sqlite3.connect(tmp)
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+if _ROOT not in sys.path:
+    sys.path.append(_ROOT)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", required=True, help="对方应用的本地数据库文件（SQLite）")
     ap.add_argument("--needle", required=True, help="要找的那段文字（口令/核对码）")
-    ap.add_argument("--table", default="agent_session_message", help="消息表名（默认 Cherry Studio 的）")
-    ap.add_argument("--text-col", default="data", help="存正文的列（有的应用是 searchable_text）")
-    ap.add_argument("--time-col", default="created_at", help="时间列（毫秒或秒都行，自动判断）")
-    ap.add_argument("--session-col", default="session_id", help="会话 id 列名")
+    ap.add_argument("--table", default="", help="消息表名（留空＝按常见结构 agent_session_message）")
+    ap.add_argument("--text-col", default="", help="存正文的列（留空＝data；有的应用是 searchable_text）")
+    ap.add_argument("--time-col", default="", help="时间列（留空＝created_at；毫秒或秒都行，自动判断）")
+    ap.add_argument("--session-col", default="", help="会话 id 列名（留空＝session_id）")
     ap.add_argument("--session", default="", help="只看某个会话（可省）")
     ap.add_argument("--last", type=int, default=8, help="顺便打印最后几条（默认 8）")
     a = ap.parse_args()
 
-    if not os.path.isfile(a.db):
-        print("[FAIL] 找不到数据库文件：%s" % a.db)
-        return 2
-    try:
-        con = _open_copy(a.db)
-    except Exception as e:                                     # noqa: BLE001 — 打不开要如实说
-        print("[FAIL] 打不开数据库：%s: %s" % (type(e).__name__, e))
-        return 2
+    from agent_community.platform import session_truth as _st
 
-    def _ts(v) -> str:
-        try:
-            n = float(v)
-        except Exception:                                      # noqa: BLE001
-            return str(v)
-        if n > 1e11:                                            # 毫秒
-            n /= 1000.0
-        return datetime.datetime.fromtimestamp(n).strftime("%m-%d %H:%M:%S")
-
-    where, args = [f"{a.text_col} LIKE ?"], ["%" + a.needle + "%"]
-    if a.session:
-        where.append(f"{a.session_col} = ?")
-        args.append(a.session)
-    sql = ("select %s, %s, %s from %s where %s order by %s desc"
-           % (a.session_col, a.time_col, a.text_col, a.table, " and ".join(where), a.time_col))
-    try:
-        rows = list(con.execute(sql, args))
-    except Exception as e:                                     # noqa: BLE001 — 表/列不对要如实说
-        print("[FAIL] 查不了（表 %s / 列 %s 可能不对）：%s: %s" % (a.table, a.text_col, type(e).__name__, e))
-        return 2
-
+    res = _st.check(a.db, a.needle, table=a.table, text_col=a.text_col,
+                    time_col=a.time_col, session_col=a.session_col,
+                    session=a.session, last=a.last)
     print("=" * 78)
-    print("真相核对：在 %s 里找 %r" % (os.path.basename(a.db), a.needle))
+    print("真相核对：在 %s 里找 %r" % (os.path.basename(a.db or ""), a.needle))
     print("=" * 78)
-    if rows:
-        print("[OK] 库里有这条，共 %d 条：" % len(rows))
-        for sid, ts, txt in rows[:5]:
-            print("   %s | 会话 %s | %s" % (_ts(ts), str(sid)[:8], str(txt)[:90].replace("\n", " ")))
+    if res["code"] == 0:
+        print("[OK] 库里有这条，共 %d 条：" % len(res["matches"]))
+        for m in res["matches"]:
+            print("   %s | 会话 %s | %s" % (m["at"], (m["session_id"] or "")[:8], m["excerpt"][:90]))
+    elif res["code"] == 1:
+        print("[FAIL] 库里**没有**这句。")
+        codes = res.get("recent_codes") or []
+        if codes:
+            # ★2026-10-25 我自己踩过：拿到的口令是**截断过的**（界面把「收到-8EF73D」显示成 8E7F73），
+            #   于是把"写进去了"误判成"没写"。所以找不到时，把库里最近的口令**打出来让人对**。
+            print("   ⇒ 提醒：库里最近的口令是这个（是不是你手上那个被截断了？）：")
+            for c in codes:
+                print("      %s  %s" % (c["code"], c["at"]))
     else:
-        print("[FAIL] 库里**没有**这句 —— 对方的“写进去了/读回也对上了”是它自己的缓存，不是真实会话。")
-
-    try:
-        tail_sql = ("select %s, %s, %s from %s%s order by %s desc limit %d"
-                    % (a.session_col, a.time_col, a.text_col, a.table,
-                       (" where " + a.session_col + " = ?") if a.session else "",
-                       a.time_col, max(1, a.last)))
-        tail = list(con.execute(tail_sql, ([a.session] if a.session else [])))
-    except Exception:                                          # noqa: BLE001 — 打不出来不影响结论
-        tail = []
-    if tail:
-        print("\n该库里最后 %d 条（真·界面来源）：" % len(tail))
-        for sid, ts, txt in tail:
-            print("   %s | %s | %s" % (_ts(ts), str(sid)[:8], str(txt)[:80].replace("\n", " ")))
-    return 0 if rows else 1
+        print("[FAIL] 核对不了：%s" % (res.get("why") or "原因不明"))
+        if res.get("tables"):
+            print("   库里有这些表：%s" % "、".join(res["tables"][:12]))
+    if res.get("tail"):
+        print("\n该库里最后 %d 条（真·界面来源）：" % len(res["tail"]))
+        for t in res["tail"]:
+            print("   %s | %s | %s" % (t["at"], (t["session_id"] or "")[:8], t["excerpt"][:80]))
+    return int(res["code"])
 
 
 if __name__ == "__main__":

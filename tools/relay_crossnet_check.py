@@ -211,6 +211,10 @@ def main() -> int:
                     break
                 time.sleep(0.5)
             # 把探针脚本放到 **纯 ASCII 路径**（WSL 侧好引用）
+            # ★2026-10-25（真跑踩到）：WSL 里 **D 盘没挂到 /mnt/d** 时，探针文件在 WSL 眼里根本不存在，
+            #   表现为 python3: can't open file ...probe.py —— 看起来像判据坏了/平台不通，
+            #   其实只是**这台机器的 WSL 没挂那个盘**。这里先探一下，看不到就**如实跳过并给挂载命令**。
+
             probe_dir = Path(os.environ.get("TEMP") or "/tmp") / "ac_wsl_probe"
             probe_dir.mkdir(parents=True, exist_ok=True)
             probe = probe_dir / "probe.py"
@@ -218,6 +222,20 @@ def main() -> int:
                              encoding="utf-8")
             drive = (probe.anchor or "D:\\")[:1].lower()
             probe_wsl = "/mnt/%s/%s" % (drive, str(probe).replace("\\", "/").split(":", 1)[1].lstrip("/"))
+            # ★2026-10-25：先确认 WSL 里**看得见**探针文件；看不见＝那个盘没挂进去
+            #   （表现为 `python3: can't open file ...probe.py`，像判据坏了，其实是环境）
+            try:
+                _vis = subprocess.run(["wsl", "-d", distro, "-u", "root", "--",
+                                       "test", "-f", probe_wsl],
+                                      capture_output=True, timeout=60)
+                _visible = (_vis.returncode == 0)
+            except (OSError, subprocess.TimeoutExpired):
+                _visible = False
+            if not _visible:
+                skip("② WSL 侧（另一网络栈）跨网络注册与投递",
+                     "WSL 里看不到 %s —— 这个盘没挂进去（`sudo mount -t drvfs %s: /mnt/%s`），"
+                     "不是平台不通" % (probe_wsl, drive.upper(), drive))
+                up = False
             wsl_ok, wsl_out = False, ""
             if up:
                 # 先让 Windows 侧有个终端在线，WSL 才能投递给它

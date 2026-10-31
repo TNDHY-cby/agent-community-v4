@@ -262,14 +262,24 @@ if HAS_GRPC:
                     payload = _parse_payload(request.payload_json)
                 except ValueError as e:
                     context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(e))
+                # ★2026-10-25：让平台**真建出任务**（否则 gRPC 这边回的 task_id 是空的，
+                #   客户端 GetTask 查不到 —— A2A/MCP 同一个洞，一处真相一起改）
+                if isinstance(payload, dict) and not payload.get("create_task"):
+                    payload = dict(payload)
+                    payload["create_task"] = True
+                    if request.task_id and not payload.get("task_id"):
+                        payload["task_id"] = str(request.task_id)
                 # 拍板 ①：SubmitTask 虽然后端当前不校验 P1，也一并转发（一致性）
                 resp = _upstream_or_abort(
                     context, "POST", "/api/workshop", payload, write=True,
                     extra_headers=_resolve_token(getattr(request, "agent_token", "")))
                 ok = bool(resp.get("success") or resp.get("workshop_id"))
+                # ★2026-10-25（真对端判据抓到）：这里原来回的是 **工作间 id**，
+                #   而客户端拿它去 GetTask 查的是**任务** ⇒ 永远 404（	ask not found）。
+                #   A2A 那边同一个毛病已改：回**任务 id**，工作间 id 放 meta 里。
                 return agent_community_pb2.TaskAck(
                     ok=ok,
-                    task_id=str(resp.get("workshop_id", "")),
+                    task_id=str(resp.get("task_id") or ""),
                     error=str(resp.get("error", "") or ""),
                 )
 

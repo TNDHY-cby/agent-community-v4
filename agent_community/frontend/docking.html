@@ -9,28 +9,51 @@
 <link rel="stylesheet" href="hub.css">
 <link rel="stylesheet" href="docking.css">
 <link rel="stylesheet" href="boot.css">
-<link rel="stylesheet" href="/theme-crt.css">
-<script src="/theme-crt.js" defer></script>
+  <style>
+    /* 2026-10-25 粗排：测一次的三件事 + 它来没来过（先能用，视觉以后再优化） */
+    .wiz-lane { margin: 6px 0 8px; padding: 8px 10px; border: 1px solid rgba(140,140,160,.28); border-radius: 6px; }
+    .wiz-lane-row { line-height: 1.7; }
+    .wiz-lane-note { margin-top: 6px; opacity: .82; }
+    .wiz-mcp-calls { margin: 10px 0 4px; padding: 8px 10px; border: 1px dashed rgba(140,140,160,.4); border-radius: 6px; }
+    .wiz-call-row { line-height: 1.7; }
+      .wiz-mcp-notes { margin: 10px 0 4px; padding: 8px 10px; border: 1px dashed rgba(140,140,160,.4); border-radius: 6px; }
+</style>
+<link rel="stylesheet" href="chrome.css">
 </head>
 <body class="app-bg-dock">
 <a class="skip-link" href="#dockingMain">跳到主内容</a>
-<div class="app">
+<div class="app has-masthead">
 
   <!-- ===== topbar ===== -->
-  <header class="topbar">
+  <header class="topbar chrome-top chrome-fixed">
     <div class="logo"><span class="logo-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3v5M15 3v5"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v4"/></svg></span> 对接中心<span class="sub" id="dockScopeSub">· 总控（全局）</span></div>
     <div class="position" id="dockPosition">把外部 Agent 接进来、唤醒起来、跟它说句话 · 讨论与工作仍在工作间</div>
     <div class="spacer"></div>
-    <button class="btn mini quiet" style="margin-right:10px;align-self:center" onclick="dockGo('update')" title="只读检查；执行升级永远在你自己的终端">检查更新</button>
+    <button class="btn mech" onclick="dockGo('update')" title="只读检查；执行升级永远在你自己的终端">检查更新</button>
     <nav class="live-links">
       <a href="/">实时大厅</a>
       <a href="/monitor.html">监控室</a>
-      <a href="/workshop.html">工作间</a>
+      <a href="/workshop.html" id="navWsDock">工作间</a>
       <a href="/register.html" title="旧页已下线为只读镜像：内容（接入模板/题库/桥型速查）可回查，写操作已停用">接入模板（只读镜像）</a>
       <a href="/hub.html">流程说明</a>
       <a href="/ops.html">看板</a>
     </nav>
   </header>
+
+  <!-- ===== 刊头 ===== -->
+  <div class="masthead">
+    <div class="mh-in">
+      <div class="mh-tag"><b>■</b> SYSTEM // 外端 AGENT 生产合作社 · 对接中心</div>
+      <h1>对接<span class="slash">/</span>前台</h1>
+      <div class="mh-meta">
+        <span id="dockMhScope">总控 · 全局</span>
+        <span>外部 Agent 接入与唤醒</span>
+        <span>讨论与工作去工作间</span>
+        <span data-chrome-clock>--:--:--</span>
+      </div>
+    </div>
+    <div class="mh-hazard" aria-hidden="true"></div>
+  </div>
 
   <div class="scope-banner" role="note" id="dockScopeBanner"><span class="pulse"></span>正在读取对接总览…</div>
 
@@ -325,5 +348,6 @@
 
 <script src="docking.js"></script>
 <script src="boot.js"></script>
+<script src="chrome.js" defer></script>
 </body>
 </html>

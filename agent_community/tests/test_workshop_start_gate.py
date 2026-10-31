@@ -10,6 +10,8 @@
 """
 from __future__ import annotations
 
+import pytest
+
 import sys
 from pathlib import Path
 
@@ -86,3 +88,8 @@ def test_placeholder_config_warns_but_saves():
     body = r.json()
     assert body.get("placeholder_warning"), "占位符必须回 warning：%r" % body
     assert "示例占位" in body["placeholder_warning"][0], body
+
+@pytest.fixture(autouse=True)
+def _legacy_discuss_on(monkeypatch):
+    """v4 自由发言讨论区已退役（默认 410）；本文件测闸门，故打开兼容开关。"""
+    monkeypatch.setenv("AC_ALLOW_LEGACY_DISCUSS", "1")

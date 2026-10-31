@@ -22,6 +22,90 @@
 > 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
 > ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
 
+# 4.38.0 更新说明
+
+> 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee -MirrorGithub`）。
+> ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
+
+## [4.38.0] - 2026-10-31
+
+本批四件事：**验收会摊开说、名单对不上会说人话、证据改由平台自己验（A/B 两档）**。
+共同点是一句话：**平台不再只记"有人说通了"，而是记"平台自己看见了什么"**。
+
+### 新增 · 验收失败态摊开（证据四步表，`V121`）
+
+- 新端点 `GET /api/workshop/{id}/tasks/{seq}/evidence-view[?level=]`（**只读**：不扫盘、不写 `_meta`、不改账本）；
+  用户点「通过」**之前**就能看见：`steps[4]`（派活记录 / 产物在盘上 / 回执留痕 / 人拍板）、
+  `evidence_have`、`blocking`、`who_should_fix`、`why`、`next`。
+  `?level=L0|L1|L2|L4` 可预演「我按这一档验收会卡在哪」。
+- `POST …/tasks/{seq}/review` 失败态**追加**同一张表（老的 `code`/`error`/`next` 一个都不删）。
+- 四步表只做**事实层一致**：第 1/4 步是硬前置与硬收尾，第 2/3 步是**可用的证据档**，
+  明写「有一档够格就能过，不是四步都要打勾」（不做进度条）。
+
+### 新增 · 名单与实到对不上（`V116 §8.0`）
+
+- 老板拍板的两条口径落地：**人数不齐先接着干**（只在给空工位派活时拦，409 `GATE_G5` 四要素），
+  **名字对不上只提醒不拦**。
+- 新字段 `roster_summary`（`GET …/roster` 与 `GET /api/workshop/{id}` **同一份**）：
+  「名单 5 人，已接上 3 人，还差 2 个（前端组#4、前端组#5）—— 空工位不能派活」，
+  另带 `missing_labels / near / alarm / all_active / can_dispatch_anyone`（受阻/失联与"还没开始"分开说）。
+- 接人时可选填 `actual_name`（「它现在实际叫什么」）：填了与平台身份名比，不一致**只提醒不拦**；
+  没填就**没有**核对结果（界面不许显示成"已核对"）。
+
+### 新增 · 证据改由平台自验（A 档 / B 档，`V116 §6.1 / §6.2`）
+
+- **A 档（协议型）**：拼成员对接单时现生成**一次性回话口令**（库里只存 sha256 指纹），
+  那个 agent 必须用**该工位**的凭据 + 口令打 `POST …/members/{seq}/handshake`。
+  五道卡：没发过口令 / 口令错 / 没凭据 / 拿别工位凭据（403 `TOKEN_SCOPE`，平台主 token 也 401 `TOKEN_BAD`）/ 重放；
+  重拼对接单 ⇒ 旧口令当场作废。
+- **B 档（桥型）**：`POST …/members/{seq}/bridge-probe` —— 平台**自己**往该工位邮箱写一条
+  `task_<probe_id>.json`，**自己**看它有没有进 `inbox/delivered/`（取走了）与 `inbox/replies/`（回话了）。
+  **没被取走 ⇒ 一个字都不记进证据**（409 `PROBE_NOT_PICKED`）；支持带 `probe_id` 看同一条
+  （取件发生在两次点击之间，每次都新发就永远看不到取走）。
+- 账上**逐项记「谁验的」**：`evidence_sources` 里 `platform-observed`（平台看见的）与 `user-check`（人打的勾），
+  并各带时间戳；界面两者**必须长得不一样**（单看时间戳分不出来——打勾也留时间戳）。
+- **诚实边界（写在模型里，不在汇报里吹）**：这套防的是「没接上却记成接上」的**无心错记**，
+  不防有意伪造（用户自己也能拿单子里的凭据+口令 curl 一次，或往邮箱塞/删文件）。
+  要做到"伪造也做不到"就得让平台判断回应内容像不像真的 —— 那违反「平台零 AI」，所以不做。
+
+### 变更 · 验收不再接受"没凭据的 L1"
+
+- `L1`（「它库已有」）**必须带 `evidence_ref` 凭据**，否则 400 `L1_NEEDS_PROOF` 并按 `L4`（人眼确认）算；
+  给了就落账本并标 `evidence_ref_is_manual=true`，界面一律显示「L1（人工凭据，平台未核对）」。
+- **产物目录真扫到 0 个文件时只许 `L4`**：`L0`/`L1`/`L2` 一律 `ARTIFACTS_EMPTY`。
+- 判"有没有交东西"只看**盘上现存**（`files_now` / `total_files`），**不看** `summary.new`
+  （`new` 是相对上次快照的增量，先扫过再验收就是空数组 —— 会把"已交"显示成"没交"）。
+
+### 界面（前端侧同批交付）
+
+- 控制台：验收「证据卡」（四步表 + 卡点条 + `?level=` 预演 + L1 凭据输入）、
+  名单表头那句 `roster_summary` 人话、名单表新增「名字」列（`actual_name`）、
+  覆盖范围不再必填（C 档先记上、后补也行）。
+- `register.html` 撤掉过时口径：「平台要等全员 `entered` 才开始派任务」→
+  「**至少要有一个成员接上（`active`）才允许开工**；没接上的工位不能派活，但不会把整间活儿停住」
+  （与 `v5_gate` G4 实现一致；这是原先界面话术与实现的真实矛盾）。
+
+### 修复
+
+- `tools/p4_check.py` ⑭ 长期假红：审忆员改成产出真补丁后，`改前 hash` 挪进 `<pid>.note.md`，
+  判据却还在 `.diff` 里找。现改为「基模没被改 + 待审里是**真补丁**（有 `@@` hunk）+ `.note.md` 带改前 hash」。
+- `tests/test_v5_frontend.py` 4 处路径断言从「把 `/` 换成 `\` 再比字符串」改成 `Path` 比较
+  （其中一处 Linux 上恒假 ⇒ WSL 侧长期红；已用 `git worktree` 在旧提交上复现确认非本次引入）。
+- `tools/dual_platform_check.py` 的「仓库污染」不再把平台**自己**写的
+  `data/backups`、`data/logs`、`data/run` 算成测试污染（生产实例每 30 分钟拍一张状态快照，
+  否则一跑判据就报「18 处新增」，Linux 侧还会 `Failed: 测试污染了真实数据`）。
+- `intake_token.verify()` 的 docstring 写错了返回结构（扁平的 `(workshop_id, member)` 与实现
+  `((wid, member), why)` 不符），照着写就会误报 `TOKEN_SCOPE`；已改准。
+- 修掉 `V116` §21 一处被 TAB 吞掉首字母的文件路径。
+
+### 判据
+
+- 新增 `tests/test_v5_review_view.py` 12 条、`test_v5_roster_gap.py` 10 条、
+  `test_v5_handshake.py` 8 条、`test_v5_bridge_probe.py` 7 条（全部真请求 / 真文件 / 真目录）。
+- `tools/p4_check.py` **17 格全 PASS**（新增 ⑨b「L1 不给凭据 ⇒ 拒」）；`p5_check` 13 格全 PASS。
+- 全量 `pytest agent_community/tests` 绿；`dual_platform_check` 两侧真跑全绿
+  （Windows 2490 条 / Linux 2490 条，0 失败）；`pre_release_check --fast` 12 项全过。
+
 ## [4.37.1] - 2026-10-25
 
 ### 修复（发布门禁在 Linux 侧超时）
