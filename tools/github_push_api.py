@@ -103,8 +103,14 @@ class Api:
         ctx = ssl.create_default_context()
         return _IPConn(API_HOST, ip, timeout=60.0)
 
-    def req(self, method: str, path: str, body=None, expect=(200,), raw=False):
-        """发一个 API 请求；自动试候选 IP；令牌只进 header。"""
+    def req(self, method: str, path: str, body=None, expect=(200, 201), raw=False):
+        """发一个 API 请求；自动试候选 IP；令牌只进 header。
+
+        ⚠️ `expect` 默认**含 201**（GitHub 的创建类 API——blobs/trees/commits——返回 201）。
+        2026-10-31 实测踩过：默认只认 200 ⇒ 201 被当成"非预期"走错误分支返回 `{"_error"}`，
+        而调用方只看 status 就以为成功了 ⇒ 建树拿到 `sha=None`、白传 413 个 blob。
+        所以这里**只要不是 expect 里的状态码，就一定把 `_error` 带回去**，调用方必须检查。
+        """
         payload = None
         if body is not None:
             payload = json.dumps(body).encode("utf-8")
@@ -270,15 +276,15 @@ def main() -> int:
             print("  确实要覆盖（会丢远端那几笔）时加 --allow-remote-ahead。")
             return 2
 
-    # 传 blob
+    # 传 blob（**GitHub 建 blob 返回 201**，必须显式认它；只看 status 不看 body 曾踩过坑）
     uploaded = 0
     for path, mode, typ, sha in to_add:
         st, _b = api.req("POST", "%s/git/blobs" % base,
                          {"content": base64.b64encode(blob_content(repo, sha)).decode("ascii"),
-                          "encoding": "base64"})
-        if st != 201:
+                          "encoding": "base64"}, expect=(201,))
+        if st != 201 or not (_b or {}).get("sha"):
             raise SystemExit("上传 blob 失败（%s，HTTP %s）：%s"
-                             % (path, st, (_b.get("_error") or "")[:300]))
+                             % (path, st, ((_b or {}).get("_error") or "")[:300]))
         uploaded += 1
         if uploaded % 50 == 0:
             print("   …已传 %d/%d" % (uploaded, len(to_add)))
@@ -309,9 +315,10 @@ def main() -> int:
             body = {"tree": chunk}
             if base_tree:
                 body["base_tree"] = base_tree
-            st, nb = api.req("POST", "%s/git/trees" % base, body)
-            if st != 201:
-                raise SystemExit("建树失败（第 %d 块，HTTP %s）：%s" % (i, st, (nb.get("_error") or "")[:300]))
+            st, nb = api.req("POST", "%s/git/trees" % base, body, expect=(201,))
+            if st != 201 or not (nb or {}).get("sha"):
+                raise SystemExit("建树失败（第 %d 块，HTTP %s）：%s"
+                                 % (i, st, ((nb or {}).get("_error") or "")[:300]))
             base_tree = nb.get("sha")
         new_tree = base_tree
     else:
@@ -326,9 +333,10 @@ def main() -> int:
                 prev = new_tree or r_tree
                 if prev:
                     body["base_tree"] = prev
-                st, nb = api.req("POST", "%s/git/trees" % base, body)
-                if st != 201:
-                    raise SystemExit("建树失败（HTTP %s）：%s" % (st, (nb.get("_error") or "")[:300]))
+                st, nb = api.req("POST", "%s/git/trees" % base, body, expect=(201,))
+                if st != 201 or not (nb or {}).get("sha"):
+                    raise SystemExit("建树失败（HTTP %s）：%s"
+                                     % (st, ((nb or {}).get("_error") or "")[:300]))
                 new_tree = nb.get("sha")
         else:
             new_tree = r_tree
@@ -345,9 +353,9 @@ def main() -> int:
 
     msg = a.message.strip() or ("快照同步：%s（%s）" % (head[:10], "内容与本地 HEAD 的树一致"))
     st, nc = api.req("POST", "%s/git/commits" % base,
-                     {"message": msg, "tree": new_tree, "parents": [remote_sha]})
-    if st != 201:
-        raise SystemExit("建提交失败（HTTP %s）：%s" % (st, (nc.get("_error") or "")[:300]))
+                     {"message": msg, "tree": new_tree, "parents": [remote_sha]}, expect=(201,))
+    if st != 201 or not (nc or {}).get("sha"):
+        raise SystemExit("建提交失败（HTTP %s）：%s" % (st, ((nc or {}).get("_error") or "")[:300]))
     new_commit = nc.get("sha")
     print("[commit] %s" % new_commit)
 

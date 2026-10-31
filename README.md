@@ -1,7 +1,7 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.38.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.38.1`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
@@ -64,12 +64,15 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 
 | 想看什么 | 去这里 |
 |---|---|
+| **★ 我要怎么用这个平台（从零到跑通，15 步）** | [`design-docs/使用流程_从零到跑通.md`](design-docs/使用流程_从零到跑通.md) ← **用户先看这份** |
 | **项目到底在做什么、边界在哪** | [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) |
-| **全部设计稿（162 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
+| **完整建模（主模型 26 节 + 12 分册 + 明细册）** | [`V116`](design-docs/V116_v5完整模型_整合版_2026-10-27.md) · [`model/`](design-docs/model/) · [`V118`](design-docs/V118_组织拓扑与团队资产_建模_2026-10-28.md) |
+| **全部设计稿（164 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
 | **本地优先 + 中心中转**（当前架构方向） | [`design-docs/V66_本地优先与中心中转架构设计.md`](design-docs/V66_本地优先与中心中转架构设计.md) |
 | **派活与回执走中转 / 一个 Hub 服务多家公司** | [`V67`](design-docs/V67_派活与回执走中转_M2设计.md) · [`V68`](design-docs/V68_一个Hub服务多家公司_公司隔离设计.md) |
 | **没有公网服务器怎么当中转**（三条路） | [`design-docs/RUNBOOK_没有公网服务器怎么当中转.md`](design-docs/RUNBOOK_没有公网服务器怎么当中转.md) |
 | **接入一个 agent 要准备什么 / 桥怎么跑通** | [`CHECKLIST_接入者要准备什么`](design-docs/CHECKLIST_接入者要准备什么.md) · [`RUNBOOK_桥怎么跑通`](design-docs/RUNBOOK_桥怎么跑通.md) |
+| **发版怎么发（Gitee 主 / GitHub 走 SSH over 443）** | [`design-docs/RUNBOOK_发布到GitHub_SSH443.md`](design-docs/RUNBOOK_发布到GitHub_SSH443.md) |
 | **前端交接件（对外契约 + 可执行预检）** | [`外包交接_前端界面/`](外包交接_前端界面/) |
 | **这个平台怎么被验证的（判据清单）** | [`AGENTS.md`](AGENTS.md) 的「产品化硬规则」段 |
 | **每个版本改了什么** | [`CHANGELOG.md`](CHANGELOG.md) |

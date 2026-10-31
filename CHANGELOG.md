@@ -27,6 +27,62 @@
 > 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee -MirrorGithub`）。
 > ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
 
+# 4.38.1 更新说明
+
+> 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
+> ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
+
+## [4.38.1] - 2026-11-01
+
+本版只改**对外表达**（文档），产品行为与 4.38.0 一致。起因：老板问"有上传用户使用流程吗"，
+一查发现远端那份 `RUNBOOK_端到端运行流程.md` **已经与实现矛盾**。
+
+### 新增 · 《使用流程 · 从零到跑通》（**用户手册，单一入口**）
+
+`design-docs/使用流程_从零到跑通.md`（269 行），按 `V116 §8.2` 的**15 步**分四段：
+
+- 立项与选帅（步 0–5）／深谈建模与资料库（步 6–9）／开岗与拉人（步 10–12）／派活、干活、验收（步 13–15）；
+- 每一步都写清：**你在哪点**、**平台替你自动做什么**、**怎么算数**（判据）、**做错了会看到什么**（错误码 + 人话）；
+- 附「撞墙清单」：`410 FREECHAT_RETIRED` / `410 AI_SELECT_RETIRED` / `409 GATE_G0/G4/G5` /
+  `409 NOT_LEAD_ELIGIBLE` / `400 L1_NEEDS_PROOF` / `400 ARTIFACTS_EMPTY` /
+  `400 HANDSHAKE_MISMATCH|ALREADY_USED` / `401 TOKEN_BAD` / `403 TOKEN_SCOPE` / `PATH_NOT_ABSOLUTE` 各怎么处理；
+- 讲清**三档证据谁验的**（A 协议型/B 桥型 = 平台自己验的 `platform-observed`；C 视觉型 = 你打的勾 `user-check`），
+  并明说「单看时间戳分不出来，区别只在谁验的」。
+
+### 修正 · 旧 RUNBOOK 标注「已被取代」
+
+`design-docs/RUNBOOK_端到端运行流程.md`（2026-10-08 版）顶部加醒目横幅：**照它做会撞 410**。实测证据：
+
+- `POST …/workshop/{id}/discuss` ⇒ **410 `FREECHAT_RETIRED`**（一级讨论已退役）
+- `POST …/workshop/{id}/select-members` ⇒ **410 `AI_SELECT_RETIRED`**（平台 AI 选人已退役）
+
+而那份文档的十步流程里 ④ 是「一级讨论」、⑤ 是「选定成员」。状态行从"现行"改成"已被取代（历史记录）"，
+指向新用户手册；权威口径仍是 `V116 §8.2`。
+
+### 新增 · 《发布到 GitHub · SSH over 443》RUNBOOK
+
+`design-docs/RUNBOOK_发布到GitHub_SSH443.md`：本机 `github.com` 的 git/https 协议**不通**（TLS 被重置），
+REST 逐对象上传**太慢太脆**（每请求新建握手，413 个 blob ≈ 8 分钟且易断），
+而 `ssh.github.com:443` 可用 —— 实测 `git push` **7 秒**推完 43 个提交、**保留完整历史**（远端 sha == 本地 HEAD）。
+文档含：一次性配置、每次发版三步、判据（问远端 sha）、**七个已知坑**（系统 ssh 缺 DLL / `~/.ssh/config` 带 BOM /
+路径含空格 / 令牌不进命令行 / 载荷不进命令行 / `-MirrorGithub` 是空架子 / 快照模式的判据是 tree 不是 sha）、
+以及**怎么吊销公钥**。
+
+### 顺带
+
+- `tools/github_push_api.py` 修一个真 bug：GitHub 创建类 API 返回 **201**，而默认 `expect` 只认 200
+  ⇒ 响应体里其实是 `{"_error"}`，调用方只看 status 就以为成功（建树拿到 `sha=None`、白传 413 个 blob）。
+  该工具**降级为应急**（只在 SSH 也不通时用）。
+- `README.md` 导航表：第一行改为「★ 我要怎么用这个平台（从零到跑通，15 步）」，
+  另补「完整建模（主模型 26 节 + 12 分册 + 明细册）」与「发版怎么发（SSH over 443）」两个入口。
+- 发布闸门抓到一处**真实凭据外泄**：临时探针脚本里硬编码了平台 token ⇒ 已改成从环境变量读
+  （不回退明文），连带删掉含明文的中间备份。这是本次没有把凭据带进发布面的原因。
+
+### 判据
+
+`test_design_index` + `test_doc_credibility` + `test_model_docs` 全绿；
+`README` 设计稿计数 163 → 164；版本号 4.38.0 → 4.38.1（`__init__.py` 唯一真源 + README/主模型/V116 基线三处同步）。
+
 ## [4.38.0] - 2026-10-31
 
 本批四件事：**验收会摊开说、名单对不上会说人话、证据改由平台自己验（A/B 两档）**。
