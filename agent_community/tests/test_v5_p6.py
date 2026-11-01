@@ -25,7 +25,9 @@ REF = "前端组/员工01/任务/T-001.md"
 def _env(**kw):
     base = {"ailp_version": "2.0", "msg_id": "msg-1", "msg_type": "PROPOSE",
             "sender": "员工01", "target": "组长", "manifest_ref": REF,
-            "payload": {"proposal": "先做接口", "confidence": 0.8, "basis_ids": ["T-001"]}}
+            # ★2026-11-01（`V122` 批 1）：依据现在要**真存在**（A014）。
+            #   默认指向 manifest_ref 本身 —— 它一定在 allowed 里，夹具不必额外造数据。
+            "payload": {"proposal": "先做接口", "confidence": 0.8, "basis_ids": [REF]}}
     base.update(kw)
     return base
 
@@ -56,15 +58,23 @@ def test_a006_manifest_ref_must_be_in_manifest():
     assert REF in errs[0]["fix"], "要告诉它能用哪些"
 
 
-def test_all_four_types_validate():
+def test_all_seven_types_validate():
+    """七类都要能过（`V122` 批 1：四类 → 七类，新增 CLARIFY / ACT / RECOMMEND）。"""
     cases = {
-        "PROPOSE": {"proposal": "x", "confidence": 0.5, "basis_ids": ["a"]},
-        "CHALLENGE": {"contradiction": "x", "evidence_ids": ["a"], "counter_proposal": "y"},
-        "REFINE": {"target_id": "msg-0", "modifications": "m", "new_confidence": 0.9},
+        "PROPOSE": {"proposal": "x", "confidence": 0.5, "basis_ids": [REF]},
+        "CHALLENGE": {"contradiction": "x", "evidence_ids": [REF], "counter_proposal": "y"},
+        # ★REFINE 现在**必须带 reason**（置信度只追加、不原地改）
+        "REFINE": {"target_id": "msg-0", "modifications": "m", "new_confidence": 0.9,
+                   "reason": "拿到新证据"},
         "CONTEXT_ECHO": {"echo_target": "蚁群", "shared_context": "呼应去中心化"},
+        "CLARIFY": {"question": "T-001 的接口要返回什么", "to_ref": "msg-0"},
+        "ACT": {"task_ref": "T-001", "owner": "员工01", "due": "2026-11-05"},
+        "RECOMMEND": {"target_id": "msg-0", "reason": "它依据更全", "confidence": 0.7},
     }
     for t, payload in cases.items():
-        ok, errs, norm = A.validate(_env(msg_type=t, payload=payload), allowed=[REF])
+        ok, errs, norm = A.validate(_env(msg_type=t, payload=payload), allowed=[REF],
+                                    msg_ids={"msg-0"}, task_ids={"T-001", "1"},
+                                    members={"员工01", "组长"})
         assert ok, (t, errs)
         assert norm["msg_type"] == t and norm["fingerprint"]
 
@@ -82,8 +92,14 @@ def test_a011_confidence_range():
 
 def test_catalog_is_single_source():
     cat = A.types_catalog()
-    assert cat["ailp_version"] == "2.0" and len(cat["types"]) == 4
+    # ★2026-11-01（`V122` 批 1）：四类 → 七类
+    assert cat["ailp_version"] == "2.0" and len(cat["types"]) == 7
+    assert [t["msg_type"] for t in cat["types"]] == list(A.TYPES)
     assert any(r.startswith("自由聊天不收") for r in cat["rules"])
+    # 规则里承诺的每一条，代码都得真有（`REFINE` 的 target / 依据存在性 / ACT 的任务号）
+    joined = " ".join(cat["rules"])
+    for must in ("A013", "A014", "A016", "A017", "reason"):
+        assert must in joined, "规则表里没写清 %s" % must
 
 
 # ── tooling 实测 ───────────────────────────────────────────────
@@ -201,7 +217,7 @@ def test_optional_payload_is_advertised():
 
 def test_optional_payload_absent_is_fine():
     ok, errs, norm = A.validate(_env(msg_type="CHALLENGE",
-                                     payload={"contradiction": "c", "evidence_ids": ["e"]}),
+                                     payload={"contradiction": "c", "evidence_ids": [REF]}),
                                 allowed=[REF])
     assert ok, errs
     assert "counter_proposal" not in norm["payload"]
@@ -209,12 +225,12 @@ def test_optional_payload_absent_is_fine():
 
 def test_optional_payload_validated_when_given():
     ok, errs, norm = A.validate(_env(msg_type="CHALLENGE",
-                                     payload={"contradiction": "c", "evidence_ids": ["e"],
+                                     payload={"contradiction": "c", "evidence_ids": [REF],
                                               "counter_proposal": "改成这样"}),
                                 allowed=[REF])
     assert ok and norm["payload"]["counter_proposal"] == "改成这样"
     bad, errs2, _ = A.validate(_env(msg_type="CHALLENGE",
-                                    payload={"contradiction": "c", "evidence_ids": ["e"],
+                                    payload={"contradiction": "c", "evidence_ids": [REF],
                                              "counter_proposal": 123}),
                                allowed=[REF])
     assert bad is False and any(e["code"] == "A012" for e in errs2), "给了但类型错要拒"

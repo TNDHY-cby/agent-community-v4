@@ -98,6 +98,32 @@ PROTOCOLS = [
         "next_step": "先框选一次输入框；再用「试投一句」看它回不回话",
     },
     {
+        "id": "a2a", "label": "A2A（对方是 A2A agent，有 Agent Card）",
+        # ★2026-11-01 新增（老板要在接入向导里选 A2A）：
+        #   A2A agent 本质是 **HTTP 服务**，所以能探活/读卡；但它交付任务用的是 A2A 的
+        #   `tasks/send`（JSON-RPC 信封），**不是**普通 HTTP POST —— 这一点必须写清，
+        #   否则用户以为"注册成功 = 能派活"，实际派出去的格式它不认。
+        "can_be_woken": True, "needs_bridge": False, "needs_session": False,
+        # 注册仍走 http_api 的通道（平台按 api_base_url 发；A2A 的 tasks/send 见下 cards）
+        "maps_to": "http_api",
+        "required": ["harness_id", "api_base_url", "ai.model_name"],
+        "cards": [
+            {"action": "test_now", "title": "读它的 Agent Card（现在就支持）",
+             "detail": "GET `/.well-known/agent-card.json`（v1.0）或 `/.well-known/agent.json`（v0.2）——"
+                       "两个路径都试，读到就说明它是 A2A 且活着；读卡不需要令牌、不花 AI 费用"},
+            {"action": "copy_guide", "title": "派活得用 A2A 信封（要它配合）",
+             "detail": "A2A 交付任务是 JSON-RPC `tasks/send`（含 `message.parts[].text`）；"
+                       "平台现在按普通 HTTP POST 发 ⇒ **只认 A2A 信封的 agent 可能不接**。"
+                       "要么让它同时接受普通 POST，要么让它把任务写到约定目录（走 file_poll 桥）"},
+            {"action": "edit_fields", "title": "回执要它自己送回来",
+             "detail": "它得能调平台的 `POST /api/harness/task-result`（或 A2A 侧把结果放在约定位置）；"
+                       "只读卡不回执的，派了活也没法验收"},
+            {"action": "add_member", "title": "不需要新建会话", "detail": "加进工作间就能被派活"},
+        ],
+        "test_how": "读 Agent Card（`POST …/test-now`；两个标准路径都试）",
+        "next_step": "加进工作间；派活的格式差异见上面第二张卡，别当成「注册成功就能派」",
+    },
+    {
         "id": "http", "label": "HTTP 兜底（只落盘、不叫醒）",
         "can_be_woken": False, "needs_bridge": True, "needs_session": True,
         "required": ["harness_id", "ai.model_name"],

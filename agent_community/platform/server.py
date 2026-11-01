@@ -4766,6 +4766,16 @@ async def _autonomy_recovery_loop():
             _r2_stats = _r2_sweep_once()
             _sim_n = _manual_sim_sweep_once()
             _off_acted = _member_recover_sweep_once()
+            # ★2026-11-01（清单 B2）：A2A 派出去的活，按 `tasks/get` 回查并把结果写回账本。
+            #   没有这一步，"派了活、账本里永远没结果"。纯规则、零 token；查询有节流与上限。
+            try:
+                from .a2a_result_poll import sweep_once as _a2a_sweep
+
+                _a2a_stats = _a2a_sweep()
+                if _a2a_stats.get("done") or _a2a_stats.get("failed") or _a2a_stats.get("dropped"):
+                    print("[a2a-poll] 本轮：%s" % json.dumps(_a2a_stats, ensure_ascii=False), flush=True)
+            except Exception as _e:                            # noqa: BLE001 — 轮询挂了不拖垮别的恢复动作
+                _warn_once("a2a_poll", "[a2a-poll] 轮询结果回写失败", _e)
             if _off_acted:
                 print(f"[offline] 抢救动作: {json.dumps(_off_acted, ensure_ascii=False)}", flush=True)
             if _sim_n:

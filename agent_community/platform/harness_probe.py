@@ -122,6 +122,29 @@ from_ai": False              # ★本函数**不调用 AI**（零 token）
     found: dict = {"hints": hints}
     cands: list = []
 
+    # ── ⓪ A2A：**先试读 Agent Card**（★2026-11-01 真机踩出来的）────────────────
+    #   为什么必须排在 http 前面：A2A 的 `api_base_url` 是 **JSON-RPC 端点**（派活发 `tasks/send`），
+    #   不是"HTTP 消息端点"。拿 `<基址>/message` 去探必然 404，于是探测结论会写成
+    #   「探了但没通：HTTP Error 404」——**与事实相反**，用户会去补一个根本不存在的 `/message`。
+    #   读卡命中（三种标准路径都试）⇒ 它就是 A2A，且**不再按 http_api 探**那一段。
+    _a2a_hit = False
+    _bu = hints["api_base_url"]
+    if do_http and _bu:
+        try:
+            from ..a2a_client import discover_card as _discover
+
+            _card = _discover(_bu, timeout=3)
+            _a2a_hit = True
+            _skills = [str((s or {}).get("id") or "") for s in ((_card or {}).get("skills") or [])][:10]
+            found["a2a_card"] = {"card_name": str((_card or {}).get("name") or ""),
+                                 "skills": _skills}
+            cands.append({"kind": "a2a", "evidence": EVIDENCE_STRONG,
+                          "why": "读到了 A2A 的 **Agent Card** ⇒ 它是对等任务型 agent"
+                                 "（平台按 `tasks/send` 派活、`tasks/get` 查状态，**天生带任务语义与回执**）",
+                          "detail": found["a2a_card"]})
+        except Exception as e:                                   # noqa: BLE001 — 读不到就继续按别的探
+            found["a2a_card"] = {"miss": str(e)[:180]}
+
     # ── ① 进程：有没有像它的东西在跑 ──────────────────────────────────────
     kw = hints["process_hint"]
     if not kw and hints["path_hint"]:
@@ -154,7 +177,12 @@ from_ai": False              # ★本函数**不调用 AI**（零 token）
                               "detail": {"port": port}})
     if do_http:
         bu = hints["api_base_url"]
-        if bu:
+        if bu and _a2a_hit:
+            # 已经确认是 A2A：**不再探 `/message`**。探了必然 404，只会产出一条误导性的
+            # "weak / 探了但没通"，把用户引去补一个不存在的端点（清单 B1 的根因）。
+            found["http_probe"] = {"skipped": "已确认是 A2A（读卡命中）⇒ 不按 http_api 探 /message，"
+                                              "否则会误报「不通」"}
+        elif bu:
             hp = _probe_http(bu)
             found["http_probe"] = hp
             cands.append({"kind": "http_api",

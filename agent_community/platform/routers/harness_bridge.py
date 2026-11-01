@@ -261,8 +261,9 @@ async def harness_verify_bridge(harness_id: str, request: Request):
                                 status_code=int(e.code or 400))
 
     # ★门槛：**只有跑通（state=ok）才回写模板**（老板："先跑通才写入具体模板里"）
+    # ★2026-11-01：A2A 这类**没有桥**的接口不存在"桥模板"⇒ 不调 commit（否则会报"还没有任何桥模板"）。
     committed = None
-    if out.get("success"):
+    if out.get("success") and out.get("bridge_kind"):
         try:
             committed = _vs.commit_verified(_workshops, harness_id, evidence={
                 "probe_id": (out.get("detail") or {}).get("probe_id"),
@@ -278,16 +279,26 @@ async def harness_verify_bridge(harness_id: str, request: Request):
             committed = {"success": False, "error": f"回写失败：{e}"}
     do_teardown = bool(body.get("teardown", False))
     torndown = None
-    if do_teardown:
+    if do_teardown and not out.get("bridge_kind"):
+        # ★2026-11-01（清单 B6）：A2A 这类**没有桥就没有验证间**，去 teardown 只会返回
+        #   `removed:false` / `leftover_cleaned:[]` 这种噪声，让人以为"没清干净"。
+        #   直接说清"跳过、为什么"，比给一堆 false 更诚实。
+        torndown = {"skipped": True, "removed": False,
+                    "why": "该接口（A2A / 无桥）**没有验证间**，不需要拆；自检是直连对端做的"}
+    elif do_teardown:
         torndown = await _vs.teardown(_workshops, harness_id,
                                       stop_bridge=lambda hid, bd: _stop_bridge_processes(hid, bd))
     out["committed"] = committed
     out["torndown"] = torndown
-    out["gate_note"] = ("✅ 跑通 ⇒ 已把这次跑通的配置**写进具体模板本体**"
-                        "（`verified=true` / `verified_at` / `evidence`，并补上能确定的参数）；"
-                        "之后 `POST …/bridge/generate` **省略 `template` 就会用它**"
-                        if (committed or {}).get("success")
-                        else "⛔ 没跑通 ⇒ **没有**写进模板（老板口径：先跑通才写入）")
+    if out.get("success") and not out.get("bridge_kind"):
+        out["gate_note"] = ("✅ 这类接口（A2A）**没有桥** ⇒ 没有桥模板要回写；"
+                            "自检结论直接可用，之后平台按 JSON-RPC 直派。")
+    else:
+        out["gate_note"] = ("✅ 跑通 ⇒ 已把这次跑通的配置**写进具体模板本体**"
+                            "（`verified=true` / `verified_at` / `evidence`，并补上能确定的参数）；"
+                            "之后 `POST …/bridge/generate` **省略 `template` 就会用它**"
+                            if (committed or {}).get("success")
+                            else "⛔ 没跑通 ⇒ **没有**写进模板（老板口径：先跑通才写入）")
     _audit_log.record("harness.verify", actor="user", target=harness_id,
                       detail=f"验证间自检 state={out.get('state')} 写模板={bool((committed or {}).get('success'))}",
                       extra={"harness_id": harness_id, "state": out.get("state", ""),

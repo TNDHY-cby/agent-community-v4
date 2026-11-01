@@ -153,6 +153,45 @@ def review(workshop_id: str, task_seq: int, *, result: str, evidence_level: str 
     return out
 
 
+def note_external_result(workshop_id: str, task_seq: int, *, source: str,
+                         external_task_id: str = "", external_state: str = "",
+                         result: str = "", artifacts: list | None = None) -> dict | None:
+    """记一条**外部对端回报的结果** —— 它是「回执留痕」，**不是验收结论**。
+
+    ★2026-11-01（清单 B2：A2A 派了活、账本里永远没结果）：
+    为什么单开这个函数、**不复用 `review()`**：`review()` 是**人拍板的验收结论**
+    （证据四步表的第 4 步）；对端自己说"我做完了"只算**第 3 步 / L2 回执留痕**。
+    混在一起就等于把对方自报当通过 —— 那正是 2026-10-25 那次用真实成本换来的教训。
+    所以这里只写 `external` 段并推进到 `delivered`，`state=accepted/rejected` 仍只能由人给。
+
+    返回更新后的记录；任务不存在 ⇒ `None`（调用方据此报"账本里没这条"）。
+    """
+    d = _load()
+    k = _key(workshop_id, task_seq)
+    rec = d.get(k)
+    if rec is None:
+        return None
+    rec["external"] = {
+        "source": source,                        # 例："a2a"
+        "task_id": str(external_task_id or ""),  # 对端那边的任务号
+        "state": str(external_state or ""),      # 对端报的状态（原样，不翻译成我们的验收态）
+        "result": str(result or "")[:4000],      # 对端原话（截断要留痕）
+        "result_truncated": len(str(result or "")) > 4000,
+        "artifacts": list(artifacts or [])[:50],
+        "at": _now(),
+    }
+    if rec.get("state") == "issued":
+        _advance(rec, "delivered", "外部对端回报（%s）" % source,
+                 external_state=str(external_state or ""))
+    else:
+        rec.setdefault("log", []).append(
+            {"at": _now(), "state": rec.get("state"),
+             "why": "外部对端再次回报（%s）" % source})
+    d[k] = rec
+    _save(d)
+    return rec
+
+
 def integrate(workshop_id: str, *, workshop_path: str | Path, note: str = "") -> dict:
     """汇总：把账本 + 产物清单写成 `_meta/integrate.json`（**不搬任何产物文件**）。"""
     tasks = list_tasks(workshop_id)

@@ -1852,6 +1852,95 @@ async def docking_harness_test_now(harness_id: str, request: Request):
     started = time.time()
     _posted_ms = 0                       # 我们那条"发出去"的时刻（判"之后的新消息"用）
     ok, detail, extra = False, "", {}
+
+    # ★2026-11-01（老板要在接入向导里选 A2A）：A2A 不在 8 种 wakeup_method 里，
+    #   它按 `http_api` 注册、在 `transports` 里声明 a2a。所以这里先认 transports：
+    #   只要声明了 a2a，就**先读它的 Agent Card**（v1.0 `agent-card.json` / v0.2 `agent.json` 都试）——
+    #   读到卡 = 它确实是 A2A 且活着；读卡不需要令牌、不花 AI 费用。
+    _declared = []
+    try:
+        _declared = [str(getattr(t, "value", t) or "").lower() for t in (getattr(info, "transports", None) or [])]
+    except Exception:                                          # noqa: BLE001 — 读不到就按非 A2A 处理
+        _declared = []
+    # ★2026-11-01（老板真机：检测页对 A2A 只说「暂无一键测试」）：
+    #   上一版这里只认 `transports` 里声明的 a2a ⇒ 而注册时**只填 `wakeup_method=a2a` 是完全合法的**
+    #   （transports 可以空缺省）⇒ 这个分支不命中 ⇒ 落到最后的 else，界面显示
+    #   「该协议（a2a）暂无一键测试，请走 /verify 自检」——把**能测的**说成不能测。
+    #   ⇒ 三路都认：`wakeup_method=a2a` / `transports` 含 a2a / `kind` 就是 a2a。
+    _is_a2a = False
+    try:
+        from ..dispatch import _harness_is_a2a as _is_a2a_fn   # 一处真相：与派活用的同一个判断
+
+        _is_a2a = bool(_is_a2a_fn(harness_id))
+    except Exception:                                          # noqa: BLE001 — 取不到就退回本地判断
+        _is_a2a = False
+    if not _is_a2a:
+        _is_a2a = ("a2a" in _declared) or (str(kind or "").lower() == "a2a")
+    if _is_a2a and url:
+        try:
+            from ...a2a_client import discover_card as _discover
+
+            _card = await asyncio.to_thread(_discover, url, 10)
+            _who = str((_card or {}).get("name") or (_card or {}).get("agentName") or "").strip()
+            ok = True
+            detail = "读到 Agent Card：%s" % (_who or "（卡里没写名字）")
+            extra["agent_card"] = {k: _card.get(k) for k in ("name", "description", "capabilities",
+                                                             "skills", "authentication") if k in (_card or {})}
+            # ★2026-11-01（老板：「检测内容能不能在对象的会话里面表现」）：
+            #   **能** —— 只要检测真的按 A2A 发一条任务过去，对端就会在它**自己的会话**里处理它，
+            #   于是用户在对端客户端里能看到"平台来测过"。原来这一档只读卡（怕投递格式不通），
+            #   而现在 tasks/send 已实测可用 ⇒ 补一条**探针任务**，并尽量撤回。
+            #   · 探针**不传 contextId** ⇒ 对端新开一个上下文，**不污染**正式会话的历史；
+            #   · 撤回失败也只影响"多一条小任务"，不影响主结论。
+            _probe_tid = ""
+            try:
+                from ...a2a_client import send_task as _send
+
+                _res = await asyncio.to_thread(
+                    _send, url, "平台检测探针：请忽略这条（它只用来确认通道通不通）。", None, 60)
+                _t = _res.get("task") if isinstance(_res.get("task"), dict) else (_res or {})
+                _probe_tid = str(_t.get("id") or "").strip()
+                extra["probe_task_id"] = _probe_tid
+                extra["probe_context_id"] = str(_t.get("contextId") or "")
+                detail += "；已按 A2A 发出一条探针任务（对端任务 %s）—— 它会在**对端自己的会话**里出现" % (
+                    _probe_tid or "（没拿到号）")
+                if _probe_tid:
+                    try:
+                        from ...a2a_client import rpc as _rpc
+
+                        await asyncio.to_thread(_rpc, url, "tasks/cancel",
+                                                {"taskId": _probe_tid}, None, 15)
+                        extra["probe_canceled"] = True
+                        detail += "（探针已撤回）"
+                    except Exception:                      # noqa: BLE001 — 撤回失败不算失败
+                        extra["probe_canceled"] = False
+            except Exception as _e:                        # noqa: BLE001 — 卡能读但发不出任务
+                extra["probe_error"] = str(_e)[:200]
+                detail += "；但**发探针任务失败**：%s" % str(_e)[:120]
+            extra["note"] = ("读卡只证明它是 A2A 且活着。派活走 JSON-RPC `tasks/send`"
+                             "（对端只认 v1.0 时会自动改发 `SendMessage`），"
+                             "结果由平台按 `tasks/get` 回查并写回任务账本")
+        except Exception as _e:                                # noqa: BLE001 — 读不到要说清试过哪些路径
+            ok, detail = False, "读 Agent Card 失败：%s" % str(_e)[:220]
+        # A2A 这一档不做"发一句话进去"：它的回复只回到平台（没有会话内发言这回事）——
+        # 如实说，不假装验证过，也不要给"加 session_post 工具"这种对 A2A 无意义的建议。
+        if _text:
+            detail += "；（A2A 没有「会话内发言」这回事，平台不点它的窗口；这条只是探活 + 读卡）"
+        try:
+            sess.info.metadata = getattr(sess.info, "metadata", None) or {}
+            sess.info.metadata["last_test"] = {
+                "ok": ok, "detail": detail, "protocol": "a2a",
+                "agent_card": (extra.get("agent_card") or {}),
+                "note": extra.get("note", ""),
+                "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "elapsed_ms": int((time.time() - started) * 1000),
+            }
+        except Exception:                                      # noqa: BLE001 — 只是留档，失败不影响结论
+            pass
+        return {"ok": ok, "harness_id": harness_id, "protocol": "a2a", "detail": detail,
+                **({"extra": extra} if extra else {}),
+                "elapsed_ms": int((time.time() - started) * 1000)}
+
     try:
         if kind == "mcp":
             if not url:

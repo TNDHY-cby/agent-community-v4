@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-WAKEUP_METHODS = ("file_poll", "pending_poll", "http_api", "clipboard", "manual", "acp", "pipe", "ws")
+#: 认得的叫醒方式。★2026-11-01 加 `a2a`：A2A agent 用 JSON-RPC `tasks/send` 派活
+#: （老板：「明明是最适配的你不加」）。不加这一项，A2A 注册会在卡片一致性检查里被判"不认识的叫醒方式"。
+WAKEUP_METHODS = ("file_poll", "pending_poll", "http_api", "clipboard", "manual", "acp", "pipe", "ws", "a2a")
 
 
 def _plain(v):

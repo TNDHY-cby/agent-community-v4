@@ -111,13 +111,17 @@ def test_mcp_tool_puller_survives_broken_client(monkeypatch):
 
 # ── 缺陷 3：词汇表钉死（纯常量）─────────────────────────────────────────────
 def test_wakeup_method_vocabulary_is_pinned():
-    """`wakeup_method` 只认这 6 个；桥型名（cli_acp/pending_poll/script_framework）**不是**它。
+    """`wakeup_method` 只认这 7 个；桥型名（cli_acp/pending_poll/script_framework）**不是**它。
 
     模板曾把 A~E 映射成桥型名 ⇒ 外端 agent 照填**注册被 400 拒**
     （报错只说 "Input should be ..."，不告诉你桥型该放哪）。
+
+    ★2026-11-01：词表 6 → 7，**加 `a2a`**（老板：「加入注册功能中啊，明明是最适配的你不加」）。
+    它该在词表里的理由：A2A 天生带任务语义与回执（`tasks/send` + `tasks/get`），
+    是"派活 → 收回报"这条主线最适配的接入形态。这是**有意变更**，所以这里同步钉死 7 个。
     """
     legal = {m.value for m in WakeupMethod}
-    assert legal == {"http", "file_poll", "clipboard", "acp", "http_api", "mcp"}, legal
+    assert legal == {"http", "file_poll", "clipboard", "acp", "http_api", "mcp", "a2a"}, legal
     for wrong in ("cli_acp", "pending_poll", "script_framework"):
         assert wrong not in legal, f"{wrong} 是桥型名，不该被当成 wakeup_method（模板曾这么写 ⇒ 400）"
 

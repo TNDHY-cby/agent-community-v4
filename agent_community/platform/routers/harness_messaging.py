@@ -50,8 +50,45 @@ async def harness_message(request: Request):
 
 @router.get("/api/harness/list")
 async def list_harnesses():
-    """列出所有已接入的 Harness"""
-    return {"harnesses": harness_manager.list_sessions()}
+    """列出所有已接入的 Harness。
+
+    ★2026-11-01（清单 B5）：除注册响应外，**列表也要带"接入事实"**
+    （`access_facts`：档位 / 接口类别 / 能不能被平台叫醒 / 要不要协议），
+    否则界面只能显示一个光秃秃的 status，用户看不到"它到底是什么形态"。
+    """
+    out = harness_manager.list_sessions()
+    try:
+        from .. import tier_guidance as _tg
+
+        for item in out:
+            sess = harness_manager.sessions.get(item.get("harness_id"))
+            info = getattr(sess, "info", None) if sess is not None else None
+            if info is None:
+                continue
+            item["access_facts"] = {
+                "access_tier": _tg.tier_of(info),
+                "interface_class": _tg.interface_class(info),
+                "interface_class_label": _tg.CLASS_LABEL.get(_tg.interface_class(info), ""),
+                "can_be_woken_by_platform": _tg.can_be_woken_by_platform(info),
+                "needs_protocol": _tg.needs_protocol_for(info),
+            }
+            # ★2026-11-01（真机清单 #7）：把**派活地址**也暴露出来 —— 否则界面/排查时
+            #   看不到"平台到底会往哪发"。A2A 的地址在 `api_base_url`（`wakeup.wakeup_url` 是空的）。
+            _addr = str(getattr(info, "api_base_url", "") or "").strip()
+            if _addr:
+                item["api_base_url"] = _addr
+                _wake = item.get("wakeup")
+                if isinstance(_wake, dict) and not _wake.get("wakeup_url"):
+                    _wake["wakeup_url"] = _addr
+            # 顺带给出"真会往哪发"的一句话，省得用户自己拼
+            _wm = str(getattr(getattr(info, "wakeup_method", ""), "value",
+                              getattr(info, "wakeup_method", "")) or "").lower()
+            if _wm == "a2a":
+                item["dispatches_to"] = (_addr or "（没填 api_base_url ⇒ 无处派活）")
+    except Exception as e:                                     # noqa: BLE001 — 补字段失败不影响列表
+        print("[harness/list] 补 access_facts 失败（列表照常返回）：%s: %s"
+              % (type(e).__name__, e), flush=True)
+    return {"harnesses": out}
 
 @router.get("/api/harness/pending-activations")
 async def harness_pending_activations(harness_id: str):

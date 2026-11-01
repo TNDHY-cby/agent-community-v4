@@ -1016,45 +1016,51 @@ async def workshop_model_draft(ws_id: str):
 # （不是置灰 —— 置灰正是"按不了"的来源）。
 #
 # ⚠️ 本端点是**只读**的：不得触发激活、不得改状态（对齐 V17 那次的教训）。
+# ★2026-11-01（老板："赶紧改新到 V5"）：阶段名与动作全部对齐 **v5 现行口径**。
+#   原来这套是 v4 的「一级讨论 → 选定员工 → 二级讨论 → 工作中 → 三级讨论」，其中：
+#   · 「一级讨论」「三级讨论」**已退役**（`POST …/discuss` ⇒ 410 FREECHAT_RETIRED）；
+#   · 「选定员工（让平台 AI 选人）」**已退役**（⇒ 410 AI_SELECT_RETIRED）——组长由**用户**选、名单由**组长回执**交回；
+#   · 端点也写错了：`finish_discuss` 指向 `select-members`（410），真正该走 `begin-selecting`。
+#   后端这张表是**界面按钮的权威判据**（FE-17 §4），错在这里 = 界面教你点已经废掉的按钮。
 _FE17_STAGES = {
-    "discuss1": {"index": 1, "label": "一级讨论"},
-    "select":   {"index": 2, "label": "选定员工"},
-    "discuss2": {"index": 3, "label": "二级讨论"},
-    "working":  {"index": 4, "label": "工作中"},
-    "review":   {"index": 5, "label": "三级讨论"},
-    "done":     {"index": 5, "label": "已完成"},
+    "discuss1": {"index": 1, "label": "定方向"},
+    "select":   {"index": 2, "label": "选组长"},
+    "discuss2": {"index": 3, "label": "分工"},
+    "working":  {"index": 4, "label": "干活"},
+    "review":   {"index": 5, "label": "验收"},
+    "done":     {"index": 5, "label": "归档"},
 }
 
-# 后端 status -> FE-17 的阶段 id（FE-17 §1 的表；status 取值源自 `workshop.py:80`）
+# 后端 status -> FE-17 的阶段 id（FE-17 §1 的表；status 取值源自 `workshop.py:97`）
+# ★2026-11-01：补 `lead_in`（v5 新增状态：组长已选定、正在建模/开岗）——
+#   原来没有它 ⇒ 落到默认 `discuss1`，界面会退回"定方向"，用户选完组长又被弹回去。
 _FE17_STATUS_TO_STAGE = {
     "draft": "discuss1", "discussing": "discuss1", "entered": "discuss1",
-    "selecting": "select", "division": "discuss2",
+    "selecting": "select", "lead_in": "select", "division": "discuss2",
     "running": "working", "active": "working", "activating": "working", "idle": "working",
     "review": "review",
-    "done": "done",
+    "done": "done", "closed": "done",
     "blocked": "working", "dropped": "done", "pending_approval": "working",
 }
 
 # 通用动作（多个阶段都可能出现；`stages` 为它所属阶段集合）
 _FE17_ACTIONS = {
     "discuss": {
-        "label": "发送", "kind": "primary",
-        "effects": "把你的发言发给平台 AI（一级讨论）或组长（二级讨论）",
-        "endpoint": "POST /api/workshop/{ws_id}/discuss",
+        "label": "发送一条结构化消息", "kind": "primary",
+        "effects": "发进本间讨论区（七类之一：提案/质疑/改进/呼应/提问/行动项/推荐）；自由聊天不收",
+        "endpoint": "POST /api/workshop/{ws_id}/ailp",
     },
     "finish_discuss": {
-        "label": "结束讨论，选定员工 →", "kind": "primary",
-        "effects": "结束一级讨论，进入「选定员工」阶段（此后平台 AI 退出）",
-        "endpoint": "POST /api/workshop/{ws_id}/select-members",
+        "label": "方向定了，去选组长 →", "kind": "primary",
+        "effects": "结束「定方向」，进入「选组长」（组长由**你**选，平台只筛资格；它不会替你选）",
+        "endpoint": "POST /api/workshop/{ws_id}/begin-selecting",
     },
-    "select_members": {
-        "label": "让平台 AI 选定员工", "kind": "primary",
-        "effects": "平台按任务方向自动初选成员并填入名单（可改）",
-        "endpoint": "POST /api/workshop/{ws_id}/select-members",
-    },
+    # ★2026-11-01 删除 `select_members`（"让平台 AI 选定员工"）：
+    #   端点 `POST …/select-members` 已 **410 AI_SELECT_RETIRED**（平台不选人，V116 §16）。
+    #   留在表里 = 界面让你点一个必然失败的按钮。
     "add_member": {
-        "label": "+ 添加职位 / harness", "kind": "primary",
-        "effects": "手工往名单里加一行（AI 没配或你想自己选时用）",
+        "label": "+ 添加职位 / harness", "kind": "more",
+        "effects": "手工往名单里补一行（标准路径是组长交名单回执，这是补漏用）",
         "endpoint": "（界面本地的名单编辑）",
     },
     "save_roster": {
@@ -1063,8 +1069,8 @@ _FE17_ACTIONS = {
         "endpoint": "POST /api/workshop/{ws_id}/members",
     },
     "confirm_members": {
-        "label": "确认名单，进入二级讨论", "kind": "primary",
-        "effects": "确认成员并进入二级讨论；平台会派发组长开始对接",
+        "label": "确认名单，进入分工", "kind": "primary",
+        "effects": "确认成员名单并进入分工阶段；平台会派发组长开始对接",
         "endpoint": "POST /api/workshop/{ws_id}/confirm-members",
     },
     "start_work": {
@@ -1093,13 +1099,13 @@ _FE17_ACTIONS = {
         "endpoint": "POST /api/workshop/{ws_id}/member/{member_id}/establish-session",
     },
     "third_discuss": {
-        "label": "📋 进行三级讨论", "kind": "primary",
-        "effects": "让全员回报进展，进入三级讨论（复盘与下一步）",
+        "label": "📋 转验收", "kind": "primary",
+        "effects": "让全员回报进展并转入验收（验收要证据：产物在盘上 / 平台验的 / 你拍板）",
         "endpoint": "POST /api/workshop/{ws_id}/review",
     },
     "continue_work": {
         "label": "▶ 继续工作", "kind": "primary",
-        "effects": "三级讨论后继续推进（不回退阶段）",
+        "effects": "验收后继续推进（不回退阶段）",
         "endpoint": "POST /api/workshop/{ws_id}/continue",
     },
     "complete_task": {
@@ -1116,9 +1122,12 @@ _FE17_ACTIONS = {
 
 # 阶段 -> (主操作, 收进「更多 ⋯」的) —— 与 FE-17 §2 的白名单表逐行对应
 _FE17_BY_STAGE = {
-    "discuss1": (["discuss", "finish_discuss"],
-                 ["leader_check", "register_resource", "activate_template"]),
-    "select":   (["select_members", "add_member", "save_roster", "confirm_members"],
+    # ★2026-11-01（老板："上面那个是干嘛的（发送一条结构化消息），用不上"）：
+    #   「定方向」阶段的主操作**只留**「方向定了，去选组长 →」。
+    #   结构化发言仍可用（`POST …/ailp`），但不再占主操作位 —— 它是可选动作，不是这一步的必经。
+    "discuss1": (["finish_discuss"],
+                 ["discuss", "leader_check", "register_resource", "activate_template"]),
+    "select":   (["add_member", "save_roster", "confirm_members"],
                  ["rescue_scan", "leader_check"]),
     "discuss2": (["discuss", "start_work"],
                  ["leader_check", "register_resource"]),

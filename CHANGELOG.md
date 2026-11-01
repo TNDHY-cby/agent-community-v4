@@ -37,6 +37,98 @@
 > 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
 > ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
 
+# 4.39.0 更新说明
+
+> 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
+> ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
+
+## [4.39.0] - 2026-11-01
+
+本版把 **A2A 从「完全接不进来」做到全链路可用**，同时把**界面与模型口径对齐到 v5**，
+并修掉一批真机联调暴露的硬 bug。跨度较大，升次版本号。
+
+### 一、A2A 接入：从"只在协议表里有个名字"到全链路
+
+**接入形态落地**
+- `WakeupMethod` / `card_conformance.WAKEUP_METHODS` / `lead_roster.PROTOCOL_WAKEUPS`
+  三处都认 `a2a`（原来只有一处认、另外两处不认 ⇒ 注册被判"不认识的叫醒方式"、A2A 被误判"没有回执通道"进不了组长候选）；
+- `harness_register._need_acp`：A2A **不需要** `acp_command`（它是对等远程 agent，平台不拉起它）；
+- `tier_guidance`：新增 `CLASS_A2A = "a2a_task"`，`tier_of` 给 **S** —— 原来塞进 `has_http_api`
+  导致同一响应里 `access_tier=B` 与 `interface_grade=S` 两套说法打架；
+- 接入向导协议树加 A2A 卡片（6 → 7 项），并写清"第 2/3/5 步不适用"。
+
+**兼容性（对着真实第三方实现踩出来的）**
+- Agent Card **三条路径**都试：`/.well-known/agent-card.json`、`/.well-known/agent.json`、
+  **`/agent-card.json`（挂在端点基址上，不套 .well-known）**；
+- RPC 端点**容忍尾斜杠**：先试基址，404 再试基址+`/`，两个都 404 时把"试过哪些地址"写进异常；
+- 方法名**按错误码回退**：先发 v0.2 `tasks/send`，只在明确"方法不认识"（-32601/-32600/-32004）时
+  改发 v1.0 `SendMessage` 并翻参数（`taskId→id`、带 `returnImmediately`）——不会把普通对接打乱。
+
+**派活与自检**
+- `dispatch._activate_via_a2a`：A2A 派活走 **JSON-RPC `tasks/send`**（不是普通 POST）；
+- `verify_sandbox._verify_a2a`：A2A 的自检 = **读卡 + 真发探针 + 撤回**，不再套"桥"流程
+  （原来 A2A 被要求有 `WORK_DIR` ⇒ 一个能用的端点被报"自检失败"）；
+- 检测页（对接中心第④步）对 A2A **分流**：三路都认（`wakeup_method` / `transports` / `kind`），
+  并且**真发一条探针任务** ⇒ 用户能在对端自己的 `a2a-*` 会话里看到"平台来测过"；
+- 注册阶段**不再假绿**：A2A 不给 `api_base_url` 当场 400（原来返回 200 + S 档，直到 verify 才说缺地址）。
+
+**结果回写（最关键）**
+- 新模块 `platform/a2a_result_poll.py`：派活后登记 `(端点, 对端任务号, 工作间, 任务序号, 工位)`，
+  后台按 `GetTask` 轮询，**终态**就写回账本并出队（有界：200 条上限 / 24h TTL / 30s 节流）；
+- `task_ledger.note_external_result()`：**只推进到 `delivered`**（回执留痕 = 证据四步表第 3 步），
+  `accepted/rejected` 仍只能由人给 —— 不把对方自报当验收；
+- 任务正文带**回报契约**（干完往哪 POST 回执），地址取 `platform_address`，不写死；
+- 真机验证：`平台派活 → 对端真干 → 轮询 → 账本 delivered`，带回对端原话
+  「收到，当前时间是 …」。抓出并修掉三个解析 bug：`status` 是**对象**（不是字符串）、
+  枚举带 `TASK_STATE_` 前缀、`artifacts[].parts[]` **逐词**（拼错会得到碎句）。
+
+**会话轮换（老板拍板："一个员工可开多个会话，但必须在上下文老化之后"）**
+- 新模块 `platform/a2a_context.py`：一 `(员工, 工作间, 工位)` 同一时刻只有一个当前会话（`contextId` + `seq`）；
+- 老化换新：**平台自己数**（默认 20 条活 / 60000 字，可配），旧的进 `retired[]` 留痕（用量 + 为什么换），**只追加不删**；
+- 对端可在回复里带 `[NEED_NEW_CONTEXT]` **主动要求换新**（只是触发信号，不进验收）；
+- ⚠️ 诚实边界：平台**看不到对端的"上下文压缩次数"**，所以用的是代理指标，不是真读它的压缩计数；
+- `contextId` 保证**纯 ASCII**（跨实现传输，中文/全角有些对端不收）。
+
+### 二、界面与模型对齐 v5
+
+- 后端那张"按钮权威表"（`_FE17_ACTIONS` / `_FE17_STAGES`）整表改到 v5 口径：
+  **定方向 / 选组长 / 分工 / 干活 / 验收 / 归档**；动作端点从已退役的 `select-members`、`discuss`
+  改到 `begin-selecting`、`ailp`；**删掉"让平台 AI 选定员工"**（410 退役）；
+- 工作间页：「② 选人」→「② 名单」、步骤条「02 选人」→「02 选组长」、
+  「结束讨论，去选人 →」→「方向定了，去选组长 →」；补上**独立的「① 选组长」**（候选列表 + 不够格原因 + 就地「实测写一次盘」）；
+- 「平台内部 AI 代成员发言」(`manual-sim`) **改成显式开关、默认关**（与 `V116` §16 对齐）；
+- 模型/对外资料换新 11 处（README、`model/` 七个分册、CHECKLIST、V116 §16），
+  把"一级讨论/AI 选人/三级讨论/信誉匹配"等退役或暂停口径清掉。
+
+### 三、其他真 bug
+
+- **`GET /openapi.json` 500**：`routers/agents_registry.py` 开了 `from __future__ import annotations`
+  却**没导入 `AgentCard`** ⇒ schema 生成失败、整个 openapi 不可用。修后 **335 paths**；
+- `/api/protocol-brief` 的 `a2a.discovery` 拼成 `http://host:18920:9104/...`（**双端口**）；
+  并新增 `sidecar.running`（真探 9104）+ 启动命令 —— "能力可用"不等于"进程已在跑"；
+- `harness/list` 补 `access_facts`（档位/接口类别/能否叫醒）+ `api_base_url` + `dispatches_to`；
+- A2A 的 `status` 从 `offline` 改为 **`unknown`**（它没有心跳通道，不能断言"离线"）+ `status_basis` 说明依据；
+- `verify` 对无桥接口**跳过 teardown**（不再返回 `removed:false` 噪声）；
+- A2A 注册不再生成桥模板（原来会给 `pending_template + missing:["WORK_DIR"]`，与"不需要桥"打架）；
+- `protocol_tree` / `register.html` 的**自测话术补 ⓪「先查客户端装没装 A2A/MCP 插件」**
+  （真机踩过：只看端口就选了 `clipboard`，而客户端装着 A2A 插件只是没建实例）。
+
+### 判据
+
+全量 `pytest agent_community/tests` **exit 0**；新增守卫：
+`test_v7_a2a_harness.py`(6) / `test_v7_a2a_result.py`(4) / `test_v7_a2a_context.py`(7)；
+`test_v5_ailp_validation.py`(13)；`frontend_endpoint_check` 88 端点全挂载；
+`gen_env_docs --check` 一致；真机 `dsh-win11-backend`：注册 200（S 档）、verify ok、
+`test-now` 读卡 + 探针任务发出并撤回、端到端派活账本 `delivered` 且带回对端原话。
+
+### 已知边界（不粉饰）
+
+- A2A **进组长候选仍需 `fs_write` 也过**（A2A 只解决"有协议通道/能收回执"这一项）；
+- 带**公司级 token** 的 A2A 派活未实现（`send_task` 目前 token=None），接需要鉴权的对端时要补；
+- `contextId` 只控 **A2A 上下文标识**，是否映射到对端**同一个会话窗口**取决于对端实现
+  （实测同一 contextId 的两条任务，各自 `history` 仍互不交叉）——界面上不宣称"一定同一个窗口"；
+- 平台不自动替用户起 A2A sidecar（那是运行时选择），只在简报里如实标 `running=false` + 给启动命令。
+
 ## [4.38.2] - 2026-11-01
 
 本版两件事：**把「模型说到的」和「代码做的」对齐**，以及**把模型里装着的旧资料换成现行口径**。

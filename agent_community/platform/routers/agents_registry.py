@@ -22,6 +22,13 @@ import json
 
 from fastapi import APIRouter, Request
 
+# ★2026-11-01（真机清单 #8：`GET /openapi.json` → 500）：
+#   本模块开了 `from __future__ import annotations`（注解全变字符串），但**从没导入 `AgentCard`**
+#   ⇒ FastAPI 生成 schema 时拿到 `ForwardRef('AgentCard')` 解不开 ⇒ **整个 openapi 500**，
+#   接入者丢掉"按 schema 写客户端"这条权威路径。
+#   修法：模块级真导入（`protocol` 不会反向 import routers，无循环）。
+from ..protocol import AgentCard
+
 router = APIRouter()
 
 @router.post("/api/agents/register")

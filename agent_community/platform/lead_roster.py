@@ -18,7 +18,11 @@ from __future__ import annotations
 
 FS_TOOL_HINTS = ("write_file", "writefile", "edit_file", "apply_patch", "fs_write",
                  "create_file", "write", "shell", "terminal", "run_command")
-PROTOCOL_WAKEUPS = ("mcp", "http_api", "http", "acp")
+#: 算作"有协议通道"（能派活、能收回执）的唤醒方式。
+#: ★2026-11-01 加 `a2a`：A2A 天生带 `tasks/send` + `tasks/get` 的任务语义，
+#: 是最适合当组长的接入形态（老板原话「明明是最适配的你不加」）。不加这一项，
+#: A2A agent 会在组长候选里被判"没有回执通道"——那是误判。
+PROTOCOL_WAKEUPS = ("mcp", "http_api", "http", "acp", "a2a")
 
 
 def _harness_infos() -> list:

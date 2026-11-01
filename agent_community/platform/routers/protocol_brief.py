@@ -33,6 +33,25 @@ async def protocol_brief(request: Request):
     else:                                   # 兜底：按请求 Host 拼（端口取 Host 里的端口）
         port = request.headers.get("host", "").split(":")[-1] or ""
         base = f"http://{host}:{port}" if port.isdigit() else f"http://{host}"
+    # ★2026-11-01（真机清单 #9）：简报里 `a2a.discovery` 原来拼成
+    #   `http://127.0.0.1:18920:9104/...`（**host 里塞了两个端口**，照做必然连不上）。
+    #   正确做法：取 base 的 **host**，A2A sidecar 另用它的固定端口（9104）。
+    #   同时**如实标出 sidecar 到底有没有在跑** —— "能力可用"不等于"这个进程已经起来了"，
+    #   原来只写 `status: available`，用户照着调必然连接被拒。
+    from urllib.parse import urlparse as _urlparse
+
+    _pu = _urlparse(base)
+    _a2a_host = _pu.hostname or host or "127.0.0.1"
+    _a2a_scheme = _pu.scheme or "http"
+    _a2a_base = f"{_a2a_scheme}://{_a2a_host}:9104"
+    _a2a_running = False
+    try:
+        import socket as _socket
+
+        with _socket.create_connection((_a2a_host, 9104), timeout=0.6):
+            _a2a_running = True
+    except Exception:                                          # noqa: BLE001 — 探不到就是没跑
+        _a2a_running = False
     return {
         "platform": {
             "name": "外端Agent生产合作社（External Agent Community）",
@@ -125,7 +144,21 @@ async def protocol_brief(request: Request):
             "mcp": {"status": "available", "desc": "Claude Code / Cursor 等 MCP 客户端挂载",
                     "mount": f'claude --mcp-config \'{{"servers":{{"ac4":{{"command":"python","args":["-m","agent_community.mcp_server"]}}}}}}\''},
             "a2a": {"status": "available", "desc": "外部 A2A Agent 发现与派发",
-                    "discovery": f"{base}:9104/.well-known/agent-card.json"},
+                    "discovery": f"{_a2a_base}/.well-known/agent-card.json",
+                    # ★2026-11-01（清单 #9）：如实说 sidecar 起没起 —— 不然用户照 available 去调，
+                    #   拿到的是"连接被拒"。能力可用 ≠ 进程已在跑。
+                    "sidecar": {
+                        "base": _a2a_base,
+                        "running": _a2a_running,
+                        "how_to_start": "python -m agent_community.a2a_server --port 9104",
+                        "note": ("这个 sidecar **没在跑** ⇒ 上面的 discovery 地址现在连不上；"
+                                 "平台自己的 A2A 服务端要单独起（只跑 server 不会带它）。"
+                                 if not _a2a_running else
+                                 "sidecar 在跑（端口 9104 可连）。"),
+                    },
+                    # 反方向（我们当客户端连别人的 A2A）才是接入 harness 用的那条路：
+                    "as_client": ("把对端的 A2A 端点基址填进注册 body 的 `api_base_url`，"
+                                  "`wakeup_method=a2a`；平台会按 `tasks/send` 派活、`tasks/get` 回查")},
             "acp": {"status": "available", "desc": "CLI / 桌面 Agent（拉起子进程）"},
         },
         "second_channel": {

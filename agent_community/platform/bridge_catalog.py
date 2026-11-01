@@ -271,6 +271,16 @@ WAKEUP_TO_BRIDGES: dict = {
         bridges=[], primary="",
         note="B 档·MCP。**不需要桥**：平台列出你的工具并直接调用。",
         effort="给出 MCP 服务地址即可"),
+    # ★2026-11-01：A2A（对等任务语义）。跟 http_api 同级但**多一层任务语义**：
+    #   派活是 JSON-RPC 信封、能带 `tasks/get` 回查状态与产物，所以别把它当"普通 POST"。
+    "a2a": _wm(
+        "a2a", grade="S", score=5, auto=True,
+        latency="最低（秒级，平台按 JSON-RPC 直派）", overhead="无（不跑桥、不落盘）",
+        bridges=[], primary="",
+        note="S 档·A2A。**不需要桥**：平台按 `tasks/send`（对端只认 v1.0 时自动改 "
+             "`SendMessage`）派活，天生带任务状态与回执。",
+        effort="给出 A2A 端点基址即可（Agent Card 在 `<基址>/.well-known/agent-card.json`，"
+               "也有实现给 `<基址>/agent-card.json`）"),
     "acp": _wm(
         "acp", grade="A", score=4, auto=True,
         latency="中（每次要拉起会话，实测 5~15s）", overhead="中（一个常驻桥 + 被拉起的会话进程）",

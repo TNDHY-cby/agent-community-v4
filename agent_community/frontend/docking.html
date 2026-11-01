@@ -288,6 +288,9 @@
           <div class="dock-form">
             <select id="regPromptProto" onchange="dockPromptLoad()" title="选你的 agent 能被怎么叫醒；不确定就选最后一项">
               <option value="http_api">http_api · 自带 HTTP 接口</option>
+              <!-- ★2026-11-01（老板：「加入注册功能中啊，明明是最适配的你不加」）：A2A 是唯一
+                   天生带任务语义与回执的协议（tasks/send + tasks/get），最适合当组长/被派活。 -->
+              <option value="a2a">a2a · A2A agent（有 Agent Card，按 tasks/send 派活）</option>
               <option value="mcp">mcp · MCP 服务器</option>
               <option value="acp">acp · 一条命令拉起</option>
               <option value="file_poll">file_poll · 盯一个目录</option>
@@ -315,6 +318,7 @@
               <option value="acp">acp · 一条命令拉起</option>
               <option value="file_poll">file_poll · 盯一个目录</option>
               <option value="http_api">http_api · 自带 HTTP 接口</option>
+              <option value="a2a">a2a · A2A agent（走 tasks/send）</option>
               <option value="mcp">mcp · MCP 服务器</option>
               <option value="clipboard">clipboard · 只能人工中转</option>
             </select>

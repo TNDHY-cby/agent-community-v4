@@ -243,6 +243,17 @@ def harness_to_agent_card(info: HarnessInfo) -> AgentCard:
 
             url = str(DEFAULT_POLL_DIR)
 
+        # ★2026-11-01（真机清单 #7）：A2A 的地址在 `api_base_url` 里，原来这里只从
+        #   `callback_url` 取 ⇒ `AgentCard.endpoints[0].url` 是空，平台内其它读名片的
+        #   场景（工作间、看板）看不到"会往哪派活"。补上 A2A / http_api 的地址来源。
+        elif t == TransportType.A2A:
+
+            url = str(getattr(info, "api_base_url", "") or "")
+
+        elif t == TransportType.HTTP and not url:
+
+            url = str(getattr(info, "api_base_url", "") or "")
+
         endpoints.append(AgentEndpoint(
 
             transport=t,
@@ -1394,7 +1405,11 @@ class HarnessSessionManager:
 
                 "agent_id": s.agent_id,
 
-                "status": s.status.value,
+                "status": _display_status(s),
+
+                # ★2026-11-01（清单 B3）：只给一个 status，界面就会把"离线"读成"不能用"。
+                #   这里连**结论怎么来的**一起给：是心跳判的、还是根本没心跳通道（不可判）。
+                "status_basis": _status_basis(s),
 
                 "ai": s.info.ai.model_dump(),
 
@@ -1546,3 +1561,35 @@ class HarnessSessionManager:
 
 harness_manager = HarnessSessionManager()
 
+
+def _wm_of(sess) -> str:
+    """取 session 的 wakeup_method（枚举/字符串都认）。"""
+    try:
+        wm = getattr(getattr(sess, "info", None), "wakeup_method", "")
+        return str(getattr(wm, "value", wm) or "").strip().lower()
+    except Exception:                                      # noqa: BLE001 — 读不到就当没有
+        return ""
+
+
+def _display_status(sess) -> str:
+    """给界面看的 status。
+
+    ★2026-11-01（清单 B3）：A2A 这类**没有心跳通道**的接口，平台根本无从判断它"在不在线" ——
+    它的 offline 只表示"没收到心跳"，**不等于"不能用"**（真机实测：status=offline，但派活成功）。
+    所以对它们标 unknown（**不知道**），而不是 offline（**断定不在**）。
+    """
+    try:
+        raw = sess.status.value if hasattr(sess.status, "value") else str(sess.status)
+    except Exception:                                      # noqa: BLE001
+        raw = ""
+    if _wm_of(sess) == "a2a" and raw == "offline":
+        return "unknown"
+    return raw
+
+
+def _status_basis(sess) -> str:
+    """这个 status 是怎么得出的（界面要能解释，别让用户猜）。"""
+    if _wm_of(sess) == "a2a":
+        return ("这类接口没有心跳通道 ⇒ 平台**无法判断**它在不在线，所以显示 unknown（不是 offline）；"
+                "要用「检测」真读一次 Agent Card 才算数")
+    return "heartbeat"

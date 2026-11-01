@@ -533,15 +533,12 @@
   <div class="card" id="sec8">
     <span id="ailp" class="v5-anchor" aria-hidden="true"></span>
     <div class="v5-sec"><span class="n">UNIT-08</span>结构化讨论（AILP 2.0，自由聊天会被拒）</div>
-    <div class="v5-sub">讨论区只认四类信封（提案/质疑/改进/呼应），选类型 → 表单会按字段表生成 → 发一条；闲聊发不进来。</div>
+    <div class="v5-sub">讨论区只认**强类型信封**（类型清单由 <code>GET /api/ailp/types</code> 决定，2026-11-01 起是七类：提案/质疑/改进/呼应/提问/行动项/推荐），选类型 → 表单会按字段表生成 → 发一条；闲聊发不进来。</div>
     <div class="row">
       <label class="f">类型
-        <select id="ailpType" onchange="renderAilpForm()">
-          <option value="PROPOSE">PROPOSE 提案</option>
-          <option value="CHALLENGE">CHALLENGE 质疑</option>
-          <option value="REFINE">REFINE 改进</option>
-          <option value="CONTEXT_ECHO">CONTEXT_ECHO 呼应</option>
-        </select>
+        <!-- ★2026-11-01：**选项不再写死**，由 loadAilpTypes() 按 /api/ailp/types 填（一处真相）。
+             以前这里固定四类 ⇒ 后端加了 CLARIFY/ACT/RECOMMEND，界面上根本选不到。 -->
+        <select id="ailpType" onchange="renderAilpForm()"></select>
       </label>
       <label class="f">发给<input id="ailpTarget" placeholder="组长 / 员工01"></label>
       <label class="f">manifest_ref（必须真实条目）<select id="ailpRef"></select></label>

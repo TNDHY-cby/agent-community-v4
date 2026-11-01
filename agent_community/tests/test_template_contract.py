@@ -114,7 +114,8 @@ def test_template_wakeup_method_values_are_legal():
             continue          # 否定/说明语境 ⇒ 正当用法
         bad.append(m.group(1))
     assert not bad, ("话术把桥型名当成 wakeup_method 教人填了（注册会被 400 拒）：%s" % bad)
-    assert legal == {"http", "file_poll", "clipboard", "acp", "http_api", "mcp"}, legal
+    # ★2026-11-01：词表 6 → 7，加 `a2a`（A2A 接入形态落地，见 `test_v7_a2a_harness.py`）。
+    assert legal == {"http", "file_poll", "clipboard", "acp", "http_api", "mcp", "a2a"}, legal
 
 
 def test_template_field_names_are_real_or_annotated():

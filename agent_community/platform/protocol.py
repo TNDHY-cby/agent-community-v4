@@ -439,6 +439,12 @@ class WakeupMethod(str, Enum):
     ACP = "acp"              # ACP（Agent Client Protocol）：平台 spawn 子进程走 JSON-RPC stdio
     HTTP_API = "http_api"    # HTTP API：平台 POST 到 harness 自带的 HTTP API（如示例 3721 /message），harness 自主处理
     MCP = "mcp"              # MCP 客户端：平台作为 MCP 客户端连接远程 Streamable HTTP MCP 服务器（tools/list 动态发现、tools/call 直调）
+    # ★2026-11-01（老板：「加入注册功能中啊，明明是最适配的你不加」）：
+    #   A2A（Agent2Agent）= **对等任务语义**：平台按 `tasks/send`（JSON-RPC）派活、`tasks/get` 查状态、
+    #   `tasks/cancel` 撤回，产物与验收结论随任务一起出去；对方用 Agent Card
+    #   （`/.well-known/agent-card.json`，兼容 v0.2 的 `agent.json`）自证身份。
+    #   为什么说它最适配本项目：它**天生带任务语义与回执**——不像 http_api 只发一个 POST 就完事。
+    A2A = "a2a"
 
 
 class WakeupMessage(BaseModel):

@@ -453,6 +453,80 @@ def _dt_now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def _wm_value(wm) -> str:
+    """把 `wakeup_method`（枚举或字符串）归一成小写字符串。"""
+    return str(getattr(wm, "value", wm) or "").strip().lower()
+
+
+async def _verify_a2a(info, harness_id: str, *, wait: float = 8.0) -> dict:
+    """A2A 的自检：**读 Agent Card + 真发一条探针任务再撤回**（没有桥这回事）。
+
+    ★2026-11-01（真对端实测后补齐）：A2A 与"桥"无关，硬套桥的验证流程只会失败。
+      验什么、不验什么，都写在响应里（`channel_note`），不夸大：
+        · 验了：卡可读、端点受理任务（拿到 task id）；
+        · 没验：agent 回话内容（那要真派一次活才看得到）。
+    """
+    from .. import a2a_client as _c
+
+    url = str(getattr(info, "api_base_url", "") or getattr(info, "wakeup_url", "")
+              or getattr(info, "callback_url", "") or "").strip()
+    out: dict = {"success": False, "stage": "selfcheck", "state": None,
+                 "bridge_kind": None, "bridge_started": False, "sandbox_id": "",
+                 "template_verified": False, "harness_id": harness_id,
+                 "detail": {"channel": "a2a_jsonrpc"}}
+    if not url:
+        out.update({"error": "没有 api_base_url —— A2A 派活要用它的端点基址",
+                    "hint": "在注册信息里填 api_base_url（例如 http://127.0.0.1:<端口>/a2a/<id>）"})
+        return out
+
+    try:
+        card = _c.discover_card(url, timeout=max(5, int(wait)))
+    except Exception as e:                                   # noqa: BLE001 — 如实报，不猜
+        out.update({"error": f"读 Agent Card 失败：{e}",
+                    "hint": ("端点基址对不对？卡一般在 `<基址>/.well-known/agent-card.json`，"
+                             "也有实现给 `<基址>/agent-card.json`（平台两种都会试）")})
+        return out
+
+    detail = dict(out["detail"])
+    detail["card_name"] = str(card.get("name") or "")
+    detail["card_skills"] = [str(s.get("id") or "") for s in (card.get("skills") or [])][:10]
+    detail["card_path_note"] = "本次读到了卡；具体走的哪条路径见平台日志"
+
+    try:
+        res = _c.send_task(url, "平台自检探针：收到请忽略本条。", None,
+                           timeout=max(10, int(wait) * 3))
+    except Exception as e:                                   # noqa: BLE001 — 卡能读但派活不通
+        out.update({"error": f"端点不收任务：{e}", "detail": detail,
+                    "hint": ("卡读得到但派活不通：看对端是不是只认 A2A v1.0 的方法名 —— "
+                             "平台会自动把 `tasks/send` 换成 `SendMessage` 重发，若仍失败请贴对端返回")})
+        return out
+
+    res = res if isinstance(res, dict) else {}
+    task = res.get("task") if isinstance(res.get("task"), dict) else res
+    tid = str(task.get("id") or res.get("id") or "").strip()
+    detail["task_id"] = tid
+    detail["accepted"] = bool(tid)
+
+    canceled = False
+    if tid:
+        try:
+            _c.rpc(url, "tasks/cancel", {"taskId": tid}, None, timeout=15)
+            canceled = True
+        except Exception:                                     # noqa: BLE001 — 撤回失败不影响主结论
+            canceled = False
+    detail["probe_canceled"] = canceled
+    detail["channel_note"] = ("A2A 没有桥：本次验的是「Agent Card 读得到 + 端点真受理任务」；"
+                              "**agent 回话内容不在本次验证范围内**（要真派一次活才看得到）。")
+
+    out.update({
+        "success": True,
+        "state": "ok",
+        "reason": "A2A 端点可用：Agent Card 可读、任务已被受理" + ("（探针已撤回）" if canceled else ""),
+        "detail": detail,
+    })
+    return out
+
+
 async def verify_bridge(workshops: dict, harness_id: str, *, data_dir: str,
                         harness_name: str = "", wait: float = 8.0) -> dict:
     """**一步到位**：建/取验证间 → （必要时派生草稿）→ 架桥 → 自检 → 返回结论。
@@ -460,16 +534,23 @@ async def verify_bridge(workshops: dict, harness_id: str, *, data_dir: str,
     只做"验证"；**回写模板**与**拆掉**分别由 `commit_verified` / `teardown` 负责，
     这样界面可以先让用户看到结果再决定（也便于"跑通才写"这条门槛落到实处）。
     """
-    ws = ensure_sandbox(workshops, harness_id, data_dir=data_dir, harness_name=harness_name)
-    m = (ws.members or [None])[0]
-    if m is None:
-        raise SandboxError("验证间里没有成员（数据异常）", hint="删掉验证间重建")
-
     from .harness_adapter import harness_manager
     from . import bridge_templates as _bt
     sess = harness_manager.sessions.get(harness_id)
     if sess is None:
         raise SandboxError(f"harness {harness_id} 未注册", code=404)
+
+    # ★2026-11-01：**A2A 没有"桥"这回事** ⇒ 不能走建间/架桥/起桥那套。
+    #   真机实测：按桥那条路走会以「脚本生成失败: 缺少模板必填字段: WORK_DIR」告终 ——
+    #   一个完全能用的 A2A 端点被说成自检失败，用户只会以为"平台坏了"。
+    #   它该验的是：Agent Card 读得到 + 端点**真受理任务**。
+    if _wm_value(getattr(sess.info, "wakeup_method", "")) == "a2a":
+        return await _verify_a2a(sess.info, harness_id, wait=wait)
+
+    ws = ensure_sandbox(workshops, harness_id, data_dir=data_dir, harness_name=harness_name)
+    m = (ws.members or [None])[0]
+    if m is None:
+        raise SandboxError("验证间里没有成员（数据异常）", hint="删掉验证间重建")
 
     # 「先有模板才能架桥」的死锁在这里被解开：没有就派生草稿
     had_template = bool(_bt.list_all(sess.info))

@@ -1064,7 +1064,7 @@ body{font-size:var(--t2)}
         <span class="fb-step" id="p1"><span class="fb-num">01</span>定方向</span>
 
 
-        <span class="fb-step" id="p2"><span class="fb-num">02</span>选人</span>
+        <span class="fb-step" id="p2"><span class="fb-num">02</span>选组长</span>
 
 
         <span class="fb-step" id="p3"><span class="fb-num">03</span>分工</span>
@@ -1297,7 +1297,10 @@ body{font-size:var(--t2)}
         <div class="panel" style="margin:8px;border:1px solid var(--rule)">
 
 
-          <div class="side-head"><h2>② 选人</h2></div>
+          <!-- ★2026-11-01（老板："选择组长没有单独落地，直接就让用户选成员了，而且没有组长预列表"）：
+               「① 选组长」现在是**独立的一步**，由 renderLeadStep() 渲染（候选人 + 不够格的原因）。 -->
+          <div id="leadStep" style="display:none"></div>
+          <div class="side-head"><h2>② 名单</h2></div>
           <div class="role-hint" id="roleHint">职业自由填（候选来自平台职业表，加载中…）</div>
 
 
@@ -1703,8 +1706,11 @@ function wsvToggleWorkflow(){
   const st=ws.status||'draft';
   const stages=[
     {k:'draft',n:'创建需求',t:'需求录入大厅'},
-    {k:'discussing',n:'定方向',t:'在外面聊透、整理资料'},
-    {k:'selecting',n:'选人',t:'信誉匹配选人'},
+    {k:'discussing',n:'定方向',t:'在外面聊透、整理资料（平台不参与讨论）'},
+    /* ★2026-11-01 修：原「信誉匹配选人」两处都不对 ——
+       ①「信誉机制」是老板 2026-10-08 明确**暂停**的功能（不许当现状写）；
+       ② 平台**不选人**（V116 §16；select-members 已 410 退役）：组长由**你**选、名单由**组长回执**交回。 */
+    {k:'selecting',n:'选组长',t:'你选组长（平台只筛资格）→ 组长交名单回执'},
     {k:'division',n:'分工',t:'组长接管分工讨论'},
     {k:'running',n:'干活',t:'员工执行+组长调度'},
     {k:'review',n:'验收',t:'阶段总结与下一步'},
@@ -2331,7 +2337,7 @@ function renderSessionFlow(r){
     else{sum.className='sf-summary warn';sum.textContent=((r.summary.manual_members||[]).length)+' 名成员有需人工步骤';}
   }else{sum.style.display='none';}
   body.innerHTML='';
-  if(!members.length){body.append(sfEl('div','sf-empty','尚无成员（先去选人）。'));return;}
+  if(!members.length){body.append(sfEl('div','sf-empty','尚无成员（先去「本间对接中心」选组长、拉人，或让组长交名单回执）。'));return;}
   members.forEach(m=>body.appendChild(_sfCard(m)));
 }
 function _sfCard(m){
@@ -2966,12 +2972,14 @@ function renderNextStep(){
   const S=_wsStatus||'discussing';
   const MAP={
     /* 通道 90 号缺陷：大厅发过任务的间（hall_content 非空）status 仍是 draft，
-       原 draft 文案却让人"回大厅发布任务" ⇒ 自相矛盾。有任务 ⇒ 按一级讨论指引走。 */
+       原 draft 文案却让人"回大厅发布任务" ⇒ 自相矛盾。有任务 ⇒ 按定方向指引走。
+       ★2026-11-01 修：原来这四处都写「结束讨论，去选人 →」—— **选人是退役动作**
+       （平台不选人，V116 §16）；现行是**你选组长**，所以文案与按钮都改成"去选组长"。 */
     draft: _wsHall
-      ? ['任务已发布。下一步：在外面把方向聊透、资料整理好，回来在「本间对接中心」填方向、手动选组长；要选人就点「结束讨论，去选人 →」。',[['结束讨论，去选人 →',()=>endDiscuss()]]]
+      ? ['任务已发布。下一步：在外面把方向聊透、资料整理好 → 回来点「方向定了，去选组长 →」，在「本间对接中心」选一个够格的组长。',[['方向定了，去选组长 →',()=>endDiscuss()]]]
       : ['该工作间尚在草稿；回大厅发布任务继续。',[['回大厅',()=>{location.href='/';}]]],
-    discussing:['方向在外面整理好（平台不参与讨论）；定稿后点「结束讨论，去选人 →」。',[['结束讨论，去选人 →',()=>endDiscuss()]]],
-    selecting:['在右侧员工名单填人（标准路径：组长交名单回执；也可「+ 添加职位」手动补录）；名单确认后进入分工。',[['确认成员',()=>_nsFlash('confirmBtn')]]],
+    discussing:['方向在外面整理好（平台不参与讨论）；定稿后点「方向定了，去选组长 →」。',[['方向定了，去选组长 →',()=>endDiscuss()]]],
+    selecting:['在右侧名单填人（标准路径：**组长交名单回执**；也可「+ 添加职位」手动补录）。组长还没选？去「本间对接中心」选。',[['确认成员',()=>_nsFlash('confirmBtn')]]],
     division:['分工安排已按当前名单更新（library/plan.md）。跟组长确认分工后点「开始工作」。',[['📚 资料库',()=>_nsOpen('#libPanel')],['🏗 隔间与桥',()=>_nsOpen('')],['开始工作',()=>_nsFlash('startWorkBtn')]]],
     running:['成员在各自隔间作业；完成后走 review 收口。',[['🏗 隔间与桥',()=>_nsOpen('')],['📚 资料库',()=>_nsOpen('#libPanel')]]],
     review:['完成复核与收口；可查隔间成果。',[['🏗 隔间与桥',()=>_nsOpen('')]]],
@@ -3297,6 +3305,119 @@ function renderMembersV5(d){
   h+='<div class="rv5-foot">'+foot.join('；')+'</div>';
   box.innerHTML=h;
   box.style.display='';
+}
+
+/* ══ ① 选组长（V5 独立一步）══════════════════════════════════════
+ * ★2026-11-01 老板：「选择组长没有单独落地，直接就让用户选成员了，而且没有组长预列表」。
+ * 为什么单独一步：组长是**整间活儿的负责人**，它决定分工与名单；没组长就填成员 =
+ *   v4 的老路（平台替你选人，已退役）。
+ * 候选人来自 `/api/lead-roster`（`lead_eligible` = 能写文件 + 能把回执送回来）：
+ *   · 有候选 → 列出来让你点（**不排序、不推荐**，按 harness_id 字典序）；
+ *   · 没候选 → **把"为什么每个都不够格"逐条摊开**（否则你只看到"没人可选"，不知道卡在哪）；
+ *   · 已有组长 → 显示是谁。
+ */
+async function renderLeadStep(){
+  const box=document.getElementById('leadStep');
+  if(!box) return;
+  if(!wsId){ box.style.display='none'; return; }
+  box.style.display='';
+  let lead=null;
+  try{
+    const r=await fetch('/api/workshop/'+encodeURIComponent(wsId)+'/roster');
+    const d=await r.json();
+    const ms=(d&&(d.members||(d.roster&&d.roster.members)))||[];
+    lead=ms.find(m=>String((m.slot_dir??m['岗位']??'')).trim()==='_lead')||null;
+  }catch(e){ /* 读不到就当没有组长，下面继续拉候选 */ }
+  let html='<div class="side-head"><h2>① 选组长</h2></div>';
+  if(lead){
+    html+='<div class="role-hint">组长：<b>'+esc(lead.harness||lead.harness_id||lead.session_label||'（已定）')+
+          '</b><br>平台只筛资格、<b>不推荐</b>。名单由组长交回（也可下方手工补录）。</div>';
+    box.innerHTML=html;
+    return;
+  }
+  html+='<div class="role-hint">组长必须<b>能写文件</b> ＋ <b>能把回执送回来</b>。下面是平台实测结论，'+
+        '<b>按名字排，不是推荐</b>。</div>';
+  try{
+    const r=await fetch('/api/lead-roster'+(document.body.dataset.dir?'?direction='+encodeURIComponent(document.body.dataset.dir):''));
+    const d=await r.json();
+    const cs=(d&&d.candidates)||[], ex=(d&&d.excluded)||[];
+    if(cs.length){
+      html+='<div style="padding:0 8px">';
+      cs.forEach(c=>{
+        html+='<button class="btn" type="button" style="display:block;width:100%;text-align:left;margin-bottom:6px" '+
+              'onclick="chooseLead(\''+esc(c.harness_id||'')+'\')">'+
+              '<b>'+esc(c.harness_name||c.harness_id||'')+'</b>'+
+              '<div style="font-size:11px;color:var(--dim)">'+esc(c.harness_id||'')+'</div></button>';
+      });
+      html+='</div>';
+    }else{
+      html+='<div class="role-hint" style="color:var(--warn)">现在<b>一个能当组长的都没有</b>——'+
+            '原因在下面，先解决其中一个，这一步才能过。</div>';
+    }
+    if(ex.length){
+      html+='<details style="margin:6px 8px 0" open><summary style="cursor:pointer;font-size:12px">'+
+            '为什么这些不能当组长（'+ex.length+' 个）—— 每个都能就地救</summary>';
+      ex.forEach(e=>{
+        const hid=esc(e.harness_id||'');
+        html+='<div style="font-size:11.5px;color:var(--dim);margin:5px 0 9px"><b>'+hid+'</b><br>'+
+              esc(e.why||e.reason||'（平台没给出原因）')+
+              '<br><button class="btn mini" type="button" style="margin-top:4px" '+
+              'onclick="probeTooling(\''+hid+'\')">实测写一次盘</button>'+
+              '<span class="msg" id="probe_'+hid+'"></span></div>';
+      });
+      html+='</details>';
+    }
+  }catch(e){
+    html+='<div class="role-hint" style="color:var(--bad)">读不到组长候选：'+esc(e.message||e)+'</div>';
+  }
+  box.innerHTML=html;
+}
+
+async function chooseLead(hid){
+  if(!hid||!wsId) return;
+  try{
+    const r=await fetch('/api/workshop/'+encodeURIComponent(wsId)+'/lead',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({harness_id:hid})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||(d&&d.ok===false)){
+      const why=(d&&(d.why||d.error))||('HTTP '+r.status);
+      const nx=(d&&d.next)?('（'+d.next+'）'):'';
+      if(typeof acToast==='function') acToast('选组长失败：'+why+nx,'err');
+      return;
+    }
+    if(typeof acToast==='function') acToast('已选定组长：'+hid);
+    renderLeadStep();
+    if(typeof renderNextStep==='function') renderNextStep();
+  }catch(e){
+    if(typeof acToast==='function') acToast('选组长失败：'+(e.message||e),'err');
+  }
+}
+
+/* ★2026-11-01（老板："说让平台帮我探测的那个"）：把「实测写一次盘」放到**你能看到原因的地方**。
+ * 原先这个按钮只在 `/v5.html` 的表里 —— 你在工作间页只看到"测不到能不能写文件"，却无处可点。
+ * 它做的是：平台在自己的落点真写一次盘并读回核对（管的是 `fs_write` 这一项门槛）。
+ * ⚠️ 边界（探测自己会说）：这只证明**平台侧落点可写**，不等于那个 agent 自己有 fs 工具；
+ *    而且组长门槛是**两项**：`fs_write` ＋（`protocol_call` 或 `bridge_poll`）。光测写盘不够。 */
+async function probeTooling(hid){
+  if(!hid) return;
+  const box=document.getElementById('probe_'+hid);
+  if(box) box.textContent='探测中…（平台在自己的落点真写一次并读回核对）';
+  try{
+    const r=await fetch('/api/harness/'+encodeURIComponent(hid)+'/probe-tooling',{method:'POST'});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||(d&&d.ok===false)){
+      if(box) box.textContent='探测失败：'+((d&&(d.error||d.detail))||('HTTP '+r.status));
+      return;
+    }
+    const m=(d&&d.measured)||{};
+    if(box) box.textContent='探测结果：写盘='+(m.fs_write===true?'能':(m.fs_write===false?'不能':'没测出来'))
+      +(m.detail?('（'+m.detail+'）'):'');
+    if(typeof acToast==='function') acToast('探测完成，重新看组长候选…');
+    renderLeadStep();
+  }catch(e){
+    if(box) box.textContent='探测失败：'+(e.message||e);
+  }
 }
 
 async function renderRoster(members, harnesses){
@@ -3942,6 +4063,8 @@ function loadWorkshop(id){
 
       renderHarnessList(hs);
       if(_wsStatus==='selecting')updateSelectionReadiness(hs);
+      /* ★2026-11-01：进入选组长/名单阶段时把「① 选组长」这块渲染出来（含"为什么没人够格"） */
+      if(_wsStatus==='selecting'||d.status==='selecting'||d.status==='lead_in'){ renderLeadStep(); }
 
 
       if(d.members&&d.members.length){renderRoster(d.members, hs); document.getElementById('confirmBtn').style.display='';}

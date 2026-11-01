@@ -146,8 +146,71 @@ def _wakeup_endpoint(harness_id: str) -> str:
     return ""
 
 
+def _harness_is_a2a(harness_id: str) -> bool:
+    """这个 harness 是不是按 **A2A** 接入（`wakeup_method=a2a`，或 `transports` 里声明了 a2a）。
+
+    ★2026-11-01（老板：「加入注册功能中啊，明明是最适配的你不加」）：
+    为什么要单列一条：A2A 的政策是**任务语义**——派活要发 JSON-RPC `tasks/send`（带 `message.parts`），
+    对端还会回一个 task id 供 `tasks/get` 查。**混在普通 HTTP POST 里发，对端不认，
+    而我们这边却会记成"已触达"** —— 那是最坏的那种假成功。
+    """
+    try:
+        from .server import harness_manager  # type: ignore[attr-defined]
+        sess = (getattr(harness_manager, "sessions", {}) or {}).get(harness_id)
+        if sess is None:
+            return False
+        info = getattr(sess, "info", None)
+        wm = getattr(info, "wakeup_method", "") if info is not None else ""
+        wm = str(getattr(wm, "value", wm) or "").lower()
+        if wm == "a2a":
+            return True
+        declared = [str(getattr(t, "value", t) or "").lower()
+                    for t in (getattr(info, "transports", None) or [])]
+        return "a2a" in declared
+    except Exception:                                          # noqa: BLE001 — 结构变了就当不是 A2A
+        return False
+
+
+def _activate_via_a2a(url: str, task_id: str, task_rel: str, at: str,
+                      timeout_sec: int = 30, *, report_hint: str = "",
+                      context_id: str = "") -> dict:
+    """按 A2A 的 `tasks/send` 派活（**不是**普通 HTTP POST）。返回与 `activate()` 同形状。
+
+    ★2026-11-01（清单 B2）：正文里带**回报契约**（`report_hint`），让对端干完能主动回执；
+    同时返回 `a2a_task_id`，交给 `a2a_result_poll` 轮询回写 —— 两条路谁先到算谁。
+
+    ★2026-11-01（老板问「能不能自由控制同一会话 / 新开会话」）：
+    A2A 用的就是 `contextId`。实测三种行为：
+      · 不传 ⇒ 对端自己生成（**每次新上下文**，也就是现在的默认行为）；
+      · 传同一个 ⇒ 对端回显同一个（协议上算"同一上下文"）；
+      · 传新的 ⇒ 新上下文。
+    ⚠️ 它控的是"A2A 上下文标识"；是否映射到客户端**同一个会话窗口**取决于对端实现。
+    """
+    try:
+        from ..a2a_client import send_task  # 顶层包，零依赖
+    except Exception as e:                                     # noqa: BLE001
+        return {"result": "failed", "method": "a2a", "url": url, "at": at,
+                "detail": "A2A 客户端不可用（%s: %s）" % (type(e).__name__, e)}
+    title = "派活 %s：请按文件 %s 执行" % (task_id, task_rel)
+    if report_hint:
+        title += "\n\n" + report_hint
+    try:
+        res = send_task(url, title, None, timeout=timeout_sec, context_id=context_id)
+        tid = str((res or {}).get("id") or (res or {}).get("taskId") or "").strip()
+        task_obj = res.get("task") if isinstance(res.get("task"), dict) else (res or {})
+        used_ctx = str(task_obj.get("contextId") or context_id or "").strip()
+        return {"result": "ok", "method": "a2a", "url": url, "at": at,
+                "a2a_task_id": tid, "a2a_context_id": used_ctx,
+                "detail": "已按 A2A `tasks/send` 派出%s（平台会按 `tasks/get` 回查并把结果写回账本）"
+                          % (("，对端任务 %s" % tid) if tid else "")}
+    except Exception as e:                                     # noqa: BLE001 — 联网失败要如实说
+        return {"result": "failed", "method": "a2a", "url": url, "at": at,
+                "detail": "A2A `tasks/send` 失败：%s" % str(e)[:240]}
+
+
 def activate(workshop_path: str, slot_dir: str, *, harness_id: str, tier: str,
-             task_id: str, task_rel: str, timeout_sec: int = 8) -> dict:
+             task_id: str, task_rel: str, timeout_sec: int = 8,
+             report_hint: str = "", a2a_context_id: str = "") -> dict:
     """触达（第三步）。返回 `{result, detail, method, at, needs_human?}`。
 
     - A 档：`wakeup_url` 存在 ⇒ **真 POST**（超时/连不上 ⇒ `failed`，绝不记 ok）；
@@ -171,6 +234,11 @@ def activate(workshop_path: str, slot_dir: str, *, harness_id: str, tier: str,
             return {"result": "manual", "method": "none", "at": at, "needs_human": True,
                     "detail": "这个 harness 没配唤醒地址（wakeup_url/api_base_url），"
                               "平台**不会假装叫醒它** —— 请人工去它的会话里说一句"}
+        # ★2026-11-01：A2A 走自己的信封（tasks/send），不能用下面那套普通 POST
+        if _harness_is_a2a(harness_id):
+            return _activate_via_a2a(url, task_id, task_rel, at,
+                                     timeout_sec=max(timeout_sec, 30), report_hint=report_hint,
+                                     context_id=a2a_context_id)
         try:
             payload = json.dumps({"event": "task.assigned", "task_id": task_id,
                                   "file": task_rel}, ensure_ascii=False).encode("utf-8")

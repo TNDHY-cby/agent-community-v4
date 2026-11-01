@@ -15,6 +15,7 @@
 | `http` | 无（兜底） | 必需 | 必需 | 必需 | **先落盘，不叫醒**（没人轮询就永远躺着） |
 | `clipboard` | 无（人工） | 理论上无需 | 关桥 | 关桥 | **落盘等人粘贴** |
 | `mcp` | 无 | 无 | 验 MCP 连通 | 无 | 平台作为 MCP 客户端直调 |
+| `a2a` | 无 | 无 | 验 Agent Card + 派活 | 无 | 平台按 JSON-RPC 直派（带任务语义） |
 
 原来的问题（V44 #15）：**所有接口都拿到同一套话术**，于是出现
 「`http_api` 的 harness 走完了桥的 3/4/5 步」「第 4 步验的是 pending_poll、第 5 步在跑 file_poll，
@@ -59,6 +60,7 @@ INBOX = {
     "manual": "**平台落盘 + 等人粘贴**（平台不会自动叫醒它）",
     "nowhere": "**平台落盘后无人取**（没人轮询、也没桥）—— 会被积压",
     "mcp_call": "**平台作为 MCP 客户端直接调用**它的工具",
+    "a2a_task": "**平台按 A2A JSON-RPC 直接派活**（带任务状态与回执；不过桥、不落盘）",
 }
 
 
@@ -152,6 +154,27 @@ BY_WAKEUP: dict[str, dict] = {
         "platform_can": ["平台能列出它的工具并直接调用"],
         "platform_cannot": ["MCP 服务本身要一直活着（那是它自己的进程）"],
     },
+    # ★2026-11-01（老板：「加入注册功能中啊，明明是最适配的你不加」）：
+    #   A2A 是**对等任务语义**，不是"又一个 HTTP 回调" —— 派活要用 JSON-RPC 信封、
+    #   能带任务状态与产物。所以它有自己的一段引导，不能沿用 http_api 的话术。
+    "a2a": {
+        "label": "A2A 对等任务（JSON-RPC）",
+        "tier_hint": "S 档 · A2A 直派（带任务语义与回执）",
+        "steps": _s(wake=NOT_APPLICABLE, bridge=NOT_APPLICABLE,
+                    selfcheck=NEEDED, persist=NOT_APPLICABLE),
+        "bridge_kind": None,
+        "inbox": INBOX["a2a_task"],
+        "pickup": ("**不需要桥**：平台按 A2A JSON-RPC 直接派活（v0.2 `tasks/send`；"
+                   "对端只认 v1.0 时自动改发 `SendMessage`），之后可用 `tasks/get` 回查做到哪。"),
+        "persist_how": "不用跑桥；要保证它那个 A2A 端点一直活着（进程别被关掉）。",
+        "wake_answer": ("没有「叫醒命令」—— 给出它的 **A2A 端点基址**即可。"
+                        "Agent Card 一般在 `<基址>/.well-known/agent-card.json`，"
+                        "也有实现挂在 `<基址>/agent-card.json`（两种平台都会试）。"),
+        "platform_can": ["平台能按 A2A 任务语义直派（不过桥、不落盘）",
+                         "能读它的 Agent Card 确认身份与能力"],
+        "platform_cannot": ["平台不负责拉起那个 A2A 服务（那是它自己的进程）",
+                            "对端只认 v1.0 方法名时走平台的兼容回退，行为以对端实现为准"],
+    },
 }
 
 #: 未知/没声明的叫醒方式：**如实说不知道**，并给出"怎么自己确认"
@@ -162,8 +185,11 @@ UNKNOWN = {
     "bridge_kind": None,
     "inbox": INBOX["pending_queue"],
     "pickup": "平台还不知道它靠什么被叫醒 —— 派活前请先确认这一点，别让活躺在队列里。",
-    "persist_how": "先把叫醒方式定下来（自测四项：能不能被命令拉起 / 盯不盯目录 / 有没有常驻 HTTP / 只能人工）。",
-    "wake_answer": "先做自测再填；测不出来就如实选 `clipboard`（一定不会错，之后可改）。",
+    "persist_how": ("先把叫醒方式定下来：⓪ **先查你所在客户端装没装 A2A / MCP 插件**（别只看端口，"
+                    "装了没建实例时端口也不听）＋自测四项（能不能被命令拉起 / 盯不盯目录 / "
+                    "有没有常驻 HTTP / 只能人工）。"),
+    "wake_answer": ("先做 ⓪ 和自测再填；都测不出来才如实选 `clipboard`"
+                    "（一定不会错，之后可改）。"),
     "platform_can": ["平台会把活存下来"],
     "platform_cannot": ["平台不知道该怎么叫醒它"],
 }
@@ -176,6 +202,7 @@ KIND_FOR_WAKEUP = {
     "clipboard": "pending_poll",
     "http_api": None,
     "mcp": None,
+    "a2a": None,
 }
 
 

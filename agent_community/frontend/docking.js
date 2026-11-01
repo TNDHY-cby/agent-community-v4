@@ -1195,6 +1195,11 @@ function _wizHarness(){
 function _wizSessionPostHtml(h){
   /* 后端说缺什么（session_need / session_post_need）就显示什么 —— 不再只认 in_session_capable === false */
   if (!h || !h.session_post_need) return '';
+  /* ★2026-11-01：**A2A 根本没有"往自己会话里说话"这回事** —— 平台按 `tasks/send` 派活，
+     回复只回到平台（对端在自己的 `a2a-*` 会话里处理，不是这个界面能看到的）。
+     ⇒ 对 A2A 不显示这条"让它加 session_post 工具"的提示（那是给 MCP/工具型接口的）。 */
+  const _wm = String((h.wakeup && h.wakeup.wakeup_method) || h.wakeup_method || '').toLowerCase();
+  if (_wm === 'a2a') return '';
   return '<div class="wiz-session-post"><p class="wiz-hint">' + escPlain(h.session_post_need || '它还不能在自己的会话里说话。') + '</p>' +
     '<div class="wiz-actions"><button class="btn mini" onclick="wizCopySessionPost()">复制要求给它</button>' +
     '<span class="dock-msg" id="wizSpMsg"></span></div></div>';
@@ -1366,6 +1371,37 @@ function _wizPlain(x){ return String(x == null ? '' : x).replace(/\*\*/g, ''); }
 
 function _wizTestHtml(d){
   d = d || {};
+  /* ★2026-11-01（老板真机：检测页对 A2A 说「暂无一键测试」+ 一堆"会话/库/session_post"的判据）：
+     A2A **没有**"工具/会话内发言/它自己的库"这回事 —— 它的回复只回到平台。
+     所以 A2A 单独一条渲染路径：只报**读卡结论 + 卡里有什么**，不去套别人的判据。 */
+  if (String(d.protocol || '') === 'a2a') {
+    const card = (d.extra && d.extra.agent_card) || d.agent_card || {};
+    const skills = (card.skills || []).map(function (s){
+      return s && (s.name || s.id) ? esc(String(s.name || s.id)) : '';
+    }).filter(Boolean);
+    const okCard = d.ok === true;
+    return '<div class="' + (okCard ? 'dock-ok' : 'dock-err') + '">' +
+        (okCard ? '✓ 读到 Agent Card' : '✗ 读不到 Agent Card') + '：' +
+        escPlain(String(d.detail || '')) + '</div>' +
+      (card.name ? '<p class="wiz-hint">对端名字：<b>' + esc(String(card.name)) + '</b></p>' : '') +
+      (skills.length ? '<p class="wiz-hint">它会做什么（卡里的 skills）：' + skills.join('、') + '</p>' : '') +
+      /* ★2026-11-01（老板：「检测内容能不能在对象的会话里面表现」）：能 —— 检测会真发一条
+         A2A 探针任务过去，对端会在**它自己的会话**里处理它。这里如实说清去哪看。 */
+      ((d.extra && d.extra.probe_task_id)
+        ? '<p class="wiz-hint">探针任务已发出：<code>' + esc(String(d.extra.probe_task_id)) + '</code>' +
+          (d.extra.probe_canceled ? '（已撤回）' : '（没撤回，可能还在它那儿）') +
+          '<br>去<b>对端客户端</b>看它的 <code>a2a-*</code> 会话 —— 这句话会出现/曾出现在那里' +
+          (d.extra.probe_context_id ? ('（它给这条开的是新上下文 <code>' + esc(String(d.extra.probe_context_id)) + '</code>，不会污染正式会话）') : '') +
+          '</p>'
+        : ((d.extra && d.extra.probe_error)
+            ? '<p class="wiz-hint dock-err">探针任务没发出去：' + esc(String(d.extra.probe_error)) + '</p>'
+            : '')) +
+      '<div class="wiz-hint">A2A 的检测 = <b>读卡 + 端点能不能受理任务</b>；' +
+        '它<b>没有「往自己会话里说话」这回事</b>（派活走 JSON-RPC <code>tasks/send</code>，回复只回到平台），' +
+        '所以这里不判断"会话/库"。</div>' +
+      (d.note ? '<p class="wiz-hint">' + escPlain(_wizPlain(String(d.note))) + '</p>' : '') +
+      (d.at ? '<p class="wiz-hint">上次测于 ' + escPlain(String(d.at)) + '</p>' : '');
+  }
   const verified = d.verified === true;
   const ar = d.agent_reply || null;
   /* ★2026-10-25（老板：「平台在做梦」）：结论分三件事说，不再用一个 verified 糊过去 ——

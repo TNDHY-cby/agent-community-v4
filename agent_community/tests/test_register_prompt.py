@@ -128,13 +128,19 @@ def test_prompt_has_no_local_absolute_paths():
     assert not re.search(r"[A-Za-z]:\\\\", p), "话术里不许出现本机盘符路径"
 
 
-# ── ⑤ 未知协议：如实说不知道 + 先自测四项 ────────────────────────────────
+# ── ⑤ 未知协议：如实说不知道 + 先自测（⓪ 查插件 + 四项）────────────────
 def test_unknown_protocol_is_honest_and_gives_self_test():
     d = rp.build("wat", platform_url=BASE)
     assert d["known_protocol"] is False
-    assert "先自测四项" in d["prompt"]
+    assert "自测" in d["prompt"] and "四项" in d["prompt"]
+    # ★2026-11-01（清单 B4）：自测之前必须先有 **⓪ 先查插件** —— 真机踩过：
+    #   agent 只看端口就选了 clipboard，而它所在客户端**装着 A2A 插件**（只是没建实例）。
+    assert "⓪" in d["prompt"], "通用版必须先给 ⓪（先查客户端有没有 A2A / MCP 插件）"
+    assert "插件" in d["prompt"], "⓪ 里要明说查插件，不是只看端口"
+    assert "inbounds" in d["prompt"], "要给「装了但没建实例」的识别特征（inbounds: []）"
     for kw in ("acp", "file_poll", "http_api", "clipboard", "mcp", "http"):
-        assert kw in d["prompt"], "通用版要把六种选择都摆出来（%s 缺）" % kw
+        assert kw in d["prompt"], "通用版要把这些选择都摆出来（%s 缺）" % kw
+    assert "a2a" in d["prompt"], "a2a 也是一种选择，通用版必须提到（2026-11-01 新增）"
 
 
 # ── ⑥ 老板 2026-10-17 看着页面提的两处（概念 + 命名）＋ 一处漏格式 ───────────

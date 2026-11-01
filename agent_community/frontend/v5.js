@@ -1013,18 +1013,38 @@ async function closeWs() {
     esc((r.data.revoked || []).length) + ' 个 token；工作区目录原样保留。');
 }
 
-/* ── 8. 结构化讨论（AILP 2.0：四类卡片，字段表来自 /api/ailp/types）────── */
+/* ── 8. 结构化讨论（AILP 2.0：类型与字段表**一律来自 /api/ailp/types**）──────
+ * ★2026-11-01（V122 批 1）：四类 → 七类（新增 CLARIFY / ACT / RECOMMEND）。
+ *   纪律：这里**不许再写死类型清单** —— 下拉与表单都按 types 生成，以后加类型不用改前端。 */
 const AILP_LABELS = {
   proposal: '提案', confidence: '置信度', basis_ids: '依据（指回 msg_id / 任务号）',
   contradiction: '矛盾（哪两条对不上）', evidence_ids: '证据（指回 msg_id 列表）',
   target_id: '改哪条（真实 msg_id）', modifications: '改什么', new_confidence: '新置信度',
   echo_target: '呼应对象', shared_context: '共享上下文',
-  counter_proposal: '反提案（可选）'
+  counter_proposal: '反提案（可选）',
+  /* 新三类的字段（V122 批 1） */
+  question: '你的问题', to_ref: '问的是哪一条（真实 msg_id）',
+  task_ref: '任务号（任务账本里真有的，如 T-001）', owner: '谁负责（名单里的人）',
+  due: '截止（可选）', reason: '为什么（改置信度/推荐都要说清）'
 };
 const AILP_COLORS = {
-  PROPOSE: 'var(--accent)', CHALLENGE: 'var(--bad)', REFINE: 'var(--warn)', CONTEXT_ECHO: 'var(--ok)'
+  PROPOSE: 'var(--accent)', CHALLENGE: 'var(--bad)', REFINE: 'var(--warn)', CONTEXT_ECHO: 'var(--ok)',
+  CLARIFY: 'var(--muted)', ACT: 'var(--accent)', RECOMMEND: 'var(--ok)'
 };
 const AILP = { types: null };
+
+/* 下拉选项由 types 生成（以前写死在 v5.html ⇒ 后端加了新类型，界面上根本选不到） */
+function fillAilpTypeOptions() {
+  const sel = $('ailpType');
+  if (!sel) return;
+  const types = AILP.types || [];
+  const keep = sel.value;
+  sel.innerHTML = types.map(function (t) {
+    return '<option value="' + esc(t.msg_type) + '">' + esc(t.msg_type) +
+      (AILP_LABELS[t.msg_type] ? ' ' + esc(AILP_LABELS[t.msg_type]) : '') + '</option>';
+  }).join('');
+  if (keep && types.some(function (t) { return t.msg_type === keep; })) sel.value = keep;
+}
 
 function ailpTypeDef(t) {
   const list = AILP.types || [];
@@ -1038,10 +1058,13 @@ function ailpFieldKind(typeStr) {
   return 'str';
 }
 async function loadAilpTypes() {
-  if (AILP.types) { renderAilpForm(); return; }
+  if (AILP.types) { fillAilpTypeOptions(); renderAilpForm(); return; }
   const r = await api('GET', '/api/ailp/types');
   if (!r.ok) { $('ailpForm').innerHTML = errHtml(r.data, r.status); return; }
   AILP.types = r.data.types || [];
+  /* ★必须先填下拉，再渲染表单 —— 下拉是空的，renderAilpForm 会拿不到 def（选不出类型）。
+     2026-11-01 实测抓到的坑：只加函数不调用 = 下拉空 = 什么都发不出去。 */
+  fillAilpTypeOptions();
   renderAilpForm();
 }
 function renderAilpForm() {

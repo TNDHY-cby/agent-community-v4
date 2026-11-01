@@ -42,6 +42,12 @@ TIER_C = "C"
 CLASS_CMD = "has_command"        # 能被一条命令拉起
 CLASS_DIR = "watches_dir"        # 盯着一个目录
 CLASS_HTTP = "has_http_api"      # 自带常驻 HTTP 接口
+#: ★2026-11-01（真机清单 #2：一个响应里两套等级打架）：
+#: A2A 不能混进 `has_http_api` —— 它的语义是**对等任务**（`tasks/send` + `tasks/get`，自带回执），
+#: 而 http_api 只是"平台 POST 一个消息过去"。混在一起会出现：
+#: `access_facts.interface_class = has_http_api`（还写着"自带常驻 HTTP 接口"）
+#: 但同一响应 `interface_guidance.grade = S` ⇒ 用户看到两套说法。
+CLASS_A2A = "a2a_task"           # A2A 对等任务（JSON-RPC，带任务语义与回执）
 CLASS_MANUAL = "manual_only"     # 只能人工粘贴
 CLASS_UNKNOWN = "unknown"        # 测不出来
 
@@ -49,6 +55,7 @@ CLASS_LABEL = {
     CLASS_CMD: "能被一条命令拉起",
     CLASS_DIR: "盯着一个目录",
     CLASS_HTTP: "自带常驻 HTTP 接口",
+    CLASS_A2A: "A2A 对等任务（按 tasks/send 派活，天生带回执）",
     CLASS_MANUAL: "只能人工粘贴",
     CLASS_UNKNOWN: "测不出来（平台先落盘、暂不叫醒）",
 }
@@ -104,6 +111,11 @@ def interface_class(info: Any) -> str:
         return CLASS_MANUAL
     if wm == "mcp":
         return CLASS_HTTP          # MCP 也是"平台直连它"，事实同一类
+    if wm == "a2a":
+        # ★2026-11-01（清单 #2）：A2A 归**自己**这一类。原来塞进 CLASS_HTTP（"自带常驻 HTTP 接口"），
+        #   导致同一响应里 `access_facts` 说 B / has_http_api，而 `interface_guidance.grade` 说 S —— 两套口径。
+        #   它跟 http_api 不是一回事：http_api 只发一条消息；A2A 有任务号、有状态、能回查、带回执。
+        return CLASS_A2A
     return CLASS_UNKNOWN
 
 
@@ -116,6 +128,10 @@ def tier_of(info: Any) -> str:
     cls = interface_class(info)
     if cls == CLASS_CMD:
         return TIER_A
+    if cls == CLASS_A2A:
+        # ★2026-11-01（清单 #2）：A2A 在 `bridge_catalog` 里是 **S 档（全自动·直推）**，
+        #   这里必须一致 —— 否则同一响应里 `access_tier=B` 与 `grade=S` 打架。
+        return "S"
     if cls == CLASS_HTTP:
         return TIER_B
     # 无原生协议：默认按"可通过插件市场补能力"（诚实边界：平台探测不到插件市场，那是 harness 侧的事）；
@@ -128,7 +144,7 @@ def tier_of(info: Any) -> str:
 
 def can_be_woken_by_platform(info: Any) -> bool:
     """平台**能不能自动叫醒它**（最重要的事实判断，取代"X 档"的说法）。"""
-    return _wm_value(info) in ("acp", "file_poll", "http_api", "mcp")
+    return _wm_value(info) in ("acp", "file_poll", "http_api", "mcp", "a2a")
 
 
 def needs_protocol_for(info: Any) -> bool:
@@ -160,6 +176,13 @@ def guidance_at_register(info: Any) -> dict:
         out["guidance_kind"] = "plugin"
         out["guidance"] = GUIDANCE_PLUGIN
         out["note"] = "「用户自建会话 + 回执契约」那条路会在建间后给出（需要工作区坐标）。"
+    elif _wm_value(info) == "a2a":
+        # ★2026-11-01：A2A 落在 TIER_B（与 http_api/mcp 同档），但话术不能沿用 MCP 那段
+        #   （"MCP 已发现会话工具…" 对 A2A 是错的）。按接口说实话。
+        out["guidance_kind"] = "a2a"
+        out["guidance"] = ("A2A 对等任务：平台直接按 JSON-RPC 派活（v0.2 `tasks/send`，"
+                           "对端只认 v1.0 时自动改 `SendMessage`），**不需要桥、不需要拉起命令**；"
+                           "自检会真读一次 Agent Card。")
     elif tier == TIER_C:
         out["guidance_kind"] = "receipt_pending"
         out["guidance"] = ("你已声明无插件市场，将走「用户自建会话 + 回执契约」："

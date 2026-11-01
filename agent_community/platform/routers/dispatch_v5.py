@@ -182,8 +182,73 @@ def do_dispatch(workshop_id: str, body: dict, *, issued_by: str = "lead",
     notice = _dp.append_notice(wp, slot_dir,
                                "任务/T-%03d.md | 新任务 | %s" % (task_seq, title[:40]))
     mfres = _dp.append_manifest_task(wp, task_rel)
+    # ★2026-11-01（清单 B2）：给对端的**回报契约** —— 它干完自己 POST 回执也行，
+    #   平台侧的 `a2a_result_poll` 会按 `tasks/get` 回查；两条路谁先到算谁。
+    #   地址取平台运行时地址（不写死；取不到就不写这段，绝不硬编一个错的）。
+    _report_hint = ""
+    try:
+        from ...platform_address import base_url as _rbu  # type: ignore
+
+        _base = str(_rbu() or "").rstrip("/")
+    except Exception:                                          # noqa: BLE001 — 拿不到地址就不写
+        _base = ""
+    if _base:
+        _report_hint = (
+            "【干完怎么回报】POST %s/api/harness/task-result ，body：\n"
+            '{"workshop_id":"%s","member_id":"m%d","harness_id":"%s",'
+            '"ok":true,"result":"你的结果或产物清单"}\n'
+            "（不回执的话，平台只能按 `tasks/get` 回查你的状态，产物会被记成空。）"
+            % (_base, workshop_id, int(seq or 0), harness_id or ""))
+    # ★2026-11-01（老板拍板：「一个员工可开多个会话，但必须在上下文老化之后换新」）：
+    #   A2A 的会话 = `contextId`。这里取**该工位的当前会话**（没有就建；老化就换新并留痕）。
+    #   派活 body 里显式给了 `a2a_context_id` 就用它（人工覆盖，排查用）。
+    _ctx = ""
+    _ctx_info = {}
+    _is_a2a = False
+    try:
+        _is_a2a = _dp._harness_is_a2a(harness_id or "")
+    except Exception:                                          # noqa: BLE001 — 判不出来就当非 A2A
+        _is_a2a = False
+    if _is_a2a:
+        _explicit = str((body or {}).get("a2a_context_id") or "").strip()
+        if _explicit:
+            _ctx = _explicit
+        else:
+            try:
+                from ..a2a_context import current_for as _ctx_current
+
+                _ctx_info = _ctx_current(harness_id or "", workshop_id, slot_dir)
+                _ctx = str(_ctx_info.get("context_id") or "")
+            except Exception as _e:                            # noqa: BLE001 — 取不到就不带（退回每次新开）
+                print("[dispatch] 取 A2A 当前会话失败（本条按不带 contextId 发）：%s: %s"
+                      % (type(_e).__name__, _e), flush=True)
+        if _ctx:
+            _report_hint += ("\n\n【如果你觉得上下文已经很长（压缩过几次）】"
+                             "回复里带上 `[NEED_NEW_CONTEXT]`，平台下次会给你开一个新会话。")
     wake = _dp.activate(wp, slot_dir, harness_id=harness_id, tier=tier,
-                        task_id="T-%03d" % task_seq, task_rel=task_rel)
+                        task_id="T-%03d" % task_seq, task_rel=task_rel,
+                        report_hint=_report_hint, a2a_context_id=_ctx)
+    # 派出去就记一笔用量（平台自己数，**不信对端自报**）—— 到阈值就换新会话
+    if _is_a2a and _ctx and not (body or {}).get("a2a_context_id"):
+        try:
+            from ..a2a_context import note_used as _ctx_note
+
+            _ctx_note(harness_id or "", workshop_id, slot_dir,
+                      chars=len(_report_hint or "") + len(str(title or "")))
+        except Exception as _e:                                # noqa: BLE001 — 记账失败不挡派活
+            print("[dispatch] A2A 会话用量记账失败：%s: %s" % (type(_e).__name__, _e), flush=True)
+    # ★2026-11-01（清单 B2）：A2A 派成功后**登记待回写**（后台轮询 GetTask ⇒ 写回账本）
+    if str(wake.get("method") or "") == "a2a" and str(wake.get("result") or "") in ("ok", "queued"):
+        try:
+            from ..a2a_result_poll import add as _a2a_add
+
+            _a2a_add(url=str(wake.get("url") or ""),
+                     a2a_task_id=str(wake.get("a2a_task_id") or ""),
+                     workshop_id=workshop_id, task_seq=int(task_seq), harness_id=harness_id or "",
+                     slot_dir=slot_dir)
+        except Exception as _e:                                # noqa: BLE001 — 登记失败要说，但不挡派活
+            print("[dispatch] A2A 结果回写登记失败（派活已成功，回写会缺）：%s: %s"
+                  % (type(_e).__name__, _e), flush=True)
     entry = {"at": _dp._now(), "workshop_id": workshop_id, "task_seq": task_seq,
              "task_id": "T-%03d" % task_seq, "slot_dir": slot_dir, "member_seq": seq,
              "title": title, "file": task_rel, "file_created": file_created,

@@ -415,7 +415,35 @@ async def register_harness(request: Request):
         WakeupMethod.HTTP_API: False,   # 平台直接推，不需要拉起
         WakeupMethod.CLIPBOARD: False,  # 人工中转
         WakeupMethod.MCP: False,        # 远程 MCP，不需要本地拉起
+        # ★2026-11-01：A2A 是对等远程 agent（有 Agent Card），平台按 `tasks/send` 派活，
+        #   **不需要也不应该拉起它**。原来这张表没有 a2a ⇒ 落到默认 True ⇒ 注册被 400 拒
+        #   （报 "acp_command 不能为空"），而 A2A 恰恰是最适配本项目的一种接入。
+        WakeupMethod.A2A: False,
     }.get(_wm, True)                    # 未知类型从严：要求给命令
+
+    # ★2026-11-01（真机清单 #1：**注册阶段假绿**）：
+    #   A2A 不给 `api_base_url` 也返回 200 + `grade: "S"`，直到 `/verify` 才说「没有 api_base_url」——
+    #   用户以为"注册成功了"，其实平台根本无处可派。这类"缺了必填还报绿"是最坏的一种失败态。
+    #   A2A 的**唯一**投递通道就是这个基址，没有它这条接入不可能工作 ⇒ 当场拒，并说清填什么。
+    if _wm == WakeupMethod.A2A:
+        _addr = str(getattr(info, "api_base_url", "") or "").strip()
+        if not _addr:
+            return Utf8JSONResponse({
+                "error": "A2A 必须给 `api_base_url`（它的 **A2A 端点基址**）—— "
+                         "没有这个地址，平台无处派活，注册成功也是白的",
+                "hint": ("形如 `http://<主机>:<端口>/a2a/<入站实例 id>`；Agent Card 一般在这个基址下"
+                         "（`<基址>/agent-card.json` 或 `<基址>/.well-known/agent-card.json`，平台两种都会试）。"
+                         "**注**：客户端装了插件但没建入站实例时（`GET <客户端>/a2a/api` 返回 `inbounds: []`），"
+                         "端点是**不存在的**，要先去客户端里建一个实例、拿到它的基址。"),
+                "wakeup_method": "a2a",
+                "required": ["harness_id", "api_base_url", "ai.model_name"],
+            }, status_code=400)
+        if not (_addr.startswith("http://") or _addr.startswith("https://")):
+            return Utf8JSONResponse({
+                "error": f"`api_base_url` 要是 http(s) 地址，收到：{_addr!r}",
+                "hint": "形如 `http://127.0.0.1:<端口>/a2a/<id>`（不带路径结尾的斜杠也行，平台会自己试）",
+            }, status_code=400)
+
     if _need_acp:
         ok, err = validate_acp_command(info.acp_command or "")
         if not ok:
@@ -457,9 +485,17 @@ async def register_harness(request: Request):
         info = await _maybe_pull_mcp_tools(info)
         if info.tools:
             harness_manager.register(info)  # 重新注册以持久化动态 tools
-    elif getattr(info, "api_base_url", ""):
+    elif getattr(info, "api_base_url", "") and getattr(info, "wakeup_method", None) != WakeupMethod.A2A:
         # ── 自动探测 HTTP API（http_api 类）：注册时若带 api_base_url，探测确认可用性
         #    并自动把 wakeup_method 升级为 http_api（平台就能直接 HTTP 推送唤醒，而非只写文件）
+        #
+        # ★2026-11-01（真机 A2A 联调抓到的**静默降级**）：A2A 也必须填 `api_base_url`，
+        #   而它的基址是 **A2A JSON-RPC 端点**，不是 HTTP 消息端点 —— 拿 `<基址>/message` 去探
+        #   毫无意义；更糟的是**探通了就把 `wakeup_method` 覆盖成 `http_api`**，于是：
+        #     · `/verify` 走"桥"那套 → 报"缺少 WORK_DIR"，或假装桥通道正常；
+        #     · 派活发普通 POST，而 A2A 对端只认 `tasks/send`（v1.0 还叫 SendMessage）。
+        #   ⇒ A2A 这类**对等任务协议**必须排除在"自动升级"之外，保留用户声明的 a2a。
+        #   （A2A 的可用性该由 `verify_sandbox._verify_a2a`（读卡 + 真发探针）来判，不是探 /message。）
         _probe_ok, _probe_detail = probe_http_api(info.api_base_url, info.api_message_path or "/message")
         if _probe_ok:
             info.wakeup_method = WakeupMethod.HTTP_API
@@ -472,14 +508,21 @@ async def register_harness(request: Request):
     # 必须放在 wakeup_method 探测/升级**之后** —— 放前面会按探测前的档位生成模板，
     # 比如 http_api 探测成功前按 "http" 或默认档建，模板就与实际不符。
     # 幂等：参数没变就不覆盖（保留用户手工改过的模板与原 created_at）。
-    try:
-        from ..bridge_template import ensure as _ensure_l2
-        _l2 = _ensure_l2(info)
-        if _l2 and not _l2.get("complete"):
-            print(f"[L2] {info.harness_id} 桥模板参数不全，缺 {_l2.get('missing')}",
-                  flush=True)
-    except Exception as _e:
-        print(f"[L2] 桥模板生成失败（不阻断注册）: {_e}", flush=True)
+    # ★2026-11-01（真机清单 #6）：**A2A 没有桥**，不该给它生成桥模板 ——
+    #   实测注册响应里带出 `{template: "pending_poll", complete: false, missing: ["WORK_DIR"]}`，
+    #   与"不需要桥"直接打架，界面照此显示会把一个**正常的 A2A** 说成"桥没配好"。
+    _l2 = None
+    if getattr(info, "wakeup_method", None) == WakeupMethod.A2A:
+        _l2 = {"skipped": True, "why": "A2A 按 JSON-RPC 直派，**不需要桥** ⇒ 没有桥模板"}
+    else:
+        try:
+            from ..bridge_template import ensure as _ensure_l2
+            _l2 = _ensure_l2(info)
+            if _l2 and not _l2.get("complete"):
+                print(f"[L2] {info.harness_id} 桥模板参数不全，缺 {_l2.get('missing')}",
+                      flush=True)
+        except Exception as _e:
+            print(f"[L2] 桥模板生成失败（不阻断注册）: {_e}", flush=True)
 
     # ── V-15 步骤6：接入档位 + 提醒（§10.1 时机1「注册后」）──
     #  平台不再替外端架桥，就必须把话说清；
@@ -532,11 +575,16 @@ async def register_harness(request: Request):
     )
     # V-15 步骤4：L2 具体桥模板摘要 —— 注册响应直接告诉用户"差什么才能架桥"，
     # 比等到建工作间时才报错早一步（注册/UX 目标：用户不用当信息中转）。
-    try:
-        from ..bridge_template import status_of as _l2_status
-        _l2 = _l2_status(info)
-    except Exception:
-        _l2 = {"has_template": False, "note": "模板摘要读取失败（不影响注册）"}
+    # ★2026-11-01（清单 #6）：A2A **没有桥** ⇒ 摘要里如实写"跳过"，不要给 missing:["WORK_DIR"]。
+    if getattr(info, "wakeup_method", None) == WakeupMethod.A2A:
+        _l2 = {"skipped": True, "has_template": False,
+               "note": "A2A 按 JSON-RPC 直派，**不需要桥** ⇒ 没有桥模板要配"}
+    else:
+        try:
+            from ..bridge_template import status_of as _l2_status
+            _l2 = _l2_status(info)
+        except Exception:
+            _l2 = {"has_template": False, "note": "模板摘要读取失败（不影响注册）"}
     # ★2026-10-13（V44 #15 / 老板「不同接口不同引导」）：
     #   **按叫醒方式给各自的五步引导**（acp / file_poll 要走桥，http_api / mcp 不用桥，
     #   clipboard 只能人工中转，http 兜底等于"先落盘、暂不叫醒"）。
