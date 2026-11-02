@@ -353,18 +353,34 @@ def test_hall_entry_points_to_the_docking_center():
     idx = _read("index.html")
     m = re.search(r"<button[^>]*onclick=\"location\.href='/docking\.html'\"[^>]*>([^<]*)</button>", idx)
     assert m, "大厅没有那个指向对接中心的主入口按钮（V34 §5 第 1 步：大厅入口改为对接中心）"
-    assert "对接中心" in m.group(1), "按钮文案不是「对接中心」（与 V34 §0 的命名口径不一致）：%r" % m.group(1)
+    # ★2026-11-01（老板：「对接中心太多了，根本不知道用哪个」）：V34 §0 的命名口径已改为「接入 Agent」
+    #   —— 全站统一：/docking.html=接入 Agent（把 agent 接进来）、/v5.html=本工作间（这一间的活）。
+    assert "接入 Agent" in m.group(1), \
+        "按钮文案不是「接入 Agent」（与 V34 §0 现行命名口径不一致）：%r" % m.group(1)
 
 
 def test_workshop_entry_carries_the_workshop_id():
     """★工作间入口**必须带 `?ws=`**：不带就变成总控，能看别的间（串范围）。"""
     ws = _read("workshop.html")
-    assert "dockingPill" in ws, "工作间没有对接中心入口"
+    # ★2026-11-01（老板：「工作间里面不要放『接入 Agent』，这是放大厅的；
+    #   下面那个『本工作间』放上去，改名为『员工对接』」）：
+    #   工作间右上**只有一枚**「员工对接」（consolePill → /v5.html?ws=）。
+    #   ⚠️ 这条守卫原来只断言字符串 "dockingPill" 存在 —— 而那个按钮已经被删掉了，
+    #   字符串还留在注释/JS 里 ⇒ **会以错误的原因通过**。现在改成断言**真按钮**在、且文案对。
+    assert 'id="consolePill"' in ws, "工作间没有『员工对接』入口（consolePill）"
+    assert '>员工对接</a>' in ws, "工作间右上那枚按钮的文案不是「员工对接」"
+    assert 'id="dockingPill"' not in ws, \
+        "工作间里不该再放「接入 Agent」按钮（老板：那是放大厅的）"
     # href 由 syncWsPills 现拼（'/docking.html' + '?ws=' + id）—— 查拼装处，不查字面量
     assert "function syncWsPills" in ws, "缺 syncWsPills：入口的 ?ws= 没人写"
+    # ★2026-11-01：原来取 ws[i:i+500] —— 一旦函数体前面多插几行（比如给功能区的
+    #   data-ws-link 补参数），'/v5.html' 就被挤出窗口，守卫会**因为窗口太小而误红**。
+    #   改成取到函数体结束（下一个行首 }）。
     i = ws.find("function syncWsPills")
-    body = ws[i:i + 500]
-    assert "'/docking.html'" in body and "'?ws='" in body and "encodeURIComponent(id)" in body, \
+    _end = ws.find("\n}", i)
+    body = ws[i:(_end + 2 if _end != -1 else i + 4000)]
+    # 工作间右上那枚「员工对接」指向 /v5.html（本间的员工与对接），同样必须带 ?ws=
+    assert "'/v5.html'" in body and "'?ws='" in body and "encodeURIComponent(id)" in body, \
         "入口 href 没按工作间 id 拼 ?ws=（会退化成总控，能越权看别的间）"
     m = re.search(r"function loadWorkshop\(id\)\{", ws)
     assert m, "找不到 loadWorkshop（前端结构变了，请同步本守卫）"

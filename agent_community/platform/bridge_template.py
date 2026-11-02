@@ -36,6 +36,11 @@ WM_TO_TEMPLATE = {
     "http_api": None,      # 无桥 -> 连接契约
     "http": None,
     "clipboard": None,     # 无桥 -> 激活提示词（§11.1 人工）
+    # ★2026-11-01（老板：「注册后要变成一个**具体模板**，工作间里用**模板 + 实时路径**重新拉人」）：
+    #   A2A **没有桥**，但**必须有具体模板** —— 模板里存的是"与工作间无关"的那部分：
+    #   端点、Agent Card、能力、回报契约、派活协议。工作间建间时再叠 workspace_dir/工位/contextId。
+    #   （上一版把 A2A 从这条链上摘掉了，等于"注册完什么都没沉淀"，老板要求的就是这个。）
+    "a2a": "a2a",
     "": "pending_poll",    # 未知 -> 兜底轮询桥
 }
 
@@ -44,6 +49,8 @@ ARTIFACT_KIND = {
     "cli_acp": "script",
     "file_poll": "script",
     "pending_poll": "script",
+    # A2A 的 L3 产物是**派活契约**（端点 + 任务信封 + 回报方式），不是脚本
+    "a2a": "contract",
     None: "prompt",        # 无模板 -> 提示词/契约（按唤醒方式再细分）
 }
 
@@ -132,6 +139,31 @@ def build(info: Any) -> Optional[dict]:
             "INBOX_DIR": str(getattr(info, "wakeup_dir", "") or ""),
             "PLATFORM_URL": _platform_url(),
         }
+    elif template == "a2a":
+        # ★2026-11-01（老板：注册产出「具体模板」，工作间用「模板 + 实时路径」拉人）：
+        #   这里是**与工作间无关**的那部分 —— 一次采集、多次落地。
+        #   ⚠️ **不含** workspace_dir / 工位 / contextId / 任务文件：那些是建间期注入的（L3）。
+        _card = {}
+        try:
+            _md = getattr(info, "metadata", None) or {}
+            _card = (_md.get("a2a_card") or {}) if isinstance(_md, dict) else {}
+        except Exception:                                      # noqa: BLE001 — 卡读不到不影响模板
+            _card = {}
+        required = ["HARNESS_ID", "API_BASE_URL", "MODEL_NAME"]
+        params = {
+            "HARNESS_ID": hid,
+            "API_BASE_URL": str(getattr(info, "api_base_url", "") or ""),
+            "MODEL_NAME": _ai_field(info, "model_name"),
+            "PLATFORM_URL": _platform_url(),
+            # 派活协议与回报契约：写进模板，建间期直接用，不用再问平台一遍
+            "DISPATCH_PROTOCOL": "a2a-jsonrpc:tasks/send",
+            "QUERY_PROTOCOL": "a2a-jsonrpc:tasks/get",
+            "SESSION_FIELD": "message.contextId",
+            "REPORT_PATH": "/api/harness/task-result",
+            "CARD_NAME": str((_card or {}).get("name") or ""),
+            "CARD_SKILLS": [str((s or {}).get("id") or (s or {}).get("name") or "")
+                            for s in ((_card or {}).get("skills") or [])][:10],
+        }
     else:  # pending_poll 兜底
         required = ["HARNESS_ID", "WORK_DIR", "PLATFORM_URL"]
         params = {
@@ -182,6 +214,71 @@ def get(info: Any) -> Optional[dict]:
     meta = getattr(info, "metadata", None) or {}
     v = meta.get(METADATA_KEY)
     return dict(v) if isinstance(v, dict) else None
+
+
+def render_for_workshop(info: Any, *, workshop_id: str, workshop_dir: str,
+                        slot_dir: str, member_seq: int = 0, task_seq: int = 0,
+                        task_rel: str = "", context_id: str = "") -> dict:
+    """**L3：把 L2 具体模板 + 工作间实时路径 → 这个工位此刻的落地参数。**
+
+    老板 2026-11-01 原话：「注册后变为一个**具体模板**，用户在工作间的时候**不用连接好的会话**，
+    而是用**具体模板 + 工作间实时路径**重新拉人」。
+
+    ⇒ 分工要清楚：
+      · **L2（注册期）**：与工作间**无关**的东西 —— 端点、卡、能力、派活协议、回报契约；
+      · **L3（建间/拉人期，本函数）**：叠上**这次**的工作间目录、工位、任务文件、会话号。
+
+    为什么不能直接复用注册时那套：同一个 harness 可以进多个工作间、多个工位，
+    每个组合的任务路径与会话（`contextId`）都不一样 —— 拿注册时的固定值就会串。
+    """
+    tpl = get(info) or {}
+    wm = _wm_value(info)
+    out: dict = {
+        "kind": tpl.get("artifact_kind") or ("contract" if wm in ("http_api", "http", "a2a")
+                                             else "prompt"),
+        "wakeup_method": wm,
+        "workshop_id": workshop_id,
+        "member_seq": int(member_seq or 0),
+        # 实时路径（每次现算，不存模板里）
+        "workspace_dir": str(workshop_dir or ""),
+        "slot_dir": str(slot_dir or ""),
+        "task_file": str(task_rel or ""),
+        "template_found": bool(tpl),
+        "missing": list(tpl.get("missing") or []),
+        "ready": bool(tpl.get("complete")),
+    }
+
+    if wm == "a2a":
+        p = tpl.get("params") or {}
+        platform_url = str(p.get("PLATFORM_URL") or _platform_url()).rstrip("/")
+        # 会话号：由调用方给（按 工作间+工位 算的 contextId，见 platform/a2a_context.py）
+        out.update({
+            "protocol": "a2a-jsonrpc:tasks/send",
+            "query_protocol": "a2a-jsonrpc:tasks/get",
+            "endpoint": str(p.get("API_BASE_URL") or getattr(info, "api_base_url", "") or ""),
+            "context_id": str(context_id or ""),
+            "session_field": str(p.get("SESSION_FIELD") or "message.contextId"),
+            # 回报契约：**这条是 L3 才有的**（含本次 workshop_id / member_id）
+            "report": {
+                "url": platform_url + str(p.get("REPORT_PATH") or "/api/harness/task-result"),
+                "body": {"workshop_id": workshop_id, "member_id": "m%d" % int(member_seq or 0),
+                         "harness_id": str(getattr(info, "harness_id", "") or ""),
+                         "ok": True, "result": "<你的结果或产物清单>"},
+            },
+            "task_label": ("T-%03d" % int(task_seq)) if task_seq else "",
+        })
+        if not out["endpoint"]:
+            out["missing"] = list(set(out["missing"] + ["API_BASE_URL"]))
+            out["ready"] = False
+        return out
+
+    # 其它形态：把 L2 的 params 原样带出（脚本/契约由各自的 generate 继续派生），
+    # 只补上"这次"的路径 —— 保持与 a2a 同一形状，调用方不用分叉。
+    p = dict(tpl.get("params") or {})
+    p.update({"WORKSPACE_DIR": str(workshop_dir or ""), "SLOT_DIR": str(slot_dir or ""),
+              "TASK_FILE": str(task_rel or "")})
+    out["params"] = p
+    return out
 
 
 def status_of(info: Any) -> dict:

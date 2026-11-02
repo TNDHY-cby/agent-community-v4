@@ -200,7 +200,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:ra
   <div style="margin:10px 0;padding:8px 12px;border-left:3px solid #ef6c00;background:rgba(239,108,0,.08);font-size:13px">
     ⚠ <b>这页已被「对接中心」取代</b>：注册、激活（建会话/送桥）、通道停用与新建、架桥辅助、
     跨间总览、接入教程、平台 Agent 直聊，都收到一处了。
-    新入口：<a href="/docking.html"><b>对接中心 →</b></a>（大厅首页也有按钮）。
+    新入口：<a href="/docking.html"><b>接入 Agent →</b></a>（本页已下线为只读镜像，写操作请走那边）。
     本页作为<b>只读镜像</b>保留（内容完整、旧链接不 404），但<b>操作请一律去对接中心</b>。
   </div>
 </div>
@@ -2006,7 +2006,7 @@ window.acToast=function(msg,err){var t=document.querySelector('.acm-toast');if(!
       if (m !== 'GET' && m !== 'HEAD') {
         // 明确回绝，而不是让请求发出去再失败（避免"看起来成功/看起来没反应"）
         return Promise.resolve(new Response(
-          JSON.stringify({ error: '本页是只读镜像，写操作已停用；请到对接中心 /docking.html 操作',
+          JSON.stringify({ error: '本页是只读镜像，写操作已停用；请到接入 Agent（/docking.html）操作',
                            moved_to: '/docking.html' }),
           { status: 403, headers: { 'Content-Type': 'application/json' } }));
       }
@@ -2020,7 +2020,7 @@ window.acToast=function(msg,err){var t=document.querySelector('.acm-toast');if(!
     d.id = 'readonlyBar';
     d.style.cssText = 'margin:8px 0;padding:6px 10px;border-left:3px solid #c62828;' +
                       'background:rgba(198,40,40,.08);font-size:12px';
-    d.innerHTML = '⛔ ' + NOTICE + '（<a href="/docking.html">去对接中心 →</a>）';
+    d.innerHTML = '⛔ ' + NOTICE + '（<a href="/docking.html">去接入 Agent →</a>）';
     w.parentNode.insertBefore(d, w);
   }
   if (document.readyState === 'loading') {

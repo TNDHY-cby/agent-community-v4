@@ -555,6 +555,134 @@ async def bridge_probe(workshop_id: str, member_seq: int, request: Request):
     return JSONResponse(out, status_code=200 if out.get("ok") else 409)
 
 
+@router.post("/api/workshop/{workshop_id}/members/{member_seq}/protocol-probe")
+async def protocol_probe(workshop_id: str, member_seq: int, request: Request):
+    """**A 档「平台自验」**：平台自己按协议发一条，自己看它有没有回执。
+
+    ★2026-11-01（老板：「组长接进工作间很麻烦」）：
+    B 档早有 `bridge-probe`（平台自己写邮箱、自己看取件），而 **A 档反而只能人工打勾 + 写覆盖范围** ——
+    最该自动验的一档却是最麻烦的一档。这里补上：**平台发出 + 平台看到回执 ⇒ 自己记 `protocol_ok`**，
+    来源写 `platform-observed` 并盖时间戳。
+
+    ⚠️ 铁律：`platform-observed` **只在本端点内部记**。前端传 `who=platform` 不算数 ——
+    否则"打勾"换个马甲就能冒充"平台观测"，账就是假的。
+
+    body：`{wait?: 秒（默认 20，最多 60）, text?: 自定义探针话}`
+    返回：`{ok, verified, protocol, task_id, state, detail, evidence}`
+    """
+    import asyncio
+
+    from .. import dispatch as _dp
+
+    ws = _ws(workshop_id)
+    if ws is None:
+        return _no_ws(workshop_id)
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001 — 没 body 按空
+        body = {}
+    body = body if isinstance(body, dict) else {}
+
+    from .. import v5_roster as _roster
+
+    m = _roster.find_member(workshop_id, int(member_seq))
+    if m is None:
+        return JSONResponse({"ok": False, "code": "NO_SUCH_MEMBER",
+                             "error": "没有这个工位：%s" % member_seq,
+                             "next": "GET …/roster 看有哪些 member_seq"}, status_code=404)
+    hid = str(m.get("harness_id") or "").strip()
+    if not hid:
+        return JSONResponse({"ok": False, "code": "NO_HARNESS",
+                             "error": "这个工位没绑 harness，平台不知道该跟谁说话",
+                             "next": "先在名单里给它绑一个"}, status_code=409)
+
+    # 只有 A2A 支持"平台自验到回执"这一步；别的协议如实拒绝，别假装验过
+    try:
+        is_a2a = bool(_dp._harness_is_a2a(hid))
+    except Exception:                                          # noqa: BLE001
+        is_a2a = False
+    if not is_a2a:
+        return JSONResponse({
+            "ok": False, "code": "PROBE_NOT_SUPPORTED",
+            "error": "这类接入暂时不能「平台自验」（只有 A2A 能自己发、自己看回执）",
+            "next": ("如果你的 agent 支持 A2A，去「接入 Agent」按 A2A 接一次，这里就能一键验；"
+                     "否则照对接单人工确认（打勾 + 写覆盖范围）。"),
+        }, status_code=409)
+
+    url = ""
+    try:
+        from ..harness_adapter import harness_manager as _hm
+        _sess = _hm.sessions.get(hid)
+        url = str(getattr(getattr(_sess, "info", None), "api_base_url", "") or "")
+    except Exception:                                          # noqa: BLE001 — 取不到地址就如实失败
+        url = ""
+    if not url:
+        return JSONResponse({"ok": False, "code": "NO_ENDPOINT",
+                             "error": "这个 A2A agent 没有 api_base_url（平台无处可发）",
+                             "next": "去「接入 Agent」补上端点基址"}, status_code=409)
+
+    wait = min(60, max(3, int(body.get("wait") or 20)))
+    text = str(body.get("text") or "").strip() or (
+        "平台自验探针：这是本工作间「%s」的组长接入检查，收到请随便回一句，平台看回执就够。"
+        % str(getattr(ws, "name", "") or workshop_id))
+
+    detail, task_id, state, verified = "", "", "", False
+    try:
+        from ...a2a_client import get_task as _get, send_task as _send
+
+        res = await asyncio.to_thread(_send, url, text, None, "", 60)
+        _t = res.get("task") if isinstance(res.get("task"), dict) else (res or {})
+        task_id = str(_t.get("id") or "").strip()
+        # 等它把任务做完（终态才算真回执；submitted/working 不算）
+        import time as _time
+        _deadline = _time.time() + wait
+        while task_id and _time.time() < _deadline:
+            await asyncio.sleep(2)
+            r2 = await asyncio.to_thread(_get, url, task_id, None, 20)
+            _t2 = r2.get("task") if isinstance(r2.get("task"), dict) else (r2 or {})
+            _st = _t2.get("status")
+            state = str(_st.get("state") if isinstance(_st, dict) else _st or "").lower()
+            if state.startswith("task_state_"):
+                state = state[len("task_state_"):]
+            if state in ("completed", "failed", "canceled", "cancelled", "rejected", "error"):
+                break
+        verified = state in ("completed",)
+        detail = ("平台按 tasks/send 发出%s，回查状态 = %s"
+                  % (("（任务 %s）" % task_id) if task_id else "（没拿到任务号）", state or "（还没回）"))
+    except Exception as e:                                     # noqa: BLE001 — 发不出去要如实说
+        return JSONResponse({"ok": False, "code": "PROBE_FAILED",
+                             "error": "平台自验失败：%s: %s" % (type(e).__name__, str(e)[:200]),
+                             "next": ("确认这个 agent 的端点还在跑。如果你的客户端**刚重启过**，它的端口可能变了（端口是它自己的事，平台不该假设）——去「接入 Agent」重新确认这个 agent 的地址，或直接打开它的面板看现在监听哪个端口。")},
+                            status_code=409)
+
+    if not verified:
+        return JSONResponse({
+            "ok": False, "code": "PROBE_NOT_CONFIRMED", "task_id": task_id,
+            "state": state, "detail": detail,
+            "error": "平台发出去了，但**没看到它把任务做完**（状态：%s）" % (state or "无回执"),
+            "next": ("端点活着但没干完：可能它在忙、或它不接这个任务；"
+                     "再验一次，或照对接单人工确认。"),
+        }, status_code=409)
+
+    # 只有走到这里才算"平台自己看到的" —— 由端点内部记，前端传什么都没用
+    ev = _roster.set_evidence(
+        workshop_id, int(member_seq),
+        {"protocol_ok": True,
+         "verified_scope": "平台自己发出任务并收到完成回执（%s）" % (task_id or "有回执")},
+        who="platform", tier=str(body.get("tier") or "a_protocol"),
+        evidence_source="platform-observed")
+    warn = None
+    try:
+        warn = _roster_mirror(workshop_id)
+    except Exception as e:                                     # noqa: BLE001 — 镜像失败不影响判定
+        warn = {"ok": False, "why": "%s: %s" % (type(e).__name__, str(e)[:120])}
+    return JSONResponse({"ok": True, "verified": True, "protocol": "a2a",
+                         "task_id": task_id, "state": state, "detail": detail,
+                         "evidence": ev, "mirror": warn,
+                         "note": "这条是**平台自己观测**的（platform-observed），不是人打的勾。"},
+                        status_code=200)
+
+
 @router.post("/api/workshop/{workshop_id}/roster/migrate")
 async def migrate_roster(workshop_id: str):
     """把旧单层 member.status 映射成双层（**只映射，映不出来的列在 legacy_unknown**）。"""

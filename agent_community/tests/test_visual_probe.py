@@ -98,6 +98,10 @@ def test_deliver_restores_focus_to_where_it_was(client, monkeypatch):
     """送完把前台还给调用前那个窗口（老板规格：最后把平台拉回最前）。"""
     from agent_community.platform import delivery, input_sim
 
+    # ★2026-11-02（V126）：deliver 现在先做**存在性预检** —— 对没注册的 harness 直接 404
+    #   （清空接入之后再送话会 200 假装成功，那是误导）。所以这里得先让 h5 真的在注册表里。
+    from agent_community.platform.harness_adapter import harness_manager
+    monkeypatch.setitem(harness_manager.sessions, "h5", type("S", (), {"info": None})())
     monkeypatch.setattr(delivery, "deliver_to_harness",
                         lambda *a, **k: {"ok": True, "channel": "clipboard", "state": "sent_unverified",
                                          "resolved": {"hwnd": 999}}, raising=True)

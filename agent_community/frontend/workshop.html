@@ -29,7 +29,7 @@
   --rule:rgba(255,255,255,.07); --rule-strong:rgba(255,255,255,.14);
 
 
-  --accent:#FF3527; --accent-hi:#FF483B; --accent-soft:rgba(255,53,39,.08);
+  --accent:#C93A2C; --accent-hi:#D9483A; --accent-soft:rgba(201,58,44,.10);
 
 
   --amber:#e0a04a; --amber-soft:rgba(224,160,74,.14);
@@ -46,7 +46,7 @@
 
   /* ★2026-10-29 CRT 皮肤退役（备份 theme-crt.css.bak_20261029）：以下语义色原由皮肤提供，
      改用 hub 家族色值 —— 琥珀=警戒待办、青/蓝=信息，与全站统一 */
-  --yellow:#D9AB53; --yellow-soft:rgba(217,171,83,.10);
+  --yellow:#9C8250; --yellow-soft:rgba(156,130,80,.10);
   --cyan:#2A6B6B; --cyan-soft:rgba(100,181,180,.10);
   --blue:#2A5A8C; --blue-soft:rgba(123,163,201,.10);
   /* ★2026-10-30 视觉铺开：上面曾残留一句旧皮肤 --cyan:#79b8bd 把 hub 家族值覆盖，
@@ -116,10 +116,10 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 /* sidebar */
 
 
-.sidebar-back{position:fixed;top:12px;left:12px;z-index:85;display:flex;align-items:center;gap:5px;padding:9px 16px;font-size:12.5px;color:#fff;text-decoration:none;background:linear-gradient(135deg,var(--accent),#c25f3f);border-radius:10px;box-shadow:0 3px 12px rgba(217,119,87,.35);transition:all .15s;font-weight:700;flex-shrink:0}
+.sidebar-back{position:fixed;top:12px;left:12px;z-index:85;display:flex;align-items:center;gap:5px;padding:9px 16px;font-size:12.5px;color:#fff;text-decoration:none;background:linear-gradient(135deg,var(--accent),#a2543c);border-radius:10px;box-shadow:0 3px 12px rgba(217,119,87,.35);transition:all .15s;font-weight:700;flex-shrink:0}
 
 
-.sidebar-back:hover{background:#c25f3f;transform:translateY(-1px);box-shadow:0 5px 16px rgba(217,119,87,.45)}
+.sidebar-back:hover{background:#a2543c;transform:translateY(-1px);box-shadow:0 5px 16px rgba(217,119,87,.45)}
 .hub-pill{position:fixed;top:12px;right:12px;z-index:86;display:flex;align-items:center;gap:5px;padding:9px 16px;font-size:12.5px;font-weight:800;color:var(--ink);text-decoration:none;background:var(--bg3);border:1.5px solid rgba(217,119,87,.55);border-radius:10px;transition:background-color .15s,border-color .15s}
 .hub-pill:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-strong)}
 
@@ -193,7 +193,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 
 .fb-step .fb-num{font-family:var(--mono);font-size:10.5px;font-weight:900;opacity:.7}
 
-.fb-step.active{background:linear-gradient(135deg,var(--accent),#c25f3f);color:#fff;border-color:transparent;box-shadow:0 2px 12px rgba(217,119,87,.4);transform:translateY(-1px)}
+.fb-step.active{background:linear-gradient(135deg,var(--accent),#a2543c);color:#fff;border-color:transparent;box-shadow:0 2px 12px rgba(217,119,87,.4);transform:translateY(-1px)}
 
 
 .fb-step.done{background:var(--accent-soft);color:var(--accent);border-color:rgba(217,119,87,.35)}
@@ -327,7 +327,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .rv5-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--muted)}
 .rv5-dot.active{background:var(--green,#3AA863)}
 .rv5-dot.entered{background:var(--green,#3AA863);opacity:.6}
-.rv5-dot.pending,.rv5-dot.acked{background:var(--yellow,#FFB000)}
+.rv5-dot.pending,.rv5-dot.acked{background:var(--yellow,#B98432)}
 .rv5-dot.blocked,.rv5-dot.lost{background:var(--red,#C9432F)}
 .rv5-slot{font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%}
 .rv5-meta{color:var(--dim);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -344,7 +344,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 /* .chat-input textarea:focus → 退役，见 #hall:focus 处说明；由 chrome-soft 藏蓝层接管 */
 
 
-.chat-input button{background:linear-gradient(135deg,var(--accent),#c25f3f);color:#fff;border:none;border-radius:11px;padding:0 22px;cursor:pointer;font-weight:800;transition:all .15s;box-shadow:0 2px 8px rgba(217,119,87,.3)}
+.chat-input button{background:linear-gradient(135deg,var(--accent),#a2543c);color:#fff;border:none;border-radius:11px;padding:0 22px;cursor:pointer;font-weight:800;transition:all .15s;box-shadow:0 2px 8px rgba(217,119,87,.3)}
 
 
 .chat-input button:hover{filter:brightness(1.1);transform:translateY(-1px)}
@@ -686,8 +686,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .wsv-overlay{position:fixed;inset:0;z-index:90;background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
 .wsv-top{display:flex;align-items:center;gap:14px;padding:0 20px;height:56px;background:var(--bg2);border-bottom:1px solid var(--rule-strong);flex:0 0 auto;position:relative;z-index:96}
 .wsv-title{font-weight:800;color:var(--ink);font-size:15px;flex:1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.02em}
-.wsv-collapse{background:linear-gradient(135deg,var(--accent),#c25f3f);color:#fff;border:none;box-shadow:0 3px 12px rgba(217,119,87,.35);padding:9px 16px;border-radius:10px;font-weight:700}
-.wsv-collapse:hover{background:#c25f3f;transform:translateY(-1px);box-shadow:0 5px 16px rgba(217,119,87,.45)}
+.wsv-collapse{background:linear-gradient(135deg,var(--accent),#a2543c);color:#fff;border:none;box-shadow:0 3px 12px rgba(217,119,87,.35);padding:9px 16px;border-radius:10px;font-weight:700}
+.wsv-collapse:hover{background:#a2543c;transform:translateY(-1px);box-shadow:0 5px 16px rgba(217,119,87,.45)}
 .wsv-main{flex:1;display:flex;min-height:0}
 .wsv-left{width:240px;flex:0 0 auto;display:flex;flex-direction:column;border-right:1px solid var(--rule);min-width:0;position:relative;background:var(--bg)}
 .wsv-left-head{height:38px;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule);flex:0 0 auto}
@@ -722,8 +722,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .wsv-input{flex:0 0 auto;display:flex;gap:10px;padding:14px 20px;background:var(--bg2);border-top:1px solid var(--rule-strong);align-items:flex-end}
 .wsv-input textarea{flex:1;background:var(--bg3);border:1px solid var(--rule);border-radius:12px;color:var(--ink);font-family:var(--font);font-size:13px;padding:10px 14px;resize:none;line-height:1.6}
 /* .wsv-input textarea:focus → 退役，同上（该输入框已随自由发言退役，规则仅存档） */
-.wsv-input .btn{flex:0 0 auto;align-self:center;background:linear-gradient(135deg,var(--accent),#c25f3f);border:none;color:#fff;font-weight:700;padding:10px 20px;border-radius:10px;box-shadow:0 2px 10px rgba(217,119,87,.3)}
-.wsv-input .btn:hover{background:#c25f3f;transform:translateY(-1px)}
+.wsv-input .btn{flex:0 0 auto;align-self:center;background:linear-gradient(135deg,var(--accent),#a2543c);border:none;color:#fff;font-weight:700;padding:10px 20px;border-radius:10px;box-shadow:0 2px 10px rgba(217,119,87,.3)}
+.wsv-input .btn:hover{background:#a2543c;transform:translateY(-1px)}
 .wsv-plugins{display:block;padding:0}
 .wsv-plug-bar{display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:pointer;border-bottom:1px solid var(--rule);font-size:12px;font-weight:800;color:var(--ink)}
 .wsv-plug-bar:hover{background:var(--bg2)}
@@ -804,8 +804,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .wsv-mon-cam:hover{border-color:rgba(63,185,80,.55);box-shadow:0 0 18px rgba(63,185,80,.12)}
 .wsv-mon-cam.off{cursor:default}
 .wsv-mon-cam-top{height:28px;flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:0 10px;background:rgba(255,255,255,.03);font-size:10px;color:#8b949e;letter-spacing:.08em;border-bottom:1px solid rgba(255,255,255,.05)}
-.wsv-mon-cam-top .rec{display:inline-flex;align-items:center;gap:5px;color:#f85149;font-weight:800;letter-spacing:.12em}
-.wsv-mon-cam-top .rec i{width:7px;height:7px;border-radius:50%;background:#f85149;box-shadow:0 0 8px #f85149;animation:monBlink 1.2s infinite}
+.wsv-mon-cam-top .rec{display:inline-flex;align-items:center;gap:5px;color:#c9483f;font-weight:800;letter-spacing:.12em}
+.wsv-mon-cam-top .rec i{width:7px;height:7px;border-radius:50%;background:#c9483f;box-shadow:0 0 8px #c9483f;animation:monBlink 1.2s infinite}
 .wsv-mon-body{flex:1;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:0}
 .wsv-mon-name{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;color:#e6edf3}
 .wsv-mon-role{font-size:10px;color:#8b949e;background:rgba(255,255,255,.06);padding:2px 8px;border-radius:20px}
@@ -832,7 +832,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .wsv-mon-mini{position:fixed;right:24px;bottom:24px;width:300px;z-index:500;border-radius:14px;overflow:hidden;background:#0d1117;border:1px solid rgba(63,185,80,.35);box-shadow:0 12px 40px rgba(0,0,0,.55);font-size:12px;color:#e6edf3;min-width:220px;min-height:110px}
 .wsv-mon-mini-head{height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;background:rgba(63,185,80,.12);cursor:move;user-select:none;font-weight:800;font-size:11.5px;letter-spacing:.04em;border-bottom:1px solid rgba(255,255,255,.08)}
 .wsv-mon-mini-head .close{margin-left:auto;cursor:pointer;color:#8b949e;font-size:14px;line-height:1;padding:2px 6px}
-.wsv-mon-mini-head .close:hover{color:#f85149}
+.wsv-mon-mini-head .close:hover{color:#c9483f}
 .wsv-mon-mini-body{padding:10px 12px;display:flex;flex-direction:column;gap:7px;cursor:pointer}
 .wsv-mon-mini-body .mini-lamp{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:#8b949e}
 .wsv-mon-mini-body .mini-lamp i{width:8px;height:8px;border-radius:50%}
@@ -984,8 +984,8 @@ body{font-size:var(--t2)}
 /* 阶段条编号原 opacity .7 ⇒ 3.16:1，读不清；提到骨白灰（当前阶段是红底，编号要压深） */
 .fb-step .fb-num{opacity:1;color:var(--muted)}
 .fb-step.active .fb-num{color:#0B0A09}
-/* 「下一步」标签在原 accent(#FF0000) 上只有 4.35:1 ⇒ 提亮一档 */
-.nextstep .ns-label{color:#FF7B7B}
+/* 「下一步」标签在原 accent(#A93226) 上只有 4.35:1 ⇒ 提亮一档 */
+.nextstep .ns-label{color:#C97C7C}
 /* 右下角「插话」原来是给单字 emoji 设计的圆钮；改成文字后要按文字排 */
 .interject-fab{width:auto;min-width:56px;height:34px;padding:0 14px;font-size:12px;font-weight:800;
   letter-spacing:.06em;white-space:nowrap;border-radius:2px}
@@ -998,14 +998,84 @@ body{font-size:var(--t2)}
   .pg-tl-dot{position:absolute;left:-4px;top:5px;width:7px;height:7px;border-radius:50%;
     background:#0e0e0d;border:1.5px solid rgba(255,255,255,.4)}
   .pg-tl-item.done .pg-tl-dot{background:var(--green,#8fb39b);border-color:var(--green,#8fb39b)}
-  .pg-tl-item.block .pg-tl-dot{background:var(--accent,#FF3527);border-color:var(--accent,#FF3527)}
+  .pg-tl-item.block .pg-tl-dot{background:var(--accent,#C93A2C);border-color:var(--accent,#C93A2C)}
   .pg-tl-item.note .pg-tl-dot{border-color:var(--amber,#e0a04a)}
   .pg-tl-body{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;font-size:12px;line-height:1.55}
   .pg-tl-time{color:var(--dim,#716d63);font-variant-numeric:tabular-nums}
   .pg-tl-text{color:var(--ink,#ece9e3)}
   .pg-tl-item.done .pg-tl-text{color:var(--green,#8fb39b)}
-  .pg-tl-item.block .pg-tl-text{color:var(--accent,#FF3527)}
+  .pg-tl-item.block .pg-tl-text{color:var(--accent,#C93A2C)}
   .pg-tl-task{color:var(--dim,#716d63);font-size:11px}
+/* ★2026-11-01 工作间右栏：只留「员工对接」入口 + 小字 */
+.dock-entry{margin:8px;padding:12px 10px;border:1px solid var(--rule);border-radius:10px;
+  background:linear-gradient(180deg,rgba(255,90,60,.06),transparent)}
+.dock-entry-btn{display:block;width:100%;box-sizing:border-box;text-align:center;
+  padding:10px 12px;border-radius:8px;border:1px solid var(--accent,#e5533d);
+  background:var(--accent,#e5533d);color:#fff;font-weight:700;font-size:14px;
+  text-decoration:none;letter-spacing:.5px}
+.dock-entry-btn:hover{filter:brightness(1.08)}
+.dock-entry-note{margin-top:8px;font-size:11.5px;line-height:1.65;color:var(--dim)}
+.dock-entry-note b{color:var(--ink)}
+.dock-entry-btn.alt{display:block;width:100%;box-sizing:border-box;margin-top:8px;
+  padding:8px 10px;border-radius:8px;border:1px solid var(--rule-strong);
+  background:transparent;color:var(--ink);font-size:12.5px;cursor:pointer;text-align:center}
+.dock-entry-btn.alt:hover{border-color:var(--accent);color:var(--accent-hi)}
+.lead-reply{margin:6px 0;padding:7px 10px;border-radius:8px;font-size:12px;line-height:1.6;white-space:pre-wrap}
+.lead-reply.me{background:var(--bg3);color:var(--muted)}
+.lead-reply.them{background:var(--accent-soft);color:var(--ink);border-left:2px solid var(--accent)}
+.xf-head{margin:8px;padding:8px 10px;border-bottom:1px solid var(--rule);
+  font-weight:700;font-size:12.5px;letter-spacing:.5px;color:var(--ink)}
+.xf-body{margin:0 8px 10px;font-size:11.5px;line-height:1.7;color:var(--muted);
+  max-height:60vh;overflow-y:auto}
+.xf-sec{margin:10px 0 4px;font-weight:700;color:var(--ink);font-size:12px}
+.xf-dim{color:var(--dim)}
+.xf-item{padding:6px 0;border-bottom:1px dashed var(--rule)}
+.xf-item b{color:var(--ink)}
+.xf-api{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;color:var(--dim);word-break:break-all}
+.xf-item a{color:var(--accent-hi);text-decoration:none}
+.xf-item a:hover{text-decoration:underline}
+
+/* ═══ 2026-11-01 「发射井」：完全形态左栏 ═══════════════════════════════
+   原左栏内容向中线合拢（scaleX 0）、新栏从中间打开（scaleX 1）。
+   关闭时只需去掉 .firing —— 同一条 transition 自动倒放。 */
+/* ★2026-11-01（老板改口径）：「换成左侧边栏**向左滑开**，露出下面的功能」。
+   ⇒ 原左栏（会话列表）整体 **translateX(-100%) 滑出左侧**，
+   功能区从它下面露出来（功能区本身不动，只做淡入）。
+   关闭 = 去掉 .firing，同一条 transition 自动倒放。 */
+.col-left{position:relative;overflow:hidden}
+.col-left > .nav-full{position:absolute;inset:0;z-index:8;
+  opacity:0;transition:opacity .34s ease .12s;
+  pointer-events:none;overflow-y:auto;
+  /* ★2026-11-01（老板：「滑开露出下面的功能区颜色灰一些」）：
+     原来用近黑的 --bg1，跟上面那层分不开；改成**去饱和的中性灰**（不是更黑、是更灰），
+     视觉上明确这是底下那层。 */
+  background:#17181a;
+  border-right:1px solid var(--rule-strong)}
+.col-left.firing > .nav-full{opacity:1;pointer-events:auto}
+.col-left > :not(.nav-full){
+  transition:transform .46s cubic-bezier(.3,.9,.3,1),opacity .34s ease}
+.col-left.firing > :not(.nav-full){
+  transform:translateX(-100%);opacity:0;pointer-events:none}
+/* 减弱动效偏好：不滑动，直接切 */
+@media (prefers-reduced-motion:reduce){
+  .col-left > .nav-full,.col-left > :not(.nav-full){transition:opacity .18s}
+  .col-left.firing > :not(.nav-full){transform:none}
+}
+.nf-close{display:block;width:calc(100% - 16px);margin:8px;padding:8px 10px;
+  border-radius:8px;border:1px solid var(--rule-strong);background:transparent;
+  color:var(--ink);font-size:12.5px;cursor:pointer;text-align:center}
+.nf-close:hover{border-color:var(--accent);color:var(--accent-hi)}
+.nf-title{margin:10px 8px 4px;font-size:10.5px;letter-spacing:1px;
+  text-transform:uppercase;color:var(--dim)}
+.nf-item{display:block;width:calc(100% - 16px);margin:4px 8px;padding:8px 10px;
+  border-radius:8px;border:1px solid transparent;background:transparent;
+  color:var(--ink);text-decoration:none;text-align:left;cursor:pointer;font:inherit}
+.nf-item:hover{background:var(--bg3);border-color:var(--rule)}
+.nf-item b{display:block;font-size:12.5px;font-weight:700;margin-bottom:2px}
+.nf-item span{display:block;font-size:10.5px;color:var(--muted);line-height:1.5}
+.nf-item.nf-sub{margin-left:20px;width:calc(100% - 28px);opacity:.92}
+.nf-item.nf-sub b::before{content:"└ ";color:var(--dim)}
+.nf-note{margin:10px 8px 14px;font-size:10.5px;color:var(--muted);line-height:1.6}
 </style>
 
 <!-- ★2026-10-30 视觉铺开（骨架收编最后一页）：workshop 此前是唯一没接全站骨架的页面。
@@ -1031,12 +1101,60 @@ body{font-size:var(--t2)}
 
     <div class="col-left">
 
+      <!-- ★2026-11-01（老板：「点击『工作间完全展开』后，左侧边栏中间分开，像核弹发射井一样打开，
+           露出下面新的左侧边栏……最上面放一个『关闭完全形态』，然后倒放之前的展开过程」）：
+           本块**绝对定位叠在原左栏之上**，默认 scaleX(0) 收着；
+           展开时原左栏内容向中线合拢、本块从中间打开 —— 关闭时同一条 transition 自动倒放。 -->
+      <div class="nav-full" id="navFullNav">
+        <button class="nf-close" type="button" onclick="toggleNavFull(false)"
+                title="倒放展开过程，回到原来的左侧栏">← 关闭完全形态</button>
+
+        <div class="nf-title">本间功能</div>
+
+        <a class="nf-item" href="/ops.html" data-ws-link target="_blank" rel="noopener">
+          <b>看板</b><span>工单审计与 Agent 在线情况（监控室入口在看板页里）</span>
+        </a>
+        <a class="nf-item" href="/mind.html" data-ws-link target="_blank" rel="noopener">
+          <b>心智</b><span>宪章 / 索引 / 记忆 / 日志 / 死胡同</span>
+        </a>
+
+        <button class="nf-item" type="button" onclick="navShowCanvas()"
+                title="就地展开本页的任务流转画布">
+          <b>任务画布</b><span>这一间的任务流转（就地展开，不跳页）</span>
+        </button>
+
+        <button class="nf-item" type="button" onclick="navShowIM()"
+                title="现在没有独立页面 —— 点开看它是什么、怎么用">
+          <b>IM 通道</b><span>外端 AI ↔ 平台 AI 直接问（第二通道）</span>
+        </button>
+
+        <div class="nf-title">其它</div>
+        <a class="nf-item" href="/booths.html" data-ws-link target="_blank" rel="noopener">
+          <b>隔间</b><span>成员隔间与桥的落点</span>
+        </a>
+        <a class="nf-item" href="/handover.html" data-ws-link target="_blank" rel="noopener">
+          <b>回执</b><span>交付回执台（无证据不回执）</span>
+        </a>
+        <a class="nf-item" href="/hub.html" data-ws-link target="_blank" rel="noopener">
+          <b>流程说明</b><span>使用说明书 · 全流程 · 接口</span>
+        </a>
+
+        <div class="nf-note" id="navFullNote"></div>
+      </div>
+
+
 
       <a class="sidebar-back" href="/" title="返回大厅">← <span class="sb-text">返回大厅</span></a>
       <!-- ★V34 §1：工作间入口**只指向本工作间**（`?ws=`）—— 不带参数的总控入口在大厅 -->
-      <a class="hub-pill" id="dockingPill" href="/docking.html" onclick="return pillNav(this,'/docking.html')" title="对接中心 · 本工作间的成员对接（看谁接上了、对上哪个岗位）">对接中心</a>
-      <!-- 老板 2026-10-29 收成一枚按钮；2026-10-31 正名「本间对接中心」——工作间专属，不带大厅级动作。 -->
-      <a class="hub-pill" id="consolePill" href="/v5.html" onclick="return pillNav(this,'/v5.html')" title="本间对接中心 · 方向/组长/派活/产物/验收/讨论区（只干这个工作间的活）" style="top:56px">本间对接中心</a>
+      <!-- ★2026-11-01（老板，第二次定这个位置）：
+           「工作间里面不要放这个『接入 Agent』，去掉（这是放大厅的），下面那个『本工作间』放上去，
+             改名为『员工对接』」。
+           ⇒ 工作间右上**只留一枚**：**员工对接**（`/v5.html?ws=<本间>`）——
+             看这一间的员工（谁接上了、对上哪个岗位）与派活/产物/验收。
+           ⇒ **接入新 agent 不放这里**：那是**大厅**的事（大厅有「接入 Agent」入口），
+             从工作间跳过去时会自动带上本间（`_dockUrl()`），不用再选。 -->
+      <!-- ★2026-11-01（老板：把功能按钮放右侧列表里）：这枚悬浮的已搬到右侧列表，
+           这里删掉 —— 否则同一页两个「员工对接」，还撞了同一个 id。 -->
       <!-- 流程说明按钮已移除（老板 2026-10-19 裁定）：hub-pill 是 fixed 同坐标定位，两枚常驻重叠；流程讲解正主在 hub.html，大厅入口仍在 -->
 
 
@@ -1093,11 +1211,11 @@ body{font-size:var(--t2)}
       </div>
 
       <!-- V84 gate 横幅（DSH 254）：ok=false 才显示（why 一行 + 按 next_step 的引导按钮）；ok=true 不显示；开工按钮不禁用 -->
-      <div id="gateBanner" style="display:none;margin:8px 14px 0;padding:9px 14px;background:var(--bg3);border:1px solid var(--rule);border-left:3px solid var(--yellow,#FFB000);border-radius:10px;font-size:12.5px;color:var(--ink);line-height:1.7">
-        <span style="color:var(--yellow,#FFB000);font-weight:800">还不能开工：</span><span id="gateWhy"></span>
+      <div id="gateBanner" style="display:none;margin:8px 14px 0;padding:9px 14px;background:var(--bg3);border:1px solid var(--rule);border-left:3px solid var(--yellow,#B98432);border-radius:10px;font-size:12.5px;color:var(--ink);line-height:1.7">
+        <span style="color:var(--yellow,#B98432);font-weight:800">还不能开工：</span><span id="gateWhy"></span>
         <div style="margin-top:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <span id="gateNext" style="color:var(--muted)"></span>
-          <button class="btn mini ghost" id="gateGo" onclick="location.href='/docking.html'" style="display:none">去对接中心接入 →</button>
+          <button class="btn mini ghost" id="gateGo" onclick="location.href=_dockUrl()" style="display:none">去接入 Agent →</button>
         </div>
       </div>
 
@@ -1153,11 +1271,19 @@ body{font-size:var(--t2)}
             <div class="chat" id="discussion2"></div>
 
 
-            <!-- ★2026-10-31（老板）：「去结构化讨论」指路按钮整排撤掉 —— 名字叫讨论、点开却是本间对接中心，
-                 语义不通；且按 SOP 用户不在平台上讨论。这里改为**只读展示区**，不再给任何输入。 -->
+            <!-- ★2026-11-01（老板：「这里怎么不能和组长对话」）：
+                 2026-10-31 曾把它定成**只读展示区**；老板现在要能对话 ⇒ 加输入框 + 发送。
+                 发出去走 `POST /api/docking/harness/{hid}/deliver`（通用送话：四通道投递 + 读回核对；
+                 A2A 走 `tasks/send`）。**发出去的结果如实显示**（成功/失败/走哪条通道/它对端在不在）。 -->
             <div class="chat-input">
-              <div style="flex:1;font-size:12px;color:var(--dim)">只读 —— 组长的发言在这里显示；对接与资料走「本间对接中心」。</div>
+              <input id="leadSay" type="text" placeholder="跟组长说一句（回车发送）"
+                     onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();leadSay();}"
+                     style="flex:1;background:var(--bg3);border:1px solid var(--rule);border-radius:8px;
+                            padding:8px 10px;color:var(--ink);font:inherit;font-size:12.5px">
+              <button class="btn mini" id="leadSayBtn" type="button" onclick="leadSay()">发送</button>
+              <span class="dock-msg" id="leadSayMsg"></span>
             </div>
+            <div id="leadSayNote" class="wiz-hint" style="display:none;margin:4px 2px 0"></div>
 
 
           </div>
@@ -1250,7 +1376,7 @@ body{font-size:var(--t2)}
             <button class="btn mini ghost" onclick="fcReset()">重置流程</button>
             <button class="btn mini ghost" id="fcDiscBtn" onclick="fcDiscoverToggle()">发现：未开启</button>
           </div>
-          <div id="fcWarn" style="display:none;padding:8px 12px;background:rgba(255,176,0,.10);border-bottom:1px solid var(--rule);color:var(--yellow,#FFB000);font-size:12px"></div>
+          <div id="fcWarn" style="display:none;padding:8px 12px;background:rgba(255,176,0,.10);border-bottom:1px solid var(--rule);color:var(--yellow,#B98432);font-size:12px"></div>
           <div style="overflow:auto;max-height:480px">
             <svg id="fcSvg" width="100%" height="440" style="display:block;min-width:600px"></svg>
           </div>
@@ -1269,22 +1395,52 @@ body{font-size:var(--t2)}
     <div class="col-right">
 
 
-      <div class="col-header">员工名单 <span class="rv5-count" id="rosterHead" style="display:none"></span></div>
-
-
+      <!-- ★2026-11-01（老板：「右侧列表复杂化了」）：这里原来有两层标题（`员工名单` + 下面 `② 名单`）
+           说的是同一件事，而且**同一份名单被画了两遍**（上面只读一份、下面可编辑一份）。
+           ⇒ ① 删掉重复的 `员工名单` 那层；② 只读那份收进折叠（默认收起），想看"谁接上了"再点开。 -->
       <div id="sidebar">
 
+        <!-- ★2026-11-01（老板：「把功能按钮放右侧列表里，替换掉右侧列表里的员工选择，
+             右侧列表只保留这个按钮，并附带小字介绍」）：
+             右侧列表 = **这一间的员工对接入口**。具体操作（选组长 / 名单 / 派活 / 验收）
+             都在「员工对接」那一页里做 —— 本页只管"点进去"。 -->
+        <div class="dock-entry">
+          <!-- ★2026-11-01（老板，两条）：
+               ① 「把『员工对接』下面的小字换成 Tooltip，鼠标放上去再弹出，内容改为：为本工作间接入 agent」
+                  ⇒ 小字不再常驻，改成 `title`（原生悬停提示，零脚本）。
+               ② 「右侧边栏需要的功能按钮：员工对接、工作间员工列表（默认收纳，点击后展开）、
+                  工作间完全展开（露出更多插件接入了的功能 + 插件接口使用说明）」
+                  ⇒ 三枚按钮：第一枚直跳，后两枚各自展开下面一块（互斥，点谁开谁）。 -->
+          <a class="dock-entry-btn" id="consolePill" href="/v5.html"
+             onclick="return pillNav(this,'/v5.html')"
+             title="为本工作间接入 agent">员工对接</a>
+          <button class="dock-entry-btn alt" type="button" onclick="wsTogglePanel('list')"
+                  title="在本间右侧展开：谁接上了 / 名单 / 会话流程 / 成员状态 / 可用 Harness">工作间员工列表</button>
+          <button class="dock-entry-btn alt" type="button" data-navfull-btn onclick="toggleNavFull()"
+                  title="左侧栏向左滑开，露出本间的全部功能（看板 / 心智 / 任务画布 / IM / 插件…）">工作间完全展开</button>
+        </div>
 
-        <!-- ★2026-10-30（D后端-57）：**名单改读 v5 工位**。
-             后端详情新增只读兼容层 `members_v5` / `roster_counts` / `members_source`（旧 members 形状未变）。
-             原来这里只读旧 members ⇒ 已接上成员的工作间也显示「未选员工」（假状态）。
+
+
+        <!-- ★2026-10-30（D后端-57）：**名单改读 v5 工位**。后端详情新增只读兼容层
+             `members_v5` / `roster_counts` / `members_source`（旧 members 形状未变）。
              规则：v5 有内容就以它为准；**能不能开工只看 gate**（后端已按 v5 算），本页不自己判。 -->
-        <div id="membersV5" class="rw-v5" style="display:none"></div>
+        <!-- ⚠️ 下面这些**保留 DOM、视觉收起**：JS 里有大量 getElementById('sbStage') /
+             applyStageGates() 不判空的取用，真删会运行时炸（点了没反应那种死状态）。
+             功能没丢 —— 选组长/名单/派活/验收都在「员工对接」（/v5.html?ws=）那一页里。 -->
+        <div id="wsSideMore" hidden>
+
+        <details class="rail-fold" id="membersV5Fold">
+          <summary class="col-header">谁接上了 <span class="rv5-count" id="rosterHead" style="display:none"></span></summary>
+          <div id="membersV5" class="rw-v5" style="display:none"></div>
+        </details>
 
 
         <!-- FE-20：本阶段该按的（FE-17 §4，数据来自 GET …/sidebar；失败=降级显示全部+提示） -->
         <div id="stageBar" class="stage-bar" style="display:none">
-          <div class="sb-top"><b id="sbStage">—</b><span id="sbStageIdx" class="sb-idx"></span></div>
+          <!-- ★2026-11-01（老板：「用户看不懂怎么操作」）：标题从光秃秃的「选组长 2/5」
+               改成一句人话 —— 用户不用自己判断"我在哪、下一步干什么"。 -->
+          <div class="sb-top"><b>现在该做：<span id="sbStage">—</span></b><span id="sbStageIdx" class="sb-idx"></span></div>
           <div id="sbBlocked" class="sb-blocked" style="display:none"></div>
           <div id="sbPrimary" class="sb-acts"></div>
           <details id="sbMoreBox" class="sb-more" style="display:none"><summary id="sbMoreSum">更多 ⋯</summary><div id="sbMore" class="sb-acts"></div></details>
@@ -1352,12 +1508,27 @@ body{font-size:var(--t2)}
           </div><!-- /harnessBlock -->
 
 
+        </div><!-- /.panel -->
+
+
+
+        </div><!-- /#wsSideMore（视觉收起；DOM 保留） -->
+
+        <!-- ★2026-11-01：工作间完全展开 —— 插件 + 平台内置扩展点 + 插件接口说明。
+             数据来自 `GET /api/plugins/catalog`（清单在 platform/extensions_catalog.py，一处真相）。 -->
+        <div id="wsFullPanel" hidden>
+          <div class="xf-head">工作间完全展开</div>
+          <div id="wsFullBody" class="xf-body"><div class="xf-dim">点上面的「工作间完全展开」加载…</div></div>
         </div>
 
 
       </div>
 
 
+      <!-- ★2026-11-01（老板：右侧列表只保留「员工对接」这一个按钮）：
+           系统统计与 Agent 列表是**全局信息**，跟"这一间怎么操作"无关 —— 收进折叠，默认收起。 -->
+      <details class="rail-fold">
+      <summary class="col-header">系统统计 / Agent 列表</summary>
       <div class="col-header">系统统计</div>
 
 
@@ -1378,6 +1549,7 @@ body{font-size:var(--t2)}
         <summary class="col-header">Agent 列表 <span class="fold-count" id="agentListCount"></span></summary>
         <div id="agentList" style="max-height:44vh;overflow-y:auto"><div style="padding:16px;color:var(--dim);font-size:12px">加载中...</div></div>
       </details>
+      </details><!-- /系统统计+Agent列表 -->
 
 
     </div>
@@ -2110,13 +2282,16 @@ function applyStageGates(stage){
   const hb=document.getElementById('harnessBlock');
   const op=document.getElementById('offlinePanel');
   const fab=document.getElementById('interjectFab');
-  /* selectBtn 已退役（平台不选人，2026-10-31） */
+  /* ★2026-11-01（老板：「工作间右侧列表复杂化了」；我截图时抓到 ReferenceError: sBtn is not defined）：
+     `selectBtn`/`sBtn` 早在 2026-10-31 就退役了（平台不选人），但**引用还留着** ——
+     于是 applyStageGates 一执行就抛错 ⇒ **阶段门控从来没生效过** ⇒ 右侧所有块一直全摊着（= 复杂化的直接原因）。
+     ⇒ 删掉这两处引用，不再让一个已删按钮把整套门控带崩。 */
   const aBtn=document.getElementById('addMemberBtn');
   const cfBtn=document.getElementById('confirmBtn');
   if(!sbOk){
     /* 降级（规则17）：显示全部，不藏任何入口；saveMembersBtn 维持它自己的"有改动才出现"逻辑 */
     vis(rb,true); vis(hb,true); vis(op,true); vis(fab,true);
-    vis(sBtn,true); vis(aBtn,true); vis(cfBtn,true);
+    vis(aBtn,true); vis(cfBtn,true);
     return;
   }
   /* 阶段门控（不渲染，不是置灰）：本地 _phase===2 兜"点结束讨论、后端没翻"的窗口；
@@ -2125,8 +2300,8 @@ function applyStageGates(stage){
   vis(hb, id==='select'||_phase===2);
   vis(op, id==='working'||_phase===4);
   vis(fab, ['discuss2','working','review'].indexOf(id)>=0);
-  /* 同屏去重：这三个旧按钮由 stageBar 的同名主操作接管（名单行/输入照常可编辑） */
-  vis(sBtn,false); vis(aBtn,false); vis(cfBtn,false);
+  /* 同屏去重：这两个旧按钮由 stageBar 的同名主操作接管（名单行/输入照常可编辑） */
+  vis(aBtn,false); vis(cfBtn,false);
 }
 function renderActList(box, acts){
   box.innerHTML='';
@@ -2190,7 +2365,7 @@ async function loadStageBar(){
          刷新后更是各说各话。这里以 **后端 stage** 为唯一真相同步指示器。 */
     if(r.stage.index!=null) setPhase(r.stage.index);
     document.getElementById('sbStage').textContent=r.stage.label||sbStageId;
-    document.getElementById('sbStageIdx').textContent=(r.stage.index!=null?(r.stage.index+' / '+r.stage.total):'');
+    document.getElementById('sbStageIdx').textContent=(r.stage.index!=null?('第 '+r.stage.index+' 步 / 共 '+r.stage.total+' 步'):'');
     const blk=document.getElementById('sbBlocked');
     if(r.blocked_reason){
       blk.style.display='';
@@ -2337,7 +2512,7 @@ function renderSessionFlow(r){
     else{sum.className='sf-summary warn';sum.textContent=((r.summary.manual_members||[]).length)+' 名成员有需人工步骤';}
   }else{sum.style.display='none';}
   body.innerHTML='';
-  if(!members.length){body.append(sfEl('div','sf-empty','尚无成员（先去「本间对接中心」选组长、拉人，或让组长交名单回执）。'));return;}
+  if(!members.length){body.append(sfEl('div','sf-empty','尚无成员（先在右侧「选组长」选一个，再由组长交名单回执；也可在右侧名单手动补录）。'));return;}
   members.forEach(m=>body.appendChild(_sfCard(m)));
 }
 function _sfCard(m){
@@ -2562,13 +2737,16 @@ const _mbTplCache={};
 /*: 已注册 harness 的 id 集合（本轮页面生命周期内缓存）。用途见下方 loadMemberBridgeTemplate：
     孤儿成员不该去发那个必然 404 的请求 —— 浏览器会把失败响应记成控制台红错。 */
 let _registeredHids=null;
+/* ★2026-11-01（老板：「保存具体模板后，无法新建通道」）：顺带缓存 harness 的**接入方式** ——
+   A2A 没有桥，不该被下面那道「没有通用桥模板」的闸挡住。 */
+const _hidWakeup={};
 async function loadMemberBridgeTemplate(mid){
   if(_mbTplCache[mid]!==undefined) return _mbTplCache[mid];
   try{
     const flow=await fetch(`/api/workshop/${wsId}/members-status`).then(x=>x.ok?x.json():null).catch(()=>null);
     const mine=(flow&&(flow.members||[]).find(m=>m.member_id===mid))||null;
     const hid=(mine&&mine.harness_id)||'';
-    if(!hid){ _mbTplCache[mid]={none:true,why:'该成员未绑定 harness'}; return _mbTplCache[mid]; }
+    if(!hid){ _mbTplCache[mid]={none:true,wakeup:'',why:'该成员未绑定 harness'}; return _mbTplCache[mid]; }
     /* ⚠️ 孤儿成员（它的 harness 已被删）会让 `bridge-templates` 回 **404**；
        而**浏览器只要收到失败响应就会往控制台记一条红错**，JS 里判 `resp.status===404`
        **挡不住那条日志**（实测：我先试过这个办法，红错照旧）。
@@ -2578,11 +2756,16 @@ async function loadMemberBridgeTemplate(mid){
       try{
         const rl=await fetch('/api/harness/list');
         const dl=rl.ok?await rl.json():{};
-        _registeredHids=new Set(((dl&&dl.harnesses)||[]).map(h=>h.harness_id));
+        const _hs=((dl&&dl.harnesses)||[]);
+        _registeredHids=new Set(_hs.map(h=>h.harness_id));
+        _hs.forEach(h=>{ if(!h||!h.harness_id) return;
+          /* ⚠️ /api/harness/list 的顶层**没有** wakeup_method —— 真实值在 wakeup.wakeup_method
+             （docking.js 里同一个坑踩过一次）。两处都取，别只认顶层。 */
+          _hidWakeup[h.harness_id]=String((h.wakeup&&h.wakeup.wakeup_method)||h.wakeup_method||'').toLowerCase(); });
       }catch(e){ _registeredHids=new Set(); }
     }
     if(!_registeredHids.has(hid)){
-      _mbTplCache[mid]={none:true,hid,why:'该 harness 已不在平台上（孤儿成员）'};
+      _mbTplCache[mid]={none:true,hid,wakeup:'',why:'该 harness 已不在平台上（孤儿成员）'};
       return _mbTplCache[mid];
     }
     const resp=await fetch(`/api/harness/${encodeURIComponent(hid)}/bridge-templates`);
@@ -2590,8 +2773,9 @@ async function loadMemberBridgeTemplate(mid){
     const t=(d&&(d.templates||[]).find(x=>!x.superseded))||(d&&(d.templates||[])[0])||null;
     // ★2026-10-13：把 `verified`/`verified_at` 一起放进缓存 —— 否则渲染那行读不到这两个字段
     //   （会永远显示"还没验证过"，比不显示更糟：**看起来像没验过，实际验过了**）。
-    _mbTplCache[mid]=t?{name:t.name,kind:t.kind,hid,verified:!!t.verified,
-                        verified_at:t.verified_at||null}:{none:true,hid};
+    const _wk=String(_hidWakeup[hid]||'').toLowerCase();
+    _mbTplCache[mid]=t?{name:t.name,kind:t.kind,hid,wakeup:_wk,verified:!!t.verified,
+                        verified_at:t.verified_at||null}:{none:true,hid,wakeup:_wk};
   }catch(e){ _mbTplCache[mid]={none:true,why:String(e&&e.message||e)}; }
   return _mbTplCache[mid];
 }
@@ -2661,6 +2845,12 @@ function sfChannelRow(m){
   row.append(tplLine);
   loadMemberBridgeTemplate(m.member_id).then(t=>{
     if(!t||t.none){
+      /* ★2026-11-01：A2A **没有桥** ⇒ 别再说「还没有模板」，那是把用户往死路上引。 */
+      if(String((t&&t.wakeup)||'').toLowerCase()==='a2a'){
+        tplLine.textContent='桥模板：**不需要** —— 这是 A2A 接入，平台直接按 tasks/send 派活（没有桥）。';
+        tplLine.style.color='';
+        return;
+      }
       tplLine.textContent='桥模板：**还没有** —— 先到「🔌 注册 Harness」为这个 agent 登记一条，再回来建通道。';
       tplLine.style.color='var(--yellow)';
     }else{
@@ -2733,8 +2923,12 @@ async function chEstablish(mid,name){
        若一条都没有 ⇒ 如实提示"去建一条"，而不是让平台猜。 */
     try{
       const t=await loadMemberBridgeTemplate(mid);
+      /* ★2026-11-01（老板：「保存具体模板后，无法新建通道」）：
+         A2A 是**没有桥**的接入（平台直接按 tasks/send 派活）⇒ 不该被「没有通用桥模板」挡住。
+         实测后端 channel/establish 对 A2A 成员本来就成功（HTTP 200），卡住的只是这道前端闸。 */
+      const _isA2A=String((t&&t.wakeup)||'').toLowerCase()==='a2a';
       if(t&&t.name){ body.template_name=t.name; }
-      else if(t&&t.none){ _chNotes[mid]={cls:'fail',text:'这个成员还没有通用桥模板：先到「🔌 注册 Harness」为它登记一条，再回来建通道。'}; await loadSessionFlow(); return; }
+      else if(t&&t.none && !_isA2A){ _chNotes[mid]={cls:'fail',text:'这个成员还没有通用桥模板：先到「🔌 注册 Harness」为它登记一条，再回来建通道。'}; await loadSessionFlow(); return; }
     }catch(e){ /* 取不到不阻断：按平台既有回落逻辑走，但下面会如实说明 */ }
     body.reason='按需新建通道';
     const r=await fetch(`/api/workshop/${wsId}/member/${mid}/channel/establish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(x=>x.json());
@@ -2976,10 +3170,10 @@ function renderNextStep(){
        ★2026-11-01 修：原来这四处都写「结束讨论，去选人 →」—— **选人是退役动作**
        （平台不选人，V116 §16）；现行是**你选组长**，所以文案与按钮都改成"去选组长"。 */
     draft: _wsHall
-      ? ['任务已发布。下一步：在外面把方向聊透、资料整理好 → 回来点「方向定了，去选组长 →」，在「本间对接中心」选一个够格的组长。',[['方向定了，去选组长 →',()=>endDiscuss()]]]
+      ? ['任务已发布。下一步：在外面把方向聊透、资料整理好 → 回来点「方向定了，去选组长 →」，在右侧「选组长」里挑一个够格的组长（平台只筛资格，不会替你选）。',[['方向定了，去选组长 →',()=>endDiscuss()]]]
       : ['该工作间尚在草稿；回大厅发布任务继续。',[['回大厅',()=>{location.href='/';}]]],
     discussing:['方向在外面整理好（平台不参与讨论）；定稿后点「方向定了，去选组长 →」。',[['方向定了，去选组长 →',()=>endDiscuss()]]],
-    selecting:['在右侧名单填人（标准路径：**组长交名单回执**；也可「+ 添加职位」手动补录）。组长还没选？去「本间对接中心」选。',[['确认成员',()=>_nsFlash('confirmBtn')]]],
+    selecting:['在右侧名单填人（标准路径：**组长交名单回执**；也可「+ 添加职位」手动补录）。组长还没选？在右侧「选组长」里选。',[['确认成员',()=>_nsFlash('confirmBtn')]]],
     division:['分工安排已按当前名单更新（library/plan.md）。跟组长确认分工后点「开始工作」。',[['📚 资料库',()=>_nsOpen('#libPanel')],['🏗 隔间与桥',()=>_nsOpen('')],['开始工作',()=>_nsFlash('startWorkBtn')]]],
     running:['成员在各自隔间作业；完成后走 review 收口。',[['🏗 隔间与桥',()=>_nsOpen('')],['📚 资料库',()=>_nsOpen('#libPanel')]]],
     review:['完成复核与收口；可查隔间成果。',[['🏗 隔间与桥',()=>_nsOpen('')]]],
@@ -2990,7 +3184,7 @@ function renderNextStep(){
      走查实测：0 个 agent 时，"下一步"条照样引导「结束讨论，选定员工 →」，
      用户照做、点完才发现没人可选 ⇒ 卡住而不知道为什么。这里**提前说**（不硬拦发布）。 */
   if(_noAgentWarn() && (S==='draft'||S==='discussing'||S==='selecting')){
-    m=[m[0]+' '+_agentWarnText(), m[1].concat([['🔌 去接入 agent',()=>window.open('/docking.html','_blank')]])];
+    m=[m[0]+' '+_agentWarnText(), m[1].concat([['🔌 去接入 agent',()=>window.open(_dockUrl(),'_blank')]])];
   }
   t.textContent=m[0];
   m[1].forEach(pair=>{
@@ -3643,7 +3837,10 @@ function showSelectionNotice(reason,advice,registerUrl){
   if(registerUrl){
     /* ★2026-10-15：原来这里**硬写**了旧注册页路径，把传进来的 registerUrl 参数忽略了 ——
        旧页转只读镜像后它就指错了地方。现在**用参数**（后端给的是 /docking.html），兜底也对。 */
-    const link=document.createElement('a');link.href=registerUrl||'/docking.html';link.target='_blank';link.rel='noopener';
+    const link=document.createElement('a');
+    /* ★2026-11-01：后端给的 registerUrl 可能是裸 `/docking.html` —— 一律换成**带本间**的地址 */
+    link.href=(String(registerUrl||'').indexOf('/docking.html')===0)?_dockUrl():(registerUrl||_dockUrl());
+    link.target='_blank';link.rel='noopener';
     link.textContent='接入员工（保留当前工作间）';box.appendChild(link);
     const retry=document.createElement('button');retry.className='btn mini';retry.textContent='接入后刷新员工';
     retry.onclick=async()=>{const hs=await loadHarnesses();renderHarnessList(hs);updateSelectionReadiness(hs);};
@@ -3661,7 +3858,7 @@ function syncAgentAwareness(hs){
 function updateSelectionReadiness(hs){
   if(!Array.isArray(hs))return;
   if(hs.length===0){
-    showSelectionNotice('还没有接入员工。任务和讨论已保留，你可以先把需求聊清楚。','选人前，请先接入一个能执行任务的 agent。','/docking.html');
+    showSelectionNotice('还没有接入员工。任务和讨论已保留，你可以先把需求聊清楚。','选人前，请先接入一个能执行任务的 agent。',_dockUrl());
   }else{
     showSelectionNotice('已接入 '+hs.length+' 个员工，可以按任务需要选人。','按组长分工回执填名单；或点「+ 添加职位」手动补录。');
   }
@@ -4090,6 +4287,8 @@ function loadWorkshop(id){
        这里在首屏无条件探一次；`renderNextStep()` 已在上面渲染过，计数变化会自己刷新它。 */
     loadHarnesses();
     await loadStageBar();   /* FE-20：拉权威阶段并施门控（放在最后，保证门控生效顺序） */
+    /* ★2026-11-02（老板：「刷新页面之后聊天记录都没了」）：把组长对话**读回来**渲染 */
+    try{ if(typeof leadChatLoad==='function') await leadChatLoad(); }catch(e){}
     await loadOrphans();    /* FE-23：孤儿横幅（并联动放开名单） */
     /* V52 辩论面板已退役（2026-10-31），loadDebate() 调用随之撤销。 */
     /* V34 §1：工作间那个入口**必须带上本间 id**，否则它就成了总控（能看/动别的间）—— 串范围。 */
@@ -4380,15 +4579,326 @@ async function refreshWorkshops(){try{const d=await fetch('/api/workshops').then
 /* 两枚常驻入口（对接中心 / 本间对接中心）**只指向本间**：
    boot 时按 URL 里的 ws_id 同步写死，loadWorkshop 回来后用真 id 再校正一次。
    这样"刚打开就点"和"加载完再点"拿到的是同一个工作间，不会掉到通用的 /v5.html。 */
+/** 「完全形态」左侧栏：像发射井一样打开 / 倒放合拢。
+ *
+ *  ★2026-11-01（老板：「点击『工作间完全展开』后，左侧边栏中间分开，像核弹发射井一样打开，
+ *  露出下面新的左侧边栏……最上面放一个『关闭完全形态』，然后倒放之前的展开过程」，
+ *  并确认「这样就可以把会话列表换成功能区」）。
+ *
+ *  实现：只切 `.col-left` 上的 `firing` class —— 开与合是**同一条 CSS transition**，
+ *  所以"关闭"天然就是"倒放"，不需要另写一套动画。
+ *  原左栏（会话/工作间列表）在展开时向中线合拢，功能区从中间打开 ⇒ 会话列表被功能区替换。
+ */
+function toggleNavFull(on){
+  const shell=document.querySelector('.col-left');
+  if(!shell) return;
+  if(typeof on!=='boolean') on=!shell.classList.contains('firing');
+  shell.classList.toggle('firing', on);
+  /* ★2026-11-01（老板：「右侧边栏的『完全展开工作间』在点击后变成『复原基础工作间』」）：
+     按钮文案跟着状态走 —— 展开后它自己就变成复原，不用再找「关闭完全形态」。
+     左栏顶部那枚「关闭完全形态」也留着（两条路都能回来）。 */
+  const btn=document.querySelector('[data-navfull-btn]');
+  if(btn){
+    btn.textContent = on ? '复原基础工作间' : '工作间完全展开';
+    btn.title = on
+      ? '收起功能区，左侧栏滑回原来的会话列表'
+      : '左侧栏向左滑开，露出本间的全部功能（看板 / 心智 / 任务画布 / IM / 插件…）';
+  }
+  _nfNote('');
+}
+
+function _nfNote(msg){
+  const n=document.getElementById('navFullNote');
+  if(n) n.textContent=msg||'';
+}
+
+/** 任务画布：就地切换页内那块 `#flowCanvasPanel`（flow_canvas.js 的 fcToggle）。 */
+function navShowCanvas(){
+  if(typeof fcToggle==='function'){
+    fcToggle();
+    _nfNote('任务画布已切换（在页面中间那块）。再点一次收起。');
+  }else{
+    _nfNote('这一页没有任务画布脚本（flow_canvas.js 未加载）—— 不是按钮坏了，是这版没有它。');
+  }
+}
+
+/** IM 通道：**现在没有独立页面** —— 如实说清它是什么、怎么用，不放假链接。 */
+function navShowIM(){
+  _nfNote('IM 通道 = 第二通道：外端 AI 遇到问题直接问平台 AI。'
+        + '接口：POST /api/assistant/chat  body: {"message":"你的问题"}。'
+        + '它目前**只有接口、没有页面**；页面还没做，这里如实说明，不给一个点不开的按钮。');
+}
+
+/** 本间的组长工位（v5 名单里的 `_lead`）。
+ *
+ *  ⚠️ **别用 `/members-status`**：那个端点回的是**旧名单**（`WorkshopMember`，只有 m0/m1，
+ *  没有 `slot_dir` / `member_seq`）—— 拿它找 `_lead` 永远找不到，界面就会误报「还没选组长」
+ *  （2026-11-01 实测踩过两次：`autoProtocolProbe` 一次、`leadSay` 一次）。
+ *  v5 名单在 `/roster`。这里收成一处，别在别处再写第三份。
+ */
+async function _findLeadMember(){
+  if(!wsId) return null;
+  try{
+    const r=await fetch('/api/workshop/'+encodeURIComponent(wsId)+'/roster');
+    if(!r.ok) return null;
+    const d=await r.json().catch(()=>({}));
+    const mem=Array.isArray(d.members)?d.members:[];
+    return mem.find(function(m){ return String(m&&m.slot_dir||'')==='_lead'; })||null;
+  }catch(e){ return null; }
+}
+
+/** 「跟组长说一句」：把话真的送出去，并把结果如实报回来。
+ *
+ *  ★2026-11-01（老板：「这里怎么不能和组长对话」）。
+ *  走 `POST /api/docking/harness/{hid}/deliver` —— 通用送话（四通道 + 读回核对；A2A 走 tasks/send）。
+ *  **绝不假装成功**：成功要说清走哪条通道、有没有核对上；失败要给原因与下一步。
+ */
+/** 把一条组长对话**存到工作区**（刷新后还在）。
+ *
+ *  ★2026-11-02（老板：「刷新页面之后聊天记录都没了」）：
+ *  原来只往 DOM 里 append，一刷新全没了 —— 而回复其实早就回到平台了
+ *  （`…/a2a-task/{task_id}` 查得到），用户就以为"没回复到平台"。
+ *  现在每条都落 `<工作区>/_meta/lead-chat.jsonl`，并**标清来源**（谁说的）。
+ */
+async function leadChatSave(role, text, taskId, source, state){
+  if(!wsId || !text) return;
+  try{
+    await fetch('/api/workshop/'+encodeURIComponent(wsId)+'/lead-chat',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({role:role, text:text, task_id:taskId||'',
+                           source:source||'sent', state:state||''})});
+  }catch(e){ /* 存失败不挡对话；界面已有提示职责在别处 */ }
+}
+
+/** 打开工作间时把历史读回来渲染（不然刷新就空）。 */
+async function leadChatLoad(){
+  const box=document.getElementById('discussion2');
+  if(!box || !wsId) return;
+  try{
+    const r=await fetch('/api/workshop/'+encodeURIComponent(wsId)+'/lead-chat?limit=200');
+    if(!r.ok) return;
+    const d=await r.json();
+    const msgs=(d && d.messages)||[];
+    if(!msgs.length) return;
+    box.innerHTML='';
+    msgs.forEach(function(m){
+      const el=document.createElement('div');
+      const isLead=String(m.role||'')==='lead';
+      el.className='lead-reply '+(isLead?'them':'me');
+      el.textContent=(isLead?'组长：':'我：')+String(m.text||'');
+      if(m.task_id) el.title='任务 '+m.task_id+'（来源 '+(m.source||'')+'）';
+      box.appendChild(el);
+    });
+    box.scrollTop=box.scrollHeight;
+  }catch(e){ /* 读不到就留空，不假装有记录 */ }
+}
+
+/** 轮询 A2A 任务，把它的回复贴进组长对话框。
+ *
+ *  ★2026-11-01（老板：「回复不会传回平台」）：A2A 的回复只在对端自己的会话里产生，
+ *  平台要**按任务号去问**才拿得到。这里每 3 秒问一次，最多 90 秒；
+ *  **终态才算最终回复**（中途 `working` 可能还没内容）。
+ *  拿不到就如实说"没等到回复"，不假装它没回。
+ */
+async function leadPollReply(hid, taskId, sentText){
+  const note=document.getElementById('leadSayNote');
+  const box=document.getElementById('discussion2');
+  const shown=(text, cls)=>{
+    if(!box) return;
+    const d=document.createElement('div');
+    d.className='lead-reply '+(cls||'');
+    d.textContent=text;
+    box.appendChild(d);
+    box.scrollTop=box.scrollHeight;
+  };
+  shown('我：'+sentText, 'me');
+  if(note){ note.style.display=''; note.textContent='已送出，等它回复（最多 90 秒）…'; }
+  const t0=Date.now();
+  let last='';
+  while(Date.now()-t0 < 90000){
+    await new Promise(r=>setTimeout(r,3000));
+    try{
+      const r=await fetch('/api/docking/harness/'+encodeURIComponent(hid)+
+        '/a2a-task/'+encodeURIComponent(taskId));
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok || !d.ok) continue;
+      last=d.state||'';
+      if(d.terminal){
+        const _t=String(d.text||'');
+        if(_t){
+          shown('组长：'+_t, 'them');
+          leadChatSave('lead', _t, taskId, 'a2a-tasks/get', last);
+          if(note){ note.textContent='收到回复（状态 '+last+'）'; }
+        }else{
+          shown('（它状态是 '+last+'，但没有给出文字回复）', 'them');
+          if(note){ note.textContent='它做完了但没回话'; }
+        }
+        return;
+      }
+      if(note) note.textContent='已送出，它还在处理（'+last+'）…';
+    }catch(e){ /* 单次失败继续轮，别因为一次网络抖动就放弃 */ }
+  }
+  if(note) note.textContent='等了 90 秒没等到最终回复（最后状态：'+(last||'未知')+'）—— 它可能还在做，去对端会话看。';
+}
+
+async function leadSay(){
+  const inp=document.getElementById('leadSay');
+  const msg=document.getElementById('leadSayMsg');
+  const note=document.getElementById('leadSayNote');
+  const btn=document.getElementById('leadSayBtn');
+  const text=String((inp&&inp.value)||'').trim();
+  if(!text){ if(msg) msg.textContent='先写一句'; return; }
+  if(!wsId){ if(msg) msg.textContent='还没选中工作间'; return; }
+  // 组长是谁：走 _findLeadMember()（一处真相 —— 别再用 members-status，那是旧名单）
+  const lead=await _findLeadMember();
+  const hid=String((lead&&lead.harness_id)||'').trim();
+  if(!hid){
+    if(msg) msg.textContent='这间还没选组长（先去「员工对接」选）';
+    return;
+  }
+  if(msg) msg.textContent='发送中…';
+  if(btn) btn.disabled=true;
+  try{
+    const r=await fetch('/api/docking/harness/'+encodeURIComponent(hid)+'/deliver',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text})});
+    const d=await r.json().catch(()=>({}));
+    if(note){
+      note.style.display='';
+      if(r.ok && d.ok){
+        note.textContent='已送出（通道 '+String(d.channel||'?')+'）'
+          + (d.verified?'，已读回核对。':'，未核对（它不一定有读回手段）。')
+          + (d.note?('　'+String(d.note)):'');
+      }else{
+        note.textContent='没送出去：'+String(d.error||d.why||('HTTP '+r.status))
+          + (d.next?('　下一步：'+String(d.next)):'');
+      }
+    }
+    if(msg) msg.textContent = (r.ok && d.ok) ? '已发送' : '失败';
+    if(r.ok && d.ok){
+      if(inp) inp.value='';
+      leadChatSave('me', text, String(d.task_id||''), 'sent', String(d.channel||''));
+    }
+    /* ★2026-11-01（老板：「回复不会传回平台」）：
+       A2A 的回复**不会**自动出现在这个框里（它在对端自己的 a2a-* 会话里处理）。
+       但要能看到"它回了什么" —— 拿到任务号后轮询，终态就把回复贴进来。 */
+    if(r.ok && d.ok && d.task_id){
+      leadPollReply(hid, String(d.task_id), text);
+    }
+  }catch(e){
+    if(note){ note.style.display=''; note.textContent='没送出去：'+String(e&&e.message||e); }
+    if(msg) msg.textContent='失败';
+  }finally{
+    if(btn) btn.disabled=false;
+  }
+}
+
+/** 右侧栏两块面板的开关（互斥：点谁开谁，另一块自动收）。
+ *
+ *  ★2026-11-01（老板：「右侧边栏需要的功能按钮：员工对接、工作间员工列表（默认收纳，
+ *  点击后才在右侧栏展开）、工作间完全展开（展开后露出更多插件接入了的功能，以及插件接口使用说明）」）。
+ *
+ *  「员工对接」是**跳转**（去 /v5.html?ws=）；后两枚是**就地展开**，不离开本页。
+ */
+function wsTogglePanel(which){
+  const list=document.getElementById('wsSideMore');
+  const full=document.getElementById('wsFullPanel');
+  const wantList=(which==='list');
+  if(list) list.hidden = wantList ? !list.hidden : true;
+  if(full){
+    if(wantList){ full.hidden=true; }
+    else{
+      full.hidden = !full.hidden;
+      if(!full.hidden) loadWsFull();
+    }
+  }
+}
+
+/** 「工作间完全展开」：拉 /api/plugins/catalog（插件 + 平台内置扩展点 + 接口说明）并渲染。 */
+async function loadWsFull(){
+  const box=document.getElementById('wsFullBody');
+  if(!box) return;
+  box.innerHTML='<div class="xf-dim">正在取插件与扩展点…</div>';
+  let d={};
+  try{
+    const r=await fetch('/api/plugins/catalog');
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    d=await r.json();
+  }catch(e){
+    box.innerHTML='<div class="xf-dim">取不到（'+esc(String(e&&e.message||e))+'）—— 不影响本页其它操作。</div>';
+    return;
+  }
+  const api=d.plugin_api||{};
+  const plugs=d.plugins||{};
+  const names=Object.keys(plugs);
+  let h='';
+
+  /* ① 插件（真·插件，可能为空） */
+  h+='<div class="xf-sec">插件（'+names.length+'）</div>';
+  if(!names.length){
+    h+='<div class="xf-dim">还没登记任何插件。插件＝一条可执行命令，由你自己提供；'
+      +'平台只负责登记与调用，<b>不内置任何第三方代码</b>。</div>';
+  }else{
+    h+=names.map(function(k){
+      const v=plugs[k]||{};
+      return '<div class="xf-item"><b>'+esc(k)+'</b>'
+        +(v.desc?('　'+esc(String(v.desc))):'')
+        +'<div class="xf-api">'+esc(String(v.cmd||''))+'</div></div>';
+    }).join('');
+  }
+
+  /* ② 插件接口怎么用（照抄就能用） */
+  h+='<div class="xf-sec">插件接口怎么用</div>';
+  h+='<div>' + esc(String(api.what||'')) + '</div>';
+  [['列出','list'],['登记','add'],['删除','delete'],['调用','invoke']].forEach(function(pair){
+    if(api[pair[1]]){
+      h+='<div class="xf-item"><b>'+pair[0]+'</b><div class="xf-api">'+esc(String(api[pair[1]]))+'</div></div>';
+    }
+  });
+  if(api.note) h+='<div class="xf-dim" style="margin-top:4px">'+esc(String(api.note))+'</div>';
+
+  /* ③ 平台内置扩展点（已经能用的页面与接口） */
+  const bi=d.builtin||[];
+  h+='<div class="xf-sec">平台内置扩展点（'+bi.length+'）</div>';
+  h+=bi.map(function(b){
+    const link=b.page
+      ? ('<a href="'+esc(b.page)+'" target="_blank" rel="noopener">打开 '+esc(b.page)+'</a>')
+      : '<span class="xf-dim">（只有接口，没有页面）</span>';
+    return '<div class="xf-item"><b>'+esc(b.name||b.id)+'</b>　'+esc(String(b.what||''))
+      +'<div class="xf-api">'+esc(String(b.api||''))+'</div>'
+      +'<div>'+link+'</div></div>';
+  }).join('');
+
+  if(d.note) h+='<div class="xf-dim" style="margin-top:8px">'+esc(String(d.note))+'</div>';
+  box.innerHTML=h;
+}
+
+/** 去「接入 Agent」的地址：**永远带上本工作间**（单间模式 `?ws=`）。
+ *
+ *  ★2026-11-01（老板：「从工作间进入对接中心时要自动选定刚才那个工作间，不要让用户自己选」）：
+ *  对接中心（/docking.html）在收到 `?ws=` 时是**单间模式** —— 整块工作间选择器不渲染；
+ *  不带就退化成**总控模式**，用户得自己再选一次。所以从这里出去的任何"接入"入口都必须带。
+ */
+function _dockUrl(){
+  const p=new URLSearchParams(location.search);
+  const id=(wsId||p.get('ws_id')||p.get('ws')||'').trim();
+  return '/docking.html'+(id?('?ws='+encodeURIComponent(id)):'');
+}
 function syncWsPills(id){
   if(!id)return;
   const q='?ws='+encodeURIComponent(id);
-  const pill=document.getElementById('dockingPill');
-  if(pill)pill.href='/docking.html'+q;
+  /* ★2026-11-01（老板：「工作间里面不要放『接入 Agent』，这是放大厅的」）：
+     工作间右上**只有一枚**「员工对接」（`consolePill`）。接新 agent 是**大厅**的事 ——
+     从工作间要跳过去时用 `_dockUrl()`，它会自动带上本间。 */
+  /* ★2026-11-01（老板：「心智页面，增加『返回』（回到本间）」）：
+     功能区里指向别的页面的链接，一律带上本间 —— 否则到了那边**回不来具体的间**。 */
+  document.querySelectorAll('[data-ws-link]').forEach(function(a){
+    const base=String(a.getAttribute('href')||'').split('?')[0];
+    if(base) a.href=base+q;
+  });
   const cpill=document.getElementById('consolePill');
   if(cpill){
     cpill.href='/v5.html'+q;
-    cpill.title='本间对接中心 · '+id+'（只干这个工作间的活）';
+    cpill.title='员工对接 · '+id+'（本间的员工与对接：谁接上了、对上哪个岗位）＋ 派活/产物/验收';
   }
 }
 
@@ -4561,8 +5071,8 @@ function wsvMonCell(c){
   const status=String(m.status||'');
   const lamp=status==='working'||status==='entered'?'#3fb950'
     :(status==='discussing'||status==='reviewing'||status==='review'?'#58a6ff'
-      :(status==='blocked'||status==='paused'||status==='stuck'||status==='timeout'?'#f85149'
-        :(status==='waiting'?'#d29922':'#57606a')));
+      :(status==='blocked'||status==='paused'||status==='stuck'||status==='timeout'?'#c9483f'
+        :(status==='waiting'?'#9c8250':'#57606a')));
   const feed=window._wsvMonFeeds[hid]||window._wsvMonFeeds[m.member_id]||window._wsvMonFeeds[m.display_name]||{};
   const hmeta=h?(_wsvMonEscAttr(h.harness_id)+' · '+_wsvMonEscAttr((h.ai&&h.ai.model_name)||'模型未知')+' · msg '+String(h.message_count||0))
                :'未匹配 harness · 仅观察，点击无法激活';
@@ -4618,7 +5128,7 @@ function wsvMonMini(hid,mid){
   w=document.createElement('div'); w.className='wsv-mon-mini'; w.id='wsvMini-'+key; w.setAttribute('data-key',hid);
   w.innerHTML='<div class="wsv-mon-mini-head"><span>📺 '+_wsvMonEscAttr(hid)+'</span><span class="close" onclick="event.stopPropagation();this.parentNode.parentNode.remove()">✕</span></div>'
     +'<div class="wsv-mon-mini-body" onclick="wsvMonActivate(\''+_wsvMonEscAttr(hid)+'\',\''+_wsvMonEscAttr(mid||'')+'\')">'
-    +'<span class="mini-lamp"><i style="background:#d29922"></i><span class="mini-st">waiting</span></span>'
+    +'<span class="mini-lamp"><i style="background:#9c8250"></i><span class="mini-st">waiting</span></span>'
     +'<div class="mini-msg" style="color:#c9d1d9;line-height:1.5">正在接入实时画面…</div>'
     +'<span class="mini-hint">▶ 点击本窗口：激活对应软件并置顶</span>'
     +'</div>';

@@ -196,9 +196,12 @@ def _activate_via_a2a(url: str, task_id: str, task_rel: str, at: str,
         title += "\n\n" + report_hint
     try:
         res = send_task(url, title, None, timeout=timeout_sec, context_id=context_id)
-        tid = str((res or {}).get("id") or (res or {}).get("taskId") or "").strip()
+        # 不同实现把 task 放在不同位置：直接是 task（result.id）或包一层（result.task.id）
         task_obj = res.get("task") if isinstance(res.get("task"), dict) else (res or {})
-        used_ctx = str(task_obj.get("contextId") or context_id or "").strip()
+        tid = str(task_obj.get("id") or (res or {}).get("id")
+                  or task_obj.get("taskId") or (res or {}).get("taskId") or "").strip()
+        used_ctx = str(task_obj.get("contextId") or (res or {}).get("contextId")
+                       or context_id or "").strip()
         return {"result": "ok", "method": "a2a", "url": url, "at": at,
                 "a2a_task_id": tid, "a2a_context_id": used_ctx,
                 "detail": "已按 A2A `tasks/send` 派出%s（平台会按 `tasks/get` 回查并把结果写回账本）"

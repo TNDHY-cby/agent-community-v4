@@ -49,6 +49,11 @@ WHITELIST_EXPECT = {
     "/api/harness/bridge-path", "/api/harness/bridge-verify", "/api/harness/auto-connect",
     "/api/assistant/chat",
     "/api/docking/locate", "/api/docking/try-activate",
+    # ★2026-11-02（V126 一键清空接入）：真清要确认词 + 自动备份
+    #   （预览是 GET 只读，写白名单只管 POST/PUT/PATCH/DELETE）
+    "/api/docking/agents-reset",
+    # ★2026-11-02：员工档案里「删除」一个接入
+    "/api/harness/*",
     "/api/docking/harness/*",
     # ★2026-10-16 §12 补的两条：正文生成（屏 4）与一键脚本激活
     "/api/docking/compose-script", "/api/docking/run-script",
@@ -88,6 +93,10 @@ WHITELIST_EXPECT = {
     "/api/docking/harness/*/test-now", "/api/harness/*/verify", "/api/harness/activation-result",
     # ★2026-10-25 D后端-28/29：第①步真探协议；第④步"打开它的会话"
     "/api/harness/probe-protocol", "/api/docking/harness/*/bring-front",
+    # ★2026-11-01 FE-26 §5k（接入向导第⑤步改成「生成具体模板」）：把**模板存进平台**。
+    #   老板原话：「不应该是复制具体桥模板，而是保存到平台，到工作间用」——
+    #   它属于"接入"（接入的产物就是这份模板），不越"只做接入与激活"的界；只读 GET 不占白名单。
+    "/api/harness/*/template",
 }
 
 #: `FE-26` §2a：第一屏的功能模块（每块＝一件能当场办的事）。`data-dock-service` 用这些 id。

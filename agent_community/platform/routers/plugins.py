@@ -68,6 +68,21 @@ async def api_plugins_list():
     return {"plugins": _load_plugins()}
 
 
+@router.get("/api/plugins/catalog")
+async def api_plugins_catalog():
+    """「工作间完全展开」要露出的东西：**插件** + **平台内置扩展点** + **插件接口使用说明**。
+
+    ★2026-11-01（老板：「『工作间完全展开』展开后露出更多'插件'接入了的功能，
+    以及插件接口使用说明」）。
+
+    清单本体在 `platform/extensions_catalog.py`（一处真相），这里只取数 ——
+    界面与文档都从同一个地方来，不各写一份。
+    """
+    from .. import extensions_catalog as _cat
+
+    return _cat.catalog(_load_plugins())
+
+
 @router.post("/api/plugins")
 async def api_plugins_add(request: Request):
     _audit_log.record("plugin.install", actor="user", target="", detail="注册插件")

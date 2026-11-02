@@ -36,6 +36,74 @@ def _warn_once(key: str, msg: str, exc: BaseException | None = None) -> None:
     logger.warning("%s", msg, exc_info=exc is not None)
 
 
+async def _maybe_pull_a2a_card(info):
+    """**A2A 类 harness：读 Agent Card，把能力写进 metadata。**
+
+    ★2026-11-02（老板：「dsh接入的那个A2A协议的没有声明能力」）：
+    那个卡上明明有 `capabilities{streaming,extendedAgentCard,…}` / `skills[{id:'chat',…}]` /
+    `supportedInterfaces[{url,protocolBinding,protocolVersion}]`，但平台里 `tools`、`ai.capabilities`
+    都是空的 —— **注册时读了卡，却没把能力留下来**（MCP 那族有 `_maybe_pull_mcp_tools`，A2A 没有）。
+
+    行为（失败要说话，但不阻断注册）：
+      · 没有 `api_base_url` ⇒ 不动，理由打日志；
+      · 读不到卡 ⇒ 不动，理由打日志（**不让注册失败** —— 卡暂时读不到不代表这个 agent 不能派活）；
+      · 读到 ⇒ `metadata.agent_card` 存摘要；`info.tools` 填 skills 的 id（界面"能力"不再空白）。
+    """
+    hid = str(getattr(info, "harness_id", "?") or "?")
+    url = str(getattr(info, "api_base_url", "") or "").strip()
+    if not url:
+        print(f"[a2a] {hid} 未提供 api_base_url，跳过卡片能力读取", flush=True)
+        return info
+    try:
+        from ...a2a_client import discover_card as _discover
+
+        card = await asyncio.to_thread(_discover, url, 10)
+    except Exception as e:                                     # noqa: BLE001 — 读不到不阻断注册
+        print(f"[a2a] {hid} 读 Agent Card 失败（注册继续，但能力留空）：{type(e).__name__}: {str(e)[:160]}",
+              flush=True)
+        return info
+    if not isinstance(card, dict) or not card:
+        print(f"[a2a] {hid} 的 Agent Card 是空的（注册继续，但能力留空）", flush=True)
+        return info
+
+    skills = card.get("skills") or []
+    caps = card.get("capabilities") or {}
+    ifaces = card.get("supportedInterfaces") or []
+    summary = {
+        "name": str(card.get("name") or ""),
+        "version": str(card.get("version") or ""),
+        "description": str(card.get("description") or "")[:400],
+        "capabilities": caps if isinstance(caps, dict) else {},
+        "skills": [{"id": str(s.get("id") or ""), "name": str(s.get("name") or ""),
+                    "description": str(s.get("description") or "")[:200],
+                    "tags": list(s.get("tags") or [])}
+                   for s in skills if isinstance(s, dict)],
+        "interfaces": [{"url": str(i.get("url") or ""),
+                        "binding": str(i.get("protocolBinding") or ""),
+                        "version": str(i.get("protocolVersion") or "")}
+                       for i in ifaces if isinstance(i, dict)],
+        "input_modes": list(card.get("defaultInputModes") or []),
+        "output_modes": list(card.get("defaultOutputModes") or []),
+    }
+    md = getattr(info, "metadata", None)
+    if not isinstance(md, dict):
+        md = {}
+        try:
+            info.metadata = md
+        except Exception as e:                                 # noqa: BLE001
+            print(f"[a2a] {hid} 写不回 metadata（能力只在本次生效）：{str(e)[:120]}", flush=True)
+            return info
+    md["agent_card"] = summary
+    # ⚠️ **绝不要把 skills 塞进 info.tools**（我第一版就这么干，注册直接 500）：
+    #   info.tools 是 Tool 对象列表（harness_to_agent_card 要读 .capability_tag），
+    #   塞字符串列表会 AttributeError: 'str' object has no attribute 'capability_tag'。
+    #   A2A 的 skills 不是工具面，它就放 metadata.agent_card，界面从那儿读。
+    sids = [s["id"] for s in summary["skills"] if s["id"]]
+    print(f"[a2a] {hid} 读到能力：skills={sids or '（卡上没写）'} "
+          f"capabilities={sorted(k for k, v in (caps or {}).items() if v)}", flush=True)
+    return info
+
+
 async def _maybe_pull_mcp_tools(info):
     """MCP 类 harness：从远程 MCP 服务器的 `tools/list` 拉工具表并写回 `info.tools`。
 
@@ -485,6 +553,13 @@ async def register_harness(request: Request):
         info = await _maybe_pull_mcp_tools(info)
         if info.tools:
             harness_manager.register(info)  # 重新注册以持久化动态 tools
+    # ── A2A 类型：读 Agent Card，把 skills / capabilities 存进 metadata ──
+    #   ★2026-11-02（老板：「dsh接入的那个A2A协议的没有声明能力」）：卡上明明有，平台没存。
+    elif getattr(info, "wakeup_method", None) == WakeupMethod.A2A:
+        _before = hash(str(getattr(info, "metadata", {}) or {}))
+        info = await _maybe_pull_a2a_card(info)
+        if hash(str(getattr(info, "metadata", {}) or {})) != _before or getattr(info, "tools", None):
+            harness_manager.register(info)  # 重新注册以持久化能力摘要
     elif getattr(info, "api_base_url", "") and getattr(info, "wakeup_method", None) != WakeupMethod.A2A:
         # ── 自动探测 HTTP API（http_api 类）：注册时若带 api_base_url，探测确认可用性
         #    并自动把 wakeup_method 升级为 http_api（平台就能直接 HTTP 推送唤醒，而非只写文件）
@@ -508,21 +583,16 @@ async def register_harness(request: Request):
     # 必须放在 wakeup_method 探测/升级**之后** —— 放前面会按探测前的档位生成模板，
     # 比如 http_api 探测成功前按 "http" 或默认档建，模板就与实际不符。
     # 幂等：参数没变就不覆盖（保留用户手工改过的模板与原 created_at）。
-    # ★2026-11-01（真机清单 #6）：**A2A 没有桥**，不该给它生成桥模板 ——
-    #   实测注册响应里带出 `{template: "pending_poll", complete: false, missing: ["WORK_DIR"]}`，
-    #   与"不需要桥"直接打架，界面照此显示会把一个**正常的 A2A** 说成"桥没配好"。
-    _l2 = None
-    if getattr(info, "wakeup_method", None) == WakeupMethod.A2A:
-        _l2 = {"skipped": True, "why": "A2A 按 JSON-RPC 直派，**不需要桥** ⇒ 没有桥模板"}
-    else:
-        try:
-            from ..bridge_template import ensure as _ensure_l2
-            _l2 = _ensure_l2(info)
-            if _l2 and not _l2.get("complete"):
-                print(f"[L2] {info.harness_id} 桥模板参数不全，缺 {_l2.get('missing')}",
-                      flush=True)
-        except Exception as _e:
-            print(f"[L2] 桥模板生成失败（不阻断注册）: {_e}", flush=True)
+    # ★2026-11-01（老板：「注册后要变成一个**具体模板**，工作间里用**模板 + 实时路径**重新拉人」）：
+    #   A2A 也走这条 —— 它没有桥，但**要有具体模板**（端点/卡/派活协议/回报契约，与工作间无关那部分）。
+    #   上一版把它摘掉了（为躲 `missing:["WORK_DIR"]` 噪声），那只解决了噪声、丢了模板本身。
+    try:
+        from ..bridge_template import ensure as _ensure_l2
+        _l2 = _ensure_l2(info)
+        if _l2 and not _l2.get("complete"):
+            print(f"[L2] {info.harness_id} 模板参数不全，缺 {_l2.get('missing')}", flush=True)
+    except Exception as _e:
+        print(f"[L2] 模板生成失败（不阻断注册）: {_e}", flush=True)
 
     # ── V-15 步骤6：接入档位 + 提醒（§10.1 时机1「注册后」）──
     #  平台不再替外端架桥，就必须把话说清；
@@ -573,18 +643,15 @@ async def register_harness(request: Request):
         "harness.register", actor="system", target=info.harness_id,
         detail=f"name={getattr(info, 'harness_name', '')} token={'reuse' if _token_pre else 'new'}",
     )
-    # V-15 步骤4：L2 具体桥模板摘要 —— 注册响应直接告诉用户"差什么才能架桥"，
+    # V-15 步骤4：L2 具体模板摘要 —— 注册响应直接告诉用户"还差什么才能落地"，
     # 比等到建工作间时才报错早一步（注册/UX 目标：用户不用当信息中转）。
-    # ★2026-11-01（清单 #6）：A2A **没有桥** ⇒ 摘要里如实写"跳过"，不要给 missing:["WORK_DIR"]。
-    if getattr(info, "wakeup_method", None) == WakeupMethod.A2A:
-        _l2 = {"skipped": True, "has_template": False,
-               "note": "A2A 按 JSON-RPC 直派，**不需要桥** ⇒ 没有桥模板要配"}
-    else:
-        try:
-            from ..bridge_template import status_of as _l2_status
-            _l2 = _l2_status(info)
-        except Exception:
-            _l2 = {"has_template": False, "note": "模板摘要读取失败（不影响注册）"}
+    # ★2026-11-01：A2A 也照常给（它是"派活契约"型模板，不是桥模板）——
+    #   界面上要能分清：`artifact_kind=contract` ⇒ 无桥；`script` ⇒ 有桥。
+    try:
+        from ..bridge_template import status_of as _l2_status
+        _l2 = _l2_status(info)
+    except Exception:
+        _l2 = {"has_template": False, "note": "模板摘要读取失败（不影响注册）"}
     # ★2026-10-13（V44 #15 / 老板「不同接口不同引导」）：
     #   **按叫醒方式给各自的五步引导**（acp / file_poll 要走桥，http_api / mcp 不用桥，
     #   clipboard 只能人工中转，http 兜底等于"先落盘、暂不叫醒"）。

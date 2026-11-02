@@ -82,6 +82,60 @@ def list_pending() -> list:
     return _load()
 
 
+def parse_task(task: dict) -> dict:
+    """把一条 A2A task 解析成 `{state, text, artifacts, terminal}`（**一处真相**）。
+
+    ★2026-11-01：这段原来内联在 `sweep_once()` 里（派活回写账本用）。
+    「跟组长说话要取回回复」也需要同一套解析 ⇒ 抽出来共用，别在两处各写一份
+    （同一个错写两遍的教训已经吃过一次）。
+
+    三个真机踩过的细节，都写在这儿：
+      ① v1.0 的 `status` 是**对象**：`{"state": "TASK_STATE_WORKING", ...}`
+         —— 直接 `str(status)` 会得到一整串字典文本，永远比不中终态；
+      ② 枚举值带前缀：`TASK_STATE_COMPLETED` ⇒ 要归一化掉；
+      ③ 结果文本优先级 = **artifacts（产物）→ status.message（附言）→ 顶层字段**，
+         且一个 artifact 内部的 `parts` 是**逐词片段**，必须 `""` 直拼（用 `\n` 拼会碎句）。
+    """
+    task = task if isinstance(task, dict) else {}
+    _raw_status = task.get("status")
+    if isinstance(_raw_status, dict):
+        state = str(_raw_status.get("state") or _raw_status.get("status") or "").strip().lower()
+    else:
+        state = str(_raw_status or task.get("state") or "").strip().lower()
+    if state.startswith("task_state_"):
+        state = state[len("task_state_"):]
+    artifacts = task.get("artifacts") or task.get("outputs") or []
+    if isinstance(artifacts, dict):
+        artifacts = list(artifacts.values())
+    text = ""
+    if isinstance(artifacts, list):
+        _t = []
+        for a in artifacts:
+            _parts = (a or {}).get("parts") or []
+            _seg = "".join(str(p.get("text") or "") for p in _parts if isinstance(p, dict)).strip()
+            if _seg:
+                _t.append(_seg)
+        text = "\n".join(_t).strip()
+    if not text:
+        _msg = (_raw_status or {}).get("message") if isinstance(_raw_status, dict) else None
+        if isinstance(_msg, dict):
+            _parts = _msg.get("parts") or []
+            text = "".join(str((p or {}).get("text") or "") for p in _parts
+                           if isinstance(p, dict)).strip()
+    if not text:
+        for k in ("result", "text", "summary"):
+            if isinstance(task.get(k), str) and task.get(k).strip():
+                text = task[k].strip()
+                break
+    terminal = state in ("completed", "complete", "done", "succeeded", "failed",
+                         "canceled", "cancelled", "rejected", "error")
+    return {"state": state, "text": text,
+            "artifacts": artifacts if isinstance(artifacts, list) else [],
+            "terminal": terminal,
+            "task_id": str(task.get("id") or task.get("taskId") or "").strip(),
+            "context_id": str(task.get("contextId") or "").strip()}
+
+
 def sweep_once(*, now: float | None = None, gap: float | None = None) -> dict:
     """对每条待回写查一次 `GetTask`：终态就写进账本并出队。
 
@@ -129,46 +183,9 @@ def sweep_once(*, now: float | None = None, gap: float | None = None) -> dict:
         #      —— 原来直接 `str(status)` 会变成一整串字典文本，永远比不中终态（账本永远停在 issued）。
         #   ② v1.0 的枚举值带前缀：`TASK_STATE_COMPLETED` / `TASK_STATE_FAILED` …
         #      —— 要归一化掉前缀再比。
-        _raw_status = task.get("status")
-        if isinstance(_raw_status, dict):
-            state = str(_raw_status.get("state") or _raw_status.get("status") or "").strip().lower()
-        else:
-            state = str(_raw_status or task.get("state") or "").strip().lower()
-        if state.startswith("task_state_"):
-            state = state[len("task_state_"):]
-        artifacts = task.get("artifacts") or task.get("outputs") or []
-        if isinstance(artifacts, dict):
-            artifacts = list(artifacts.values())
-        # 结果文本：**优先级 = artifacts（那是"产物"）→ status.message（附言）→ 顶层字段**
-        #   真机实测：两者都有时，`status.message` 往往只是「收到」这种短附言，
-        #   完整回答在 `artifacts[].parts[]` 里。取错会让人以为对端只说了一个词。
-        text = ""
-        if isinstance(artifacts, list):
-            _t = []
-            for a in artifacts:
-                # ⚠️ 一个 artifact 内部的 `parts` 是**按顺序的片段**（实测对端会逐词给），
-                #    必须原样直拼（`""`）——用 `"\n"` 拼会得到「我已\n收到\n这条…」这种碎句。
-                _parts = (a or {}).get("parts") or []
-                _seg = "".join(str(p.get("text") or "") for p in _parts if isinstance(p, dict)).strip()
-                if _seg:
-                    _t.append(_seg)
-            text = "\n".join(_t).strip()
-        if not text:
-            _msg = (_raw_status or {}).get("message") if isinstance(_raw_status, dict) else None
-            if isinstance(_msg, dict):
-                _parts = _msg.get("parts") or []
-                text = "".join(str((p or {}).get("text") or "") for p in _parts
-                               if isinstance(p, dict)).strip()
-        if not text:
-            for k in ("result", "text", "summary"):
-                if isinstance(task.get(k), str) and task.get(k).strip():
-                    text = task[k].strip()
-                    break
-        terminal = state in ("completed", "complete", "done", "succeeded", "failed",
-                             "canceled", "cancelled", "rejected", "error")
-        # ★只认**终态**才算有结果。原来还允许"带 artifacts 就算"，实测有坑：
-        #   对端报 `working` 但同时挂了 artifacts 占位 ⇒ 会被提前记成 delivered（假完成）。
-        #   A2A 规范要求给 status，只给产物不给状态的实现本来就不合规范 ⇒ 让它一直等（有 TTL 兜底）。
+        _parsed = parse_task(task)
+        state, text = _parsed["state"], _parsed["text"]
+        artifacts, terminal = _parsed["artifacts"], _parsed["terminal"]
         if not terminal:
             keep.append(it)                                  # 还在干，留着
             continue

@@ -208,6 +208,9 @@ body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSys
     <div class="spacer"></div>
     <span class="refresh-info" id="refreshInfo">尚未刷新</span>
     <button class="btn" id="refreshBtn" onclick="Ops.tick(true)">⟳ 刷新</button>
+    <!-- ★2026-11-01（老板：「监控室不要放功能区里面，在看板页面里面放一个监控室入口按钮」）：
+         监控室属于「看板这一族」的只读画面墙，入口放这里，不占工作间功能区。 -->
+    <a class="navlink" href="/monitor.html" title="监控室 · 画面墙（只读快照）">🖥 监控室</a>
     <a class="navlink" href="/handover.html">🧾 回执台</a>
     <a class="navlink" href="/booths.html">🏗 隔间</a>
     <a class="navlink" href="/">◈ 大厅</a>

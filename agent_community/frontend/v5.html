@@ -255,7 +255,7 @@
   <nav class="live-links">
     <a href="/" title="回到实时大厅">实时大厅</a>
     <a href="/workshop.html" id="navWs" title="工作间（讨论与工作）">工作间</a>
-    <a href="/docking.html" id="navDock" title="对接中心 · 把外部 Agent 接进来">对接中心</a>
+    <a href="/docking.html" id="navDock" title="接入 Agent · 把外面的 agent 接进来">接入 Agent</a>
     <a href="/mind.html" title="心智档案 · 根A 实况（记忆/日志/死胡同）">心智档案</a>
     <a href="/hub.html" title="全流程说明（只讲不做）">流程说明</a>
   </nav>
@@ -390,8 +390,24 @@
   </div>
 
   <div class="card" id="sec3">
-    <div class="v5-sec"><span class="n">UNIT-03</span>接组长（打勾 + 写覆盖范围 → 才可能 active）</div>
-    <div class="v5-sub">组长照对接单做完动作后，回这里<b>如实打勾</b>：没做的步不许勾。证据不够平台只记 acked，不算真接上。</div>
+    <div class="v5-sec"><span class="n">UNIT-03</span>接组长</div>
+    <!-- ★2026-11-01（老板：「组长接进工作间很麻烦」）：
+         有协议通道的组长（A2A 等）**平台能自己发、自己看回执** ——
+         不用复制对接单、不用去对方会话粘贴、不用打勾、不用手写覆盖范围。
+         平台自己看到"它把任务做完了"就记 `protocol_ok`（来源 platform-observed），
+         而不是"人打了个勾"。人工那套收进下面的折叠，只在真的只能人工搬时才用。 -->
+    <div class="v5-sub"><b>有协议的组长（A2A 等）：一步就能接</b> —— 平台自己发一条探针、自己看它回执，
+      验过了就记「平台观测」（不是人打勾）。</div>
+    <div class="row">
+      <button class="p" onclick="autoProtocolProbe(this)">平台自己接它进来（推荐）</button>
+      <span class="msg" id="ppMsg"></span>
+    </div>
+    <div id="ppOut"></div>
+
+    <details style="margin:10px 0">
+      <summary style="cursor:pointer;color:var(--dim);font-size:11.5px">
+        只能人工搬的时候才用这套（打勾 + 写覆盖范围）</summary>
+      <div class="v5-sub" style="margin-top:6px">组长照对接单做完动作后，回这里<b>如实打勾</b>：没做的步不许勾。证据不够平台只记 acked，不算真接上。</div>
     <div class="row">
       <label class="f">组长会话名（照对接单改）<input id="leadLabel" placeholder="WS-…-组长-01"></label>
       <label class="f">档位
@@ -421,6 +437,7 @@
       <span class="msg" id="evMsg"></span>
     </div>
     <div id="evOut"></div>
+    </details>
   </div>
 
   <!-- ★2026-10-31（D后端-60 §3-1 权威顺序）：资料库指向 = 第 7–9 步，排在**接组长之后、名单之前**

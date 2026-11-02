@@ -199,9 +199,10 @@ def do_dispatch(workshop_id: str, body: dict, *, issued_by: str = "lead",
             '"ok":true,"result":"你的结果或产物清单"}\n'
             "（不回执的话，平台只能按 `tasks/get` 回查你的状态，产物会被记成空。）"
             % (_base, workshop_id, int(seq or 0), harness_id or ""))
-    # ★2026-11-01（老板拍板：「一个员工可开多个会话，但必须在上下文老化之后换新」）：
-    #   A2A 的会话 = `contextId`。这里取**该工位的当前会话**（没有就建；老化就换新并留痕）。
-    #   派活 body 里显式给了 `a2a_context_id` 就用它（人工覆盖，排查用）。
+    # ★2026-11-01（老板：「注册后变为一个**具体模板**，工作间里**不用连接好的会话**，
+    #   而是用**模板 + 工作间实时路径**重新拉人」）：
+    #   派活参数一律**现算**（L3），不再用注册时那套固定值 —— 同一个 harness 进多个工作间时，
+    #   任务路径 / 工位 / 会话号 / 回报 body 都必须是**这次**的。
     _ctx = ""
     _ctx_info = {}
     _is_a2a = False
@@ -209,6 +210,7 @@ def do_dispatch(workshop_id: str, body: dict, *, issued_by: str = "lead",
         _is_a2a = _dp._harness_is_a2a(harness_id or "")
     except Exception:                                          # noqa: BLE001 — 判不出来就当非 A2A
         _is_a2a = False
+    _l3 = None
     if _is_a2a:
         _explicit = str((body or {}).get("a2a_context_id") or "").strip()
         if _explicit:
@@ -222,12 +224,47 @@ def do_dispatch(workshop_id: str, body: dict, *, issued_by: str = "lead",
             except Exception as _e:                            # noqa: BLE001 — 取不到就不带（退回每次新开）
                 print("[dispatch] 取 A2A 当前会话失败（本条按不带 contextId 发）：%s: %s"
                       % (type(_e).__name__, _e), flush=True)
-        if _ctx:
-            _report_hint += ("\n\n【如果你觉得上下文已经很长（压缩过几次）】"
-                             "回复里带上 `[NEED_NEW_CONTEXT]`，平台下次会给你开一个新会话。")
+        # L3：L2 具体模板 + 这次的工作间实时路径 ⇒ 落地参数（端点/协议/会话/回报契约）
+        try:
+            from ..server import harness_manager as _hm
+            from ..bridge_template import render_for_workshop as _render
+
+            _sess = (_hm.sessions or {}).get(harness_id or "")
+            if _sess is not None and getattr(_sess, "info", None) is not None:
+                _l3 = _render(_sess.info, workshop_id=workshop_id, workshop_dir=str(wp),
+                              slot_dir=slot_dir, member_seq=int(seq or 0),
+                              task_seq=int(task_seq), task_rel=task_rel, context_id=_ctx)
+                _ctx = str(_l3.get("context_id") or _ctx)
+        except Exception as _e:                                # noqa: BLE001 — L3 失败就退回手拼
+            print("[dispatch] L3 落地参数渲染失败（退回手拼回报契约）：%s: %s"
+                  % (type(_e).__name__, _e), flush=True)
+    if _l3 and isinstance(_l3.get("report"), dict):
+        # 用模板给的回报契约（含本次 workshop_id / member_id），不再手拼
+        _rp = _l3["report"]
+        _report_hint = ("【干完怎么回报】POST %s ，body：\n%s\n"
+                        "（不回执的话，平台只能按 `tasks/get` 回查你的状态，产物会被记成空。）"
+                        % (_rp.get("url"), json.dumps(_rp.get("body") or {}, ensure_ascii=False)))
+    elif not _report_hint and _base:
+        _report_hint = (
+            "【干完怎么回报】POST %s/api/harness/task-result ，body：\n"
+            '{"workshop_id":"%s","member_id":"m%d","harness_id":"%s",'
+            '"ok":true,"result":"你的结果或产物清单"}\n'
+            "（不回执的话，平台只能按 `tasks/get` 回查你的状态，产物会被记成空。）"
+            % (_base, workshop_id, int(seq or 0), harness_id or ""))
+    if _is_a2a and _ctx:
+        _report_hint += ("\n\n【如果你觉得上下文已经很长（压缩过几次）】"
+                         "回复里带上 `[NEED_NEW_CONTEXT]`，平台下次会给你开一个新会话。")
     wake = _dp.activate(wp, slot_dir, harness_id=harness_id, tier=tier,
                         task_id="T-%03d" % task_seq, task_rel=task_rel,
                         report_hint=_report_hint, a2a_context_id=_ctx)
+    # ★2026-11-02（老板：「工作过程中没有回复，让用户以为是掉线了」）：
+    #   界面要按 a2a_task_id 去查进度，就得知道**问哪个 harness** —— 这里一并带出去，
+    #   免得前端再翻名单自己去猜（那个坑已经踩过：members-status 是旧名单）。
+    try:
+        if isinstance(wake, dict):
+            wake["harness_id"] = str(harness_id or "")
+    except Exception:                                          # noqa: BLE001 — 只是补字段，不改结论
+        pass
     # 派出去就记一笔用量（平台自己数，**不信对端自报**）—— 到阈值就换新会话
     if _is_a2a and _ctx and not (body or {}).get("a2a_context_id"):
         try:

@@ -87,10 +87,14 @@
   <div class="position">心智档案 · 根A（只存认知，不存任务与产物）</div>
   <div class="spacer" style="flex:1"></div>
   <nav class="live-links">
+    <!-- ★2026-11-01（老板：「心智页面，增加『返回』（回到本间）」）：
+         这枚按 ?ws= 回到**刚才那个工作间**（不是回到一个通用工作间页）。
+         没带参数时退回工作间首页，并如实标出"没带工作间"。 -->
+    <a href="/workshop.html" id="backWs" title="返回刚才那个工作间">← 返回本间</a>
     <a href="/" title="回到实时大厅">实时大厅</a>
-    <a href="/workshop.html" title="工作间（讨论与工作）">工作间</a>
+    <a href="/workshop.html" title="工作间（讨论与工作）" id="plainWs">工作间</a>
     <!-- 控制台从工作间页进（老板 2026-10-30：只对单个工作间生效） -->
-    <a href="/docking.html" title="对接中心 · 把外部 Agent 接进来">对接中心</a>
+    <a href="/docking.html" title="接入 Agent · 把外面的 agent 接进来">接入 Agent</a>
   </nav>
 </header>
 
@@ -144,5 +148,25 @@
 </main>
 
 <script src="mind.js"></script>
+<script>
+/* ★2026-11-01（老板：「心智页面，增加『返回』（回到本间）」）：
+   前一页带过来的工作间 id（`?ws=`，也兼容 `?ws_id=`）写进「返回本间」这枚链接。
+   没带就退回工作间首页，并把文案如实改成「工作间（未带本间）」—— 不假装能回本间。 */
+(function(){
+  var q = new URLSearchParams(location.search);
+  var id = (q.get('ws') || q.get('ws_id') || '').trim();
+  var back = document.getElementById('backWs');
+  var plain = document.getElementById('plainWs');
+  if (!back) return;
+  if (id){
+    back.href = '/workshop.html?ws_id=' + encodeURIComponent(id);
+    back.title = '返回本间：' + id;
+    if (plain) plain.href = '/workshop.html?ws_id=' + encodeURIComponent(id);
+  } else {
+    back.textContent = '← 工作间（未带本间）';
+    back.title = '这一页没有带工作间 id（从工作间功能区进来就会带上）';
+  }
+})();
+</script>
 </body>
 </html>

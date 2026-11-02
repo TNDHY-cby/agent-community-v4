@@ -341,6 +341,54 @@
 </div>
 
 <!-- 模板：一个 harness 的绑定行 -->
+<!-- ★2026-11-02（老板：「做一个功能让用户可以一键清理掉接入的agent，包括注册的模板，
+     放在大厅对接中心里」）。设计稿 design-docs/V126_一键清空接入_设计_2026-11-02.md
+     —— 折叠收起，不打扰正常接入；**先预览、要打确认词、自动备份**，不许一个红按钮就清。 -->
+<details class="danger-zone" id="agentsResetZone">
+  <summary>清空所有接入（危险操作）</summary>
+  <div class="dz-body">
+    <p class="dz-lead">把<b>所有已接入的 agent 和它们的注册模板</b>一次性清掉。
+      <b>工作间、账本、产物不动</b>，但引用过它们的成员会变成「孤儿」。</p>
+    <div class="dz-row">
+      <button class="btn danger" type="button" onclick="dzPreview()">先看一眼会删什么</button>
+      <span class="dock-msg" id="dzMsg"></span>
+    </div>
+    <div id="dzPreview" class="dz-preview"></div>
+    <div class="dz-row" id="dzConfirmRow" style="display:none">
+      <label class="dz-label">确认清空请输入
+        <code>清空接入</code>：
+        <input id="dzConfirm" type="text" autocomplete="off" placeholder="清空接入">
+      </label>
+      <button class="btn danger" type="button" id="dzGo" onclick="dzReset()" disabled>我确认，清空</button>
+    </div>
+    <div id="dzResult" class="dz-result"></div>
+  </div>
+</details>
+
+<style>
+.danger-zone{margin:26px auto 40px;max-width:960px;border:1px solid var(--rule);border-radius:12px;background:var(--bg2)}
+.danger-zone>summary{cursor:pointer;padding:11px 16px;font-size:12.5px;color:var(--muted);list-style:none}
+.danger-zone>summary::-webkit-details-marker{display:none}
+.danger-zone>summary:before{content:"▸ ";color:var(--bad)}
+.danger-zone[open]>summary:before{content:"▾ "}
+.dz-body{padding:0 16px 16px;border-top:1px solid var(--rule)}
+/* ★2026-11-02（V126/删除入口）：破坏性动作给红边，hover 才铺红底 —— 看得出来但别太吓人 */
+.dock-detail-btn.danger{border-color:var(--bad);color:var(--bad)}
+.dock-detail-btn.danger:hover{background:var(--bad);color:#fff}
+.dz-lead{font-size:12px;color:var(--muted);line-height:1.7;margin:10px 0}
+.dz-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.dz-label{font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.dz-label input{background:var(--bg3);border:1px solid var(--rule);border-radius:7px;padding:6px 9px;
+  color:var(--ink);font:inherit;font-size:12.5px;width:130px}
+.dz-preview{font-size:12px;color:var(--ink);line-height:1.8}
+.dz-preview .dz-agent{font-family:ui-monospace,monospace;color:var(--accent-hi)}
+.dz-result{font-size:12px;line-height:1.8;margin-top:8px}
+.dz-result .ok{color:var(--ok)} .dz-result .bad{color:var(--bad)}
+.btn.danger{border-color:var(--bad);color:var(--bad)}
+.btn.danger:hover:not(:disabled){background:var(--bad);color:#fff}
+.btn.danger:disabled{opacity:.45;cursor:not-allowed}
+</style>
+
 <template id="tpl-binding">
   <li class="bind-row">
     <span class="b-ws"></span>

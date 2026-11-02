@@ -19,7 +19,9 @@
 """
 from __future__ import annotations
 
+import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -200,6 +202,84 @@ async def write_manifest(workshop_id: str, request: Request):
     written = _mf.write(wp, mf)
     return {"ok": True, "manifest": mf, **written,
             "next": "让组长按 manifest 的 entry_points 真建文件；再点「重新校验」"}
+
+
+def _lead_chat_path(ws) -> Path:
+    """组长对话落盘位置：<工作区>/_meta/lead-chat.jsonl（**落在用户自己的工作区里**）。"""
+    wp = Path(str(getattr(ws, "workspace_dir", "") or ""))
+    d = wp / "_meta"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "lead-chat.jsonl"
+
+
+@router.post("/api/workshop/{workshop_id}/lead-chat")
+async def lead_chat_append(workshop_id: str, request: Request):
+    """追加一条「组长对话」记录。
+
+    ★2026-11-02（老板：「刷新页面之后聊天记录都没了」）：
+    组长对话框原来只往 DOM 里 append，**一刷新就没了** —— 用户以为"没回复到平台"，
+    其实回复早就回来了（`…/a2a-task/{task_id}` 查得到），只是界面没存。
+
+    body: `{role: "me"|"lead", text, task_id?, source?, state?}`
+    `source` 写清这条是谁产生的：`sent`（平台发出）/ `a2a-tasks/get`（平台按任务号取回）/ `platform`。
+    """
+    ws = _ws(workshop_id)
+    if ws is None:
+        return _no_ws(workshop_id)
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    text = str(body.get("text") or "").strip()
+    if not text:
+        return JSONResponse({"ok": False, "code": "EMPTY_TEXT",
+                             "error": "这条是空的，不记"}, status_code=400)
+    rec = {
+        "at": datetime.now().isoformat(timespec="seconds"),
+        "role": ("lead" if str(body.get("role") or "") == "lead" else "me"),
+        "text": text[:4000],
+        "task_id": str(body.get("task_id") or "")[:80],
+        "source": str(body.get("source") or "sent")[:24],
+        "state": str(body.get("state") or "")[:24],
+    }
+    pf = _lead_chat_path(ws)
+    try:
+        with pf.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception as e:                                     # noqa: BLE001 — 写不进去要如实说
+        return JSONResponse({"ok": False, "code": "WRITE_FAILED",
+                             "error": "对话记录写不进去：%s: %s" % (type(e).__name__, str(e)[:160]),
+                             "next": "看工作区 `_meta/` 是否可写"}, status_code=500)
+    return {"ok": True, "saved": rec, "file": str(pf.name),
+            "note": "存在工作区的 `_meta/lead-chat.jsonl`，刷新页面会读回来。"}
+
+
+@router.get("/api/workshop/{workshop_id}/lead-chat")
+async def lead_chat_list(workshop_id: str, limit: int = 200):
+    """读回「组长对话」历史（最近 `limit` 条，按时间正序返回）。"""
+    ws = _ws(workshop_id)
+    if ws is None:
+        return _no_ws(workshop_id)
+    pf = _lead_chat_path(ws)
+    if not pf.is_file():
+        return {"ok": True, "messages": [], "total": 0,
+                "note": "这个工作间还没有对话记录（发第一句就会建）"}
+    items = []
+    try:
+        for line in pf.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                items.append(json.loads(line))
+            except Exception:                                  # noqa: BLE001 — 坏行跳过，不整份失败
+                continue
+    except Exception as e:                                     # noqa: BLE001
+        return JSONResponse({"ok": False, "error": "读对话记录失败：%s: %s"
+                             % (type(e).__name__, str(e)[:160])}, status_code=500)
+    lim = max(1, min(1000, int(limit or 200)))
+    return {"ok": True, "messages": items[-lim:], "total": len(items)}
 
 
 @router.get("/api/workshop/{workshop_id}/manifest")

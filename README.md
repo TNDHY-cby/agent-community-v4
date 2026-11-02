@@ -67,7 +67,7 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 | **★ 我要怎么用这个平台（从零到跑通，15 步）** | [`design-docs/使用流程_从零到跑通.md`](design-docs/使用流程_从零到跑通.md) ← **用户先看这份** |
 | **项目到底在做什么、边界在哪** | [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) |
 | **完整建模（主模型 26 节 + 12 分册 + 明细册）** | [`V116`](design-docs/V116_v5完整模型_整合版_2026-10-27.md) · [`model/`](design-docs/model/) · [`V118`](design-docs/V118_组织拓扑与团队资产_建模_2026-10-28.md) |
-| **全部设计稿（166 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
+| **全部设计稿（169 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
 | **本地优先 + 中心中转**（当前架构方向） | [`design-docs/V66_本地优先与中心中转架构设计.md`](design-docs/V66_本地优先与中心中转架构设计.md) |
 | **派活与回执走中转 / 一个 Hub 服务多家公司** | [`V67`](design-docs/V67_派活与回执走中转_M2设计.md) · [`V68`](design-docs/V68_一个Hub服务多家公司_公司隔离设计.md) |
 | **没有公网服务器怎么当中转**（三条路） | [`design-docs/RUNBOOK_没有公网服务器怎么当中转.md`](design-docs/RUNBOOK_没有公网服务器怎么当中转.md) |

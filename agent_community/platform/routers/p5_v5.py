@@ -57,6 +57,62 @@ async def lead_roster(direction: str = ""):
     return _roster_mod.candidates(direction)
 
 
+def _a2a_contract_section(*, harness_id: str, workshop_id: str, slot_dir: str,
+                          workshop_dir: str, member_seq: int = 0) -> tuple:
+    """A2A 工位的「派活方式」段（**L3：L2 模板 + 工作间实时路径**）。
+
+    ★2026-11-01（老板：「注册后变为一个具体模板，工作间里用**模板 + 实时路径**重新拉人」）：
+    **成员对接单与组长对接单共用这一处** —— 别再各写一份副本（规则 20：一处真相）。
+
+    返回 `(markdown 段, 元信息 dict)`。任何异常都在内部兜住并写进正文 ——
+    **对接单绝不能因为它炸掉就 500**（用户看到"打不开"会当成平台坏了）。
+    """
+    l3, ctx_id, ci = {}, "", {}
+    try:
+        from ..server import harness_manager as _hm
+        from ..a2a_context import current_for as _ctx_current
+        from ..bridge_template import render_for_workshop as _render
+
+        ci = _ctx_current(harness_id, workshop_id, slot_dir)
+        ctx_id = str(ci.get("context_id") or "")
+        sess = (_hm.sessions or {}).get(harness_id)
+        if sess is not None and getattr(sess, "info", None) is not None:
+            l3 = _render(sess.info, workshop_id=workshop_id, workshop_dir=workshop_dir,
+                         slot_dir=slot_dir, member_seq=int(member_seq),
+                         task_rel="", context_id=ctx_id)
+    except Exception as e:                                     # noqa: BLE001 — 渲染失败要说清
+        print("[kit] A2A 落地契约渲染失败（单子会缺端点/回报）：%s: %s" % (type(e).__name__, e),
+              flush=True)
+    meta = {"endpoint": "", "context_id": ctx_id, "seq": (ci or {}).get("seq"),
+            "report": {}, "error": ""}
+    try:
+        meta["endpoint"] = str((l3 or {}).get("endpoint") or "")
+        rp = (l3 or {}).get("report") or {}
+        meta["report"] = rp if isinstance(rp, dict) else {}
+        rows = [
+            "- **平台会往这里发任务**：`%s`" % (meta["endpoint"]
+                                          or "（缺 `api_base_url` —— 回对接中心补）"),
+            "- **协议**：JSON-RPC `tasks/send`（对端只认 v1.0 时平台会自动改发 `SendMessage`）",
+            "- **会话**：平台派活会带 `contextId`（同一工位复用同一上下文；上下文老化后自动换新）",
+            "- **当前会话**：`%s`（第 %s 个）" % (ctx_id or "（还没建）",
+                                          (str(meta["seq"] or "?") if ctx_id else "-")),
+        ]
+        if meta["report"].get("url"):
+            rows.append("- **干完怎么回报**：`POST %s`\n\n```json\n%s\n```"
+                        % (meta["report"].get("url"),
+                           json.dumps(meta["report"].get("body") or {}, ensure_ascii=False, indent=1)))
+        return ("\n\n## A2A 派活方式（平台直接调用你，**没有桥**）\n\n"
+                + "\n".join(rows)
+                + "\n\n注意：平台还会按 `tasks/get` 回查你的状态，**就算不回执**结果也可能被写回；"
+                  "但产物清单会是空的 —— 要留下产物就按上面的方式交一次。\n", meta)
+    except Exception as e2:                                    # noqa: BLE001 — 对外说清，不 500
+        meta["error"] = "%s: %s" % (type(e2).__name__, str(e2)[:200])
+        print("[kit] A2A 契约段拼装失败：%s" % meta["error"], flush=True)
+        return ("\n\n## A2A 派活方式（**生成失败**）\n\n"
+                "原因：`%s`\n\n这条工位按 A2A 派活（没有桥），所以这里**不给桥参数**（给了反而是误导）。"
+                "请把上面的原因反馈给平台维护者。\n" % meta["error"], meta)
+
+
 @router.get("/api/workshop/{workshop_id}/lead-kit")
 async def lead_kit(workshop_id: str, format: str = "text", agent_key: str = "",
                    issue_token: int = 0, harness_id: str = "",
@@ -98,24 +154,44 @@ async def lead_kit(workshop_id: str, format: str = "text", agent_key: str = "",
         _lead_slot = next((m for m in _rw.roster(workshop_id)["members"]
                            if str(m.get("slot_dir") or "") == "组长"), None)
         _bid = str((_lead_slot or {}).get("harness_id") or "")
-    _bfill = _bridge_fields_for(ws, harness_id=_bid, for_member=False,
-                                template=template or "pending_poll")
-    if _bfill.get("ok"):
-        _rows = "\n".join("- `%s` = `%s`" % (k, v) for k, v in _bfill["fields"].items() if v)
-        _miss = ("；**还缺**：" + "、".join(_bfill["missing"])) if _bfill["missing"] else ""
-        text = (text.rstrip() + "\n\n## 桥参数（平台已填好路径，别手改）\n\n"
-                "模板：`%s`%s\n\n%s\n\n粘法：把这些值填进 `POST /api/bridge/generate` 生成桥。\n"
-                % (_bfill["template"], _miss, _rows))
+    # ★2026-11-01（老板：「改」—— 组长对接单也要跟成员一样按"怎么被派活"分流）：
+    #   组长若是 A2A 接入，给它桥参数同样是误导；这条路与成员共用 `_a2a_contract_section`。
+    _lead_is_a2a = False
+    try:
+        from ..dispatch import _harness_is_a2a as _is_a2a_fn
+
+        _lead_is_a2a = bool(_is_a2a_fn(_bid)) if _bid else False
+    except Exception:                                          # noqa: BLE001 — 判不出来按桥型处理
+        _lead_is_a2a = False
+    _bfill = {}
+    if _lead_is_a2a:
+        _sec, _meta = _a2a_contract_section(harness_id=_bid, workshop_id=workshop_id,
+                                           slot_dir="_lead", workshop_dir=wp, member_seq=1)
+        text = str(text).rstrip() + _sec
     else:
-        text = (text.rstrip() + "\n\n## 桥参数\n\n这间还没有可用的桥模板（%s）—— "
-                "确认 `agent_community/bridge_templates/` 里有这个模板。\n" % _bfill.get("code"))
+        _bfill = _bridge_fields_for(ws, harness_id=_bid, for_member=False,
+                                    template=template or "pending_poll")
+        if _bfill.get("ok"):
+            _rows = "\n".join("- `%s` = `%s`" % (k, v) for k, v in _bfill["fields"].items() if v)
+            _miss = ("；**还缺**：" + "、".join(_bfill["missing"])) if _bfill["missing"] else ""
+            text = (text.rstrip() + "\n\n## 桥参数（平台已填好路径，别手改）\n\n"
+                    "模板：`%s`%s\n\n%s\n\n粘法：把这些值填进 `POST /api/bridge/generate` 生成桥。\n"
+                    % (_bfill["template"], _miss, _rows))
+        else:
+            text = (text.rstrip() + "\n\n## 桥参数\n\n这间还没有可用的桥模板（%s）—— "
+                    "确认 `agent_community/bridge_templates/` 里有这个模板。\n" % _bfill.get("code"))
     out = {"ok": True, "kit": text, "session_label": label, "mind_path": mp,
            "workshop_path": wp, "manifest_ok": bool(ok), "manifest_errors": errs,
            "has_token": bool(token),
-           "bridge_template": _bfill.get("template", ""),
-           "bridge_fields": _bfill.get("fields", {}),
-           "bridge_missing": _bfill.get("missing", []),
-           "hint": "整段复制给组长；它照 Boot Protocol 先读两个根，再按「桥参数」生成桥"}
+           # A2A 时 `bridge_*` 一律给空 + 说明，别让调用方以为"该去架桥"
+           "bridge_template": ("" if _lead_is_a2a else _bfill.get("template", "")),
+           "bridge_fields": ({} if _lead_is_a2a else _bfill.get("fields", {})),
+           "bridge_missing": ([] if _lead_is_a2a else _bfill.get("missing", [])),
+           "wakeup_kind": ("a2a" if _lead_is_a2a else "bridge"),
+           "a2a_contract": (_meta if _lead_is_a2a else {}),
+           "hint": ("整段复制给组长；它是 A2A 接入 —— 平台直接按 tasks/send 派活，不需要架桥"
+                    if _lead_is_a2a else
+                    "整段复制给组长；它照 Boot Protocol 先读两个根，再按「桥参数」生成桥")}
     if (format or "text").lower() in ("md", "text"):
         return PlainTextResponse(text, media_type="text/markdown; charset=utf-8")
     return out
@@ -220,20 +296,39 @@ async def member_kit(workshop_id: str, member_seq: int, request: Request):
                           member_field_value=_kit.member_field(slot, False),
                           credential=token, credential_note=cred_note,
                           handshake=handshake, member_seq=int(member_seq))
-    # ★2026-10-31（W前端-81 §6）：**成员对接单也自带桥参数** —— 拉组长与拉员工是同一个动作，
-    #   不该让用户再回头找 `bridge-fill`。目录字段一律平台填（§8.2.1）：成员用**自己的工位目录**。
-    _mp_bfill = _bridge_fields_for(ws, harness_id=str(m.get("harness_id") or ""),
-                                   for_member=True, slot_dir=slot,
-                                   template=str(body.get("template") or "pending_poll"))
-    if _mp_bfill.get("ok"):
-        _rows = "\n".join("- `%s` = `%s`" % (k, v) for k, v in _mp_bfill["fields"].items() if v)
-        _miss = ("；**还缺**：" + "、".join(_mp_bfill["missing"])) if _mp_bfill["missing"] else ""
-        text = (text.rstrip() + "\n\n## 桥参数（平台已填好路径，别手改）\n\n"
-                "模板：`%s`%s\n\n%s\n\n粘法：把这些值填进 `POST /api/bridge/generate` 生成桥。\n"
-                % (_mp_bfill["template"], _miss, _rows))
+    # ★2026-11-01（老板：「注册后变为一个具体模板，工作间里**不用连接好的会话**，
+    #   而是用**模板 + 工作间实时路径**重新拉人」）：
+    #   对接单也要按"这个工位怎么被派活"分流 —— A2A **没有桥**，给它桥参数是误导。
+    #   A2A 给的是 **L3 落地契约**：端点（来自 L2 模板）+ 本次工作间的会话 + 回报地址。
+    _is_a2a = False
+    _mp_bfill = {}                                             # ★默认空：A2A 不走桥参数，但 return 里会读它
+    try:
+        from ..dispatch import _harness_is_a2a as _is_a2a_fn
+
+        _is_a2a = bool(_is_a2a_fn(str(m.get("harness_id") or "")))
+    except Exception:                                          # noqa: BLE001 — 判不出来按桥型处理
+        _is_a2a = False
+
+    if _is_a2a:
+        _sec, _meta = _a2a_contract_section(harness_id=str(m.get("harness_id") or ""),
+                                           workshop_id=workshop_id, slot_dir=slot,
+                                           workshop_dir=wp, member_seq=int(member_seq))
+        text = str(text).rstrip() + _sec
     else:
-        text = (text.rstrip() + "\n\n## 桥参数\n\n这间还没有可用的桥模板（%s）。\n"
-                % _mp_bfill.get("code"))
+        # ★2026-10-31（W前端-81 §6）：**成员对接单也自带桥参数** —— 拉组长与拉员工是同一个动作，
+        #   不该让用户再回头找 `bridge-fill`。目录字段一律平台填（§8.2.1）：成员用**自己的工位目录**。
+        _mp_bfill = _bridge_fields_for(ws, harness_id=str(m.get("harness_id") or ""),
+                                       for_member=True, slot_dir=slot,
+                                       template=str(body.get("template") or "pending_poll"))
+        if _mp_bfill.get("ok"):
+            _rows = "\n".join("- `%s` = `%s`" % (k, v) for k, v in _mp_bfill["fields"].items() if v)
+            _miss = ("；**还缺**：" + "、".join(_mp_bfill["missing"])) if _mp_bfill["missing"] else ""
+            text = (text.rstrip() + "\n\n## 桥参数（平台已填好路径，别手改）\n\n"
+                    "模板：`%s`%s\n\n%s\n\n粘法：把这些值填进 `POST /api/bridge/generate` 生成桥。\n"
+                    % (_mp_bfill["template"], _miss, _rows))
+        else:
+            text = (text.rstrip() + "\n\n## 桥参数\n\n这间还没有可用的桥模板（%s）。\n"
+                    % _mp_bfill.get("code"))
     return {"ok": True, "kit": text, "member_seq": int(member_seq), "slot_dir": slot,
             "tier": tier or "（未判定）", "session_label": label,
             "has_token": bool(token), "handshake_issued": bool(handshake),

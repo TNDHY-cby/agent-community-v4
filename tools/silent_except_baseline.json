@@ -1,12 +1,11 @@
 {
-  "total": 37,
+  "total": 36,
   "files": {
     "agent_community/a2a_server.py": 1,
     "agent_community/cli.py": 1,
     "agent_community/agents/ollama_agent.py": 1,
     "agent_community/agents/pipe_agent.py": 1,
     "agent_community/bridge_templates/script_framework/conformance.py": 1,
-    "agent_community/data/workshops/ws_c9c488e9/组长_m0/bridge.py": 1,
     "agent_community/examples/filepoll_harness_bridge.py": 1,
     "agent_community/platform/action_scripts.py": 1,
     "agent_community/platform/ai_external.py": 1,

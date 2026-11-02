@@ -205,3 +205,27 @@ def view(harness_id: str, workshop_id: str, slot_dir: str) -> dict:
             "rotate_requested": bool(rec.get("rotate_requested")),
             "retired_count": len(retired),
             "retired": retired[-5:]}
+
+# ## 附：**contextId 的隔离性**（2026-11-01 核实，源码 + 文件双重证据）
+
+# 老板问过「A2A 多个会话会不会互相影响上下文」。**结论：我们这个实现是隔离的** ——
+# 不是靠"相信协议"，是查了实际实现、也看了实际文件：
+
+# 1. **插件的实现是 per-context 的**（`@hanphone/dsh-a2a` 的 `ContextSessionPool`）：
+#    - `handles: Map<contextId, handle>` —— **每个 contextId 一个 live agent 实例**；
+#    - `sessionIdFor(contextId, ns) = a2a-<ns>-<contextId>` —— **每个 contextId 一个独立 DSH 会话**；
+#    - `tails: Map<contextId, Promise>` —— **同一 context 内串行**，不同 context 并发。
+#    这正是"agent 工厂"模式（每上下文一个实例），而不是"共享一个实例"那类高发漏洞的写法。
+
+# 2. **文件层面看得见**：`~/.dsh/sessions/--…a2a-sessions--/` 下**每个 contextId 一个目录、各一个
+#    `session.v4.jsonl.zstd`**（实测 `ac-ctx-test-A` 与 `-B` 是两个独立文件，互不相干）。
+
+# 3. **会话绑定还带实例命名空间**（`scopedContextId = <serverId>:<contextId>`）——
+#    两个不同 A2A 实例即使用了同名 contextId，也**不共享** DSH 会话。
+
+# ⚠️ **但这不等于可以随便命名**：`sessionIdFor` 是 `a2a-<ns>-<contextId>`，
+# ⇒ **同一实例里两个不同的东西若用了同一个 contextId，它们会挤进同一个会话**。
+# 所以 `_new_ctx_id()` 必须唯一 —— 现在带 `harness-工作间-工位-序号-时间后缀`，就是为这个。
+
+# ⚠️ **跨站点/长期累积**是另一类隐式影响（一个上下文越用越"知道太多"）。本模块的**老化轮换**
+# （默认 20 条活 / 6 万字换新）就是防它 —— 换新 contextId = 换一个全新会话。

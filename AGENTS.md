@@ -119,6 +119,7 @@ python tools/p5_check.py               # ★**P5 入口十三格**：lead_eligib
 python tools/p6_check.py               # ★**P6 十五格**：AILP 2.0 四类结构化消息（自由聊天 422）/manifest_ref 强校验（不在 manifest 就拒并列出可用项）/依据不许空/置信度 0~1/重放幂等/无 manifest 不开讨论区/probe-tooling 真写一次盘让组长候选不再为 0
 python tools/discussion_retire_check.py  # ★**三级讨论区已退役十格**：旧自由发言 `POST …/discuss` 默认 **410 FREECHAT_RETIRED**（带 why/next、**不落库、不驱动 AI**）/新入口 `/ailp` 真能用且拒自由聊天/`manifest_ref` 强校验/兼容开关 `AC_ALLOW_LEGACY_DISCUSS=1` 时标 `legacy`
 python tools/roster_dual_check.py  # ★**两套名单体检**（旧 Workshop.members vs v5 名单）：「旧有新无」⇒ exit 1（派活/验收会派不出去）；--fix 把旧名单同步进 v5（标 manual，只增不删、不触发激活）
+python tools/reset_platform_data.py   # ★**清回出厂空白**（盲测用）：默认 dry-run 只列清单；--yes 先自动备份到 data/backups/pre-reset-<时间戳>/ 再删；**服务在跑/探活不确定一律拒绝**；非交互还需 --force-noninteractive；回滚=把备份拷回
 python tools/state_restore.py --list     # 状态快照（data/backups/）：列快照 / --verify 校验完整性（sha256）/ --backup-now 立刻拍 / --restore <名> 恢复（先校验快照、再给当前状态拍一张，然后逐文件回读校验）
                                         #   机制在 platform/state_backup.py：启动必拍一张 + 每 AC_STATE_BACKUP_MINUTES(30) 分钟一张，保留 AC_STATE_BACKUP_KEEP(20) 份
 python -m pytest -q                     # 全部回归（含双平台守卫）

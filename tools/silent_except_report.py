@@ -58,7 +58,11 @@ def scan() -> dict:
     for d in SCAN_DIRS:
         for p in (ROOT / d).rglob("*.py"):
             parts = set(p.relative_to(ROOT).parts)
-            if parts & SKIP_PARTS or ".bak" in p.name:
+            # ★2026-11-02：**数据目录里的历史快照不算"新写代码"** ——
+            #   `data/backups/pre-reset-*/` 会把旧桥脚本（含 `except: pass`）整份拷进来，
+            #   一扫就假红（本次就是：备份里一份老 `bridge.py` 让 37→38 被判"静默变多"）。
+            #   备份是历史资产，不是新增源码 ⇒ 跳过 `data/` 下任何东西。
+            if parts & SKIP_PARTS or ".bak" in p.name or "data" in parts:
                 continue
             try:
                 src = p.read_text(encoding="utf-8", errors="replace")

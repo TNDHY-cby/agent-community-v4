@@ -48,6 +48,81 @@ async def harness_message(request: Request):
         harness_manager.sessions[msg.harness_id].message_count += 1
     return {"success": True, "msg_id": msg.id}
 
+@router.get("/api/harness/{harness_id}/template")
+async def harness_l2_template(harness_id: str):
+    """**L2 具体模板**（注册期沉淀、**与工作间无关**的那部分）。
+
+    ★2026-11-01（老板：「把它的所在替换成『生成具体模板』功能」）：
+    接入向导的产出应该是**一份可复用模板**，而不是"再跟它聊一句"。工作间里拉人时，
+    会用这份模板 **叠上工作间的实时路径**（`bridge_template.render_for_workshop`）——
+    所以模板里**不该有** workspace_dir / 工位 / 任务文件 / 会话号。
+
+    返回：模板本体 + 状态摘要 + 人读的 `usage`（告诉用户这份东西给谁用、用在哪）。
+    """
+    from fastapi.responses import JSONResponse
+
+    from .. import bridge_template as _bt
+
+    sess = harness_manager.sessions.get(harness_id)
+    if sess is None:
+        return JSONResponse({"error": "没有这个 harness：%s" % harness_id,
+                             "next": "GET /api/harness/list 看有哪些"}, status_code=404)
+    info = getattr(sess, "info", None)
+    tpl = _bt.get(info) if info is not None else None
+    status = _bt.status_of(info) if info is not None else {"has_template": False}
+    kind = (tpl or {}).get("artifact_kind") or status.get("artifact_kind") or ""
+    return {
+        "success": True,
+        "harness_id": harness_id,
+        "template": tpl or {},          # 没有就空 —— 界面如实说"还没生成"
+        "status": status,
+        "artifact_kind": kind,
+        "usage": (
+            "这份模板**不含工作间路径**。工作间建间/拉人时会把模板 + 实时路径（workspace_dir / 工位 / "
+            "任务文件 / 会话号）一起用，生成该工位此刻的派活参数 —— 同一个 harness 进不同工作间，"
+            "路径与会话各不相同。"
+        ),
+        "how_to_reuse": ("工作间里用 `bridge_template.render_for_workshop(...)`；"
+                         "命令行排查可用 `GET /api/harness/{id}/template` 看模板本体"),
+    }
+
+
+@router.post("/api/harness/{harness_id}/template")
+async def harness_l2_template_generate(harness_id: str):
+    """**生成 / 重建** 这个 harness 的 L2 具体模板（幂等；参数没变就保留原 created_at）。
+
+    ★2026-11-01（老板：「把它的所在替换成『生成具体模板』功能」）：
+    **存量的 harness 是在模板机制之前注册的** —— `info.metadata["bridge_template"]` 是空的。
+    所以这里必须能"生成"，不能只读；否则老用户永远看不到模板，第⑤步会是空的。
+    """
+    from fastapi.responses import JSONResponse
+
+    from .. import bridge_template as _bt
+
+    sess = harness_manager.sessions.get(harness_id)
+    if sess is None:
+        return JSONResponse({"error": "没有这个 harness：%s" % harness_id,
+                             "next": "GET /api/harness/list 看有哪些"}, status_code=404)
+    info = getattr(sess, "info", None)
+    if info is None:
+        return JSONResponse({"error": "这个 harness 没有 info（数据异常）"}, status_code=409)
+    try:
+        tpl = _bt.ensure(info, force=True)          # force：允许对存量重算一次
+    except Exception as e:                          # noqa: BLE001 — 生成失败要说清
+        return JSONResponse({"success": False,
+                             "error": "生成模板失败：%s: %s" % (type(e).__name__, str(e)[:200])},
+                            status_code=500)
+    try:
+        from ..server import save_state
+        save_state()                                # metadata 走 info.model_dump()，落盘要 save_state
+    except Exception as e:                          # noqa: BLE001 — 落盘失败要说，但模板已在内存
+        print("[template] save_state 失败（模板已在内存，重启会丢）：%s: %s"
+              % (type(e).__name__, e), flush=True)
+    return {"success": True, "harness_id": harness_id, "template": tpl or {},
+            "status": _bt.status_of(info),
+            "note": "模板已生成（只含与工作间无关的那部分）；工作间拉人时会叠上实时路径。"}
+
+
 @router.get("/api/harness/list")
 async def list_harnesses():
     """列出所有已接入的 Harness。
@@ -72,6 +147,22 @@ async def list_harnesses():
                 "can_be_woken_by_platform": _tg.can_be_woken_by_platform(info),
                 "needs_protocol": _tg.needs_protocol_for(info),
             }
+            # ★2026-11-02（老板：「dsh接入的那个A2A协议的没有声明能力」）：
+            #   卡上的 skills / capabilities 注册时已经存进 `metadata.agent_card`，
+            #   这里**带出去给界面** —— 否则"它到底会什么"在界面上是空的。
+            _card = (getattr(info, "metadata", None) or {}).get("agent_card")
+            if isinstance(_card, dict) and _card:
+                item["agent_card"] = _card
+                # 一句话摘要，界面直接用（省得前端自己拼）
+                _sk = [str((s or {}).get("id") or "") for s in (_card.get("skills") or [])]
+                _cp = sorted(k for k, v in (_card.get("capabilities") or {}).items() if v)
+                _bits = []
+                if _sk:
+                    _bits.append("技能 " + "/".join(_sk))
+                if _cp:
+                    _bits.append("能力 " + "/".join(_cp))
+                if _bits:
+                    item["capabilities_summary"] = " · ".join(_bits)
             # ★2026-11-01（真机清单 #7）：把**派活地址**也暴露出来 —— 否则界面/排查时
             #   看不到"平台到底会往哪发"。A2A 的地址在 `api_base_url`（`wakeup.wakeup_url` 是空的）。
             _addr = str(getattr(info, "api_base_url", "") or "").strip()

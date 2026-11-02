@@ -147,8 +147,16 @@ def guard_real_data_dir():
         after = _c.deepcopy(after)
         after.pop("policy.json", None)
 
+    # ★2026-11-02（真事故·误报）：`a2a_pending.json` 从 493→494 —— 不是测试改的，
+    #   是**后台 a2a_result_poll 线程**在扫待回写队列（服务在跑时每 30 秒动一次）。
+    #   守卫分不清"服务在改"与"测试在改"，于是误报污染。
+    #   豁免范围要**窄**：只放平台运行期自己维护的队列/游标，不放任何业务数据。
+    RUNTIME_QUEUE_FILES = {"a2a_pending.json"}
+
     changed = []
     for k in sorted(set(before) | set(after)):
+        if k in RUNTIME_QUEUE_FILES:
+            continue
         b = before.get(k)
         a = after.get(k)
         if b == a:

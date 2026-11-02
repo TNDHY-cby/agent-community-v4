@@ -173,6 +173,12 @@ function dockRender(d){
       '<p class="lead">' + (h.online ? '在线' : '离线') + ' · 唤醒方式 <code>' + esc(h.wakeup_method || '—') + '</code> ' +
       facts + ' · ' +
       (h.can_be_woken_by_platform ? '平台能自动叫醒它' : '<b>平台叫不醒它</b>（只能人工/桥兜底）') + '</p>' +
+      // ★2026-11-02（老板：「A2A 没有声明能力」）：卡上的 skills/capabilities 现在带出来了，
+      //   有就显示；没有就**如实说"卡上没声明"**（不装作它有）。
+      '<p class="sub" style="margin-top:4px">' +
+      (h.capabilities_summary ? ('能力：' + esc(h.capabilities_summary))
+                              : '能力：<b>它没在卡上声明</b>（平台读不到技能/能力）') +
+      '</p>' +
       (binds.length
         ? ('<p class="sub" style="margin-top:6px">接在 ' + binds.length + ' 处（已接入 ' + (h.docked_count||0) + '）：</p>' +
            '<ul>' + binds.map(b => '<li>' + esc(b.ws_name || b.ws_id) + '　' + esc(b.role||'') +
@@ -182,6 +188,10 @@ function dockRender(d){
       '<div class="dock-form-actions">' +
       '<button class="dock-detail-btn" onclick="dockGo(\'archive\');dockOpenArchive(\'' + esc(h.harness_id) + '\')">详情</button>' +
       '<button class="dock-detail-btn" onclick="dockGo(\'script_activate\');dockScriptPick(\'' + esc(h.harness_id) + '\')">给它配激活脚本</button>' +
+      // ★2026-11-02（老板：「找不到在哪里删agent」）：删除原来只藏在大厅卡片的「⋯」菜单里，
+      //   接入页首屏压根没有 ⇒ 想注销一个接入的人在这里找不到。现在直接摆在卡片上。
+      '<button class="dock-detail-btn danger" onclick="dockHarnessDeleteAsk(\'' + esc(h.harness_id) + '\')"' +
+      ' title="注销这个 agent：注册信息与模板一起删（工作间/账本/产物不动）">删除</button>' +
       '</div>' +
       '</div>';
   }).join('');
@@ -200,6 +210,15 @@ const DOCK_WRITE_WHITELIST = [
   '/api/harness/activation-result',   // ★接入向导⑤：人工搬运——我确认它回了
   '/api/docking/harness/*/test-now',  // ★接入向导④：真打一次
   '/api/harness/*/verify',  // ★接入向导②：让平台验一次（acp 类）
+  // ★V126（2026-11-02）：一键清空接入 —— **只登记真清那一条**。
+  //   预览是 GET 只读，写白名单只管 POST/PUT/PATCH/DELETE（守卫按写方法比对，登记 GET 会红）。
+  '/api/docking/agents-reset',
+  // ★2026-11-02：员工档案里「删除」一个接入（DELETE /api/harness/{id}）
+  '/api/harness/*',
+  // ★2026-11-01（老板：保存到平台，到工作间用）：第⑤步把模板存进平台。
+  //   它属于接入这一档（接入的产物就是这份模板），不越【只做接入与激活】的界。
+  //   ⚠️ 这段注释里不要出现成对引号 —— 守卫按引号抽白名单条目，会把注释里的词当成路径。
+  '/api/harness/*/template',
   '/api/harness/probe-register',
   '/api/harness/register',
   '/api/workshop/*/onboard-members',
@@ -603,6 +622,30 @@ async function dockHarnessHideAsk(id){
   alert((res.ok && d.success!==false) ? '已隐藏（数据未删，可申诉恢复）' : '隐藏未成功：' + ((d.error||d.reason) || ('HTTP ' + res.status)) + (d.how_to_fix ? (' · ' + d.how_to_fix) : ''));
   dockLoadArchive();
 }
+/** 「删除」这个接入：**二次确认 + 说清删什么**，然后走 DELETE（注销）。
+ *
+ *  ★2026-11-02（老板：「找不到在哪里删agent」）：原来删除只藏在大厅卡片的「⋯」菜单里。
+ *  这里给接入页一个明确入口 —— 但删是破坏性的，所以**必须说清**：
+ *  删的是"注册 + 模板"，不动工作间与账本；用到它的成员会变孤儿。
+ */
+async function dockHarnessDeleteAsk(id){
+  const why = '将**注销**这个接入：\n\n'
+    + '  · 注册信息与**注册模板**一起删掉\n'
+    + '  · 它签发的令牌作废\n'
+    + '  · 工作间、账本、产物**不动**\n\n'
+    + '⚠️ 用到它的工作间成员会变成「孤儿」（平台不会替你删成员）——\n'
+    + '   要清就先去工作间名单里移除，或重新接入同名 agent 顶回来。\n\n'
+    + '确定要删 ' + id + ' 吗？';
+  if (!confirm(why)) return;
+  const res = await dockDelete('/api/harness/' + encodeURIComponent(id));
+  const d = res.data || {};
+  const ok = res.ok && d.success !== false;
+  alert(ok
+    ? ('已注销 ' + id + '。\n' + (d.trash && d.trash.trashed ? '桥目录已进回收站。' : '') + '\n档案已刷新。')
+    : ('没删成：' + ((d.error || d.reason) || ('HTTP ' + res.status))));
+  if (ok) { try { await dockLoad(); } catch (e) {} await dockLoadArchive(); }
+}
+
 async function dockHarnessAppeal(id){
   const note = prompt('申诉说明（必填，为什么应该恢复）：');
   if (note === null) return;
@@ -815,7 +858,11 @@ async function dockProbeRegister(){
    协议与卡片**只读** GET /api/docking/protocol-tree，JS 里不抄第二份。
    ══════════════════════════════════════════════════════════════════════════ */
 const WIZ = { tree: null, step: 1, protocol: '', harnessId: '', guide: '', error: '' };
-const WIZ_TITLES = ['问协议', '选协议并注册', '复制引导', '检测', '跟它对话'];
+/* ★2026-11-01（老板：「把它的所在替换成『生成具体模板』功能」）：
+   第⑤步原来是「跟它对话」（挂 MCP / 让它自己发 / 人工粘贴）—— 那是"对话时代"的产物。
+   现在的定位是：**接入的产物 = 一份可复用模板**（注册期沉淀、与工作间无关），
+   工作间里再用「模板 + 实时路径」拉人。所以这一步换成「生成具体模板」。 */
+const WIZ_TITLES = ['问协议', '选协议并注册', '复制引导', '检测', '生成具体模板'];
 
 /** 把接入向导搬到**第一屏最上面**（老板 2026-10-25：第一屏就是五步，不是一排瓦片）。 */
 function dockMountWizardInline(){
@@ -972,7 +1019,15 @@ function wizRender(){
 
   if (WIZ.step === 4){
     const p = _wizProto();
-    const needVisual = !p.can_be_woken;
+    /* ★2026-11-01（和第⑤步同一个病）：`can_be_woken` 原来只从"本次向导选的协议"取 ——
+       从已有 harness 直接进来时 `WIZ.protocol` 是空 ⇒ `p` 是 `{}` ⇒ `needVisual` 为真
+       ⇒ 一个能直接派活的 A2A 被说成"只能靠视觉"。这里改成**以这个 harness 的实际接入方式为准**。 */
+    const _h4 = _wizHarness() || {};
+    const _wm4 = String(
+      _h4.wakeup_method || (_h4.wakeup && _h4.wakeup.wakeup_method) || WIZ.protocol || ''
+    ).toLowerCase();
+    const _p4 = (((WIZ.tree && WIZ.tree.protocols) || []).find(function (x){ return x.id === _wm4; })) || p;
+    const needVisual = !_p4.can_be_woken;
     const h = _wizHarness();
     body.innerHTML =
       '<p class="wiz-p">' + (WIZ.harnessId
@@ -1008,33 +1063,16 @@ function wizRender(){
     return;
   }
 
-  body.innerHTML =
-    '<p class="wiz-p"><b>让它把平台挂成 MCP</b>：把下面这段贴到它的 MCP 服务器设置里，然后重启它 —— ' +
-      '之后它就能自己调平台的工具（建工作间 / 看任务 / 交回执）。</p>' +
-      '<div class="wiz-actions"><button class="btn primary" onclick="wizCopyMcpConfig()">复制 MCP 配置（.md）</button>' +
-      '<button class="btn mini quiet" onclick="wizShowMcpJson()">看 JSON 原文</button>' +
-      '<span class="dock-msg" id="wizMcpMsg"></span></div>' +
-      '<pre id="wizMcpPre" class="wiz-pre" hidden></pre>' +
-      '<div class="wiz-mcp-calls"><b>它来没来过</b>（平台留痕：<b>它自己</b>调过我们的工具没有）' +
-        '<button class="btn mini quiet" onclick="wizMcpCalls()">刷新留痕</button>' +
-        '<span class="dock-msg" id="wizCallsMsg"></span>' +
-        '<div id="wizCallsOut" class="wiz-result"></div></div>' +
-      /* ★2026-10-25：发进它会话这件事 —— **让它自己发**（平台不代写） */
-      '<div class="wiz-mcp-notes"><b>让它自己发</b>（平台只把话交给它，发送动作是它的）' +
-        '<div class="wiz-line"><input id="wizNoteText" placeholder="要它在自己会话里说的一句">' +
-        '<button class="btn primary" onclick="wizNoteAdd()">交给它</button>' +
-        '<button class="btn mini quiet" onclick="wizNotesLoad()">刷新</button></div>' +
-        '<span class="dock-msg" id="wizNoteMsg"></span>' +
-        '<div id="wizNotesOut" class="wiz-result"></div></div>' +
-      '<p class="wiz-p">叫不醒的协议还有一条老路：平台那句你粘给它，它回的原话你粘回来。</p>' +
-    '<div class="wiz-line"><input id="wizChatSend" readonly placeholder="平台这句话"><button class="btn mini" onclick="wizCopyChat()">复制</button></div>' +
-    '<textarea id="wizChatBack" rows="3" placeholder="把它回的那段原话粘进来"></textarea>' +
-    '<div class="wiz-actions"><button class="btn primary" onclick="wizConfirmBack()">我确认它回了</button>' +
-    '<span class="dock-msg" id="wizChatMsg"></span></div>' +
-    '<div id="wizChatOut" class="wiz-result"></div>';
-  wizChatInit();
-  wizMcpCalls();     /* 进这一步就顺手拉一次留痕：空的就明写「它还没来过」 */
-  wizNotesLoad();    /* 顺带把「让它自己发」的待办也列出来 */
+  /* ★2026-11-01（老板：「把它的所在替换成『生成具体模板』功能」）：
+     第⑤步不再是"跟它对话"（挂 MCP / 让它自己发 / 人工粘贴），而是
+     **接入的产物 = 一份可复用模板**（注册期沉淀、与工作间无关）。
+     工作间里再用「模板 + 实时路径」拉人（后端 `bridge_template.render_for_workshop`）。
+     各协议的模板内容不同：A2A→派活契约；MCP→挂载配置；桥型→桥脚本参数。
+     ⇒ 这里**统一渲染模板卡**，不再按协议分叉（分叉的是模板内容，不是界面形态）。 */
+  body.innerHTML = '<div id="wizTplOut" class="wiz-result"><p class="wiz-hint">正在取模板…</p></div>';
+  wizTplLoad();
+  return;
+
 }
 
 /** 第 2 步：选中协议后的卡片 + 字段 */
@@ -1490,6 +1528,120 @@ async function wizShowMcpJson(){
   if (!res.ok || !res.text){ if (msg) msg.textContent = '✗ ' + ((res.data && res.data.error) || ('HTTP ' + res.status)); return; }
   if (pre){ pre.hidden = false; pre.textContent = res.text; }
   if (msg) msg.textContent = 'JSON 原文在下面（解释器/仓库根/平台地址都是运行时算的）';
+}
+
+/** 第⑤步：取这个 harness 的 **L2 具体模板**并渲染成卡片。
+ *
+ *  ★2026-11-01（老板：「把它的所在替换成『生成具体模板』功能」）：
+ *  接入的产物是**一份可复用模板**，不是"再跟它聊一句"。
+ *  工作间里拉人时用「模板 + 实时路径」（后端 `bridge_template.render_for_workshop`）——
+ *  所以这里显示的模板**不含** workspace_dir / 工位 / 任务文件 / 会话号，别让人以为那是最终坐标。
+ */
+async function wizTplLoad(){
+  const box = document.getElementById('wizTplOut');
+  if (!box) return;
+  if (!WIZ.harnessId){ box.innerHTML = '<p class="wiz-hint">先认出这个 harness（回到第②步）。</p>'; return; }
+  const r = await dockGet('/api/harness/' + encodeURIComponent(WIZ.harnessId) + '/template');
+  const d = (r && r.data) || {};
+  if (!r || !r.ok){
+    box.innerHTML = '<p class="dock-err">模板读不到：' + escPlain(String(d.error || ('HTTP ' + (r && r.status)))) + '</p>';
+    return;
+  }
+  WIZ.tpl = d;
+  const tpl = d.template || {};
+  const has = !!Object.keys(tpl).length;
+  const kind = String(d.artifact_kind || '');
+  const kindTxt = kind === 'contract' ? '派活契约（无桥：平台直接按协议派活）'
+                : kind === 'script' ? '桥脚本参数（要跑一只桥）'
+                : kind === 'prompt' ? '人工提示词（只能人搬运）'
+                : '还没定';
+  let html = '<p class="wiz-p"><b>这份就是工作间要用的模板</b> —— ' + escPlain(kindTxt) + '</p>';
+  if (!has){
+    html += '<p class="wiz-hint">还没保存模板：这个 harness 可能是在模板机制之前注册的（存量），'
+         +  '或参数不全。点下面「保存到平台」按当前信息算一份并存下来；缺什么它会告诉你。</p>' +
+      '<div class="wiz-actions"><button class="btn primary" onclick="wizTplSave()">保存到平台</button>'
+         +  '<span class="dock-msg" id="wizTplMsg"></span></div>';
+  } else {
+    const miss = (tpl.missing || []);
+    html += '<p class="wiz-hint">模板 <code>' + esc(String(tpl.template || '（无）')) + '</code>'
+         + ' ｜ 接入方式 <code>' + esc(String(tpl.wakeup_method || '')) + '</code>'
+         + ' ｜ 参数完整：<b>' + (tpl.complete ? '是' : '否') + '</b>'
+         + (miss.length ? (' ｜ <b>缺 ' + esc(miss.join('、')) + '</b>') : '') + '</p>';
+    const pr = tpl.params || {};
+    const keys = Object.keys(pr);
+    if (keys.length){
+      html += '<table class="wiz-tpl"><tr><th>参数</th><th>值</th></tr>' + keys.map(function(k){
+        return '<tr><td><code>' + esc(k) + '</code></td><td>' + esc(String(pr[k] == null ? '' : pr[k])) + '</td></tr>';
+      }).join('') + '</table>';
+    }
+  }
+  /* ★2026-11-01（老板：「这里不应该是复制具体桥模板，而是**保存到平台**，到工作间用」）：
+     模板是**平台里的资产**，不是剪贴板内容 —— 主操作改成「保存到平台」。
+     保存 = 把它落到这个 harness 的 `metadata.bridge_template` 上（持久化），
+     工作间建间/拉人时直接取它 + 实时路径，不需要用户再粘任何东西。
+     「复制」降级成排查用的小按钮（有时要贴给别人看模板长什么样）。 */
+  const _saved = !!(has && tpl.complete);
+  html += '<p class="wiz-hint">' + escPlain(String(d.usage || '')) + '</p>' +
+    (saved_line(_saved, has, tpl)) +
+    '<div class="wiz-actions"><button class="btn primary" onclick="wizTplSave()">' +
+      (_saved ? '已保存到平台（点此重新保存）' : '保存到平台') + '</button>' +
+    '<button class="btn mini quiet" onclick="wizTplCopyMd()">复制（排查用）</button>' +
+    '<button class="btn mini quiet" onclick="wizTplLoad()">刷新</button>' +
+    '<span class="dock-msg" id="wizTplMsg"></span></div>';
+  box.innerHTML = html;
+}
+
+/** 保存状态那一行（别让人猜"到底存没存"）。 */
+function saved_line(isSaved, has, tpl){
+  if (isSaved) return '<p class="dock-ok">✓ 已保存到平台：工作间建间/拉人时会直接取这份模板 + 工作间的实时路径。</p>';
+  if (!has) return '<p class="wiz-hint">还没保存：点下面「保存到平台」按当前信息算一份并存下来。</p>';
+  const miss = (tpl && tpl.missing) || [];
+  return '<p class="wiz-warn">⚠ 模板还没完整' + (miss.length ? ('（缺 ' + escPlain(miss.join('、')) + '）') : '') +
+         ' —— 补齐后再保存，否则工作间里派活会用不上。</p>';
+}
+
+/** 第⑤步：**保存到平台**（把模板落到这个 harness 的 metadata 上，供工作间取用）。 */
+async function wizTplSave(){
+  const msg = document.getElementById('wizTplMsg');
+  if (msg) msg.textContent = '正在保存…';
+  const r = await dockPost('/api/harness/' + encodeURIComponent(WIZ.harnessId) + '/template', {});
+  const d = (r && r.data) || {};
+  if (!r || !r.ok || d.success === false){
+    if (msg) msg.textContent = '保存失败：' + String(d.error || ('HTTP ' + (r && r.status)));
+    return;
+  }
+  const tpl = d.template || {};
+  const miss = (tpl.missing || []);
+  if (msg){
+    msg.textContent = miss.length
+      ? ('已保存，但还缺 ' + miss.join('、') + '（工作间派活会因此用不上）')
+      : '已保存到平台';
+  }
+  wizTplLoad();
+}
+
+/** 把模板复制成 Markdown（存档 / 贴进工作间对接单）。 */
+async function wizTplCopyMd(){
+  const d = WIZ.tpl || {};
+  const tpl = d.template || {};
+  const miss = (tpl.missing || []);
+  const lines = ['# 接入模板 · ' + String(WIZ.harnessId || ''), '',
+                 '- 模板类型：' + String(tpl.template || '（无）'),
+                 '- 接入方式：' + String(tpl.wakeup_method || ''),
+                 '- 产物类型：' + String(d.artifact_kind || ''),
+                 '- 参数完整：' + (tpl.complete ? '是' : '否') + (miss.length ? ('（缺 ' + miss.join('、') + '）') : ''),
+                 ''];
+  const pr = tpl.params || {};
+  if (Object.keys(pr).length){
+    lines.push('## 参数', '', '| 参数 | 值 |', '|---|---|');
+    Object.keys(pr).forEach(function(k){ lines.push('| ' + k + ' | ' + String(pr[k] == null ? '' : pr[k]) + ' |'); });
+    lines.push('');
+  }
+  lines.push('## 怎么用', '', String(d.usage || ''), '');
+  const text = lines.join('\n');
+  const msg = document.getElementById('wizTplMsg');
+  try { await navigator.clipboard.writeText(text); if (msg) msg.textContent = '已复制（' + text.length + ' 字节）'; }
+  catch (e) { if (msg) msg.textContent = '复制失败：' + (e && e.message ? e.message : e); }
 }
 
 /** 「挂上之后怎么验」：它来没来过 → 空就是没来过；再让它自己发一句。 */
@@ -3715,6 +3867,11 @@ async function dockLoadArchive(){
       '<button class="dock-detail-btn" onclick="dockOpenArchive(\'' + esc(h.harness_id) + '\')">详情</button>' +
       '<button class="dock-detail-btn" onclick="dockHarnessHideAsk(\'' + esc(h.harness_id) + '\')">隐藏</button>' +
       '<button class="dock-detail-btn" onclick="dockHarnessAppeal(\'' + esc(h.harness_id) + '\')">申诉</button>' +
+      // ★2026-11-02（老板：「找不到在哪里删agent」）：删除原来只藏在大厅卡片的「⋯」菜单里，
+      //   接入页「员工档案」反而没有 ⇒ 想清掉一个接入的人在这里找不到。
+      //   现在每行给一个**明确的删除**（红边、二次确认、连模板一起删）。
+      '<button class="dock-detail-btn danger" onclick="dockHarnessDeleteAsk(\'' + esc(h.harness_id) + '\')"' +
+      ' title="注销这个 agent：注册信息与模板一起删（工作间/账本不动）">删除</button>' +
       '</div></div>').join('') +
     '</div><div id="dkArchiveDrawer"></div>';
 }
@@ -4186,3 +4343,92 @@ function dockVerCopy(){
 dockMountWizardInline();
 dockLoad();
 dockLoadActivation();
+
+/* ── V126 清空所有接入（★2026-11-02 老板要求）────────────────────────
+   安全三件套：**先预览**（只读）→ **打确认词**（端点自己也校验）→ **自动备份**。
+   不许一个红按钮就把东西清了 —— 这条是被真实事故教出来的。 */
+async function dzPreview() {
+  const box = document.getElementById('dzPreview'), msg = document.getElementById('dzMsg'), row = document.getElementById('dzConfirmRow'), res = document.getElementById('dzResult');
+  if (msg) msg.textContent = '查询中…';
+  if (res) res.innerHTML = '';
+  try {
+    const r = await fetch('/api/docking/agents-reset/preview');
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) { if (msg) msg.textContent = '查不到（HTTP ' + r.status + '）'; return; }
+    if (!d.count) {
+      if (box) box.innerHTML = '<div class="dz-lead">当前<b>没有任何接入的 agent</b> —— 不用清。</div>';
+      if (msg) msg.textContent = '';
+      if (row) row.style.display = 'none';
+      return;
+    }
+    let h = '<div style="margin:8px 0"><b>会删掉这 ' + d.count + ' 个（含各自的注册模板）：</b></div><ul style="margin:4px 0 10px;padding-left:20px">';
+    (d.agents || []).forEach(function (a) {
+      h += '<li><span class="dz-agent">' + esc(a.harness_id) + '</span>　' +
+        esc(a.harness_name || '') +
+        '　模板：' + esc(a.template || '（没有）') + (a.template_complete ? '' : '（不完整）') + '</li>';
+    });
+    h += '</ul>';
+    const aw = d.affected_workrooms || [];
+    if (aw.length) {
+      h += '<div><b>这些工作间会有成员变成「孤儿」（人不删，只是它的 agent 没了）：</b></div><ul style="margin:4px 0 10px;padding-left:20px">';
+      aw.forEach(function (w) {
+        h += '<li>' + esc(w.name || w.workshop_id) + '　' +
+          (w.orphan_members || []).map(function (m) { return esc(m.slot_dir || ('#' + m.member_seq)); }).join('、') + '</li>';
+      });
+      h += '</ul>';
+    } else {
+      h += '<div>没有工作间受影响。</div>';
+    }
+    h += '<div class="dz-lead"><b>不会动</b>：' + (d.keep || []).join('、') + '</div>';
+    if (box) box.innerHTML = h;
+    if (msg) msg.textContent = '';
+    if (row) row.style.display = '';
+    const inp = document.getElementById('dzConfirm'), go = document.getElementById('dzGo');
+    if (inp && go) {
+      inp.value = '';
+      go.disabled = true;
+      inp.oninput = function () { go.disabled = String(inp.value).trim() !== '清空接入'; };
+    }
+  } catch (e) {
+    if (msg) msg.textContent = '出错：' + (e && e.message ? e.message : e);
+  }
+}
+
+async function dzReset() {
+  const inp = document.getElementById('dzConfirm'), go = document.getElementById('dzGo'), msg = document.getElementById('dzMsg'), res = document.getElementById('dzResult');
+  const word = String((inp && inp.value) || '').trim();
+  if (word !== '清空接入') { if (msg) msg.textContent = '确认词不对'; return; }
+  if (msg) msg.textContent = '正在清空…（先备份）';
+  if (go) go.disabled = true;
+  try {
+    // 走 dockPost（对接中心唯一的写通道，带白名单闸）—— 别裸 fetch，守卫会抓到
+    const r = await dockPost('/api/docking/agents-reset', { confirm: word });
+    const d = r.data || {};
+    if (!r.ok || !d.ok) {
+      if (res) res.innerHTML = '<div class="bad">没清成：' + esc(d.error || d.why || ('HTTP ' + r.status)) + '</div>' +
+        (d.problems && d.problems.length ? '<div class="bad">' + d.problems.map(esc).join('<br>') + '</div>' : '');
+      if (msg) msg.textContent = '失败';
+      if (go) go.disabled = false;
+      return;
+    }
+    let h = '<div class="ok">已清空 ' + (d.deleted || []).length + ' 个接入（含注册模板）。</div>';
+    if (d.backup) h += '<div>备份：<code>' + esc(d.backup) + '</code></div>';
+    if (d.rollback) h += '<div>要反悔：' + esc(d.rollback) + '</div>';
+    if ((d.affected_workrooms || []).length) {
+      h += '<div>这些工作间现在有孤儿成员（平台不替人删，去「工作间 → 名单」移除，或重新接入同名 agent 顶回来）：</div>';
+      (d.affected_workrooms || []).forEach(function (w) {
+        h += '<div>　· ' + esc(w.name || w.workshop_id) + '：' +
+          (w.orphan_members || []).map(function (m) { return esc(m.slot_dir || ('#' + m.member_seq)); }).join('、') + '</div>';
+      });
+    }
+    if (d.note) h += '<div class="dz-lead">' + esc(d.note) + '</div>';
+    if (res) res.innerHTML = h;
+    if (msg) msg.textContent = '';
+    const pv = document.getElementById('dzPreview'); if (pv) pv.innerHTML = '';
+    const row = document.getElementById('dzConfirmRow'); if (row) row.style.display = 'none';
+  } catch (e) {
+    if (res) res.innerHTML = '<div class="bad">没清成：' + esc(e && e.message ? e.message : e) + '</div>';
+    if (msg) msg.textContent = '失败';
+    if (go) go.disabled = false;
+  }
+}

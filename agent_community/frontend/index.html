@@ -7,7 +7,7 @@
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="boot.css">
 <style>
-:root{--bg:#0F0E0C;--bg2:#161513;--bg3:#1C1A18;--bg4:#242220;--bg5:#2F2C29;--ink:#E8E4DB;--muted:#B3AEA5;--dim:#918B81;--rule:#2E2B27;--accent:#FF3527;--accent-soft:rgba(255,53,39,.08);--accent-strong:#FF6A5C;--green:#86B394;--green-soft:rgba(134,179,148,.09);--yellow:#D9AB53;--yellow-soft:rgba(217,171,83,.10);--red:#FF3527;--red-soft:rgba(255,53,39,.08);--blue:#2A5A8C;--blue-soft:rgba(123,163,201,.10);--cyan:#2A6B6B;--cyan-soft:rgba(100,181,180,.10);--purple:#5E4A7A;--purple-soft:rgba(160,140,192,.10);--shadow-1:0 1px 2px rgba(0,0,0,.35),0 3px 10px rgba(0,0,0,.18);--shadow-2:0 8px 24px rgba(0,0,0,.38);--radius-lg:0px;--radius-md:0px;--radius-sm:0px;--focus-ring:0 0 0 3px rgba(255,53,39,.25);--font-mono:"JetBrains Mono","Cascadia Code",Consolas,"Courier New",monospace}
+:root{--bg:#0F0E0C;--bg2:#161513;--bg3:#1C1A18;--bg4:#242220;--bg5:#2F2C29;--ink:#E8E4DB;--muted:#B3AEA5;--dim:#918B81;--rule:#2E2B27;--accent:#C93A2C;--accent-soft:rgba(201,58,44,.10);--accent-strong:#C96B60;--green:#86B394;--green-soft:rgba(134,179,148,.09);--yellow:#9C8250;--yellow-soft:rgba(156,130,80,.10);--red:#C93A2C;--red-soft:rgba(255,53,39,.08);--blue:#2A5A8C;--blue-soft:rgba(123,163,201,.10);--cyan:#2A6B6B;--cyan-soft:rgba(100,181,180,.10);--purple:#5E4A7A;--purple-soft:rgba(160,140,192,.10);--shadow-1:0 1px 2px rgba(0,0,0,.35),0 3px 10px rgba(0,0,0,.18);--shadow-2:0 8px 24px rgba(0,0,0,.38);--radius-lg:0px;--radius-md:0px;--radius-sm:0px;--focus-ring:0 0 0 3px rgba(255,53,39,.25);--font-mono:"JetBrains Mono","Cascadia Code",Consolas,"Courier New",monospace}
 *{margin:0;padding:0;box-sizing:border-box}
 *{scrollbar-width:thin;scrollbar-color:var(--bg4) transparent}
 ::-webkit-scrollbar{width:8px;height:8px}
@@ -34,8 +34,8 @@ body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSys
   /* ★2026-10-30 子按键色差（老板指令）：hover 挂红蓝对角柔光，与卡片同款 */
   box-shadow:var(--rgb-glow)}
 /* 主入口：对接中心（2026-10-23 评审：7 个按钮等权时，没有一个是"最该点的"） */
-.topbar .btn.primary{background:rgba(255,53,39,.14);border-color:#FF3527;color:#FF6A5C;font-weight:700}
-.topbar .btn.primary:hover{background:#D4291C;border-color:#D4291C;color:#F9F7F3}
+.topbar .btn.primary{background:rgba(255,53,39,.14);border-color:#C93A2C;color:#C96B60;font-weight:700}
+.topbar .btn.primary:hover{background:#B33427;border-color:#B33427;color:#F9F7F3}
 /* main grid */
 .main{display:grid;grid-template-columns:var(--nav-w,248px) 1fr 280px;flex:1;min-height:0;overflow:hidden;transition:grid-template-columns .2s ease}
 /* left col */
@@ -148,7 +148,7 @@ body.nav-collapsed .workshop-item .wi-ico{display:inline-block;font-size:15px;li
 .hall-input textarea{flex:1;background:var(--bg3);border:1px solid var(--rule);border-radius:12px;color:var(--ink);padding:10px 16px;font-size:14px;font-family:inherit;resize:none;min-height:44px;max-height:120px;transition:border-color .15s,box-shadow .15s;box-shadow:inset 0 1px 3px rgba(0,0,0,.25)}
 .hall-input textarea:focus{outline:none;border-color:var(--accent);box-shadow:var(--focus-ring),inset 0 1px 3px rgba(0,0,0,.25)}
 .hall-input textarea::placeholder{color:var(--muted)}
-.hall-input .send-btn{background:#D4291C;color:#F9F7F3;border:none;border-radius:12px;padding:0 26px;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;box-shadow:0 2px 10px rgba(217,119,87,.3)}
+.hall-input .send-btn{background:#B33427;color:#F9F7F3;border:none;border-radius:12px;padding:0 26px;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;box-shadow:0 2px 10px rgba(217,119,87,.3)}
 .hall-input .send-btn:hover{filter:brightness(1.12);transform:translateY(-1px)}
 .hall-input .send-btn:active{transform:translateY(0)}
 .hall-input .send-btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
@@ -232,7 +232,7 @@ body.nav-collapsed .workshop-item .wi-ico{display:inline-block;font-size:15px;li
 .agent-card .ac-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .agent-card .ac-id{font-size:11.5px;color:var(--dim);font-family:var(--font-mono)}
 .agent-card .ac-caps{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-.agent-card .cap-tag{font-size:10px;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:#FF7B7B}
+.agent-card .cap-tag{font-size:10px;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:#C97C7C}
 .agent-card .ac-sw{font-size:12px;color:var(--muted);margin-top:4px}
 /* ★2026-10-11（老板要求）：Harness 列表要能看出「框架特点 + 适配大模型」 */
 .ac-fw{font-size:12px;color:var(--ink);margin-top:4px;line-height:1.45}
@@ -464,7 +464,7 @@ body{font-size:var(--t2)}
     <div class="ws-status"><span class="ws-dot" id="wsDot"></span><span id="wsText">未连接</span></div>
     <div class="spacer"></div>
     <button class="btn" onclick="location.href='/monitor.html'" title="监控室 · 画面墙（只读快照）">监控室</button>
-    <button class="btn primary" onclick="location.href='/docking.html'" title="对接中心 · 把外部 Agent 接进来、并让它跟工作间对上">对接中心</button>
+    <button class="btn primary" onclick="location.href='/docking.html'" title="接入 Agent · 把外面的 agent 接进来（注册 / 检测 / 生成模板 / 架桥）">接入 Agent</button>
     <!-- ★2026-10-30（老板）：控制台只对单个工作间生效 ⇒ 大厅不再摆总入口，请从工作间页进（自动带 ?ws=）-->
     <button class="btn" onclick="location.href='/ops.html'" title="运维看板 · 工单审计与Agent在线">看板</button>
     <button class="btn" onclick="location.href='/handover.html'" title="交付回执台 · 无证据不回执">回执</button>
@@ -473,9 +473,9 @@ body{font-size:var(--t2)}
     <button class="btn" onclick="openSettings()">设置</button>
   </div>
   <!-- 「恢复」按钮已移除（老板 2026-10-19 裁定）：其重绘能力并入 init() 自动执行，见 restoreSession() -->
-  <div id="dataHealthBar" style="display:none;padding:8px 16px;background:rgba(255,176,0,.10);border-bottom:1px solid rgba(255,176,0,.4);color:var(--yellow,#FFB000);font-size:12.5px"></div>
+  <div id="dataHealthBar" style="display:none;padding:8px 16px;background:rgba(255,176,0,.10);border-bottom:1px solid rgba(255,176,0,.4);color:var(--yellow,#B98432);font-size:12.5px"></div>
   <div id="credBar" style="display:none;padding:8px 16px;border-bottom:1px solid transparent;font-size:12.5px"></div>
-  <div id="singletonBar" style="display:none;padding:8px 16px;background:rgba(255,176,0,.12);border-bottom:1px solid rgba(255,176,0,.5);color:var(--yellow,#FFB000);font-size:12.5px"></div>
+  <div id="singletonBar" style="display:none;padding:8px 16px;background:rgba(255,176,0,.12);border-bottom:1px solid rgba(255,176,0,.5);color:var(--yellow,#B98432);font-size:12.5px"></div>
   <div class="main">
     <div class="col-left">
       <div class="col-header"><span class="nav-title">工作间</span><span class="ch-count" id="workshopCount">0</span><button class="nav-toggle" id="navToggle" onclick="toggleNav()" title="折叠/展开侧边栏">◀</button><button class="wi-act" style="margin-left:auto;font-size:12px" title="回收卡死工作间" onclick="event.stopPropagation();recycleStaleWorkshops()">回收</button></div>
@@ -501,10 +501,10 @@ body{font-size:var(--t2)}
           <div class="bc-msg" id="bcMsg"></div>
         </div>
         <div class="hall-messages" id="hallMessages"><div class="hall-empty"><div class="hall-entries">
-            <a class="hall-entry primary" href="/docking.html" title="对接中心 · 把外部 Agent 登记进来、叫醒、送话">
+            <a class="hall-entry primary" href="/docking.html" title="接入 Agent · 把外面的 agent 接进来（注册 / 检测 / 生成模板）">
               <span class="he-i">▣</span>
-              <span class="he-t">接入一位员工</span>
-              <span class="he-s">对接中心 · 登记 / 激活 / 送话</span>
+              <span class="he-t">接入 Agent</span>
+              <span class="he-s">注册 / 检测 / 生成模板 / 架桥</span>
             </a>
             <a class="hall-entry" href="/hub.html" title="流程说明 · 全流程（只讲不做）">
               <span class="he-i">◈</span>
@@ -518,7 +518,7 @@ body{font-size:var(--t2)}
             <textarea id="cmdInput" placeholder="描述你想完成的任务，例如：做一个本地记账工具" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
             <button class="send-btn" id="sendBtn" onclick="sendCommand()">发布</button>
           </div>
-          <div class="hi-hint">Enter 发布 · Shift+Enter 换行 · 可先发布和讨论；执行前需接入员工。<a href="/docking.html">接入员工（对接中心）</a></div>
+          <div class="hi-hint">Enter 发布 · Shift+Enter 换行 · 可先发布和讨论；执行前需接入 Agent。</div>
         </div>
       </div>
       <div class="workshop-view" id="workshopView">
@@ -860,7 +860,7 @@ function renderAgents(){
     let caps=[];try{const c=typeof a.agent_card==='string'?JSON.parse(a.agent_card):a.agent_card;caps=c?.capabilities||[]}catch(e){}
     const fw=a.framework?`<div class="ac-fw">框架：<b>${esc(a.framework)}</b>${a.framework_note?(' · '+esc(a.framework_note)):''}</div>`:'';
     const md=(a.model||a.model_provider)?`<div class="ac-model">适配模型：<b>${esc(a.model||'（未填）')}</b>${a.model_provider?(' · '+esc(a.model_provider)):''}${a.model_version?(' · '+esc(a.model_version)):''}</div>`:'';
-    return `<div class="agent-card"><div class="ac-top"><span class="ac-status ${a.status}"></span><span class="ac-name">${esc(a.name||a.agent_id)}</span>${a.is_harness?`<button class="ac-more" data-aid="${esc(a.agent_id)}" onclick="toggleAgentMenu(this,event)" title="设置">⋯</button>`:''}</div><div class="ac-id">${esc(a.agent_id)}</div>${fw}${md}${caps.length?`<div class="ac-caps">${caps.map(c=>`<span class="cap-tag">${c}</span>`).join('')}</div>`:''}<div class="ac-sw">软件环境：${a.software_context?esc(a.software_context):'未填'}</div>${a.is_harness?`<div class="ac-menu hidden" data-aid="${esc(a.agent_id)}" onclick="onAgentMenuClick(this,event)"><button data-act="prompt">唤醒提示词</button><button data-act="caps">精化能力列表</button><button class="danger" data-act="del">删除成员</button></div>`:''}</div>`}).join('')}
+    return `<div class="agent-card"><div class="ac-top"><span class="ac-status ${a.status}"></span><span class="ac-name">${esc(a.name||a.agent_id)}</span>${a.is_harness?`<button class="ac-more" data-aid="${esc(a.agent_id)}" onclick="toggleAgentMenu(this,event)" title="设置">⋯</button>`:''}</div><div class="ac-id">${esc(a.agent_id)}</div>${fw}${md}${caps.length?`<div class="ac-caps">${caps.map(c=>`<span class="cap-tag">${c}</span>`).join('')}</div>`:''}<div class="ac-sw">软件环境：${a.software_context?esc(a.software_context):'未填'}</div>${a.is_harness?`<div class="ac-menu hidden" data-aid="${esc(a.agent_id)}" onclick="onAgentMenuClick(this,event)"><button data-act="prompt">唤醒提示词</button><button data-act="caps">精化能力列表</button><button class="danger" data-act="del" title="注销这个 agent：注册信息与模板一起删（工作间/账本不动）">删除这个 Agent</button></div>`:''}</div>`}).join('')}
 function toggleAgentMenu(btn,e){if(e)e.stopPropagation();const aid=btn.dataset.aid;document.querySelectorAll('.ac-menu').forEach(m=>{if(m.dataset.aid!==aid)m.classList.add('hidden')});const menu=document.querySelector('.ac-menu[data-aid="'+CSS.escape(aid)+'"]');if(menu)menu.classList.toggle('hidden')}
 function onAgentMenuClick(menu,e){e.stopPropagation();const aid=menu.dataset.aid;const act=(e.target.dataset&&e.target.dataset.act)||'';if(act==='prompt')viewHarnessPrompt(aid);else if(act==='caps')editHarnessCaps(aid);else if(act==='del')deleteHarnessAgent(aid)}
 async function viewHarnessPrompt(aid){const a=agents.find(x=>x.agent_id===aid&&x.is_harness);if(!a)return;const hid=a.harness_id||aid.replace(/^harness-/,'');let cur='';try{const r=await fetch('/api/harness/'+encodeURIComponent(hid)+'/activation_prompt');const d=await r.json();cur=d.prompt||''}catch(err){acToast('加载失败: '+err.message,true);return}acModal.show({title:'唤醒提示词 · '+(a.name||aid),message:'激活工作间成员时下发给该 HA 的提示词模板。含 {role}/{workspace_dir} 占位符，激活时由平台自动填充；保存后重新注册不会覆盖。',input:cur,rows:12,placeholder:'请输入唤醒提示词模板…',onSubmit:async function(v){if(v==null)return;if(!(v||'').trim()){acToast('提示词不能为空',true);return}try{const r=await fetch('/api/harness/'+encodeURIComponent(hid)+'/activation_prompt',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:v})});const d=await r.json();if(d.success){acToast('唤醒提示词已保存');document.getElementById('lastAction').textContent='已保存 '+a.name+' 的唤醒提示词'}else{acToast(d.error||'保存失败',true)}}catch(err){acToast('保存失败: '+err.message,true)}}})}
@@ -878,9 +878,9 @@ async function saveSession(){try{await fetch('/api/session/save',{method:'POST'}
  * 现在统一由这里渲染（静态 HTML 也保留同一份，供 JS 挂掉时兜底）。 */
 const HALL_EMPTY_ENTRIES =
   '<div class="hall-entries">' +
-  '<a class="hall-entry primary" href="/docking.html" title="对接中心 · 把外部 Agent 登记进来、叫醒、送话">' +
-  '<span class="he-i">▣</span><span class="he-t">接入一位员工</span>' +
-  '<span class="he-s">对接中心 · 登记 / 激活 / 送话</span></a>' +
+  '<a class="hall-entry primary" href="/docking.html" title="接入 Agent · 把外面的 agent 接进来">' +
+  '<span class="he-i">▣</span><span class="he-t">接入 Agent</span>' +
+  '<span class="he-s">注册 / 检测 / 生成模板 / 架桥</span></a>' +
   '<a class="hall-entry" href="/hub.html" title="流程说明 · 全流程（只讲不做）">' +
   '<span class="he-i">◈</span><span class="he-t">流程说明</span>' +
   '<span class="he-s">使用说明书 · 流程 · 接口</span></a>' +
@@ -909,10 +909,10 @@ async function bcSend() {
   const level = (document.getElementById('bcLevel') || {}).value || 'info';
   if (!t || !msg) return;
   const text = (t.value || '').trim();
-  if (!text) { msg.textContent = '内容是空的 —— 写一句话再发'; msg.style.color = 'var(--red,#FF3526)'; return; }
+  if (!text) { msg.textContent = '内容是空的 —— 写一句话再发'; msg.style.color = 'var(--red,#C93A2C)'; return; }
   if (text.length > BC_MAX) {
     msg.textContent = '最多 ' + BC_MAX + ' 字（现在 ' + text.length + ' 字）';
-    msg.style.color = 'var(--red,#FF3526)'; return;
+    msg.style.color = 'var(--red,#C93A2C)'; return;
   }
   msg.style.color = ''; msg.textContent = '正在发出…';
   if (btn) btn.disabled = true;
@@ -922,7 +922,7 @@ async function bcSend() {
     const d = await r.json().catch(() => ({error: '返回不是 JSON（HTTP ' + r.status + '）'}));
     if (!r.ok || !d.ok) {
       msg.textContent = '✗ 没发出去：' + (d.error || ('HTTP ' + r.status));
-      msg.style.color = 'var(--red,#FF3526)';
+      msg.style.color = 'var(--red,#C93A2C)';
       return;
     }
     t.value = ''; bcCount();
@@ -931,7 +931,7 @@ async function bcSend() {
     bcToggle(); loadNotices();
   } catch (e) {
     msg.textContent = '✗ 请求发不出去：' + (e && e.message ? e.message : e);
-    msg.style.color = 'var(--red,#FF3526)';
+    msg.style.color = 'var(--red,#C93A2C)';
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -966,7 +966,7 @@ async function credScan(){
   }catch(e){ alert('体检失败：'+e.message); }
 }
 
-async function checkHealth(){try{const r=await fetch('/api/status');const d=await r.json();const ai=(d&&d.ai)||{};const el=document.getElementById('agentStatus');if(!el)return;if(ai.configured===false){el.textContent='AI未配置';el.style.color='var(--muted)';el.title=ai.detail||'在「设置」里配置平台 AI 后可用'}else if(ai.reachable===true){el.textContent='AI在线';el.style.color='var(--green)';const ag=fmtAge(ai.age_seconds);el.title=(ai.detail||'连通正常')+(ag?('（'+ag+'验证）'):'')}else if(ai.reachable===false){el.textContent='AI离线';el.style.color='var(--red)';el.title=ai.detail||'连通失败——点右侧「验证连通」看原因'}else{el.textContent='AI未验证';el.style.color='var(--yellow)';el.title=ai.detail||'已配置但还没验证过连通——点右侧「验证连通」核实'}const dh=d&&d.data_health;const dbar=document.getElementById('dataHealthBar');if(dbar){const closed=sessionStorage.getItem('dhClosed')==='1';if(dh&&dh.empty_but_history===true&&!closed){dbar.style.display='block';dbar.innerHTML='⚠ 这台平台的数据可能是被清过的：状态是空的，但数据目录里还有历史痕迹（工作区目录 '+(dh.workspace_dirs!=null?dh.workspace_dirs:'?')+' 个 / 审计 '+(dh.audit_kb!=null?dh.audit_kb:'?')+' KB）。'+'<a href="javascript:void(0)" onclick="sessionStorage.setItem(&quot;dhClosed&quot;,&quot;1&quot;);this.closest(&quot;div&quot;).style.display=&quot;none&quot;" style="color:inherit;margin-left:8px">知道了</a>';}else{dbar.style.display='none';}}const sg=d&&d.singleton;const bar=document.getElementById('singletonBar');const cred=d&&d.credentials;const cbar=document.getElementById('credBar');if(cbar){if(cred&&cred.scanned===false){cbar.style.display='block';cbar.style.background='rgba(255,255,255,.05)';cbar.style.borderColor='var(--rule,#2E2B27)';cbar.style.color='var(--muted)';cbar.innerHTML='还没做过凭据体检——点 <a href="javascript:void(0)" onclick="credScan()" style="color:#00FFFF">这里体检</a>（只给指纹不出明文）';}else if(cred&&(cred.weak>0||cred.plaintext_in_bridge>0)){cbar.style.display='block';cbar.style.background='rgba(255,176,0,.12)';cbar.style.borderColor='rgba(255,176,0,.5)';cbar.style.color='var(--yellow,#FFB000)';cbar.innerHTML='⚠ '+(cred.hint||('发现 '+(cred.weak||0)+' 处弱密钥 / '+(cred.plaintext_in_bridge||0)+' 处桥内明文'))+'　<a href="javascript:void(0)" onclick="credScan()" style="color:#FFB000">体检</a>';}else{cbar.style.display='none';}}if(bar){if(sg&&sg.degraded){bar.style.display='block';bar.textContent='⚠ 另一个平台实例正持有同一数据目录（写操作可能互相覆盖）'+(sg.holder?('——持有者：'+sg.holder):'');}else{bar.style.display='none';}}}catch(e){}}
+async function checkHealth(){try{const r=await fetch('/api/status');const d=await r.json();const ai=(d&&d.ai)||{};const el=document.getElementById('agentStatus');if(!el)return;if(ai.configured===false){el.textContent='AI未配置';el.style.color='var(--muted)';el.title=ai.detail||'在「设置」里配置平台 AI 后可用'}else if(ai.reachable===true){el.textContent='AI在线';el.style.color='var(--green)';const ag=fmtAge(ai.age_seconds);el.title=(ai.detail||'连通正常')+(ag?('（'+ag+'验证）'):'')}else if(ai.reachable===false){el.textContent='AI离线';el.style.color='var(--red)';el.title=ai.detail||'连通失败——点右侧「验证连通」看原因'}else{el.textContent='AI未验证';el.style.color='var(--yellow)';el.title=ai.detail||'已配置但还没验证过连通——点右侧「验证连通」核实'}const dh=d&&d.data_health;const dbar=document.getElementById('dataHealthBar');if(dbar){const closed=sessionStorage.getItem('dhClosed')==='1';if(dh&&dh.empty_but_history===true&&!closed){dbar.style.display='block';dbar.innerHTML='⚠ 这台平台的数据可能是被清过的：状态是空的，但数据目录里还有历史痕迹（工作区目录 '+(dh.workspace_dirs!=null?dh.workspace_dirs:'?')+' 个 / 审计 '+(dh.audit_kb!=null?dh.audit_kb:'?')+' KB）。'+'<a href="javascript:void(0)" onclick="sessionStorage.setItem(&quot;dhClosed&quot;,&quot;1&quot;);this.closest(&quot;div&quot;).style.display=&quot;none&quot;" style="color:inherit;margin-left:8px">知道了</a>';}else{dbar.style.display='none';}}const sg=d&&d.singleton;const bar=document.getElementById('singletonBar');const cred=d&&d.credentials;const cbar=document.getElementById('credBar');if(cbar){if(cred&&cred.scanned===false){cbar.style.display='block';cbar.style.background='rgba(255,255,255,.05)';cbar.style.borderColor='var(--rule,#2E2B27)';cbar.style.color='var(--muted)';cbar.innerHTML='还没做过凭据体检——点 <a href="javascript:void(0)" onclick="credScan()" style="color:#00FFFF">这里体检</a>（只给指纹不出明文）';}else if(cred&&(cred.weak>0||cred.plaintext_in_bridge>0)){cbar.style.display='block';cbar.style.background='rgba(255,176,0,.12)';cbar.style.borderColor='rgba(255,176,0,.5)';cbar.style.color='var(--yellow,#B98432)';cbar.innerHTML='⚠ '+(cred.hint||('发现 '+(cred.weak||0)+' 处弱密钥 / '+(cred.plaintext_in_bridge||0)+' 处桥内明文'))+'　<a href="javascript:void(0)" onclick="credScan()" style="color:#B98432">体检</a>';}else{cbar.style.display='none';}}if(bar){if(sg&&sg.degraded){bar.style.display='block';bar.textContent='⚠ 另一个平台实例正持有同一数据目录（写操作可能互相覆盖）'+(sg.holder?('——持有者：'+sg.holder):'');}else{bar.style.display='none';}}}catch(e){}}
 /* 验证连通：POST /api/ai/verify（无 body）；成功/失败都用返回 detail/reason+how_to_fix 说话；cached=true 如实标「刚验证过」 */
 async function verifyAI(btn){const el=document.getElementById('lastAction');const old=btn.textContent;btn.disabled=true;btn.textContent='验证中...';try{const r=await fetch('/api/ai/verify',{method:'POST'});const d=await r.json().catch(()=>({}));if(r.ok&&d.ok){el.textContent='验证连通：'+(d.detail||('成功 '+d.elapsed_ms+'ms'))+(d.cached?'（刚验证过，10分钟内缓存）':'')}else{el.textContent='验证连通未通过：'+(d.reason||d.detail||('HTTP '+r.status))+(d.how_to_fix?(' · '+d.how_to_fix):'')}}catch(e){el.textContent='验证连通失败：'+e.message}btn.disabled=false;btn.textContent=old;await checkHealth()}
 function showBridgePanel(tid,prompt){bridgeTaskId=tid;bridgeCountdown=1800;let pt=prompt;['[桥接等待]','需要你在桥接目标中处理以下任务并提交响应:\n\n'].forEach(p=>{if(pt.startsWith(p))pt=pt.slice(p.length).trim()});document.getElementById('bridgePrompt').textContent=pt;document.getElementById('bridgeResponse').value='';document.getElementById('bridgeSubmitBtn').disabled=true;document.getElementById('bridgePanel').classList.add('show');document.getElementById('bridgeResponse').focus();startBridgeTimer();document.getElementById('lastAction').textContent='桥接等待中';renderWorkshops()}

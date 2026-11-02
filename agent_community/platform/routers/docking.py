@@ -2249,6 +2249,18 @@ async def docking_harness_deliver(harness_id: str, request: Request):
     text = str(body.get("text") or "")
     if not text:
         return Utf8JSONResponse({"error": "要送的文本是空的"}, status_code=400)
+    # ★2026-11-02（V126 实测）：对**已注销/不存在**的 harness 送话，原来会 200 + ok:false，
+    #   界面拿到 200 就当成功 —— 清空接入之后再送话尤其误导。这里直接 404 说清楚。
+    try:
+        from ..harness_adapter import harness_manager as _hm_chk
+        if _hm_chk.sessions.get(str(harness_id or "")) is None:
+            return Utf8JSONResponse({
+                "ok": False, "code": "NO_SUCH_HARNESS",
+                "error": "没有这个 agent：%s（可能已被注销或清空）" % harness_id,
+                "next": "去「接入 Agent」重新接它，或确认 harness_id 有没有写错",
+            }, status_code=404)
+    except Exception as _e:                                    # noqa: BLE001 — 查不了就按老路走
+        print("[deliver] 存在性预检失败（不影响投递尝试）：%s" % str(_e)[:120], flush=True)
     prev_fg = input_sim.foreground_window()
     # ★协议型（MCP/HTTP 且它会话内发言）派活：走它的工具，不点窗口；发完读回核对。
     try:
@@ -2264,6 +2276,44 @@ async def docking_harness_deliver(harness_id: str, request: Request):
                                       str(body.get("session_id") or ""))
         # 这条路是给协议型派活用的：**要么成功、要么如实失败**，绝不偷偷换成"点它的窗口"
         return Utf8JSONResponse(out, status_code=200 if out.get("ok") else 409)
+    # ★2026-11-01（老板：「这里怎么不能和组长对话」）：
+    #   A2A 的"送话"= 按 JSON-RPC 发一条消息过去（`tasks/send`；给了既有任务号就走 `message/send`），
+    #   **既不是点窗口、也不是 session_post** —— 上面两个分支都不适用于它。
+    #   返回形状对齐其它分支（ok / channel / verified / detail），界面不用分叉。
+    if _k0 == "a2a":
+        try:
+            from ...a2a_client import send_message as _a2a_msg, send_task as _a2a_send
+            from ..harness_adapter import harness_manager as _hm_a
+
+            _sess_a = _hm_a.sessions.get(str(harness_id or ""))
+            _url = str(getattr(getattr(_sess_a, "info", None), "api_base_url", "") or "")
+            if not _url:
+                return Utf8JSONResponse({
+                    "ok": False, "channel": "a2a", "verified": False,
+                    "error": "这个 A2A agent 没有 api_base_url（平台无处可发）",
+                    "next": "去「接入 Agent」给它补上端点基址，再回来。",
+                }, status_code=409)
+            _want_tid = str(body.get("task_id") or "").strip()
+            if _want_tid:
+                _r = await asyncio.to_thread(_a2a_msg, _url, _want_tid, text, None, 30)
+                _tid, _how = _want_tid, "message/send（挂到既有任务 %s）" % _want_tid
+            else:
+                _r = await asyncio.to_thread(_a2a_send, _url, text, None, "", 60)
+                _t = _r.get("task") if isinstance(_r.get("task"), dict) else (_r or {})
+                _tid = str(_t.get("id") or "").strip()
+                _how = "tasks/send（新任务%s）" % ((" " + _tid) if _tid else "")
+            return Utf8JSONResponse({
+                "ok": True, "channel": "a2a", "verified": False,
+                "task_id": _tid, "detail": "已按 A2A %s 发出" % _how,
+                # 如实说边界：A2A 没有"往自己会话里说话"这类工具，回复只回到平台
+                "note": "它会在对端自己的 a2a-* 会话里处理；回复由平台按 tasks/get 回查，不在这个框里显示。",
+            }, status_code=200)
+        except Exception as e:                                 # noqa: BLE001 — 发不出去要如实说
+            return Utf8JSONResponse({
+                "ok": False, "channel": "a2a", "verified": False,
+                "error": "A2A 送话失败：%s: %s" % (type(e).__name__, str(e)[:200]),
+                "next": ("确认这个 agent 的端点还在跑（没关）。如果你的客户端**刚重启过**，它的端口可能变了（实测踩过：12609 → 14690）——去「接入 Agent」重新确认这个 agent 的地址，或直接打开它的面板看现在监听哪个端口。"),
+            }, status_code=409)
     res = await asyncio.to_thread(delivery.deliver_to_harness, harness_id, text,
                                   prefer=str(body.get("prefer") or ""),
                                   idx=(int(body["idx"]) if body.get("idx") is not None else None),
@@ -2291,6 +2341,243 @@ async def docking_harness_deliver(harness_id: str, request: Request):
         except Exception as e:                                 # noqa: BLE001 — 核对失败不影响"送没送"
             res["session_check"] = {"checked": False, "why": "%s: %s" % (type(e).__name__, str(e)[:120])}
     return res
+
+
+@router.get("/api/docking/harness/{harness_id}/a2a-task/{task_id}")
+async def docking_a2a_task_state(harness_id: str, task_id: str):
+    """查一个 A2A 任务的**状态与回复文本**（只读，不改任何东西）。
+
+    ★2026-11-01（老板：「回复不会传回平台」）：
+    派活那条路有 `a2a_result_poll` 轮询把结果写回账本；而**送话（`deliver`）没有轮询**，
+    发出去就完了 —— 界面看不到它回了什么。这个端点补上"按任务号取回复"。
+
+    解析复用 `platform/a2a_result_poll.parse_task()`（一处真相：status 可能是对象、
+    枚举带 `TASK_STATE_` 前缀、产物 `parts` 是逐词片段）。
+    """
+    import asyncio
+
+    from fastapi.responses import JSONResponse
+
+    from ..harness_adapter import harness_manager as _hm
+
+    sess = _hm.sessions.get(str(harness_id or ""))
+    if sess is None:
+        return JSONResponse({"ok": False, "error": "没有这个 harness：%s" % harness_id},
+                            status_code=404)
+    url = str(getattr(getattr(sess, "info", None), "api_base_url", "") or "")
+    if not url:
+        return JSONResponse({"ok": False, "error": "这个 harness 没有 api_base_url（无处可查）"},
+                            status_code=409)
+    try:
+        from ...a2a_client import get_task as _get
+
+        res = await asyncio.to_thread(_get, url, str(task_id), None, 20)
+    except Exception as e:                                     # noqa: BLE001 — 查不到要如实说
+        return JSONResponse({"ok": False, "task_id": task_id,
+                             "error": "查任务失败：%s: %s" % (type(e).__name__, str(e)[:200])},
+                            status_code=409)
+    from ..a2a_result_poll import parse_task as _parse
+
+    task = res.get("task") if isinstance(res.get("task"), dict) else (res or {})
+    parsed = _parse(task)
+    return {
+        "ok": True,
+        "task_id": parsed["task_id"] or str(task_id),
+        "context_id": parsed["context_id"],
+        "state": parsed["state"],
+        "terminal": parsed["terminal"],
+        "text": parsed["text"],
+        "artifacts": parsed["artifacts"],
+        "note": ("只有 `terminal=true` 时 `text` 才是它的最终回复；"
+                 "中途的 `working` 可能还没有内容。"),
+    }
+
+
+# ===== V126 一键清空「接入」（大厅 · 对接中心）=============================
+#   老板 2026-11-02：「做一个功能让用户可以一键清理掉接入的agent，包括注册的模板，
+#   放在大厅对接中心里」。设计稿：design-docs/V126_一键清空接入_设计_2026-11-02.md
+#
+#   清：agent 注册（**注册的模板就在 harnesses.json 的 metadata.bridge_template 里**，
+#       随条目一起走）、工具面记录、拉起日志、会话引用、签发令牌、以及**内存态**；
+#   不清：工作间 / 工作区产物 / 名单 / 账本 / 日志 / 备份 / 配置。
+#   副作用（必须告知）：用到这些 agent 的成员会变孤儿 —— 平台**不自动删成员**。
+
+AGENTS_RESET_CONFIRM = "清空接入"
+
+
+def _agents_reset_snapshot() -> dict:
+    """当前有哪些 agent + 谁会受影响（**只读**，预览与真清共用）。"""
+    from ..harness_adapter import harness_manager as _hm
+
+    infos = []
+    for hid, sess in list(_hm.sessions.items()):
+        info = getattr(sess, "info", None)
+        md = getattr(info, "metadata", None) or {}
+        bt = md.get("bridge_template") or {}
+        infos.append({
+            "harness_id": str(hid),
+            "harness_name": str(getattr(info, "harness_name", "") or ""),
+            "wakeup_method": str(getattr(info, "wakeup_method", "") or ""),
+            "template": str(bt.get("template") or ""),
+            "template_complete": bool(bt.get("complete")),
+        })
+    infos.sort(key=lambda x: x["harness_id"])
+    ids = {x["harness_id"] for x in infos}
+
+    # 哪些工作间的哪些成员引用了这些 agent（清完会变孤儿）
+    from .. import v5_roster as _roster
+
+    affected = []
+    try:
+        data = _roster._load()  # noqa: SLF001 — 同包内部读，只读用途
+    except Exception:                                          # noqa: BLE001
+        data = {}
+    # ⚠️ v5_roster._load() 直接返回 {工作间id: {slots, members, seq}}（**没有 workshops 包一层**）
+    #    —— 写成 data.get("workshops") 会永远空（实测踩过：预览里受影响工作间一直列不出来）
+    for wid, w in (data or {}).items():
+        if not isinstance(w, dict):
+            continue
+        orph = []
+        for m in (w.get("members") or []):
+            hid = str(m.get("harness_id") or "")
+            if hid and hid in ids:
+                orph.append({"member_seq": m.get("member_seq"),
+                             "slot_dir": str(m.get("slot_dir") or ""),
+                             "harness_id": hid})
+        if orph:
+            affected.append({"workshop_id": wid,
+                             "name": str(w.get("name") or wid),
+                             "orphan_members": orph})
+    return {"agents": infos, "count": len(infos), "affected_workrooms": affected}
+
+
+@router.get("/api/docking/agents-reset/preview")
+async def agents_reset_preview():
+    """**只读预览**：会删哪些 agent、哪些工作间会受影响。"""
+    snap = _agents_reset_snapshot()
+    will_delete = ["harnesses.json（含每条 agent 的注册模板）",
+                   "harness_tooling.json", "harness_launch_log.json",
+                   "sessions.json / session_notes.json", "keys/（签发的令牌）",
+                   "内存态：agents / pending_activations / pending_tasks / pending_bridge_tests"]
+    keep = ["工作间（workshops.json + 工作区产物）", "v5 名单", "任务账本/任务/回执",
+            "logs / backups / policy.json / plugins.json / local_ai.json"]
+    return {
+        "ok": True, "count": snap["count"], "agents": snap["agents"],
+        "affected_workrooms": snap["affected_workrooms"],
+        "will_delete": will_delete, "keep": keep,
+        "note": ("清空后：agent 注册和模板都没了；工作间、账本、产物**不动**，"
+                 "但上面列出的成员会变成**孤儿**（平台不自动删成员）。"),
+        "how_to_confirm": "POST /api/docking/agents-reset，body 要带 {\"confirm\": \"%s\"}"
+                          % AGENTS_RESET_CONFIRM,
+    }
+
+
+@router.post("/api/docking/agents-reset")
+async def agents_reset(request: Request):
+    """**真清**：删掉所有 agent 注册（含模板）。
+
+    确认词由**端点自己校验** —— 界面能做错，服务端不能信界面。
+    删前自动备份到 `<data>/backups/pre-reset-agents-<时间戳>/`，备份失败**中止**。
+    """
+    import asyncio
+    import json as _json
+    import shutil
+    from datetime import datetime as _dt
+    from pathlib import Path as _P
+
+    from fastapi.responses import JSONResponse
+    from ..harness_adapter import harness_manager as _hm
+
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    if str(body.get("confirm") or "").strip() != AGENTS_RESET_CONFIRM:
+        return JSONResponse({
+            "ok": False, "code": "CONFIRM_REQUIRED",
+            "error": "确认词不对，**什么都没删**",
+            "expected": AGENTS_RESET_CONFIRM,
+            "next": "确认要清空就原样传这个词；不确定就先看 preview",
+        }, status_code=400)
+
+    from ..env_spec import data_dir as _data_dir
+
+    dd = _P(_data_dir())
+    snap = _agents_reset_snapshot()
+    if not snap["count"] and not (dd / "harnesses.json").is_file():
+        return {"ok": True, "deleted": [], "note": "本来就没有接入的 agent，什么都没删"}
+
+    # ① 先备份（失败就中止，一个字节都不删）
+    stamp = _dt.now().strftime("%Y%m%d_%H%M%S")
+    backup = dd / "backups" / ("pre-reset-agents-%s" % stamp)
+    targets = ["harnesses.json", "harness_tooling.json", "harness_launch_log.json",
+               "sessions.json", "session_notes.json"]
+    try:
+        backup.mkdir(parents=True, exist_ok=False)
+        for name in targets:
+            src = dd / name
+            if src.is_file():
+                shutil.copy2(src, backup / name)
+        keys = dd / "keys"
+        if keys.is_dir():
+            # ⚠️ async 里**不许**同步拷目录：大目录会卡死事件循环 ⇒ 平台假死、watchdog 重启
+            #    （守卫 test_async_no_blocking 会抓，这里是真修不是绕过）
+            await asyncio.to_thread(shutil.copytree, keys, backup / "keys")
+    except Exception as e:                                     # noqa: BLE001 — 备份失败必须中止
+        return JSONResponse({
+            "ok": False, "code": "BACKUP_FAILED",
+            "error": "备份没成功，**一个 agent 都没删**：%s: %s" % (type(e).__name__, str(e)[:200]),
+            "next": "看 `<数据目录>/backups/` 是否可写、磁盘是否满",
+        }, status_code=500)
+
+    # ② 真清：内存态 → 文件
+    deleted = [a["harness_id"] for a in snap["agents"]]
+    problems = []
+    try:
+        # 这几个全局在 platform/state.py（不是 server.py —— 实测确认过来源）
+        from ..server import save_state
+        from ..state import agents, pending_activations, pending_bridge_tests, pending_tasks
+        for hid in deleted:
+            agents.pop(hid, None)
+            pending_activations.pop(hid, None)
+            pending_tasks.pop(hid, None)
+            pending_bridge_tests.pop(hid, None)
+            _hm.sessions.pop(hid, None)
+        save_state()
+    except Exception as e:                                     # noqa: BLE001 — 内存清不干净要如实说
+        problems.append("内存态清理出错：%s: %s" % (type(e).__name__, str(e)[:160]))
+
+    # 文件层面：harnesses.json 清空为 {}（保留文件，避免别处读到 ENOENT）
+    for name in ("harnesses.json", "harness_tooling.json", "harness_launch_log.json"):
+        fp = dd / name
+        try:
+            if fp.is_file():
+                fp.write_text(_json.dumps({}, ensure_ascii=False), encoding="utf-8")
+        except Exception as e:                                 # noqa: BLE001
+            problems.append("%s 清空失败：%s" % (name, str(e)[:120]))
+    try:
+        keys = dd / "keys"
+        if keys.is_dir():
+            await asyncio.to_thread(shutil.rmtree, keys, True)
+    except Exception as e:                                     # noqa: BLE001
+        problems.append("keys 删除失败：%s" % str(e)[:120])
+
+    left = _agents_reset_snapshot()
+    return {
+        "ok": not problems,
+        "deleted": deleted,
+        "still_there": [a["harness_id"] for a in left["agents"]],
+        "backup": str(backup.relative_to(dd)) if backup.is_dir() else "",
+        "affected_workrooms": snap["affected_workrooms"],
+        "problems": problems,
+        "note": ("已清空 %d 个接入（含注册模板）。工作间/账本/产物**没动**；"
+                 "上面那些成员现在是孤儿，平台不会替人删成员。" % len(deleted)),
+        "next": ("要继续用：去「接入 Agent」重新接；要清孤儿成员：工作间 → 名单 → 移除。"
+                 if deleted else ""),
+        "rollback": ("把 `%s` 里的文件拷回 `<数据目录>/` 即恢复（keys 目录整个拷回）"
+                     % backup.relative_to(dd)) if backup.is_dir() else "",
+    }
 
 
 @router.get("/api/docking/delivery/channels")

@@ -434,6 +434,50 @@ function copyEl(id) {
   }
 }
 
+/* ── 2b. 平台自己接组长进来（★2026-11-01 老板：「组长接进工作间很麻烦」）────
+   有协议通道的组长（A2A 等）：平台自己发一条探针、自己看回执，
+   验过就记 `protocol_ok`（来源 **platform-observed**，不是人打的勾）。
+   不再需要：复制对接单 → 去对方会话粘贴 → 回来打勾 → 手写覆盖范围。 */
+async function autoProtocolProbe(btn) {
+  const msg = $('ppMsg'), out = $('ppOut');
+  if (!S.ws) { if (msg) msg.textContent = '还没选中工作间'; return; }
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = '找本间的组长工位…';
+  if (out) out.innerHTML = '';
+  try {
+    /* 1) 组长是谁：**v5 名单**里 slot_dir === '_lead' 的那个工位。
+       ⚠️ 别用 /members-status —— 那个端点回的是**旧名单**（WorkshopMember，只有 m0/m1，
+       没有 slot_dir / member_seq），拿它永远找不到组长（实测踩过）。v5 名单在 /roster。 */
+    const st = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) + '/roster');
+    const members = (st.ok && st.data && st.data.members) || [];
+    const lead = members.find(function (m) { return String(m.slot_dir || '') === '_lead'; });
+    if (!lead) {
+      if (msg) msg.textContent = '这间还没选组长 —— 先在上面的列表里点「选它当组长」';
+      return;
+    }
+    if (msg) msg.textContent = '平台发探针、等它回执（最多 25 秒）…';
+    // 2) 平台自验（后端发 + 后端看回执 + 后端记 platform-observed）
+    const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) +
+      '/members/' + encodeURIComponent(lead.member_seq) + '/protocol-probe', { wait: 25 });
+    const d = r.data || {};
+    if (out) {
+      out.innerHTML = (r.ok && d.ok)
+        ? ('<div class="msg" style="color:var(--ok)">✓ 平台自己接上了：' + esc(d.detail || '') +
+           '<br>证据来源：<b>platform-observed</b>（平台自己看到它把任务做完了，不是人打的勾）' +
+           (d.task_id ? ('<br>对端任务：<code>' + esc(d.task_id) + '</code>') : '') + '</div>')
+        : ('<div class="msg" style="color:var(--bad)">✗ 没接上：' + esc(d.error || d.why || ('HTTP ' + r.status)) +
+           (d.detail ? ('<br>' + esc(d.detail)) : '') +
+           (d.next ? ('<br>下一步：' + esc(d.next)) : '') + '</div>');
+    }
+    if (msg) msg.textContent = (r.ok && d.ok) ? '已接上' : '没接上';
+    if (r.ok && d.ok) { try { loadRoster(); loadLeadPull(); } catch (e) { /* 刷新失败不影响判定 */ } }
+  } catch (e) {
+    if (msg) msg.textContent = '出错：' + (e && e.message ? e.message : e);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 /* ── 3. 接组长（证据）─────────────────────────────────────── */
 /* 名单镜像回显（D后端-56 §2）：写名单的响应都带 mirror 字段，照实带出，不吞。
    {ok:true,path,members} / {ok:false,why}；镜像不是真源，失败也不阻断主库。 */
@@ -799,8 +843,62 @@ async function doDispatch() {
   h += '<div class="row"><span class="msg">' + esc(tid) + '　任务文件 <code>' +
       esc(d.file) + '</code>' + (d.file_created ? '（平台代写）' : '（组长自己写的）') + '</span>' +
     '<button onclick="loadDispatchDetail(' + Number(d.task_seq || 0) + ')">看这条派活（账本同源）</button></div>';
+  /* ★2026-11-02（老板：「工作过程中没有回复，让用户以为是掉线了」）：
+     派完**立刻**给一块"在途状态"，并按任务号轮询它的进度 —— 屏幕上要有东西在动，
+     用户才知道"它在干"，而不是"平台断了"。 */
+  const wk = d.wakeup || {};
+  h += '<div id="dspLive" class="dsp-live"></div>';
   $('dspOut').innerHTML = h;
+  if (wk.a2a_task_id && wk.harness_id) {
+    dispatchWatch(String(wk.harness_id), String(wk.a2a_task_id), String(tid));
+  } else if (wk.result === 'ok' || wk.result === 'queued') {
+    const box = $('dspLive');
+    if (box) box.innerHTML = '<div class="msg">已派出（通道 ' + esc(String(wk.method || '')) +
+      '）。这类接入平台**查不到实时进度** —— 它做完会通过回执或桥回来，别以为断了。</div>';
+  }
   await loadTasks();
+}
+
+/** 派活之后盯住这条 A2A 任务的进度（每 4 秒一次，最多 5 分钟）。
+ *
+ *  ★2026-11-02（老板：「工作过程中没有回复，让用户以为是掉线了」）：
+ *  A2A 的活要跑一会儿，界面上**必须有东西在动**：任务号 / 当前状态 / 已经等了多久 /
+ *  终态时把它的回复贴出来。查不到就如实说"查不到"，不假装还在跑。
+ */
+async function dispatchWatch(hid, taskId, tid){
+  const box = $('dspLive');
+  if (!box) return;
+  const t0 = Date.now();
+  let sec = 0;
+  const paint = (state, extra) => {
+    box.innerHTML =
+      '<div class="dsp-live-row"><b>正在干：</b>' + esc(tid) +
+      '　任务 <code>' + esc(taskId) + '</code></div>' +
+      '<div class="dsp-live-row">状态 <b>' + esc(state || '查询中') + '</b>' +
+      '　已等 <b>' + Math.round(sec) + '</b> 秒' + (extra ? ('　' + esc(extra)) : '') + '</div>' +
+      '<div class="dsp-live-row dsp-dim">它做完后，结果会自动写进任务账本（这里也会显示它回的话）。</div>';
+  };
+  paint('已派出，等它开始', '');
+  while (Date.now() - t0 < 300000) {
+    await new Promise(r => setTimeout(r, 4000));
+    sec = (Date.now() - t0) / 1000;
+    try {
+      const r = await api('GET', '/api/docking/harness/' + encodeURIComponent(hid) +
+        '/a2a-task/' + encodeURIComponent(taskId));
+      const d = r.data || {};
+      if (!r.ok || !d.ok) { paint('查不到进度', '(接口' + (r.status || '异常') + '；派活本身已成功)'); continue; }
+      if (d.terminal) {
+        box.innerHTML =
+          '<div class="dsp-live-row"><b>它做完了：</b>' + esc(tid) + '　任务 <code>' + esc(taskId) + '</code></div>' +
+          '<div class="dsp-live-row">最终状态 <b>' + esc(d.state || '') + '</b>　耗时 <b>' + Math.round(sec) + '</b> 秒</div>' +
+          (d.text ? ('<div class="dsp-live-say">' + esc(String(d.text)) + '</div>')
+                  : '<div class="dsp-dim">（它没给出文字回复 —— 结果看任务账本/产物）</div>');
+        return;
+      }
+      paint(d.state || '在做', '');
+    } catch (e) { /* 单次失败继续轮 */ }
+  }
+  paint('5 分钟还没完', '(可能还在做；去对端会话或任务账本看，别当成断了)');
 }
 
 /* ── 6. 产物 ───────────────────────────────────────────────── */
