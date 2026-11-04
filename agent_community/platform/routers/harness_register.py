@@ -946,8 +946,102 @@ async def harness_activation_result(request: Request):
             asyncio.create_task(_assign_tasks(ws))
     return {"success": True, "session": rec}
 
+def _bindings_of_harness(harness_id: str) -> list[dict]:
+    """**谁在用它**：旧名单（`Workshop.members`）＋ v5 名单（`v5_roster`）两边都查。
+
+    ★2026-11-03（老板：「清理后仍然存在记录：悬空引用」）：
+    删 agent 之前得先知道"有谁绑着它"，否则删完就是一堆没主的记录。
+    """
+    hid = str(harness_id or "").strip()
+    out: list[dict] = []
+    # 旧名单
+    for w in workshops.values():
+        for m in (getattr(w, "members", []) or []):
+            hids = [str(x) for x in (getattr(m, "harness_ids", None) or []) if str(x).strip()]
+            if hid and hid in hids:
+                out.append({
+                    "roster": "legacy",
+                    "ws_id": getattr(w, "workshop_id", ""),
+                    "ws_name": getattr(w, "name", ""),
+                    "member_id": getattr(m, "member_id", ""),
+                    "role": getattr(m, "role", ""),
+                    "display_name": getattr(m, "display_name", ""),
+                })
+    # v5 名单
+    try:
+        from .. import v5_roster as _roster
+
+        data = _roster._load()  # noqa: SLF001 — 同包内部只读
+        for wid, w in (data or {}).items():
+            if not isinstance(w, dict):
+                continue
+            for m in (w.get("members") or []):
+                if not isinstance(m, dict):
+                    continue
+                if str(m.get("harness_id") or "").strip() == hid:
+                    out.append({
+                        "roster": "v5",
+                        "ws_id": wid,
+                        "ws_name": str(w.get("name") or wid),
+                        "member_id": "seq:%s" % m.get("member_seq"),
+                        "role": str(m.get("slot_dir") or m.get("role") or ""),
+                        "display_name": str(m.get("display_name") or ""),
+                    })
+    except Exception as e:                                     # noqa: BLE001 — 查不到 v5 不影响旧名单结论
+        _warn_once("bindings_v5", "[harness] 查 v5 名单绑定失败：%s" % str(e)[:160])
+    return out
+
+
+def _clean_bindings_of(harness_id: str) -> dict:
+    """把引用这个 harness 的成员**从两套名单里移除**（删前已备份，调用方负责备份）。"""
+    hid = str(harness_id or "").strip()
+    removed_legacy = 0
+    for w in workshops.values():
+        keep = []
+        for m in (getattr(w, "members", []) or []):
+            hids = [str(x) for x in (getattr(m, "harness_ids", None) or []) if str(x).strip()]
+            if hid and hid in hids:
+                removed_legacy += 1
+                continue
+            keep.append(m)
+        try:
+            w.members = keep
+        except Exception as e:                                 # noqa: BLE001
+            _warn_once("clean_legacy", "[harness] 旧名单清理失败：%s" % str(e)[:160])
+
+    removed_v5 = 0
+    try:
+        from .. import v5_roster as _roster
+
+        data = _roster._load()  # noqa: SLF001
+        changed = False
+        for wid, w in (data or {}).items():
+            if not isinstance(w, dict):
+                continue
+            ms = w.get("members") or []
+            keep = [m for m in ms if str((m or {}).get("harness_id") or "").strip() != hid]
+            if len(keep) != len(ms):
+                removed_v5 += len(ms) - len(keep)
+                w["members"] = keep
+                changed = True
+        if changed:
+            _roster._save(data)  # noqa: SLF001
+    except Exception as e:                                     # noqa: BLE001
+        _warn_once("clean_v5", "[harness] v5 名单清理失败：%s" % str(e)[:160])
+    return {"legacy": removed_legacy, "v5": removed_v5}
+
+
+@router.get("/api/harness/{harness_id}/bindings")
+async def harness_bindings(harness_id: str):
+    """**删之前先问**：谁在用它（旧名单 + v5 名单）。只读。"""
+    bl = _bindings_of_harness(harness_id)
+    return {"ok": True, "harness_id": harness_id, "count": len(bl), "bindings": bl,
+            "hint": ("删除时加 `?clean_bindings=1` 可以连这些人一起清掉；"
+                     "不加就只删 agent，工作间里会留下悬空引用。")}
+
+
 @router.delete("/api/harness/{harness_id}")
-async def unregister_harness(harness_id: str):
+async def unregister_harness(harness_id: str, clean_bindings: int = 0):
     from ..server import Utf8JSONResponse, _append_hall, _stop_bridge_processes, _trash_bridge_dir, bcast_to_clients, save_state
     """注销 Harness（删除注册信息 + 桥坐标 + 队列残留 + 终止桥进程 + 桥目录进回收站）"""
     sess = harness_manager.sessions.get(harness_id)
@@ -959,6 +1053,40 @@ async def unregister_harness(harness_id: str):
     #   **记的是"做过的事"，而它根本没做**。审计的价值全在"可信"，这条属于自己给自己造伪证。
     _audit_log.record("harness.unregister", actor="user", target=harness_id, detail="注销 harness")
     bridge_dir = sess.info.bridge_dir or ""
+    # ★2026-11-03（老板：「删除时一并清掉引用它的成员」）：
+    #   要清就先备份两套名单（备份失败**不清**，但删 agent 照常 —— 那是用户点的那件事）
+    _clean_info = None
+    _backup_rel = ""
+    if int(clean_bindings or 0):
+        _bl = _bindings_of_harness(harness_id)
+        if _bl:
+            import shutil as _sh
+            from datetime import datetime as _dt
+            from pathlib import Path as _P
+
+            from ..env_spec import data_dir as _dd
+
+            _d = _P(_dd())
+            _bk = _d / "backups" / ("pre-delete-harness-%s" % _dt.now().strftime("%Y%m%d_%H%M%S"))
+            try:
+                _bk.mkdir(parents=True, exist_ok=False)
+                for _f in ("workshops.json", "v5_roster.json"):
+                    _src = _d / _f
+                    if _src.is_file():
+                        _sh.copy2(_src, _bk / _f)
+                _backup_rel = str(_bk.relative_to(_d))
+            except Exception as e:                             # noqa: BLE001 — 备份失败就不清成员
+                _backup_rel = ""
+                _warn_once("delete_bindings_backup",
+                           "[harness] 清理成员前备份失败，**成员一个没动**：%s" % str(e)[:200])
+            if _backup_rel:
+                _clean_info = _clean_bindings_of(harness_id)
+                try:
+                    _audit_log.record("harness.clean_bindings", actor="user", target=harness_id,
+                                      detail="删 agent 时一并清理引用：旧名单 %d 个 / v5 名单 %d 个"
+                                             % (_clean_info.get("legacy", 0), _clean_info.get("v5", 0)))
+                except Exception:                              # noqa: BLE001 — 审计失败不影响结果
+                    pass
     # 移除 agent 注册
     agents.pop(sess.agent_id, None)
     harness_manager.unregister(harness_id)
@@ -991,9 +1119,17 @@ async def unregister_harness(harness_id: str):
     _append_hall(sys_msg)
     await bcast_to_clients(sys_msg)
     save_state()
-    return {
+    _out = {
         "success": True, "deleted": harness_id,
         "bridge_cleanup": bridge_cleanup, "trash": trash_result,
         "sessions_closed": sessions_closed,
     }
+    if _clean_info is not None:
+        _out["bindings_cleaned"] = _clean_info
+        _out["backup"] = _backup_rel
+        _out["rollback"] = "把 `%s/` 里的两份名单拷回 `<数据目录>/` 即恢复" % _backup_rel
+    elif int(clean_bindings or 0):
+        _out["bindings_cleaned"] = {"legacy": 0, "v5": 0,
+                                    "note": "没清成员（备份没成功，或本来就没有成员绑它）"}
+    return _out
 

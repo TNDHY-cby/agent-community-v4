@@ -178,6 +178,7 @@ SPEC: dict[str, Var] = {v.name: v for v in [
     Var("AC_PROBE_STALENESS_HOURS", "回话探针结果多少小时算过期（超时后 capability 显示 stale）", default="24", kind="feature", example="72"),
     Var("AC_SNAPSHOT_MAX", "每个任务保留多少条运行快照（超了丢最旧并留一条截断记录）", default="200", kind="feature", example="500"),
     Var("AC_MCP_TOOLSETS", "MCP 挂载哪些工具组（逗号分隔：api/task/bridge/browser/devices/plan；all=全量）", default="api,task", kind="feature", example="api"),
+    Var("AC_MCP_RESOURCE_MAX_BYTES", "MCP 只读资源单次返回的字节上限（超了先翻页、再截断并标注）；最小 1024", default="65536", kind="feature", example="131072"),
     Var("AC_UPDATE_SOURCES", "更新源列表（逗号分隔，`名字=地址` 或只写地址）；不配则用本仓库 git 远端", default="", kind="feature", example="gitee=https://gitee.com/<org>/<repo>.git,mirror=https://…"),
     Var("AC_REPLY_PROBE_ENABLED", "回话探针总开关（默认关；设 1 才允许发探针，避免无意义开销）", default="0", kind="feature", example="1"),
     Var("AC_REPLY_PROBE_TIMEOUT", "回话探针等回执的超时秒数", default="120", kind="feature", example="60"),

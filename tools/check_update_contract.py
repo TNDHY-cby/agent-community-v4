@@ -97,7 +97,7 @@ def main() -> int:
              "latest=%r" % ((body or {}).get("latest"),))
 
         chan = (body or {}).get("channel") or {}
-        cell("④ channel 指向 Gitee 且给了 release 地址", "gitee.com" in str(chan.get("repo", ""))
+        cell("④ channel 指向主仓库（GitHub）且给了 release 地址", "github.com" in str(chan.get("repo", ""))
              and "{tag}" in str(chan.get("release_tarball_tpl", "")), str(chan.get("repo", ""))[:60])
 
         safety = (body or {}).get("update_safety") or {}

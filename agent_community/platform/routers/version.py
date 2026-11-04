@@ -26,11 +26,11 @@ from fastapi import APIRouter
 
 router = APIRouter(tags=["version"])
 
-#: 更新渠道（Gitee 是唯一有效远端；GitHub 已于 2026-10-16 停更）
+#: 更新渠道（**主仓库＝GitHub**，2026-11-04 起；Gitee 保留为备用）
 CHANNEL = {
-    "repo": "https://gitee.com/TNDHY-cby/external-agents-community",
-    "releases_api": "https://gitee.com/api/v5/repos/TNDHY-cby/external-agents-community/releases/latest",
-    "release_tarball_tpl": "https://gitee.com/TNDHY-cby/external-agents-community/repository/archive/{tag}.tar.gz",
+    "repo": "https://github.com/TNDHY-cby/agent-community-v4",
+    "releases_api": "https://api.github.com/repos/TNDHY-cby/agent-community-v4/releases/latest",
+    "release_tarball_tpl": "https://github.com/TNDHY-cby/agent-community-v4/archive/refs/tags/{tag}.tar.gz",
     "tags_ref": "refs/tags/vX.Y.Z",
 }
 
@@ -145,7 +145,7 @@ async def api_version_latest():
         return body
 
     api = CHANNEL["releases_api"]
-    latest, error, source = None, "", "Gitee Releases API"
+    latest, error, source = None, "", "GitHub Releases API"
     try:
         with urllib.request.urlopen(api, timeout=10) as resp:      # noqa: S310 - 固定 https 域名
             data = json.loads(resp.read().decode("utf-8", "replace"))

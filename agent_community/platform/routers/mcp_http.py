@@ -190,7 +190,11 @@ async def mcp_http(request: Request):
         want = str(params.get("protocolVersion") or "")
         ver = want if want in SUPPORTED_PROTOCOL_VERSIONS else SUPPORTED_PROTOCOL_VERSIONS[0]
         return JSONResponse(_ok({"protocolVersion": ver,
-                                 "capabilities": {"tools": {"listChanged": False}},
+                                 # ★V127：HTTP 与 stdio 两个入口**同一份能力口径**
+                                 #   （资源只读、不订阅、不推列表变更通知）
+                                 "capabilities": {"tools": {"listChanged": False},
+                                                  "resources": {"subscribe": False,
+                                                                "listChanged": False}},
                                  "serverInfo": {"name": "external-agent-community",
                                                 "version": "4"}}, req_id),
                             headers={"Mcp-Session-Id": sid})
@@ -225,6 +229,31 @@ async def mcp_http(request: Request):
                 elapsed_ms=int((time.time() - started) * 1000))
         return JSONResponse(_ok({"content": [{"type": "text", "text": text}],
                                  "isError": not ok}, req_id))
+
+    # ── V127：只读资源面（**这里只分发**，取数与脱敏全在 mcp_server 一处真相）──
+    if method in ("resources/list", "resources/templates/list", "resources/read"):
+        import asyncio
+
+        from agent_community import mcp_server as _srv
+
+        # 与 tools/call 同理：取数是**同步**的、还会回头调本平台 REST ⇒ 必须丢线程，
+        # 否则把事件循环占死、自己那条请求永远等不到响应。
+        try:
+            if method == "resources/list":
+                res = await asyncio.to_thread(_srv.list_resources,
+                                              str(params.get("cursor") or ""))
+            elif method == "resources/templates/list":
+                res = await asyncio.to_thread(_srv.list_resource_templates,
+                                              str(params.get("cursor") or ""))
+            else:
+                res = await asyncio.to_thread(_srv.read_resource, str(params.get("uri") or ""))
+        except _srv.ResourceError as e:
+            _record(method, client=_client_of(sid), session=sid, ok=False, code=e.code,
+                    uri=str(params.get("uri") or "")[:200])
+            return JSONResponse(_err(e.code, e.message, req_id), status_code=200)
+        _record(method, client=_client_of(sid), session=sid, ok=True,
+                uri=str(params.get("uri") or "")[:200])
+        return JSONResponse(_ok(res, req_id))
 
     _record("unknown", client=_client_of(sid), session=sid, method=method)
     return JSONResponse(_err(-32601, "不支持的方法：%s" % method, req_id), status_code=200)

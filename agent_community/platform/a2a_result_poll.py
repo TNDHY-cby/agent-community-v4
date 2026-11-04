@@ -82,6 +82,27 @@ def list_pending() -> list:
     return _load()
 
 
+def raw_state_of(payload) -> str:
+    """从**任意**任务/工具返回体里取出状态字符串并归一化前缀（**一处真相**）。
+
+    A2A 与 MCP 两个协议都会踩这两个坑，所以只在这里处理：
+      ① `status` 可能是**对象**：`{"state": "TASK_STATE_WORKING", ...}`
+         —— 直接 `str()` 会得到一整串字典文本，永远比不中终态；
+      ② 枚举值带 `TASK_STATE_` 前缀 ⇒ 归一化掉。
+    返回：小写、去前缀的状态串（如 `completed` / `working`）；取不到就空串。
+    """
+    if not isinstance(payload, dict):
+        return ""
+    raw = payload.get("status")
+    if isinstance(raw, dict):
+        s = str(raw.get("state") or raw.get("status") or "").strip().lower()
+    else:
+        s = str(raw or payload.get("state") or "").strip().lower()
+    if s.startswith("task_state_"):
+        s = s[len("task_state_"):]
+    return s
+
+
 def parse_task(task: dict) -> dict:
     """把一条 A2A task 解析成 `{state, text, artifacts, terminal}`（**一处真相**）。
 
@@ -98,12 +119,7 @@ def parse_task(task: dict) -> dict:
     """
     task = task if isinstance(task, dict) else {}
     _raw_status = task.get("status")
-    if isinstance(_raw_status, dict):
-        state = str(_raw_status.get("state") or _raw_status.get("status") or "").strip().lower()
-    else:
-        state = str(_raw_status or task.get("state") or "").strip().lower()
-    if state.startswith("task_state_"):
-        state = state[len("task_state_"):]
+    state = raw_state_of(task)          # 一处真相：status 可能是对象、可能带 TASK_STATE_ 前缀
     artifacts = task.get("artifacts") or task.get("outputs") or []
     if isinstance(artifacts, dict):
         artifacts = list(artifacts.values())

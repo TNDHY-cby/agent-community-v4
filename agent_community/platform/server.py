@@ -4776,6 +4776,19 @@ async def _autonomy_recovery_loop():
                     print("[a2a-poll] 本轮：%s" % json.dumps(_a2a_stats, ensure_ascii=False), flush=True)
             except Exception as _e:                            # noqa: BLE001 — 轮询挂了不拖垮别的恢复动作
                 _warn_once("a2a_poll", "[a2a-poll] 轮询结果回写失败", _e)
+            # ★2026-11-04（V128）：MCP 侧的工具调用也会「回了 pending 就没人管」——
+            #   与 A2A **同一个后台循环**（不新起线程）；查询有节流（30s）与单轮上限（5 条）。
+            #   ⚠️ 这里必须 await：`mcp_task_get` 是 async 的（A2A 那条是同步函数）。
+            try:
+                from .mcp_result_poll import sweep_once as _mcp_sweep
+
+                _mcp_stats = await _mcp_sweep()
+                if (_mcp_stats.get("done") or _mcp_stats.get("failed")
+                        or _mcp_stats.get("dropped") or _mcp_stats.get("unsupported")):
+                    print("[mcp-poll] 本轮：%s" % json.dumps(_mcp_stats, ensure_ascii=False),
+                          flush=True)
+            except Exception as _e:                            # noqa: BLE001 — 同上：失败要说话、不拖垮
+                _warn_once("mcp_poll", "[mcp-poll] 轮询结果回写失败", _e)
             if _off_acted:
                 print(f"[offline] 抢救动作: {json.dumps(_off_acted, ensure_ascii=False)}", flush=True)
             if _sim_n:

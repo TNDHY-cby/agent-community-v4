@@ -37,7 +37,6 @@ TOOL_HINTS = [
     ("list_tasks", "任务列表"),
     ("get_task", "某个任务的详情与时间线"),
     ("create_workshop", "建一个工作间"),
-    ("workshop_discuss", "在工作间里发起讨论"),
     ("workshop_review", "复核产出"),
     ("workshop_continue", "接着上一轮继续"),
     ("workshop_interject", "插一句话/插入人工意见"),

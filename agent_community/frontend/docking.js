@@ -159,7 +159,12 @@ function dockRender(d){
   if (dang.length){
     html += '<div class="card"><h3>⚠ 悬空引用（成员指向了未登记的员工）</h3>' +
       '<p class="lead">这些 harness_id 被工作间成员引用了，但**已不在登记表里**（注销 / 改名 / 手改数据都可能造成）。' +
-      '界面不能显示成"接上了"却谁也找不到 —— 请重新登记，或改掉成员的绑定。</p>' +
+      '界面不能显示成"接上了"却谁也找不到 —— 请重新登记，或**把这些人从名单里清掉**。</p>' +
+      // ★2026-11-03（老板：「清理后仍然存在记录」）：平台原来坚持"不替你删成员"，
+      //   于是删完 agent 后这些记录一直挂着，**没有任何清理入口**。这里给一个。
+      '<div class="dock-form-actions" style="margin:2px 0 8px">' +
+      '<button class="dock-detail-btn danger" onclick="dockDanglingClean(this)">清理这些悬空成员</button>' +
+      '</div>' +
       dang.map(x => '<p class="sub"><code>' + esc(x.harness_id) + '</code> ← ' +
         (x.bindings||[]).map(b => esc((b.ws_name||b.ws_id) + '/' + (b.role||'') + '/' + (b.member_id||''))).join('、') +
         '</p>').join('') + '</div>';
@@ -168,7 +173,8 @@ function dockRender(d){
   html += hs.map(h => {
     const binds = h.bindings || [];
     const facts = h.interface_class_label ? ('· ' + esc(h.interface_class_label)) : '';
-    return '<div class="card"><h3>' + esc(h.harness_name || h.harness_id) +
+    return '<div class="card" data-hid="' + esc(h.harness_id) + '"><h3>' +
+      esc(h.harness_name || h.harness_id) +
       ' <span class="sub">(' + esc(h.harness_id) + ')</span></h3>' +
       '<p class="lead">' + (h.online ? '在线' : '离线') + ' · 唤醒方式 <code>' + esc(h.wakeup_method || '—') + '</code> ' +
       facts + ' · ' +
@@ -190,7 +196,7 @@ function dockRender(d){
       '<button class="dock-detail-btn" onclick="dockGo(\'script_activate\');dockScriptPick(\'' + esc(h.harness_id) + '\')">给它配激活脚本</button>' +
       // ★2026-11-02（老板：「找不到在哪里删agent」）：删除原来只藏在大厅卡片的「⋯」菜单里，
       //   接入页首屏压根没有 ⇒ 想注销一个接入的人在这里找不到。现在直接摆在卡片上。
-      '<button class="dock-detail-btn danger" onclick="dockHarnessDeleteAsk(\'' + esc(h.harness_id) + '\')"' +
+      '<button class="dock-detail-btn danger" onclick="dockHarnessDeleteAsk(this,\'' + esc(h.harness_id) + '\')"' +
       ' title="注销这个 agent：注册信息与模板一起删（工作间/账本/产物不动）">删除</button>' +
       '</div>' +
       '</div>';
@@ -213,6 +219,8 @@ const DOCK_WRITE_WHITELIST = [
   // ★V126（2026-11-02）：一键清空接入 —— **只登记真清那一条**。
   //   预览是 GET 只读，写白名单只管 POST/PUT/PATCH/DELETE（守卫按写方法比对，登记 GET 会红）。
   '/api/docking/agents-reset',
+  // ★2026-11-03：清理悬空引用（预览 dry_run + 真清要确认词）
+  '/api/docking/dangling/clean',
   // ★2026-11-02：员工档案里「删除」一个接入（DELETE /api/harness/{id}）
   '/api/harness/*',
   // ★2026-11-01（老板：保存到平台，到工作间用）：第⑤步把模板存进平台。
@@ -628,22 +636,152 @@ async function dockHarnessHideAsk(id){
  *  这里给接入页一个明确入口 —— 但删是破坏性的，所以**必须说清**：
  *  删的是"注册 + 模板"，不动工作间与账本；用到它的成员会变孤儿。
  */
-async function dockHarnessDeleteAsk(id){
-  const why = '将**注销**这个接入：\n\n'
-    + '  · 注册信息与**注册模板**一起删掉\n'
+/** 页面内确认框（**不用原生 `confirm`**）。
+ *
+ *  ★2026-11-03（老板：「点击删除没有反应」）：真机判据是无头浏览器点「删除」后
+ *  `Input.dispatchMouseEvent` 30 秒没响应 —— 说明 `confirm()` 弹了框把页面卡住了；
+ *  而用户那边**框根本没画出来**，于是"点了没反应"。某些内嵌浏览器/WebView 就是这么坑。
+ *  自己画一层：不阻塞、一定看得见、Promise 化好写。
+ */
+function dockConfirm(opts) {
+  const o = opts || {};
+  return new Promise(function (resolve) {
+    const mask = document.createElement('div');
+    mask.setAttribute('data-dock-modal', '1');
+    mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;'
+      + 'display:flex;align-items:center;justify-content:center;padding:20px';
+    const card = document.createElement('div');
+    card.style.cssText = 'max-width:520px;width:100%;background:#1C1A18;border:1px solid #2E2B27;'
+      + 'border-radius:12px;padding:18px 20px;box-shadow:0 12px 40px rgba(0,0,0,.5);'
+      + 'color:#E8E4DB;font-size:13px;line-height:1.75';
+    const title = document.createElement('div');
+    title.textContent = o.title || '确认';
+    title.style.cssText = 'font-weight:800;font-size:14.5px;margin-bottom:10px;'
+      + (o.danger ? 'color:#E05A4A' : '');
+    const body = document.createElement('div');
+    body.textContent = o.body || '';
+    body.style.cssText = 'white-space:pre-wrap;color:#C9C3B9;margin-bottom:16px';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:10px;justify-content:flex-end';
+    const btn = (label, primary, danger) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.style.cssText = 'padding:8px 16px;border-radius:8px;cursor:pointer;font:inherit;font-size:12.5px;'
+        + 'border:1px solid ' + (danger ? '#C93A2C' : (primary ? '#C93A2C' : '#2E2B27')) + ';'
+        + (primary
+            ? 'background:' + (danger ? '#C93A2C' : '#C93A2C') + ';color:#fff'
+            : 'background:transparent;color:#C9C3B9');
+      return b;
+    };
+    const cancel = btn('取消', false, false);
+    const ok = btn(o.okText || '确定', true, !!o.danger);
+    // ★2026-11-03：支持第三个按钮（三选一），resolve 出 'extra' 区分
+    const extra = o.extraText ? btn(o.extraText, false, !!o.danger) : null;
+    const close = (v) => { try { mask.remove(); } catch (e) {} resolve(v); };
+    cancel.onclick = () => close(false);
+    ok.onclick = () => close(true);
+    if (extra) extra.onclick = () => close('extra');
+    mask.addEventListener('click', (ev) => { if (ev.target === mask) close(false); });
+    document.addEventListener('keydown', function esc(ev) {
+      if (ev.key === 'Escape') { document.removeEventListener('keydown', esc); close(false); }
+    });
+    if (extra) row.appendChild(extra);
+    row.appendChild(cancel);
+    row.appendChild(ok);
+    card.appendChild(title);
+    card.appendChild(body);
+    card.appendChild(row);
+    mask.appendChild(card);
+    document.body.appendChild(mask);
+    setTimeout(() => { try { ok.focus(); } catch (e) {} }, 30);
+  });
+}
+
+/** 非阻塞提示（替代 `alert` —— 它也会卡住页面）。 */
+function dockToast(msg, bad) {
+  try {
+    const d = document.createElement('div');
+    d.setAttribute('data-dock-toast', '1');
+    d.textContent = String(msg || '');
+    d.style.cssText = 'position:fixed;left:50%;bottom:36px;transform:translateX(-50%);z-index:10000;'
+      + 'max-width:70vw;padding:10px 18px;border-radius:10px;font-size:12.5px;line-height:1.6;'
+      + 'white-space:pre-wrap;box-shadow:0 8px 28px rgba(0,0,0,.5);'
+      + 'background:' + (bad ? '#3A1A16' : '#1C1A18') + ';color:' + (bad ? '#E9A79C' : '#E8E4DB')
+      + ';border:1px solid ' + (bad ? '#C93A2C' : '#2E2B27');
+    document.body.appendChild(d);
+    setTimeout(() => { try { d.remove(); } catch (e) {} }, bad ? 5200 : 3200);
+  } catch (e) { /* 提示画不出来也不能影响主流程 */ }
+}
+
+async function dockHarnessDeleteAsk(btn, id){
+  // ★2026-11-03（老板认可"删除时一并提示"）：**先查有谁在用它**，别删完留下悬空记录
+  let binds = [];
+  try {
+    const g = await dockGet('/api/harness/' + encodeURIComponent(id) + '/bindings');
+    if (g.ok && g.data && g.data.ok) binds = g.data.bindings || [];
+  } catch (e) { binds = []; }
+
+  const base = '将注销这个接入：\n\n'
+    + '  · 注册信息与注册模板一起删掉\n'
     + '  · 它签发的令牌作废\n'
-    + '  · 工作间、账本、产物**不动**\n\n'
-    + '⚠️ 用到它的工作间成员会变成「孤儿」（平台不会替你删成员）——\n'
-    + '   要清就先去工作间名单里移除，或重新接入同名 agent 顶回来。\n\n'
-    + '确定要删 ' + id + ' 吗？';
-  if (!confirm(why)) return;
-  const res = await dockDelete('/api/harness/' + encodeURIComponent(id));
+    + '  · 工作间、账本、产物不动';
+  let clean = false;
+  if (binds.length) {
+    let who = '';
+    binds.slice(0, 8).forEach(function (b) {
+      who += '  · ' + (b.ws_name || b.ws_id) + ' / ' + (b.display_name || b.role || b.member_id) +
+        '（' + b.roster + '）\n';
+    });
+    if (binds.length > 8) who += '  · …还有 ' + (binds.length - 8) + ' 个\n';
+    const body = base + '\n\n⚠️ 现在有 ' + binds.length + ' 个成员在用它：\n' + who
+      + '\n【连成员一起删】= 把它和这些成员一起清掉（推荐，不留悬空记录）\n'
+      + '【只删 agent】= 只注销它，那些成员会变成「悬空引用」，以后还得再来清';
+    const choice = await dockConfirm({
+      title: '删除 ' + id + '（有 ' + binds.length + ' 个成员在用它）',
+      body: body, okText: '连成员一起删', extraText: '只删 agent', danger: true
+    });
+    if (choice === false) return;          // 取消
+    clean = (choice === true);             // 'extra' = 只删 agent
+  } else {
+    const why = base + '\n\n没有任何工作间成员用到它，删掉是干净的。';
+    const yes = await dockConfirm({ title: '删除 ' + id, body: why,
+                                    okText: '我确认，删除', danger: true });
+    if (!yes) return;
+  }
+  const url = '/api/harness/' + encodeURIComponent(id) + (clean ? '?clean_bindings=1' : '');
+  const res = await dockDelete(url);
   const d = res.data || {};
   const ok = res.ok && d.success !== false;
-  alert(ok
-    ? ('已注销 ' + id + '。\n' + (d.trash && d.trash.trashed ? '桥目录已进回收站。' : '') + '\n档案已刷新。')
-    : ('没删成：' + ((d.error || d.reason) || ('HTTP ' + res.status))));
-  if (ok) { try { await dockLoad(); } catch (e) {} await dockLoadArchive(); }
+  if (ok) {
+    // ★2026-11-03（老板：「点击删除没有反应」+「删了不消失」）：
+    //   删成功就**把被点的那个按钮所在的整张卡摘掉**。
+    //   ⚠️ 第一版靠 `[data-hid]` 属性去查，真机实测**没摘掉**（后端已删、卡片还在）
+    //   ⇒ 改成"按钮把自己的元素带进来"，直接 `closest('.card').remove()`，不依赖任何属性匹配。
+    try {
+      const card = btn && btn.closest ? btn.closest('.card') : null;
+      if (card) card.remove();
+      // 档案那处同样：按 data-hid 兜一遍（那边卡片结构一样）
+      document.querySelectorAll('[data-hid="' + id + '"]').forEach(function (el) { el.remove(); });
+    } catch (e) { /* 摘不掉就靠下面的重拉兜底 */ }
+    // 顶部的「已登记员工 N」这个数字也要跟着减，否则卡片没了数字还写着 4
+    try {
+      const heads = document.querySelectorAll('.dock-section-head .n');
+      heads.forEach(function (n) {
+        const v = parseInt(String(n.textContent || '').trim(), 10);
+        if (!isNaN(v) && v > 0) n.textContent = String(v - 1);
+      });
+    } catch (e) { /* 同上 */ }
+  }
+  dockToast(ok
+    ? ('已注销 ' + id + '。' + (d.trash && d.trash.trashed ? '桥目录已进回收站。' : '') +
+       (d.bindings_cleaned
+         ? ('\n同时清掉了引用它的成员：旧名单 ' + (d.bindings_cleaned.legacy || 0) +
+            ' 个 / v5 名单 ' + (d.bindings_cleaned.v5 || 0) + ' 个' +
+            (d.backup ? ('（备份 ' + d.backup + '）') : ''))
+         : ''))
+    : ('没删成：' + ((d.error || d.reason) || ('HTTP ' + res.status))), !ok);
+  // 再后台重拉一次对齐（失败也不影响"已经摘掉了"）
+  if (ok) { try { await dockLoad(); } catch (e) {} try { await dockLoadArchive(); } catch (e) {} }
 }
 
 async function dockHarnessAppeal(id){
@@ -654,6 +792,52 @@ async function dockHarnessAppeal(id){
   const d = res.data || {};
   alert((res.ok && d.success!==false) ? '申诉已提交——名册已恢复（留痕）' : '申诉未成功：' + ((d.error||d.reason) || ('HTTP ' + res.status)) + (d.how_to_fix ? (' · ' + d.how_to_fix) : ''));
   dockLoadArchive();
+}
+
+/** 清理悬空引用：把「绑定全部失效」的成员从工作间名单里移除。
+ *
+ *  ★2026-11-03（老板：「清理后仍然存在记录：悬空引用」）：
+ *  平台按设计"不替你删成员"，但删完 agent 之后这些记录**永远挂在界面上**、
+ *  而且没有清理入口 —— 这不成。这里给一个：先预览、再确认、自动备份、留痕。
+ *  **只动旧名单**（界面这块就是从旧名单算的），v5 名单另有 `roster_dual_check` 对账。
+ */
+async function dockDanglingClean(btn){
+  // ① 先预览
+  let pv;
+  try {
+    // 走 dockPost（对接中心唯一写通道，带白名单闸）—— 别裸 fetch，守卫会抓
+    const r = await dockPost('/api/docking/dangling/clean', {dry_run: true});
+    pv = r.data || {};
+    if (!r.ok || !pv.ok) { dockToast('预览失败：' + ((pv && pv.error) || ('HTTP ' + r.status)), true); return; }
+  } catch (e) { dockToast('预览失败：' + (e && e.message ? e.message : e), true); return; }
+
+  if (!pv.total_members) { dockToast('没有悬空成员，不用清'); return; }
+  let body = '将把这些「绑定已失效」的成员从工作间名单里移除：\n\n';
+  (pv.workrooms || []).forEach(function (w) {
+    body += '· ' + (w.name || w.ws_id) + '：' +
+      (w.members || []).map(function (m) {
+        return (m.display_name || m.role || m.member_id) + '（' + (m.harness_ids || []).join(',') + '）';
+      }).join('、') + '\n';
+  });
+  body += '\n共 ' + pv.total_members + ' 个成员。工作间本身、产物、账本都不动。\n'
+        + '删前会自动备份 workshops.json，可以回滚。';
+
+  const yes = await dockConfirm({title: '清理悬空成员', body: body, okText: '我确认，清理', danger: true});
+  if (!yes) return;
+
+  try {
+    const r = await dockPost('/api/docking/dangling/clean', {confirm: '清理悬空引用'});
+    const d = r.data || {};
+    if (!r.ok || !d.ok) {
+      dockToast('没清成：' + ((d.error || d.why) || ('HTTP ' + r.status)), true);
+      return;
+    }
+    dockToast('已清理 ' + (d.removed || 0) + ' 个悬空成员' +
+      (d.backup ? ('（备份 ' + d.backup + '）') : ''));
+    try { await dockLoad(); } catch (e) {}
+  } catch (e) {
+    dockToast('没清成：' + (e && e.message ? e.message : e), true);
+  }
 }
 
 async function dockLoadAgents(){
@@ -3870,7 +4054,7 @@ async function dockLoadArchive(){
       // ★2026-11-02（老板：「找不到在哪里删agent」）：删除原来只藏在大厅卡片的「⋯」菜单里，
       //   接入页「员工档案」反而没有 ⇒ 想清掉一个接入的人在这里找不到。
       //   现在每行给一个**明确的删除**（红边、二次确认、连模板一起删）。
-      '<button class="dock-detail-btn danger" onclick="dockHarnessDeleteAsk(\'' + esc(h.harness_id) + '\')"' +
+      '<button class="dock-detail-btn danger" onclick="dockHarnessDeleteAsk(this,\'' + esc(h.harness_id) + '\')"' +
       ' title="注销这个 agent：注册信息与模板一起删（工作间/账本不动）">删除</button>' +
       '</div></div>').join('') +
     '</div><div id="dkArchiveDrawer"></div>';

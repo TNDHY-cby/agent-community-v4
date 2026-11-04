@@ -52,6 +52,8 @@ WHITELIST_EXPECT = {
     # ★2026-11-02（V126 一键清空接入）：真清要确认词 + 自动备份
     #   （预览是 GET 只读，写白名单只管 POST/PUT/PATCH/DELETE）
     "/api/docking/agents-reset",
+    # ★2026-11-03：清理悬空引用
+    "/api/docking/dangling/clean",
     # ★2026-11-02：员工档案里「删除」一个接入
     "/api/harness/*",
     "/api/docking/harness/*",

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""判据：**MCP 真正落地** —— 平台把 14 个工具**逐个真调通**（外部 agent 视角，真 JSON-RPC over HTTP）。
+"""判据：**MCP 真正落地** —— 平台把 13 个工具**逐个真调通**（外部 agent 视角，真 JSON-RPC over HTTP）。
 
 ## 为什么要它（老板 2026-10-25：「MCP 协议的会话内回答停了，现在要做的是 MCP 真正落地」）
 
@@ -168,7 +168,7 @@ def main() -> int:
         info = cli.init()
         check("① initialize", bool(info.get("name")), "serverInfo=%r" % info)
         names = cli.tools()
-        check("② tools/list 14 个工具", len(names) == 14, "%d 个：%s" % (len(names), names))
+        check("② tools/list 13 个工具", len(names) == 13, "%d 个：%s" % (len(names), names))
 
         err, d = cli.call("status", {})
         check("③ status 回真数据", (not err) and ("version" in json.dumps(d)), json.dumps(d)[:160])
@@ -199,14 +199,6 @@ def main() -> int:
         _http(base, "/api/workshop/%s/members" % ws_id,
               {"members": [{"member_id": "m0", "role": "员工", "harness_ids": ["demo-mcp-tools"]}]})
         _http(base, "/api/workshop/%s/member/m0/self-check" % ws_id, {})
-        said = "MCP 工具巡检：我在工作间里说话了"
-        err, d = cli.call("workshop_discuss", {"ws_id": ws_id, "content": said})
-        st, w = _http(base, "/api/workshop/%s" % ws_id)
-        landed = said in json.dumps(w, ensure_ascii=False)
-        check("⑨ workshop_discuss 发言真落进讨论区", landed, json.dumps(d, ensure_ascii=False)[:200])
-        if not landed:
-            notes.append("发言没落库时返回：%s" % json.dumps(d, ensure_ascii=False)[:160])
-
         for label, tool, args in (
                 ("⑩ workshop_interject", "workshop_interject",
                  {"ws_id": ws_id, "content": "巡检插一句"}),
@@ -276,7 +268,7 @@ def main() -> int:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     print("=" * 78)
-    print("判据：MCP 真正落地 —— 平台 14 个工具逐个真调（%s）" % base)
+    print("判据：MCP 真正落地 —— 平台 13 个工具逐个真调（%s）" % base)
     print("=" * 78)
     for name, ok, detail in rows:
         print("  %s %s%s" % ("PASS" if ok else "FAIL", name, ("　（%s）" % detail) if not ok else ""))

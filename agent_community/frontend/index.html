@@ -464,7 +464,9 @@ body{font-size:var(--t2)}
     <div class="ws-status"><span class="ws-dot" id="wsDot"></span><span id="wsText">未连接</span></div>
     <div class="spacer"></div>
     <button class="btn" onclick="location.href='/monitor.html'" title="监控室 · 画面墙（只读快照）">监控室</button>
-    <button class="btn primary" onclick="location.href='/docking.html'" title="接入 Agent · 把外面的 agent 接进来（注册 / 检测 / 生成模板 / 架桥）">接入 Agent</button>
+    <!-- ★2026-11-03（老板：「大厅对接中心也找不到了」）：他一直用「对接中心」这个词找，
+         而按钮写的是「接入 Agent」—— 名字对不上就是找不到。统一成他的叫法。 -->
+    <button class="btn primary" onclick="location.href='/docking.html'" title="对接中心 · 把外面的 agent 接进来（接入 / 检测 / 模板 / 删除 / 看能力）">对接中心</button>
     <!-- ★2026-10-30（老板）：控制台只对单个工作间生效 ⇒ 大厅不再摆总入口，请从工作间页进（自动带 ?ws=）-->
     <button class="btn" onclick="location.href='/ops.html'" title="运维看板 · 工单审计与Agent在线">看板</button>
     <button class="btn" onclick="location.href='/handover.html'" title="交付回执台 · 无证据不回执">回执</button>
@@ -501,9 +503,9 @@ body{font-size:var(--t2)}
           <div class="bc-msg" id="bcMsg"></div>
         </div>
         <div class="hall-messages" id="hallMessages"><div class="hall-empty"><div class="hall-entries">
-            <a class="hall-entry primary" href="/docking.html" title="接入 Agent · 把外面的 agent 接进来（注册 / 检测 / 生成模板）">
+            <a class="hall-entry primary" href="/docking.html" title="对接中心 · 把外面的 agent 接进来（接入 / 检测 / 模板）">
               <span class="he-i">▣</span>
-              <span class="he-t">接入 Agent</span>
+              <span class="he-t">对接中心</span>
               <span class="he-s">注册 / 检测 / 生成模板 / 架桥</span>
             </a>
             <a class="hall-entry" href="/hub.html" title="流程说明 · 全流程（只讲不做）">
@@ -864,7 +866,7 @@ function renderAgents(){
 function toggleAgentMenu(btn,e){if(e)e.stopPropagation();const aid=btn.dataset.aid;document.querySelectorAll('.ac-menu').forEach(m=>{if(m.dataset.aid!==aid)m.classList.add('hidden')});const menu=document.querySelector('.ac-menu[data-aid="'+CSS.escape(aid)+'"]');if(menu)menu.classList.toggle('hidden')}
 function onAgentMenuClick(menu,e){e.stopPropagation();const aid=menu.dataset.aid;const act=(e.target.dataset&&e.target.dataset.act)||'';if(act==='prompt')viewHarnessPrompt(aid);else if(act==='caps')editHarnessCaps(aid);else if(act==='del')deleteHarnessAgent(aid)}
 async function viewHarnessPrompt(aid){const a=agents.find(x=>x.agent_id===aid&&x.is_harness);if(!a)return;const hid=a.harness_id||aid.replace(/^harness-/,'');let cur='';try{const r=await fetch('/api/harness/'+encodeURIComponent(hid)+'/activation_prompt');const d=await r.json();cur=d.prompt||''}catch(err){acToast('加载失败: '+err.message,true);return}acModal.show({title:'唤醒提示词 · '+(a.name||aid),message:'激活工作间成员时下发给该 HA 的提示词模板。含 {role}/{workspace_dir} 占位符，激活时由平台自动填充；保存后重新注册不会覆盖。',input:cur,rows:12,placeholder:'请输入唤醒提示词模板…',onSubmit:async function(v){if(v==null)return;if(!(v||'').trim()){acToast('提示词不能为空',true);return}try{const r=await fetch('/api/harness/'+encodeURIComponent(hid)+'/activation_prompt',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:v})});const d=await r.json();if(d.success){acToast('唤醒提示词已保存');document.getElementById('lastAction').textContent='已保存 '+a.name+' 的唤醒提示词'}else{acToast(d.error||'保存失败',true)}}catch(err){acToast('保存失败: '+err.message,true)}}})}
-async function deleteHarnessAgent(aid){const a=agents.find(x=>x.agent_id===aid&&x.is_harness);if(!a)return;const hid=a.harness_id||aid.replace(/^harness-/,'');acModal.show({title:'删除外端 Agent',message:'确定删除外端 Agent「'+(a.name||aid)+'」？将同步删除注册信息、桥坐标，终止桥进程并将桥目录移入回收站。',danger:true,onConfirm:async()=>{try{const r=await fetch('/api/harness/'+encodeURIComponent(hid),{method:'DELETE'});const d=await r.json();if(d.success){refreshAgents();document.getElementById('lastAction').textContent='已删除 '+aid}else{acToast(d.error||'删除失败',true)}}catch(err){acToast('删除失败: '+err.message,true)}}})}
+async function deleteHarnessAgent(aid){const a=agents.find(x=>x.agent_id===aid&&x.is_harness);if(!a)return;const hid=a.harness_id||aid.replace(/^harness-/,'');acModal.show({title:'删除外端 Agent',message:'确定删除外端 Agent「'+(a.name||aid)+'」？将同步删除注册信息、桥坐标，终止桥进程并将桥目录移入回收站。',danger:true,onConfirm:async()=>{try{const r=await fetch('/api/harness/'+encodeURIComponent(hid),{method:'DELETE'});const d=await r.json();if(d.success){agents=agents.filter(function(x){return x.agent_id!==aid});renderAgents();document.getElementById('lastAction').textContent='已删除 '+aid;refreshAgents()}else{acToast(d.error||'删除失败',true)}}catch(err){acToast('删除失败: '+err.message,true)}}})}
 async function editHarnessCaps(aid){const a=agents.find(x=>x.agent_id===aid&&x.is_harness);if(!a)return;const hid=a.harness_id||aid.replace(/^harness-/,'');const cur=(a.capabilities||[]).join(', ');acModal.show({title:'精化能力列表',message:'逗号分隔，留空保存为空：',input:cur,placeholder:'coding, file_ops, web_search',rows:3,onSubmit:async v=>{if(v===null)return;const caps=v.split(/[,，]/).map(s=>s.trim()).filter(Boolean);try{const r=await fetch('/api/harness/'+encodeURIComponent(hid)+'/capabilities',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({capabilities:caps})});const d=await r.json();if(d.success){refreshAgents();document.getElementById('lastAction').textContent='已更新 '+aid+' 能力列表'}else{acToast(d.error||'更新失败',true)}}catch(err){acToast('更新失败: '+err.message,true)}}})}
 document.addEventListener('click',function(e){if(!e.target.closest('.ac-menu')&&!e.target.closest('.ac-more')){document.querySelectorAll('.ac-menu').forEach(m=>m.classList.add('hidden'))}})
 async function refreshTasks(){try{const r=await fetch('/api/tasks?limit=50');const d=await r.json();tasks=d.tasks||[];if(currentWorkshopId){const t=tasks.find(x=>x.task_id===currentWorkshopId);if(t){const wname=t.title||'未命名任务';document.getElementById('wsTaskTitle').textContent=wname;document.getElementById('tabWorkshop').innerHTML='🔧 '+esc(wname);document.getElementById('dsWorkshopName').textContent=wname;renderWorkflow(t);renderDiscussion(currentWorkshopId)}}}catch(e){};refreshWorkshops()}
@@ -878,8 +880,8 @@ async function saveSession(){try{await fetch('/api/session/save',{method:'POST'}
  * 现在统一由这里渲染（静态 HTML 也保留同一份，供 JS 挂掉时兜底）。 */
 const HALL_EMPTY_ENTRIES =
   '<div class="hall-entries">' +
-  '<a class="hall-entry primary" href="/docking.html" title="接入 Agent · 把外面的 agent 接进来">' +
-  '<span class="he-i">▣</span><span class="he-t">接入 Agent</span>' +
+  '<a class="hall-entry primary" href="/docking.html" title="对接中心 · 把外面的 agent 接进来">' +
+  '<span class="he-i">▣</span><span class="he-t">对接中心</span>' +
   '<span class="he-s">注册 / 检测 / 生成模板 / 架桥</span></a>' +
   '<a class="hall-entry" href="/hub.html" title="流程说明 · 全流程（只讲不做）">' +
   '<span class="he-i">◈</span><span class="he-t">流程说明</span>' +

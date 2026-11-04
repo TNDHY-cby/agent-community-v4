@@ -106,6 +106,7 @@ python tools/in_session_check.py         # 它能不能在**自己的会话**里
 python tools/truth_check.py              # ★真相核对**真机**十格（V102）：真注册一个临时 harness + 真 SQLite（WAL）库，绿勾/红字/灰字/400 四态都要真出现，跑完删掉临时 harness
 python tools/mcp_loop_check.py           # ★**MCP 高级协议全链路十五格**（V104）：自己起临时实例（换端口+换数据目录），一个真 MCP 客户端走完 建活→看活→加成员→自检→发言→交回执；`--peer-url` 指一个真 MCP 对端才谈得上"自检通"
 python tools/mcp_tools_check.py            # ★**MCP 工具面十九格**（V105；⚠️ MCP 只是「调工具」，不是协作协议 —— 见 V116 §1.1）：临时实例上一个真 MCP 客户端把平台 14 个工具**逐个真调**（建间带任务/发言进讨论区/回执说清结果），最后核对留痕；跑完删临时实例
+python tools/mcp_resources_check.py        # ★**MCP 只读资源面十二格**（V127）：能力声明 `subscribe=false` / 6 固定 + 5 模板 / 逐个真读且是合法 JSON / 数据是真的（真建 12 个工作间）/ 不存在 ⇒ -32002 / **脱敏（令牌·盘符·POSIX 路径）** / 超限先翻页（`?cursor=`）/ 读不改状态 / HTTP 与 stdio 逐字一致 / 未知方法 -32601·坏 URI -32602 不崩
 python tools/protocol_peer_check.py       # ★**高级协议真对端二十七格**（V106 + V119 批 B）：A2A / gRPC 各起一个真对端，派活 → 平台真建任务 → 同一条查得到 → 真回报；含不带令牌必被拒（fail-closed）；
                                         #   A2A 追加六格：卡上如实声明「不流式但可长轮询」/ tasks/watch 超时如实说没变 / 未声明能力 -32004 / **产物（v5 目录 diff+sha256）与验收结论（L1）随任务一起出去**
 python tools/acp_check.py                 # ★**ACP 落地九格**：真拉起 / 多轮上下文不丢 / 多会话不串 / 重启后旧会话被明确拒（fresh-only 不假装续上）/ 拉起失败立刻报（带 stderr，不挂 30s）
@@ -127,7 +128,7 @@ python tools/gitee_push.py --verify-only --repo <发布副本>   # 发布推送�
 python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 ```
 
-> ★**2026-10-17 老板拍板：GitHub CI 停更、只用 Gitee**（Gitee 侧没有免费 CI）⇒ **双平台判据＝
+> ★**CI 不拿当判据**（`.github/workflows/ci.yml` 仍在仓库里，推 GitHub 就会触发它，但**结论不认**）⇒ **双平台判据＝
 > `python tools/dual_platform_check.py`**：Windows 侧 `pytest` ＋ WSL Linux 侧 `tools/run_suite_in_repo.sh`。
 > **退出码 2 ＝只跑成了一侧 ＝不算通过**（如实报"部分"）；本机适配只改 `.env`
 > （`AC_LINUX_WSL_DISTRO` / `AC_LINUX_PYTHON`），**不改源码**。详见 `PORTABILITY.md` §4.1。
@@ -217,7 +218,7 @@ python tools/gen_env_docs.py --check    # 环境变量文档不许漂移
 | 副本 | 路径 | git | 说明 |
 |---|---|---|---|
 | **开发副本（这里）** | `<开发副本根目录>`（真实路径只写在 dev-only 的 HANDOVER.md 与项目技能手册里，**不进公开仓库**） | 有（本地，**无 remote**） | 实际开发在这里 |
-| **发布副本（开源）** | `<发布副本根目录>`（同上，真实路径 dev-only） | **只有 `gitee` 一个有效远端**（`https://gitee.com/TNDHY-cby/external-agents-community.git`，下载与协作看它）。★**GitHub 已于 2026-10-16 停止更新**（仅历史归档，别再从那儿拉/推）。**以 `git ls-remote` 实测为准**，别信本文档里的旧 sha | 只由 `publish_acv4.ps1` 单向推入（默认推 Gitee）；`-MirrorGithub` 保留只为**应急**，正式流程不用（老板 2026-10-16：「GitHub 不用更新了」） |
+| **发布副本（开源）** | `<发布副本根目录>`（同上，真实路径 dev-only） | **两个远端**：`origin`（**GitHub —— 2026-11-04 起的主发布目标**，`git@github-443:` → `ssh.github.com:443`）＋ `gitee`（**备用，保留可用**）。★老板 2026-11-04：「**不更新 gitee 了，换成 Github**」。**判据＝问远端**：`git ls-remote origin master` 的 sha == 本地 HEAD（push 自述不算） | 只由 `publish_acv4.ps1` 单向推入（**默认 `-Target github`**，SSH over 443：`BatchMode=yes`＋`ConnectTimeout=10`，不会卡交互）；`-Target gitee` 保留为备用路径 |
 | ⚠️ 已退休副本 | `<退休副本根目录>`（同上，真实路径 dev-only） | 无 | 2026-10-02 退休，架构停在 V-9 拆包之前。**P0/P1/P2 成果已由 V-10 回收入主线**，此副本仅存档 |
 | 另一条线 | `<另一条线根目录>`（同上，真实路径 dev-only） | — | 独立项目线（**代码零回收价值**，dev 是超集；仅 2 份全盘唯一文档可捞），勿混 |
 

@@ -54,7 +54,9 @@ def test_initialize_and_tools_list_share_one_registry():
     from agent_community import mcp_server as _srv
 
     assert names == [t["name"] for t in _srv.TOOLS], "HTTP 版必须与 stdio 版**同一份工具表**"
-    assert len(names) == 14, names
+    # 不写死数字：和 stdio 版同一份工具表比（加/删工具不用再改这里）
+    assert len(names) == len(_srv.TOOLS), "工具数 %d != _srv.TOOLS %d" % (
+        len(names), len(_srv.TOOLS))
     for must in ("status", "submit_task_result"):
         assert must in names
 

@@ -101,9 +101,11 @@ def checks(fast: bool) -> list:
         ("发布面 check_portability", [py(), "tools/check_portability.py"], OSS),
         ("发布面 check_productization", [py(), "tools/check_productization.py"], OSS),
         ("发布面 env_docs --check", [py(), "tools/gen_env_docs.py", "--check"], OSS),
-        # ★2026-10-20：仓库里不许再有"去推/去从 GitHub 拉"这类**已经停更的旧指令**
-        #   （GitHub 镜像 2026-10-16 停更；旧指令会把下一个 agent 骗到旧提交上）
-        ("仓库无过时的 GitHub 旧指令", [py(), str(ROOT / "tools" / "check_stale_github.py")]),
+        # ★2026-11-04：老板「不更新 gitee 了，换成 Github」⇒ 口径反了。
+        #   旧检查器 `check_stale_github.py` 的规则是"出现 GitHub 地址就必须写停更"，
+        #   于是 README 里写"主仓库在 GitHub"反而判红 —— 检查器本身成了过时指令。
+        #   现在换成 `check_stale_remote_policy.py`：扫**过时的远端口径**（"GitHub 那边不再更新 / 只走 Gitee" 这类）。
+        ("仓库无过时的远端口径旧指令", [py(), str(ROOT / "tools" / "check_stale_remote_policy.py")]),
         # ★2026-10-22 夜场三：HANDOVER 的「现行继承书」指针必须**只有一个**且指向真文件
         #   （夜场二收工时顶部躺着两条"现行"，上面那条只覆盖到 v4.15.0 ⇒ 新会话一开局就用过期坐标）
         #   `--allow-missing`：发布副本本来就没有 HANDOVER（dev-only），那里是**不适用**，不是通过

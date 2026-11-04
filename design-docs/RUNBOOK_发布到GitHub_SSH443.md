@@ -88,11 +88,15 @@ git -C <发布副本> config core.sshCommand "C:/PROGRA~1/Git/usr/bin/ssh.exe"
 
 ## 3. 发布流程（每次发版）
 
+> ★2026-11-04 老板：「**不更新 gitee 了，换成 Github**」⇒ 本文就是**主发布路径**：
+> 每次发版推 GitHub（SSH over 443），Gitee 保留为**备用**（要发那边时加 `-Target gitee`）。
+> 判据只有一条：**问远端**，`ls-remote` 的 sha == 本地 HEAD。
+
 ```powershell
-# ① 先发 Gitee（主远端；publish_acv4.ps1 只推 Gitee）
+# ① 同步 + 提交（publish_acv4.ps1 默认 -Target github，会一路推到 GitHub）
 .\publish_acv4.ps1 -Message "<ascii 摘要>" -ChangelogFile <CHANGELOG 条目绝对路径> -Target gitee
 
-# ② 再推 GitHub（同一次发布的内容，SSH over 443）
+# ② 如需手动补推（脚本已做过也安全，幂等）：SSH over 443
 git -C <发布副本> push origin master
 
 # ③ 判据：**问远端**，sha 必须等于本地 HEAD

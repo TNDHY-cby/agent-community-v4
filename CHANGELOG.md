@@ -42,6 +42,49 @@
 > 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
 > ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
 
+## [4.41.0] - 2026-11-04
+
+本批 = **MCP 协议继续开发**（只读资源面 + 异步结果自动回收）＋ **主发布远端切到 GitHub** ＋ 两个既有问题修复。
+MCP 只是协议矩阵里的一格：它可以**调工具**（此前已有）与**看只读资源**（本批新增），
+仍然**不表达**身份、任务归属与验收。
+
+### MCP：只读资源面（V127）
+- `initialize` **如实声明** `capabilities.resources`（`subscribe=false` / `listChanged=false`）——没有事件总线就不假装支持；
+- `resources/list` / `resources/templates/list` / `resources/read` 与 `tools/*` 同在 `mcp_server.py` 一处真相，HTTP 与 stdio 两个入口共用；
+- 资源面：**6 个固定**（`ac://status` / `harnesses` / `agents` / `workshops` / `tasks` / `protocols`）
+  ＋ **5 个模板**（`ac://workshop/{id}`、`…/members`、`…/tasks`、`…/tasks/{seq}`、`…/manifest`）；
+- **脱敏是硬要求**：资源层一律"白名单投影 + 递归清洗"，平台响应里的真实绝对路径（如 `pipe_dir`）与令牌**不许出去**；
+- **超限先翻页**：`AC_MCP_RESOURCE_MAX_BYTES`（默认 64 KB）决定上限，清单类给 `?cursor=`（不透明串）下一页，
+  列表方法另有协议层 `nextCursor`；真截断必须带 `truncated` / `full_size`；
+- 平台说"没有"（404/409）时**如实回 `-32002`**，不许当成内容发回去（"看起来成功"）。
+
+### MCP：异步结果自动回收（V128）
+- **先把话讲清**：MCP 只是一次工具调用，平台没有建任务 ⇒ **结果没有家**。所以给两种情形分开去处：
+  挂得上任务的写**任务账本**（`external.source=mcp`），没挂任务的写**出站调用结果表** `mcp_outcalls.json`；
+- 新模块 `platform/mcp_result_poll.py`：待查队列 `mcp_pending.json`（上限 200 / TTL 24h / 节流 30s / 单轮最多 5 条），
+  并入现有 20 秒恢复循环（**不新起线程**），状态归一化与写账本**复用** A2A 那套（一处真相）；
+- 新只读端点 `GET /api/docking/harness/{id}/mcp-calls`：每次真调用一条，`state` 由后台自动推进；
+  `unsupported`＝对端不声明异步约定（查不了，不再重试）、`expired`＝24 小时没终态被出队。
+
+### 发布
+- **主发布远端切到 GitHub**（SSH over 443）：`publish_acv4.ps1` 默认 `-Target github`，
+  加 `BatchMode=yes`（密钥要 passphrase 时直接失败，**不会卡在交互上**）与 `ConnectTimeout=10`；
+  判据＝**问远端**（`git ls-remote` 的 sha == 本地 HEAD）。Gitee 保留为备用路径。
+
+### 修掉的既有问题（非本批引入）
+- `mcp_client.mcp_task_get()` 现场探测时，把**已解包**的 `initialize` 结果又套了一层 `.get("result")`
+  ⇒ `capabilities` 永远为空 ⇒ **「标准 Tasks 扩展」永远探测不到**（2026-11-03 引入；由本批判据第 ⑩ 格抓到）；
+- 单测会写**真实**数据目录：`conftest` 只逐模块替换，`task_ledger` / `a2a_result_poll` / `mcp_result_poll`
+  走的是 `env_spec.data_dir()`，从来没被隔离过（既有欠账）⇒ 已补登三个模块。
+
+### 接口面
+- 业务路由 **384 → 385**（新增 MCP 出站调用只读端点）；`model/05` 的分域数字按实测改正（此前写的 369/112/51/39 早已漂移）。
+
+### 判据
+- `tools/mcp_resources_check.py`（新，**12 格**）、`tools/mcp_task_check.py`（9 → **14 格**）全过；
+- 单测新增 `test_mcp_resources.py`（7 条）与 `test_mcp_result_poll.py`（9 条）；
+- 全量 `agent_community/tests` 绿；`check_portability` / `check_productization` / `silent_except_report` 全过。
+
 ## [4.40.0] - 2026-11-03
 
 本版把 **A2A 从「能接进来」做到「接得住、看得见、清得掉」**，并把工作间界面按老板的连续反馈重构成

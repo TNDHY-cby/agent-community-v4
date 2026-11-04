@@ -9,7 +9,7 @@
 
 判据（**真起进程、真走 JSON-RPC**，不看源码文本）：
   ① 配置里的 `command` 是**当前跑平台的解释器**、`PYTHONPATH` 是**本仓库根目录**（不是写死的盘符）；
-  ② 按这份配置 `spawn` 一个进程，发 `initialize` → 回 serverInfo；发 `tools/list` → 回 14 个工具；
+  ② 按这份配置 `spawn` 一个进程，发 `initialize` → 回 serverInfo；发 `tools/list` → 回全部工具；
   ③ 工具表里必须有 `status` 与 `submit_task_result`（一个读、一个写回执）；
   ④ 配置里**不出现令牌明文**；`format=md` 的说明里写了怎么自己验证。
 """
@@ -133,14 +133,17 @@ def test_config_has_no_machine_specific_paths():
 
 
 def test_generated_config_really_starts_and_lists_the_same_tools():
-    """★核心：照抄这份配置去 spawn，真的能 initialize + 列出 14 个工具。"""
+    """★核心：照抄这份配置去 spawn，真的能 initialize + 列出全部工具。"""
     d = mc.build(base_url="http://127.0.0.1:18920")
     got = _spawn_and_talk(d["generic"])
     info = (got.get("init") or {}).get("serverInfo") or {}
     assert info.get("name"), "initialize 要回 serverInfo（拿到 %r）" % got.get("init")
     tools = (got.get("tools") or {}).get("tools") or []
     names = [t.get("name") for t in tools if isinstance(t, dict)]
-    assert len(names) == 14, "工具数应为 14（实测 %d：%s）" % (len(names), names)
+    # 不写死数字：和 `mcp_server.TOOLS` 比（那是真源；子进程列出的必须与之一致）
+    from agent_community import mcp_server as _srv2
+    assert len(names) == len(_srv2.TOOLS), (
+        "工具数应为 %d（实测 %d：%s）" % (len(_srv2.TOOLS), len(names), names))
     for must in ("status", "submit_task_result"):
         assert must in names, "缺关键工具 %s（%s）" % (must, names)
     # 配置里承诺的工具表必须与**真列出来的**一致（不许一处真相两套）

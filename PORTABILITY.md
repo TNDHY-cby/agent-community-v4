@@ -120,9 +120,9 @@ Windows 侧＝本机 `pytest`；Linux 侧＝**WSL 里跑 `tools/run_suite_in_rep
 >    ⇒ `test_workshops_session` **4 条假失败**（Windows 绿、Linux 红，看着像真 bug）。
 >    这条已固化在 `tools/run_suite_in_repo.sh` 里，**别删那行**。
 
-#### 4.1.1 `.github/workflows/ci.yml`（**已停更，仅归档**）
+#### 4.1.1 `.github/workflows/ci.yml`（**归档保留；结论不拿当判据**）
 
-GitHub 那边的工作流文件**保留**（谁要重启用照着跑即可），但**不再跟随新提交、不再是判据**。
+GitHub 那边的工作流文件**保留**：把提交推到 GitHub 就会触发它，但**判据仍是本节 4.1 的本机双平台真跑**。
 （历史：曾短暂放在 `ci/ci.yml` 绕过令牌限制，老板 2026-10-14 在网页端建好标准位置那份之后 `ci/` 已删除 ——
 两份定义并存必然漂移，规则 20 不允许。）若将来要改它，注意那个老坑：
 推送用的令牌**没有 `workflow` 权限**时，GitHub 会整次拒收：

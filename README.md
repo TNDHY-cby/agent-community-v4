@@ -1,7 +1,7 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.39.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.41.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
@@ -16,7 +16,7 @@
 ## 30 秒跑通（复制即用）
 
 ```bash
-git clone https://gitee.com/TNDHY-cby/external-agents-community.git
+git clone https://github.com/TNDHY-cby/agent-community-v4.git
 cd external-agents-community
 pip install -r requirements.txt
 python -m agent_community.cli start          # 起服务 + 桌面窗口；只要后端就加 --no-gui
@@ -36,7 +36,7 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 
 > **端口/数据目录因人而异**：只改环境变量，不改代码 —— `AC_PORT` / `AC_DATA_DIR`。
 > **装不上、卡住、端口被占？** 先看 [`docs/FAQ.md`](docs/FAQ.md)（常见故障与"为什么"），
-> 仍不行的把它贴到 Gitee 的 Issues。
+> 仍不行的把它贴到 GitHub 的 Issues（<https://github.com/TNDHY-cby/agent-community-v4/issues>）。
 
 ## 它跟"前端编排工具"不是一层东西（定位，先说清）
 
@@ -52,27 +52,27 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 > 同一个 AI 接入不同 harness（编辑器 / 终端 / 桌面 Agent / CLI Agent）后，表现并不相同。
 > 平台不假设 Agent 同构，而是按各 harness 的框架能力编排协作：注册发现 → 架桥激活 → 工作间协商 → 委托执行 → 评估沉淀。
 
-> **仓库地址（Gitee，主仓库）**：<https://gitee.com/TNDHY-cby/external-agents-community>
-> 下载：`git clone https://gitee.com/TNDHY-cby/external-agents-community.git`，
-> 或打开上面地址点「克隆/下载」→「下载 ZIP」。
-> ⚠️ **GitHub 那一份已停止更新**（2026-10-16 起）—— 那边是历史归档，**不要再从 GitHub 拉代码**。
-> 代码、发行版、下载都在上面这个 Gitee 地址。
+> **仓库地址（GitHub，主仓库）**：<https://github.com/TNDHY-cby/agent-community-v4>
+> 下载：`git clone https://github.com/TNDHY-cby/agent-community-v4.git`，
+> 或打开上面地址点「Code」→「Download ZIP」。
+> ℹ️ **主仓库在 GitHub**（2026-11-04 起）；Gitee 那份是**备用镜像**（保留可用，但不再是主发布目标）。
+> 每次发布后两边的 `master` 应一致，核对方式是**问远端**（`git ls-remote` 的 sha == 本地 HEAD）。
 
 ## 这个仓库里有什么（**想直接看内容，从这里点**）
 
-本仓库是**公开**的：不用克隆，打开上面的 Gitee 地址就能在网页里直接浏览下面这些内容。
+本仓库是**公开**的：不用克隆，打开上面的 GitHub 地址就能在网页里直接浏览下面这些内容。
 
 | 想看什么 | 去这里 |
 |---|---|
 | **★ 我要怎么用这个平台（从零到跑通，15 步）** | [`design-docs/使用流程_从零到跑通.md`](design-docs/使用流程_从零到跑通.md) ← **用户先看这份** |
 | **项目到底在做什么、边界在哪** | [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) |
 | **完整建模（主模型 26 节 + 12 分册 + 明细册）** | [`V116`](design-docs/V116_v5完整模型_整合版_2026-10-27.md) · [`model/`](design-docs/model/) · [`V118`](design-docs/V118_组织拓扑与团队资产_建模_2026-10-28.md) |
-| **全部设计稿（169 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
+| **全部设计稿（172 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
 | **本地优先 + 中心中转**（当前架构方向） | [`design-docs/V66_本地优先与中心中转架构设计.md`](design-docs/V66_本地优先与中心中转架构设计.md) |
 | **派活与回执走中转 / 一个 Hub 服务多家公司** | [`V67`](design-docs/V67_派活与回执走中转_M2设计.md) · [`V68`](design-docs/V68_一个Hub服务多家公司_公司隔离设计.md) |
 | **没有公网服务器怎么当中转**（三条路） | [`design-docs/RUNBOOK_没有公网服务器怎么当中转.md`](design-docs/RUNBOOK_没有公网服务器怎么当中转.md) |
 | **接入一个 agent 要准备什么 / 桥怎么跑通** | [`CHECKLIST_接入者要准备什么`](design-docs/CHECKLIST_接入者要准备什么.md) · [`RUNBOOK_桥怎么跑通`](design-docs/RUNBOOK_桥怎么跑通.md) |
-| **发版怎么发（Gitee 主 / GitHub 走 SSH over 443）** | [`design-docs/RUNBOOK_发布到GitHub_SSH443.md`](design-docs/RUNBOOK_发布到GitHub_SSH443.md) |
+| **发版怎么发（GitHub 主，SSH over 443；Gitee 备用）** | [`design-docs/RUNBOOK_发布到GitHub_SSH443.md`](design-docs/RUNBOOK_发布到GitHub_SSH443.md) |
 | **前端交接件（对外契约 + 可执行预检）** | [`外包交接_前端界面/`](外包交接_前端界面/) |
 | **这个平台怎么被验证的（判据清单）** | [`AGENTS.md`](AGENTS.md) 的「产品化硬规则」段 |
 | **每个版本改了什么** | [`CHANGELOG.md`](CHANGELOG.md) |
@@ -247,6 +247,7 @@ python -m agent_community.cli agents list
 | `AC_PROBE_STALENESS_HOURS` | 回话探针结果多少小时算过期（超时后 capability 显示 stale） | `24` | 否 |
 | `AC_SNAPSHOT_MAX` | 每个任务保留多少条运行快照（超了丢最旧并留一条截断记录） | `200` | 否 |
 | `AC_MCP_TOOLSETS` | MCP 挂载哪些工具组（逗号分隔：api/task/bridge/browser/devices/plan；all=全量） | `api,task` | 否 |
+| `AC_MCP_RESOURCE_MAX_BYTES` | MCP 只读资源单次返回的字节上限（超了先翻页、再截断并标注）；最小 1024 | `65536` | 否 |
 | `AC_UPDATE_SOURCES` | 更新源列表（逗号分隔，`名字=地址` 或只写地址）；不配则用本仓库 git 远端 | `（空）` | 否 |
 | `AC_REPLY_PROBE_ENABLED` | 回话探针总开关（默认关；设 1 才允许发探针，避免无意义开销） | `0` | 否 |
 | `AC_REPLY_PROBE_TIMEOUT` | 回话探针等回执的超时秒数 | `120` | 否 |

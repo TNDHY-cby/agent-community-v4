@@ -304,6 +304,21 @@ def isolate_data_dirs(tmp_path, monkeypatch):
                 monkeypatch.setattr(ucfg, _attr, tmp / "user_config.json",
                                     raising=False)
 
+    # 8) 落在 `env_spec.data_dir()` 上的那几个**不受 §1 管**的模块（2026-11-04 实测）：
+    #    单测直接调 `task_ledger.issue()` / `mcp_result_poll.maybe_track()` 时，
+    #    写进了**真实** `task_ledger.json`（26112 → 26337 字节）与 `mcp_outcalls.json`，
+    #    被会话级守卫 `guard_real_data_dir` 抓到。教训同 §7：**新增落盘模块必须在这里登记**。
+    mr = _mod("agent_community.platform.mcp_result_poll")
+    if mr is not None:
+        # 两张表都只经 `_dir()`（`_pending_path()` / `_out_path()` 都读这个全局名）
+        monkeypatch.setattr(mr, "_dir", lambda: tmp, raising=False)
+    tl = _mod("agent_community.platform.task_ledger")
+    if tl is not None:
+        monkeypatch.setattr(tl, "_path", lambda: tmp / "task_ledger.json", raising=False)
+    ap = _mod("agent_community.platform.a2a_result_poll")
+    if ap is not None:
+        monkeypatch.setattr(ap, "_path", lambda: tmp / "a2a_pending.json", raising=False)
+
     return tmp
 
 

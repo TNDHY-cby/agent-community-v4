@@ -100,6 +100,23 @@ _SESSION_READ_HINTS = ("session_messages", "session_history", "session_read", "r
                        "list_messages", "get_session", "session_get", "history")
 
 
+def _track_mcp_async(harness_id: str, url: str, tool: str, call, *,
+                     workshop_id: str = "", task_seq: int = 0) -> None:
+    """V128：外部 MCP 工具回 `pending` 时**登记进待查队列**，后台会按约定自动查、终态写回。
+
+    只在**发送/执行类**调用上挂（读会话、列会话这类几乎不会异步，登记只会白占队列）。
+    登记失败**不许让"发话"失败**，但要说出来（否则用户以为平台在跟）。
+    """
+    try:
+        from .. import mcp_result_poll as _mr
+
+        _mr.maybe_track(harness_id=harness_id, url=url, tool=tool, call=call,
+                        workshop_id=workshop_id, task_seq=task_seq)
+    except Exception as e:                                     # noqa: BLE001 — 登记失败只影响"自动回收"
+        print("[mcp-poll] 登记异步任务失败（不影响本次发送）：%s: %s" %
+              (type(e).__name__, e), flush=True)
+
+
 def _make_code() -> str:
     """派活用的**核对码**（短、唯一、好在对面的会话里搜）。"""
     import secrets
@@ -141,6 +158,7 @@ def _dispatch_via_session_post(harness_id: str, text: str, session_id: str = "")
         from .. import mcp_client as _mc
 
         call = asyncio.run(_mc.mcp_call_tool(url, str(pick.get("name")), args))
+        _track_mcp_async(harness_id, url, str(pick.get("name")), call)
     except Exception as e:                                     # noqa: BLE001 — 发不进去要如实说
         return {"ok": False, "why": "调 %s 失败：%s: %s" % (pick.get("name"), type(e).__name__,
                                                           str(e)[:160])}
@@ -1980,6 +1998,7 @@ async def docking_harness_test_now(harness_id: str, request: Request):
                             if _want_sid and "session_id" in _props_send:
                                 args["session_id"] = _want_sid
                             call = await _mc.mcp_call_tool(url, str(pick.get("name")), args)
+                            _track_mcp_async(harness_id, url, str(pick.get("name")), call)
                             _posted_ms = int(time.time() * 1000)   # 我们这条"发出去"的时刻（判"之后的新消息"用）
                             reply = str((call or {}).get("text") or "").strip()
                             ok = bool((call or {}).get("ok"))
@@ -2577,6 +2596,190 @@ async def agents_reset(request: Request):
                  if deleted else ""),
         "rollback": ("把 `%s` 里的文件拷回 `<数据目录>/` 即恢复（keys 目录整个拷回）"
                      % backup.relative_to(dd)) if backup.is_dir() else "",
+    }
+
+
+# ===== 清理「悬空引用」（老板 2026-11-03）==================================
+#   删掉 agent 之后，工作间里绑过它的成员就成了悬空引用，界面上一直列着，
+#   而平台按设计"不替你删成员" ⇒ 用户没有清理入口。这里补一个：
+#   把那些**绑定全部失效**的成员从旧名单里移除（标 removed + 审计留痕）。
+#   ⚠️ 破坏性：要确认词；删前备份 workshops.json。
+
+DANGLING_CLEAN_CONFIRM = "清理悬空引用"
+
+
+@router.post("/api/docking/dangling/clean")
+async def dangling_clean(request: Request):
+    """把「绑定全部失效」的成员从工作间名单里移除。
+
+    body: `{"confirm": "清理悬空引用", "dry_run": bool}`
+    **只动旧名单**（`Workshop.members`，界面"悬空引用"就是从这里算的）；
+    v5 名单那边另有 `tools/roster_dual_check.py` 对账，不在这里混着改。
+    """
+    import json as _json
+    import shutil
+    from datetime import datetime as _dt
+    from pathlib import Path as _P
+
+    from fastapi.responses import JSONResponse
+
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    dry = bool(body.get("dry_run"))
+    if not dry and str(body.get("confirm") or "").strip() != DANGLING_CLEAN_CONFIRM:
+        return JSONResponse({
+            "ok": False, "code": "CONFIRM_REQUIRED",
+            "error": "确认词不对，**什么都没删**",
+            "expected": DANGLING_CLEAN_CONFIRM,
+            "next": "确认要清就原样传这个词；不确定就先传 {\"dry_run\": true} 看清单",
+        }, status_code=400)
+
+    from ..harness_adapter import harness_manager as _hm
+
+    alive = set(_hm.sessions.keys())
+    todo, keep = [], 0
+    for w in workshops.values():
+        dead = []
+        for m in list(getattr(w, "members", []) or []):
+            hids = [str(x) for x in (getattr(m, "harness_ids", None) or []) if str(x).strip()]
+            if not hids:
+                keep += 1
+                continue
+            if all(h not in alive for h in hids):
+                dead.append({"member_id": getattr(m, "member_id", ""),
+                             "role": getattr(m, "role", ""),
+                             "display_name": getattr(m, "display_name", ""),
+                             "harness_ids": hids})
+            else:
+                keep += 1
+        if dead:
+            todo.append({"ws_id": getattr(w, "workshop_id", ""),
+                         "name": getattr(w, "name", ""), "members": dead})
+
+    total = sum(len(x["members"]) for x in todo)
+    if dry:
+        return {"ok": True, "dry_run": True, "workrooms": todo,
+                "total_members": total, "kept_members": keep,
+                "note": "这是预览，什么都没改。确认后传 confirm 才真删。"}
+    if not total:
+        return {"ok": True, "removed": 0, "workrooms": [], "note": "没有悬空引用，不用清"}
+
+    # 先备份（失败就中止）
+    from ..env_spec import data_dir as _data_dir
+
+    dd = _P(_data_dir())
+    stamp = _dt.now().strftime("%Y%m%d_%H%M%S")
+    backup = dd / "backups" / ("pre-dangling-clean-%s" % stamp)
+    try:
+        backup.mkdir(parents=True, exist_ok=False)
+        src = dd / "workshops.json"
+        if src.is_file():
+            shutil.copy2(src, backup / "workshops.json")
+    except Exception as e:                                     # noqa: BLE001
+        return JSONResponse({
+            "ok": False, "code": "BACKUP_FAILED",
+            "error": "备份没成功，**一个人都没删**：%s: %s" % (type(e).__name__, str(e)[:200]),
+        }, status_code=500)
+
+    removed = 0
+    for item in todo:
+        w = workshops.get(item["ws_id"])
+        if w is None:
+            continue
+        dead_ids = {d["member_id"] for d in item["members"]}
+        before = len(w.members)
+        w.members = [m for m in w.members if getattr(m, "member_id", "") not in dead_ids]
+        removed += before - len(w.members)
+
+    try:
+        from ..server import save_state as _save_state
+
+        _save_state()
+    except Exception as e:                                     # noqa: BLE001
+        print("[docking] 悬空清理后存盘失败（内存已改）：%s" % str(e)[:160], flush=True)
+
+    try:
+        from ..audit import audit_log as _audit
+
+        _audit.record("docking.dangling_clean", actor="user", target="docking",
+                      detail="清理悬空引用：移除 %d 个成员（涉及 %d 个工作间）" % (removed, len(todo)))
+    except Exception:                                          # noqa: BLE001 — 审计失败不影响结果
+        pass
+
+    return {
+        "ok": True, "removed": removed, "workrooms": todo,
+        "backup": str(backup.relative_to(dd)),
+        "note": ("已从旧名单移除 %d 个悬空成员（涉及 %d 个工作间）。"
+                 "工作间本身、产物、账本都没动。" % (removed, len(todo))),
+        "rollback": "把 `%s/workshops.json` 拷回 `<数据目录>/` 即恢复" % backup.relative_to(dd),
+        "next": "如果 v5 名单那边还有对不上的，跑 `python tools/roster_dual_check.py` 对账",
+    }
+
+
+@router.get("/api/docking/harness/{harness_id}/mcp-task/{task_handle}")
+async def docking_mcp_task_state(harness_id: str, task_handle: str):
+    """查一个 **MCP 侧异步任务**的状态与结果（只读）。
+
+    ★2026-11-03（老板：「A2A 只是一个协议，为什么不再拓展一个 MCP Tasks」）：
+    对方的工具返回 `pending` 时，`mcp_call_tool` 现在会把**句柄**交出来；
+    这个端点按句柄去问它——**先探测它用哪种约定**（标准 Tasks 扩展 / 自定义 job 工具），
+    探测不到就**如实说不支持**，不编"看起来在跑"的状态。
+
+    与 A2A 那条对称（`…/a2a-task/{task_id}`），返回结构也尽量一致：
+    `{ok, state, terminal, text, convention, raw}`。
+    """
+    import asyncio
+
+    from fastapi.responses import JSONResponse
+
+    from .. import mcp_client as _mc
+    from ..harness_adapter import harness_manager as _hm
+
+    sess = _hm.sessions.get(str(harness_id or ""))
+    if sess is None:
+        return JSONResponse({"ok": False, "code": "NO_SUCH_HARNESS",
+                             "error": "没有这个 harness：%s" % harness_id,
+                             "next": "去「对接中心」确认它还在"}, status_code=404)
+    url = str(getattr(getattr(sess, "info", None), "api_base_url", "") or "")
+    if not url:
+        return JSONResponse({"ok": False, "code": "NO_ENDPOINT",
+                             "error": "这个 harness 没有 api_base_url（无处去查）"}, status_code=409)
+    try:
+        out = await _mc.mcp_task_get(url, str(task_handle))
+    except Exception as e:                                     # noqa: BLE001 — 查不到要如实说
+        return JSONResponse({"ok": False, "task_handle": task_handle,
+                             "error": "查 MCP 任务失败：%s: %s" % (type(e).__name__, str(e)[:200]),
+                             "next": "确认对方的 MCP 端点还在跑"}, status_code=409)
+    out = dict(out or {})
+    out["task_handle"] = task_handle
+    out["harness_id"] = harness_id
+    out.setdefault("note", ("只有 terminal=true 时 text 才是最终结果；"
+                            "convention.kind 说明它用的是哪种异步约定。"))
+    return out
+
+
+@router.get("/api/docking/harness/{harness_id}/mcp-calls")
+async def docking_mcp_calls(harness_id: str, limit: int = 20):
+    """这个接入的**出站 MCP 调用**最后怎么了（只读）。
+
+    ★V128（2026-11-04）：A2A 派活有账本可写，**MCP 只是一次工具调用、平台什么都没建** ⇒
+    结果没有家。这条端点就是那个家：每次真调用一条，`state` 从 `pending` 由后台自动推进到终态。
+    挂得上任务的（`workshop_id`+`task_seq`）**同时**写账本（`external.source=="mcp"`）。
+    """
+    from .. import mcp_result_poll as _mr
+
+    items = _mr.list_outcalls(harness_id=str(harness_id or ""), limit=limit)
+    pending = [x for x in _mr.list_pending()
+               if str(x.get("harness_id") or "") == str(harness_id or "")]
+    return {
+        "ok": True, "harness_id": harness_id, "count": len(items), "calls": items,
+        "still_pending": len(pending),
+        "note": ("`pending` 是还在跑（后台每 20 秒查一次，最多 5 条/轮）；"
+                 "`unsupported` 表示对端不声明任何异步约定（查不了，别当还在跑）；"
+                 "`expired` 是 24 小时没终态被出队。空 = 这个接入还没调过外部工具。"),
     }
 
 
