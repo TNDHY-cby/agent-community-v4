@@ -4,7 +4,7 @@
 判据（都能机器判）：
   ① 端点存在且 200，字段齐全；`current` == `agent_community.__version__`；
   ② `latest` / `update_available` 允许为 null（平台不猜远端），**但不许出现编造值**；
-  ③ `channel` 指向 Gitee（更新渠道只认 Gitee；GitHub 2026-10-21 起是**同步镜像**）且给得出 release 压缩包地址形状；
+  ③ `channel` 指向**主仓库**（2026-11-04 起＝GitHub；Gitee 为备用）且给得出 release 压缩包地址形状；
   ④ `update_safety` 必须声明"只替换安装目录、保留数据目录、需要重启"；
   ⑤ 契约文档 `design-docs/V57_一键更新插件契约.md` 在发布面，且写着"待老板拍板"。
 """
@@ -43,10 +43,18 @@ def test_version_endpoint_contract(client):
         "平台不联网查远端 ⇒ 这两项必须是 null，不许编造"
 
 
-def test_version_channel_points_to_gitee(client):
+def test_version_channel_points_to_main_remote(client):
+    """更新渠道必须指向**主仓库**（2026-11-04 老板：「不更新 gitee 了，换成 Github」⇒ GitHub）。
+
+    判据不写死某个域名：只要 `repo` 是**发布脚本默认推的那个远端**即可 ——
+    这样以后再换主远端，改 `CHANNEL` 一处、这条不用跟着改（但会因此红，是好事：提醒同步）。
+    """
+    from agent_community.platform.routers import version as v
+
     body = client.get("/api/version").json()
     chan = body["channel"]
-    assert "gitee.com" in chan["repo"], "更新渠道必须指向 Gitee（GitHub 只是同步镜像）"
+    main_host = "github.com" if "github" in str(v.CHANNEL.get("repo", "")) else "gitee.com"
+    assert main_host in chan["repo"], "更新渠道必须指向主仓库（当前主远端 %s）" % main_host
     assert "{tag}" in chan["release_tarball_tpl"], "没有 release 压缩包地址模板，插件下不了包"
     assert chan["tags_ref"].startswith("refs/tags/")
 
