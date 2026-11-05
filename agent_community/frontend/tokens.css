@@ -1,0 +1,148 @@
+/* ============================================================
+   统一设计令牌（UI 设计单一真源 · 2026-11-05）
+   基准 = **对接中心**（老板：「统一平台所有 UI 设计风格，以对接中心为主」）
+
+   规则：
+   · 颜色 / 字体 / 字号 / 间距 / 圆角 / 阴影 / 辉光 **只在这里定义**；
+   · 页面自己的 `:root` 只允许写「本页特有」的变量，**不许重名覆盖**；
+   · 主题皮肤（theme-crt.css）可以覆盖同名变量（那是有意的换肤，不算漂移）。
+   ============================================================ */
+:root{
+  --bg:#0F0E0C; --bg2:#161513; --bg3:#1C1A18; --bg4:#242220; --bg5:#2F2C29;
+  --ink:#E8E4DB; --muted:#B3AEA5; --dim:#7E7971; --rule:#2E2B27;
+  --accent:#FF3527; --accent-soft:rgba(var(--accent-rgb),.08); --accent-strong:#FF6A5C;
+  --green:#86B394; --green-soft:rgba(var(--green-rgb),.09);
+  --yellow:#D9AB53; --yellow-soft:rgba(var(--yellow-rgb),.10);
+  --red:#FF3527; --red-soft:rgba(var(--accent-rgb),.08);
+  --blue:#2A5A8C; --blue-soft:rgba(var(--blue-rgb),.10);
+  --cyan:#2A6B6B; --cyan-soft:rgba(var(--cyan-rgb),.10);
+  --purple:#5E4A7A; --purple-soft:rgba(var(--purple-rgb),.10);
+  --paper:#ece5d8; --paper-ink:#2b2519;
+  --mono:"JetBrains Mono","Cascadia Code",Consolas,monospace;
+
+  /* ★2026-10-29 设计提纯试点（UI/UX 设计工作室 × W前端）——只增不改，旧变量原样：
+     构成主义提纯三原则：① 红只管「主 CTA / 当前态 / 危险」三处，信息类强调交给蓝；
+     ② 印刷感来自 2px 粗框 + 硬偏移阴影（无模糊），不用渐变/毛玻璃；
+     ③ 字号五档阶梯，页面允许出现 32px 大字报标题（敢大敢小才有等级）。 */
+  --info:#5B8DD9;            /* 信息蓝：只给「文字/图标」保可读（暗底 4.5:1+） */
+  --info-soft:rgba(91,141,217,.12);
+
+  /* ★2026-10-29 老板反馈「亮蓝太突兀，要发光的藏蓝」——蓝色拆成两层分工：
+     文字/图标仍用 --info（亮一档才读得清），但描边、辉光、焦点一律用藏蓝，
+     靠「柔光晕」而不是「亮实线」表达交互，避免把控件框成一个亮盒子。 */
+  --navy:#24457F;                        /* 藏蓝本体：交互描边 */
+  --navy-lit:#4A76BE;                    /* 藏蓝受光：焦点环 / 底边受光线（可见但不刺眼） */
+  --navy-soft:rgba(var(--navy-rgb),.20);       /* 近场柔光晕 */
+  --navy-glow:rgba(45,92,175,.34);       /* 远场发光 */
+  --shadow-hard:4px 4px 0 #000;      /* 当前/悬浮层专用 */
+  --shadow-hard-sm:2px 2px 0 #000;   /* 按钮默认 */
+  --border-bold:2px solid var(--ink);
+  --fs-hero:32px; --fs-h2:22px; --fs-body:16px; --fs-meta:12.5px;
+
+  /* ★2026-10-29 机械巨构层（老板拍板「流浪地球机械感」）——全部纯 CSS 几何，零图片零 3D：
+     斜切角=切割钢板、琥珀条纹=警戒位、辉光=行星发动机（全站唯一发光预算）、安全色分工
+     红=危险/动作 · 琥珀=警戒/待办 · 蓝=信息。 */
+  --chamfer:14px;                                  /* 卡片斜切角（左上/右下，构成主义不对称） */
+  --stripe:repeating-linear-gradient(-45deg,var(--yellow) 0 8px,#0F0E0C 8px 16px);  /* 警戒条纹 */
+  --glow-engine:0 0 12px rgba(var(--accent-rgb),.55),0 0 32px rgba(var(--accent-rgb),.25);          /* 发动机辉光 */
+  --led-ok:var(--green); --led-warn:var(--yellow); --led-off:var(--dim);
+
+  /* ★2026-10-29 老板定名：这里不用「色差 / chromatic aberration」（偏光学、柔化、双色红青），
+     改用 RGB split / RGB channel separation —— 红绿蓝三通道的「物理位移」，
+     零模糊硬边，数字故障感，表现数据撕裂 / 信号干扰。
+     ★边缘由外到内：红 → 绿 → 蓝（红偏移最远＝最外层，蓝最贴字形＝最内层）。
+     ★实现关键：文字本体骨白在最上层盖住字心，只在字形轮廓外露出三道色边；
+       text-shadow 声明顺序必须「蓝(最贴字,最上层) → 绿(中) → 红(最外,最下层)」，
+       否则重叠带会被上层色染掉，读不出「从外到内红绿蓝」。
+     ★纯水平位移＝横向信号撕裂方向；绿为本次新增通道，仅此一处（刊头大标题视觉签名），
+       不铺全站、不加 hover 动画（延续克制方向）。 */
+  /* ★关键修正（视觉评审三轮后的根因）：alpha 必须 =1，不能靠透明度压荧光。
+     每层 shadow 都是从字边缘 0 起算的完整文字副本，必然彼此重叠；
+     alpha .5 时贴字那圈「蓝」混成蓝+绿+红的灰白，中间「绿」混成绿+红的黄橙；
+     alpha .9 仍有 10% 下层透出 → 蓝读成青蓝、绿读成黄橙，三色依旧分不开。
+     只有 alpha=1 上层才真正遮盖下层，三道带各自纯色。
+     「不刺眼」改由沉稳色相承担（暗砖红 / 正绿 / 暗钢蓝），而非降透明度。
+     绿取正绿偏冷一档（hue≈142），既避开蓝(≈217)，也不自带黄味再和红混成橙。 */
+  /* ★第四轮修正：带宽必须显著大于抗锯齿宽度。原先 1.2/3.2/5.4 每带只有 1~2 CSS px，
+     4x DPI 实测即便 alpha=1，字形亚像素抗锯齿仍让相邻两层在边缘透色 ——
+     冷侧读成青蓝、暖侧读成橙红，中间的绿始终串掉。拉开到每带约 2.6px 才各自读出纯色。
+     配套：刊头 h1 的 letter-spacing 由 -.035em 改为 +.08em，给最外层红带留空间，
+     否则 8.2px 位移会伸进相邻汉字被上层白字盖掉（中文密排的固有问题）。 */
+  --rgb-r:#C9432F;   /* 红通道：位移 ±8.2px，最外层（可见带 ~2.8px） */
+  --rgb-g:#3AA863;   /* 绿通道：位移 ±5.4px，中间层（可见带 ~2.8px） */
+  --rgb-b:#3B6FC4;   /* 蓝通道：位移 ±2.6px，最内层贴字形（可见带 ~2.6px） */
+  --rgb-split-h1:
+    /* 蓝：最内层，贴字形（最先声明＝最上层，压住重叠带里的绿/红） */
+     2.6px 0 var(--rgb-b), -2.6px 0 var(--rgb-b),
+    /* 绿：中间层 */
+     5.4px 0 var(--rgb-g), -5.4px 0 var(--rgb-g),
+    /* 红：最外层（最后声明＝最下层，只在最外缘露出） */
+     8.2px 0 var(--rgb-r), -8.2px 0 var(--rgb-r);
+  /* ★2026-10-30 卡片级缩比变体（--rgb-split-sec）：面板头 .v5-sec 是 19px/900，
+     放不下刊头的 2.6px 级带宽 —— 三带总位移 13.4px 超过字高一半，会糊成一团。
+     等比缩到 1.3px 级：小字号下读感是「边缘彩色重影」（色差的本分），
+     而非刊头那种三段可辨的纯色带。层级关系与 h1 相同：蓝最内最先声明。 */
+  /* ★2026-10-30 三修（老板：色差应该是透明的发光的）：
+     实心色带 → 半透明柔光。对角布局不变（红左上/蓝右下/绿贴边），
+     加 blur + color-mix 透明度，由边缘向周围晕开。
+     注意：这是发光层不是可读层，透明是本分 —— 与刊头文字的 alpha=1
+     铁律不冲突（那是三带纯色可读方案，此处是氛围光）。 */
+  --rgb-split-sec:
+     -1.3px -1.3px 2px color-mix(in srgb, var(--rgb-r) 55%, transparent),
+      1.3px  1.3px 2px color-mix(in srgb, var(--rgb-b) 55%, transparent);
+  /* ★2026-10-30 五修：红蓝对角柔光抽成令牌（老板：其他子按键也加色差）——
+     卡片/按钮 hover 的边缘色差统一引用，去绿后仅两影（红左上/蓝右下） */
+  --rgb-glow:
+     -2.6px -2.6px 7px color-mix(in srgb, var(--rgb-r) 40%, transparent),
+      2.6px  2.6px 7px color-mix(in srgb, var(--rgb-b) 40%, transparent);
+
+  /* ── ★2026-11-05 统一补充：各页用过但 hub 没定义的令牌（值一律对齐对接中心） ── */
+  --accent-hi: var(--accent-strong);
+  --amber: var(--yellow); --amber-soft: var(--yellow-soft);
+  --rule-strong:#3A3632;                    /* 比 --rule 亮一档：暗底上要看得见的分组线 */
+  --radius-sm:8px; --radius-md:12px; --radius-lg:14px;
+  --r-sm:8px; --r-md:12px; --r-lg:14px;     /* 老页（register）的别名，保留兼容 */
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;
+  --font-mono:var(--mono);
+  --focus-ring:0 0 0 3px var(--navy-soft);
+  --glow:var(--rgb-glow);
+  --shadow-1:0 1px 2px rgba(0,0,0,.35),0 3px 10px rgba(0,0,0,.18);
+  --shadow-2:0 8px 24px rgba(0,0,0,.38);
+  --sh-1:var(--shadow-1); --sh-2:0 12px 38px rgba(0,0,0,.5);
+  /* 字号阶梯与间距刻度（index 里用过；与 --fs-* 并存，避免改页面） */
+  --t1:20px; --t2:13px; --t3:12px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px;
+
+  /* ── ★2026-11-05 别名补位：几个页面一直在用这套「短名」，但从来没定义过
+       ⇒ 样式静默失效（典型的「失败不说话」）。这里补成 tokens 的别名，不动页面。 ── */
+  --ok:var(--green); --bad:var(--red); --line:var(--rule); --ink-soft:var(--muted);
+
+  /* ── ★2026-11-05 补位（各页实际在用、但一直没令牌的颜色）── */
+  --accent-deep:#B33427;   /* 旧页渐变里的深红：统一一档，别再各写一个值 */
+  --red-ink:#EAB0A8;       /* 红 soft 底上的错误正文（比 --red 浅，才读得清） */
+  --topbar-hi:#1d2026; --topbar-lo:#181a20;   /* 顶栏渐变两端（hub 与 index 各写死过一次） */
+
+  /* ── ★2026-11-05 中间色阶与语义文字色（各页本来各写死一个值）── */
+  --bg-deep:#100E0C;      /* 比 --bg 再深一档（页面第一层底） */
+  --line-soft:#4A443B;    /* 暖灰分隔/描点（比 --rule 亮、比 --dim 暗） */
+  --green-ink:#A8D4B6;    /* 绿 soft 底上的正文 */
+  --yellow-ink:#E6C887;   /* 黄 soft 底上的正文 */
+
+  /* ── ★2026-11-05 RGB 通道令牌：同色的不同透明度不再各写一个 rgba ── */
+  --ink-rgb:232,228,219; --accent-rgb:255,53,39;
+  --green-rgb:134,179,148; --yellow-rgb:217,171,83;
+  --blue-rgb:123,163,201; --cyan-rgb:100,181,180; --purple-rgb:160,140,192;
+  --navy-rgb:36,69,127; --navy-lit-rgb:74,118,190;
+
+  /* ── ★2026-11-05 表面色阶（v5/docking 的机械巨构层次）与专用色 ── */
+  --surface-1:#141110;  /* 顶栏/浮层第一层 */
+  --surface-2:#1A1816;  /* 候选卡 / 模态底 */
+  --surface-3:#1E1A16;  /* 面板头 */
+  --surface-4:#22201D;  /* hover 抬升 */
+  --accent-press:#C4261A; /* 主按钮按下/描边（压深一档保证白字对比） */
+  --accent-hot:#E5352A;   /* 主按钮 hover 底 */
+  --warn-deep:#241B07;    /* 黄底上的深字 */
+  --monitor-amber:#FFB000;/* 监控录制/在做的琥珀 */
+  --pick-green:#7BD1A6;   /* 框选发送按钮的绿 */
+  --info-rgb:91,141,217;
+}

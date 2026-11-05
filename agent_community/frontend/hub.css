@@ -1,120 +1,32 @@
 /* ===== 对接中心 =====
    风格锚点：航天任务控制台 × 产品暗色工作台
    色板：产品 DNA（三级灰 + 赤陶）+ 纸感米白（文档/凭据专用锚点） */
-:root{
-  --bg:#0F0E0C; --bg2:#161513; --bg3:#1C1A18; --bg4:#242220; --bg5:#2F2C29;
-  --ink:#E8E4DB; --muted:#B3AEA5; --dim:#7E7971; --rule:#2E2B27;
-  --accent:#FF3527; --accent-soft:rgba(255,53,39,.08); --accent-strong:#FF6A5C;
-  --green:#86B394; --green-soft:rgba(134,179,148,.09);
-  --yellow:#D9AB53; --yellow-soft:rgba(217,171,83,.10);
-  --red:#FF3527; --red-soft:rgba(255,53,39,.08);
-  --blue:#2A5A8C; --blue-soft:rgba(123,163,201,.10);
-  --cyan:#2A6B6B; --cyan-soft:rgba(100,181,180,.10);
-  --purple:#5E4A7A; --purple-soft:rgba(160,140,192,.10);
-  --paper:#ece5d8; --paper-ink:#2b2519;
-  --mono:"JetBrains Mono","Cascadia Code",Consolas,monospace;
+/* 设计令牌已移到 tokens.css（单一真源，2026-11-05）—— 本文件不再定义 :root */
 
-  /* ★2026-10-29 设计提纯试点（UI/UX 设计工作室 × W前端）——只增不改，旧变量原样：
-     构成主义提纯三原则：① 红只管「主 CTA / 当前态 / 危险」三处，信息类强调交给蓝；
-     ② 印刷感来自 2px 粗框 + 硬偏移阴影（无模糊），不用渐变/毛玻璃；
-     ③ 字号五档阶梯，页面允许出现 32px 大字报标题（敢大敢小才有等级）。 */
-  --info:#5B8DD9;            /* 信息蓝：只给「文字/图标」保可读（暗底 4.5:1+） */
-  --info-soft:rgba(91,141,217,.12);
-
-  /* ★2026-10-29 老板反馈「亮蓝太突兀，要发光的藏蓝」——蓝色拆成两层分工：
-     文字/图标仍用 --info（亮一档才读得清），但描边、辉光、焦点一律用藏蓝，
-     靠「柔光晕」而不是「亮实线」表达交互，避免把控件框成一个亮盒子。 */
-  --navy:#24457F;                        /* 藏蓝本体：交互描边 */
-  --navy-lit:#4A76BE;                    /* 藏蓝受光：焦点环 / 底边受光线（可见但不刺眼） */
-  --navy-soft:rgba(36,69,127,.20);       /* 近场柔光晕 */
-  --navy-glow:rgba(45,92,175,.34);       /* 远场发光 */
-  --shadow-hard:4px 4px 0 #000;      /* 当前/悬浮层专用 */
-  --shadow-hard-sm:2px 2px 0 #000;   /* 按钮默认 */
-  --border-bold:2px solid var(--ink);
-  --fs-hero:32px; --fs-h2:22px; --fs-body:16px; --fs-meta:12.5px;
-
-  /* ★2026-10-29 机械巨构层（老板拍板「流浪地球机械感」）——全部纯 CSS 几何，零图片零 3D：
-     斜切角=切割钢板、琥珀条纹=警戒位、辉光=行星发动机（全站唯一发光预算）、安全色分工
-     红=危险/动作 · 琥珀=警戒/待办 · 蓝=信息。 */
-  --chamfer:14px;                                  /* 卡片斜切角（左上/右下，构成主义不对称） */
-  --stripe:repeating-linear-gradient(-45deg,var(--yellow) 0 8px,#0F0E0C 8px 16px);  /* 警戒条纹 */
-  --glow-engine:0 0 12px rgba(255,53,39,.55),0 0 32px rgba(255,53,39,.25);          /* 发动机辉光 */
-  --led-ok:var(--green); --led-warn:var(--yellow); --led-off:var(--dim);
-
-  /* ★2026-10-29 老板定名：这里不用「色差 / chromatic aberration」（偏光学、柔化、双色红青），
-     改用 RGB split / RGB channel separation —— 红绿蓝三通道的「物理位移」，
-     零模糊硬边，数字故障感，表现数据撕裂 / 信号干扰。
-     ★边缘由外到内：红 → 绿 → 蓝（红偏移最远＝最外层，蓝最贴字形＝最内层）。
-     ★实现关键：文字本体骨白在最上层盖住字心，只在字形轮廓外露出三道色边；
-       text-shadow 声明顺序必须「蓝(最贴字,最上层) → 绿(中) → 红(最外,最下层)」，
-       否则重叠带会被上层色染掉，读不出「从外到内红绿蓝」。
-     ★纯水平位移＝横向信号撕裂方向；绿为本次新增通道，仅此一处（刊头大标题视觉签名），
-       不铺全站、不加 hover 动画（延续克制方向）。 */
-  /* ★关键修正（视觉评审三轮后的根因）：alpha 必须 =1，不能靠透明度压荧光。
-     每层 shadow 都是从字边缘 0 起算的完整文字副本，必然彼此重叠；
-     alpha .5 时贴字那圈「蓝」混成蓝+绿+红的灰白，中间「绿」混成绿+红的黄橙；
-     alpha .9 仍有 10% 下层透出 → 蓝读成青蓝、绿读成黄橙，三色依旧分不开。
-     只有 alpha=1 上层才真正遮盖下层，三道带各自纯色。
-     「不刺眼」改由沉稳色相承担（暗砖红 / 正绿 / 暗钢蓝），而非降透明度。
-     绿取正绿偏冷一档（hue≈142），既避开蓝(≈217)，也不自带黄味再和红混成橙。 */
-  /* ★第四轮修正：带宽必须显著大于抗锯齿宽度。原先 1.2/3.2/5.4 每带只有 1~2 CSS px，
-     4x DPI 实测即便 alpha=1，字形亚像素抗锯齿仍让相邻两层在边缘透色 ——
-     冷侧读成青蓝、暖侧读成橙红，中间的绿始终串掉。拉开到每带约 2.6px 才各自读出纯色。
-     配套：刊头 h1 的 letter-spacing 由 -.035em 改为 +.08em，给最外层红带留空间，
-     否则 8.2px 位移会伸进相邻汉字被上层白字盖掉（中文密排的固有问题）。 */
-  --rgb-r:#C9432F;   /* 红通道：位移 ±8.2px，最外层（可见带 ~2.8px） */
-  --rgb-g:#3AA863;   /* 绿通道：位移 ±5.4px，中间层（可见带 ~2.8px） */
-  --rgb-b:#3B6FC4;   /* 蓝通道：位移 ±2.6px，最内层贴字形（可见带 ~2.6px） */
-  --rgb-split-h1:
-    /* 蓝：最内层，贴字形（最先声明＝最上层，压住重叠带里的绿/红） */
-     2.6px 0 var(--rgb-b), -2.6px 0 var(--rgb-b),
-    /* 绿：中间层 */
-     5.4px 0 var(--rgb-g), -5.4px 0 var(--rgb-g),
-    /* 红：最外层（最后声明＝最下层，只在最外缘露出） */
-     8.2px 0 var(--rgb-r), -8.2px 0 var(--rgb-r);
-  /* ★2026-10-30 卡片级缩比变体（--rgb-split-sec）：面板头 .v5-sec 是 19px/900，
-     放不下刊头的 2.6px 级带宽 —— 三带总位移 13.4px 超过字高一半，会糊成一团。
-     等比缩到 1.3px 级：小字号下读感是「边缘彩色重影」（色差的本分），
-     而非刊头那种三段可辨的纯色带。层级关系与 h1 相同：蓝最内最先声明。 */
-  /* ★2026-10-30 三修（老板：色差应该是透明的发光的）：
-     实心色带 → 半透明柔光。对角布局不变（红左上/蓝右下/绿贴边），
-     加 blur + color-mix 透明度，由边缘向周围晕开。
-     注意：这是发光层不是可读层，透明是本分 —— 与刊头文字的 alpha=1
-     铁律不冲突（那是三带纯色可读方案，此处是氛围光）。 */
-  --rgb-split-sec:
-     -1.3px -1.3px 2px color-mix(in srgb, var(--rgb-r) 55%, transparent),
-      1.3px  1.3px 2px color-mix(in srgb, var(--rgb-b) 55%, transparent);
-  /* ★2026-10-30 五修：红蓝对角柔光抽成令牌（老板：其他子按键也加色差）——
-     卡片/按钮 hover 的边缘色差统一引用，去绿后仅两影（红左上/蓝右下） */
-  --rgb-glow:
-     -2.6px -2.6px 7px color-mix(in srgb, var(--rgb-r) 40%, transparent),
-      2.6px  2.6px 7px color-mix(in srgb, var(--rgb-b) 40%, transparent);
-}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%}
 body{
   background:var(--bg); color:var(--ink); font-size:14px; line-height:1.6;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif;
   -webkit-font-smoothing:antialiased;
-  background-image:radial-gradient(circle at 1px 1px,rgba(217,119,87,.05) 1px,transparent 1px);
+  background-image:radial-gradient(circle at 1px 1px,rgba(var(--accent-rgb),.05) 1px,transparent 1px);
   background-size:26px 26px;
 }
 .app{display:grid;grid-template-rows:auto auto 1fr;min-height:100vh}
 
 /* ===== topbar ===== */
-.topbar{display:flex;align-items:center;gap:16px;padding:12px 20px;background:linear-gradient(180deg,#1d2026,#181a20);border-bottom:1px solid var(--rule);flex-wrap:wrap}
+.topbar{display:flex;align-items:center;gap:16px;padding:12px 20px;background:linear-gradient(180deg,var(--topbar-hi),var(--topbar-lo));border-bottom:1px solid var(--rule);flex-wrap:wrap}
 .logo{display:flex;align-items:center;gap:9px;font-size:16px;font-weight:900;letter-spacing:.02em;white-space:nowrap}
 .logo-mark{color:var(--accent);font-size:15px}
-.tag-proto{font-size:10px;font-weight:800;color:var(--accent);background:var(--accent-soft);border:1px solid rgba(217,119,87,.4);border-radius:999px;padding:2px 10px}
+.tag-proto{font-size:10px;font-weight:800;color:var(--accent);background:var(--accent-soft);border:1px solid rgba(var(--accent-rgb),.4);border-radius:999px;padding:2px 10px}
 .position{font-size:12px;color:var(--muted);border-left:2px solid var(--accent);padding-left:10px;min-width:0}
 .spacer{flex:1}
 .live-links{display:flex;gap:6px;flex-wrap:wrap}
 .live-links a{font-size:11.5px;color:var(--muted);text-decoration:none;border:1px solid var(--rule);border-radius:8px;padding:5px 11px;transition:background-color .15s,border-color .15s,color .15s;white-space:nowrap}
 .live-links a:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 
-
 /* FE-10 范围声明条（讨论红线） */
-.scope-banner{display:block;text-align:center;margin:10px auto 0;padding:4px 26px;max-width:820px;background:var(--accent-soft);border:1px solid rgba(217,119,87,.35);border-radius:6px;font-size:12px;color:var(--accent-strong);line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scope-banner{display:block;text-align:center;margin:10px auto 0;padding:4px 26px;max-width:820px;background:var(--accent-soft);border:1px solid rgba(var(--accent-rgb),.35);border-radius:6px;font-size:12px;color:var(--accent-strong);line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scope-banner b{color:var(--ink)}
 
 @media (max-width:900px){.scope-banner{white-space:normal}}
@@ -133,7 +45,7 @@ body{
 .rail-btn .no{position:absolute;left:4px;top:50%;transform:translateY(-50%);width:20px;height:20px;border-radius:50%;background:var(--bg4);border:2px solid var(--rule);font-family:var(--mono);font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center;color:var(--dim);z-index:1}
 .rail-btn .t{display:block;font-size:13px;font-weight:800}
 .rail-btn .s{display:block;font-size:10.5px;color:var(--dim);line-height:1.45;margin-top:1px}
-.rail-item.on .rail-btn{background:var(--accent-soft);border-color:rgba(217,119,87,.4);color:var(--ink)}
+.rail-item.on .rail-btn{background:var(--accent-soft);border-color:rgba(var(--accent-rgb),.4);color:var(--ink)}
 .rail-item.on .rail-btn .no{background:var(--accent);border-color:var(--accent);color:#1a120b}
 .rail-item.on .rail-btn .s{color:var(--muted)}
 .rail-foot{font-size:10.5px;color:var(--dim);margin-top:12px;line-height:1.5}
@@ -146,7 +58,7 @@ body{
 .stage-no{font-family:var(--mono);font-size:44px;font-weight:800;color:var(--accent);line-height:1;letter-spacing:-.03em;min-width:74px}
 .stage-head h1{font-size:21px;font-weight:900;letter-spacing:-.01em}
 .stage-user{font-size:13px;color:var(--muted);margin-top:2px}
-.stage-api{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--cyan);background:var(--cyan-soft);border:1px solid rgba(100,181,180,.35);border-radius:8px;padding:6px 12px;max-width:340px;word-break:break-all}
+.stage-api{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--cyan);background:var(--cyan-soft);border:1px solid rgba(var(--cyan-rgb),.35);border-radius:8px;padding:6px 12px;max-width:340px;word-break:break-all}
 .stage-body{padding:18px 26px 26px;display:flex;flex-direction:column;gap:16px;flex:1}
 .stage-foot{display:flex;justify-content:space-between;gap:14px;padding:12px 26px 18px;font-size:11px;color:var(--dim);border-top:1px dashed var(--rule);flex-wrap:wrap}
 
@@ -164,7 +76,7 @@ code{background:var(--bg3);border:1px solid var(--rule);border-radius:6px;paddin
 /* ===== 成员卡三问 ===== */
 .mcard{background:var(--bg3);border:1px solid var(--rule);border-radius:12px;padding:14px 15px;display:flex;flex-direction:column;gap:10px}
 .mcard-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.m-role{font-size:10.5px;font-weight:800;border-radius:6px;padding:2px 9px;background:var(--blue-soft);color:var(--blue);border:1px solid rgba(123,163,201,.35)}
+.m-role{font-size:10.5px;font-weight:800;border-radius:6px;padding:2px 9px;background:var(--blue-soft);color:var(--blue);border:1px solid rgba(var(--blue-rgb),.35)}
 .m-name{font-size:13.5px;font-weight:900}
 .m-state{margin-left:auto;font-size:10px;font-weight:800;border-radius:6px;padding:2px 8px;background:var(--bg4);color:var(--muted);cursor:help}
 .m-q{border-top:1px dashed var(--rule);padding-top:8px}
@@ -177,12 +89,12 @@ code{background:var(--bg3);border:1px solid var(--rule);border-radius:6px;paddin
 .m-session{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
 /* 自动 / 需人工 */
 .badge{font-size:10.5px;font-weight:800;border-radius:6px;padding:2.5px 9px;border:1px solid transparent}
-.badge.auto{background:var(--cyan-soft);color:var(--cyan);border-color:rgba(100,181,180,.35)}
-.badge.manual{background:var(--yellow-soft);color:var(--yellow);border-color:rgba(217,171,83,.4)}
-.badge.fg{background:var(--red-soft);color:var(--red);border-color:rgba(208,116,104,.35)}
+.badge.auto{background:var(--cyan-soft);color:var(--cyan);border-color:rgba(var(--cyan-rgb),.35)}
+.badge.manual{background:var(--yellow-soft);color:var(--yellow);border-color:rgba(var(--yellow-rgb),.4)}
+.badge.fg{background:var(--red-soft);color:var(--red);border-color:rgba(var(--accent-rgb),.35)}
 .hint-quote{font-size:11px;color:var(--yellow);line-height:1.6}
 /* 进度 / verified 三态色带 */
-.progress-pill{font-size:11px;font-weight:800;border-radius:6px;padding:2.5px 9px;background:var(--blue-soft);color:var(--blue);border:1px solid rgba(123,163,201,.35);font-family:var(--mono)}
+.progress-pill{font-size:11px;font-weight:800;border-radius:6px;padding:2.5px 9px;background:var(--blue-soft);color:var(--blue);border:1px solid rgba(var(--blue-rgb),.35);font-family:var(--mono)}
 .v3{display:flex;gap:5px;align-items:center}
 .v3 i{font-style:normal;font-size:10px;font-weight:800;border-radius:6px;padding:2.5px 9px;border:1px solid transparent;opacity:.35}
 .v3 i.on-ok{background:var(--green);color:#0e1a12;opacity:1}
@@ -194,8 +106,8 @@ code{background:var(--bg3);border:1px solid var(--rule);border-radius:6px;paddin
 /* ===== verified 色带演示 ===== */
 .band{display:flex;gap:0;border-radius:10px;overflow:hidden;border:1px solid var(--rule)}
 .band > div{flex:1;padding:12px 14px;font-size:12px;line-height:1.6}
-.band .b-ok{background:rgba(134,179,148,.09);border-right:1px solid var(--rule)}
-.band .b-no{background:rgba(217,171,83,.10);border-right:1px solid var(--rule)}
+.band .b-ok{background:rgba(var(--green-rgb),.09);border-right:1px solid var(--rule)}
+.band .b-no{background:rgba(var(--yellow-rgb),.10);border-right:1px solid var(--rule)}
 .band .b-idle{background:var(--bg3)}
 .band b{display:block;font-size:12.5px;margin-bottom:3px}
 .band .b-ok b{color:var(--green)} .band .b-no b{color:var(--yellow)} .band .b-idle b{color:var(--muted)}
@@ -206,7 +118,7 @@ code{background:var(--bg3);border:1px solid var(--rule);border-radius:6px;paddin
 .field-row label{font-size:12px;color:var(--muted);font-weight:700;text-align:right}
 .field-row input{background:var(--bg);border:1px solid var(--rule);border-radius:8px;padding:8px 11px;font-size:13px;color:var(--ink);font-family:var(--mono);width:100%}
 .field-row input:focus{border-color:var(--accent)}
-.err-demo{background:var(--red-soft);border:1px solid rgba(208,116,104,.5);border-radius:9px;padding:10px 13px;font-size:12.5px;color:#eab0a8;line-height:1.7}
+.err-demo{background:var(--red-soft);border:1px solid rgba(var(--accent-rgb),.5);border-radius:9px;padding:10px 13px;font-size:12.5px;color:#eab0a8;line-height:1.7}
 .err-demo .fix{margin-top:7px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .err-demo .fix code{background:rgba(0,0,0,.3)}
 .btn{font-size:12px;padding:7px 15px;border:1px solid var(--rule);border-radius:8px;background:var(--bg3);color:var(--ink);cursor:pointer;font-family:inherit;font-weight:700;transition:background-color .15s,border-color .15s,color .15s,box-shadow .18s ease}
@@ -219,7 +131,7 @@ code{background:var(--bg3);border:1px solid var(--rule);border-radius:6px;paddin
 /* ===== 整合两态 ===== */
 .integ{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .integ .box{border-radius:11px;border:1px solid var(--rule);padding:14px 15px;font-size:12.5px;line-height:1.7}
-.integ .okbox{background:var(--green-soft);border-color:rgba(134,179,148,.4)}
+.integ .okbox{background:var(--green-soft);border-color:rgba(var(--green-rgb),.4)}
 .integ .nobox{background:var(--bg3);border-style:dashed}
 .integ b{display:block;margin-bottom:5px;font-size:13px}
 .integ .okbox b{color:var(--green)} .integ .nobox b{color:var(--yellow)}
@@ -240,10 +152,10 @@ code{background:var(--bg3);border:1px solid var(--rule);border-radius:6px;paddin
 /* ===== 讨论 / 选人 简版 ===== */
 .talk{display:flex;flex-direction:column;gap:9px}
 .bubble{max-width:78%;border-radius:12px;padding:9px 13px;font-size:13px;line-height:1.65}
-.bubble.user{align-self:flex-end;background:var(--accent-soft);border:1px solid rgba(217,119,87,.35)}
+.bubble.user{align-self:flex-end;background:var(--accent-soft);border:1px solid rgba(var(--accent-rgb),.35)}
 .bubble.ai{align-self:flex-start;background:var(--bg3);border:1px solid var(--rule)}
 .bubble .who{display:block;font-size:10px;font-weight:800;color:var(--dim);margin-bottom:3px;letter-spacing:.02em}
-.act-hint{display:flex;align-items:center;gap:9px;background:var(--accent-soft);border:1px solid rgba(217,119,87,.4);border-radius:9px;padding:9px 13px;font-size:12.5px;color:var(--accent-strong);font-weight:700}
+.act-hint{display:flex;align-items:center;gap:9px;background:var(--accent-soft);border:1px solid rgba(var(--accent-rgb),.4);border-radius:9px;padding:9px 13px;font-size:12.5px;color:var(--accent-strong);font-weight:700}
 .pick{display:flex;flex-direction:column;gap:8px}
 .pick-row{display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px solid var(--rule);border-radius:9px;padding:9px 13px;font-size:13px}
 .pick-row .why{font-size:11.5px;color:var(--dim);margin-left:auto;text-align:right;max-width:52%}
@@ -251,9 +163,8 @@ code{background:var(--bg3);border:1px solid var(--rule);border-radius:6px;paddin
 .assign-doc{background:var(--paper);color:var(--paper-ink);border-radius:10px;padding:14px 16px;font-family:var(--mono);font-size:11.5px;line-height:1.8;box-shadow:var(--shadow,0 6px 18px rgba(0,0,0,.35))}
 .assign-doc b{font-size:12px}
 
-
 /* ===== quality floor（web-design-guidelines 合规补丁） ===== */
-html{color-scheme:dark;-webkit-tap-highlight-color:rgba(217,119,87,.25)}
+html{color-scheme:dark;-webkit-tap-highlight-color:rgba(var(--accent-rgb),.25)}
 :focus-visible{outline:2px solid var(--navy-lit,#4A76BE);outline-offset:2px}
 .btn,.rail-btn,.rail-any,.mini,.live-links a,.rail-btn{touch-action:manipulation}
 .stage-head h1{text-wrap:balance}

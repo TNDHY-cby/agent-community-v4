@@ -288,6 +288,8 @@ from .routers.company_admin import router as _company_admin_router
 app.include_router(_company_admin_router)  # 远程接入（公司间令牌授权）管理：登记/签发/吊销/校验
 from .routers.docking import router as _docking_router
 app.include_router(_docking_router)  # V34 对接中心：GET /api/docking/overview（只读跨间总览；老板 2026-10-15 拍板「做对接中心」）
+from .routers.activity import router as _activity_router
+app.include_router(_activity_router)  # V131 成员活动视图（只读）：痕迹时间线 + 它会话（老板 2026-11-04「MCP 成员要有直观可见的工作痕迹和会话」）
 from .routers.rooms_discuss import router as _rooms_discuss_router
 app.include_router(_rooms_discuss_router)
 from .routers.assistant import router as _assistant_router
@@ -1104,6 +1106,26 @@ def _ai_health_snapshot() -> dict:
     base_url = str(cfg.get("ai_base_url") or "").strip()
     api_key = str(cfg.get("ai_api_key") or "").strip()
     out["provider"], out["model"] = provider, model
+    # ★2026-11-05（老板问「到底调的是谁的模型」时实测发现）：占位默认值必须判成"没配"。
+    #   旧逻辑只判 `provider and model` 非空 ⇒ 示例域名 `api.example.com` + `example-model-flash`
+    #   也被算作"已配置"，界面上显示绿的"已配置"，其实那个地址解析不到任何服务（红线②"假数据"）。
+    try:
+        from .ai_provider import PLACEHOLDER_BASE_URL as _PH_BU, PLACEHOLDER_MODEL as _PH_MODEL
+    except Exception:                                          # noqa: BLE001 — 常量读不到就不多做判断
+        _PH_BU, _PH_MODEL = "api.example.com", "example-model-flash"
+    _placeholder_bits = []
+    if _PH_BU and _PH_BU in base_url:
+        _placeholder_bits.append("base_url 还是占位地址 %s" % base_url)
+    if model == _PH_MODEL:
+        _placeholder_bits.append("model 还是占位值 %s" % model)
+    if _placeholder_bits:
+        out["configured"] = False
+        out["source"] = "placeholder"
+        out["detail"] = ("这看起来是还没配平台 AI（%s）—— 占位值不是真模型，"
+                         "任何走平台 AI 的功能都会失败。要么在「设置」里填真的 base_url / 模型 / 密钥，"
+                         "要么就别指望平台自己会思考（外端 agent 的模型平台调不到，只能派活给它、由它自己用）。"
+                         % "；".join(_placeholder_bits))
+        return out
     out["configured"] = bool(provider and model)
     if not out["configured"]:
         out["detail"] = ("还没配置平台 AI：填 provider 与模型；填完在「设置」里点一次"

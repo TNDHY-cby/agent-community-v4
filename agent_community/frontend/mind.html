@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#0B0A08">
 <title>心智档案 · 根A 实况（只读为主）</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="boot.css">
 <link rel="stylesheet" href="hub.css?v=20261029b">
 <style>
@@ -13,7 +15,7 @@
      视觉沿用 v5 机械巨构语言；骨架类（chrome-top / masthead / card.armor）来自 chrome.css。
      本页只补：面板头横条（v5-sec 同款）、表格、横幅、表单 —— 不重定义 chrome/hub 的类。 */
   html{scroll-behavior:smooth}
-  body{background:#0B0A08;color:var(--ink);
+  body{background:var(--bg);color:var(--ink);
        font-family:-apple-system,BlinkMacSystemFont,"Noto Sans SC","Segoe UI","Microsoft YaHei",sans-serif;
        font-size:16px;line-height:1.6}
   .topbar .logo-mark{color:var(--accent);font-size:15px}
@@ -23,55 +25,55 @@
   .masthead h1{font-size:clamp(34px,5vw,52px)}
   /* ── 面板头（v5-sec 同款：横条 + 刻蚀编号 + 虚线延长线） ── */
   .phead{display:flex;align-items:center;gap:12px;margin:-16px -16px 14px;padding:11px 16px;
-         background:var(--armor-head,#1E1A16);border-bottom:1px solid #322D26;
+         background:var(--armor-head,var(--bg3));border-bottom:1px solid var(--bg5);
          font-size:19px;font-weight:900;letter-spacing:.02em}
   .phead:before{content:"";width:9px;height:9px;border:2px solid var(--muted);flex:none}
-  .phead .n{color:var(--etch,#918877);font-family:var(--mono);font-size:16px;font-weight:800;
+  .phead .n{color:var(--etch,var(--dim));font-family:var(--mono);font-size:16px;font-weight:800;
             letter-spacing:.06em;white-space:nowrap}
   .phead:after{content:"";flex:1;height:2px;
-    background:repeating-linear-gradient(90deg,#3A342C 0 10px,transparent 10px 16px)}
+    background:repeating-linear-gradient(90deg,var(--bg5) 0 10px,transparent 10px 16px)}
   .psub{font-size:12.5px;color:var(--muted);font-weight:400;letter-spacing:0;margin:0 0 10px}
   /* ── 表单件（v5 同款：常态不画实框，底线暗示可填；聚焦藏蓝底边受光） ── */
-  input,textarea{background:#100E0C;color:var(--ink);
-        border:1px solid rgba(232,228,219,.075);border-bottom-color:rgba(232,228,219,.20);
+  input,textarea{background:var(--bg-deep);color:var(--ink);
+        border:1px solid rgba(var(--ink-rgb),.075);border-bottom-color:rgba(var(--ink-rgb),.20);
         border-radius:4px;padding:8px 10px;font:inherit;min-width:180px;
         transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease}
-  input:focus,textarea:focus{outline:none;border-color:rgba(232,228,219,.10);background:#151821;
-        box-shadow:inset 0 -2px 0 rgba(74,118,190,.78),0 0 26px rgba(45,92,175,.40)}
-  button{background:#241F1A;color:var(--ink);border:1px solid #4A443B;border-radius:4px;
+  input:focus,textarea:focus{outline:none;border-color:rgba(var(--ink-rgb),.10);background:var(--bg3);
+        box-shadow:inset 0 -2px 0 rgba(var(--navy-lit-rgb),.78),0 0 26px rgba(45,92,175,.40)}
+  button{background:var(--bg4);color:var(--ink);border:1px solid var(--line-soft);border-radius:4px;
          min-height:44px;padding:7px 14px;font:inherit;cursor:pointer;
          box-shadow:var(--shadow-hard-sm,0 2px 0 rgba(0,0,0,.5));
          transition:box-shadow .18s ease, transform .18s ease, background-color .18s ease}
-  button:hover{background:#2E2822;
+  button:hover{background:var(--bg4);
          /* ★2026-10-30 全站口径：白框不是 hover 语言 —— 只留红蓝对角柔光（--rgb-glow，hub.css 真源） */
-         border-color:rgba(232,228,219,.28);
+         border-color:rgba(var(--ink-rgb),.28);
          box-shadow:var(--rgb-glow),0 6px 16px rgba(0,0,0,.5);
          transform:scale(1.02)}
   button:active{transform:translate(1px,1px);box-shadow:none;transition:none}
-  button.p{background:var(--accent-soft,#2A1512);border-color:rgba(255,53,39,.5);color:var(--accent)}
+  button.p{background:var(--accent-soft,#2A1512);border-color:rgba(var(--accent-rgb),.5);color:var(--accent)}
   /* ── 表格 / 横幅 / 提示（v5 同款） ── */
   table{width:100%;border-collapse:collapse;font-size:13px}
-  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid rgba(232,228,219,.07);vertical-align:top}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid rgba(var(--ink-rgb),.07);vertical-align:top}
   th{color:var(--dim);font-size:11px;font-family:var(--mono);letter-spacing:.08em;font-weight:700}
   td code,.kv code{font-family:var(--mono);font-size:12px;color:var(--ink);word-break:break-all}
   .banner{border-radius:4px;padding:8px 10px;font-size:12.5px;margin:8px 0;border:1px solid}
-  .banner.bad{background:var(--red-soft);border-color:rgba(255,53,39,.5);color:var(--red)}
-  .banner.ok{background:var(--green-soft);border-color:rgba(134,179,148,.5);color:var(--green)}
-  .banner.warn{background:var(--yellow-soft);border-color:rgba(217,171,83,.5);color:var(--yellow)}
+  .banner.bad{background:var(--red-soft);border-color:rgba(var(--accent-rgb),.5);color:var(--red)}
+  .banner.ok{background:var(--green-soft);border-color:rgba(var(--green-rgb),.5);color:var(--green)}
+  .banner.warn{background:var(--yellow-soft);border-color:rgba(var(--yellow-rgb),.5);color:var(--yellow)}
   .msg{font-size:12px;color:var(--muted)}
   .msg.ok{color:var(--green)}  .msg.warn{color:var(--yellow)}  .msg.bad{color:var(--red)}
-  pre{background:#0D0B09;border:1px solid rgba(232,228,219,.08);border-radius:6px;
+  pre{background:#0D0B09;border:1px solid rgba(var(--ink-rgb),.08);border-radius:6px;
       padding:10px 12px;font-family:var(--mono);font-size:12px;line-height:1.55;
       overflow:auto;max-height:320px;color:var(--ink)}
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
   label.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted)}
   .chips{display:flex;flex-wrap:wrap;gap:6px}
   .chip{font-family:var(--mono);font-size:11px;color:var(--muted);
-        border:1px solid rgba(232,228,219,.10);border-radius:4px;padding:2px 8px;background:#12100D}
+        border:1px solid rgba(var(--ink-rgb),.10);border-radius:4px;padding:2px 8px;background:var(--bg-deep)}
   .kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;font-size:13px;align-items:baseline}
   .kv .k{color:var(--dim);font-family:var(--mono);font-size:11.5px;letter-spacing:.05em}
   .stat3{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
-  .stat3>div{flex:1;min-width:150px;background:#12100D;border:1px solid rgba(232,228,219,.07);
+  .stat3>div{flex:1;min-width:150px;background:var(--bg-deep);border:1px solid rgba(var(--ink-rgb),.07);
              border-radius:8px;padding:10px 14px}
   .stat3 b{display:block;font-size:26px;font-weight:900;color:var(--ink);font-family:var(--mono)}
   .stat3 span{font-size:11.5px;color:var(--muted)}
@@ -79,6 +81,7 @@
 </style>
 <link rel="stylesheet" href="chrome.css">
 <script src="chrome.js" defer></script>
+<link rel="stylesheet" href="glass.css">
 </head>
 
 <body>

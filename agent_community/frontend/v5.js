@@ -488,6 +488,31 @@ function mirrorLine(m) {
   return '<div class="msg warn">名单镜像：没写（' + esc(m.why || '后端没给原因') + '）—— 名单主库不受影响。</div>';
 }
 
+/* ── 3b. 谁验的（D后端-68/69）：platform-observed 与 user-check 必须长得不一样 ──
+   ⚠ 单看时间戳分不出来 —— 打勾也留 *_at；区分点只有 evidence_sources。
+   打勾的不许写成"已验证"；什么都没有就明写「证据 0 项」，不装模作样。 */
+function evidenceSrcHTML(m) {
+  const src = (m && m.evidence_sources) || {};
+  const at = (m && m.evidence_at) || {};
+  const keys = Object.keys(src);
+  if (!keys.length) return '<span class="msg">证据 0 项（平台没观测到）</span>';
+  /* evidence_at 的键带 _at 后缀（如 protocol_ok_at），对不上的兜底找一遍 */
+  const when = function (k) { return at[k + '_at'] || at[k] || ''; };
+  const plat = keys.filter(function (k) { return src[k] === 'platform-observed'; });
+  const user = keys.filter(function (k) { return src[k] !== 'platform-observed'; });
+  let h = '';
+  if (plat.length) {
+    h += '<span class="ok">✓ 平台验的</span><div class="msg">' +
+      plat.map(function (k) { return esc(k) + (when(k) ? ' · ' + esc(when(k)) : ''); }).join('<br>') + '</div>';
+  }
+  if (user.length) {
+    h += (h ? '<br>' : '') + '<span class="warn">你打的勾</span><div class="msg">' +
+      user.map(function (k) { return esc(k) + (when(k) ? ' · ' + esc(when(k)) : ''); }).join('<br>') +
+      '（人工申报 —— 平台没观测到）</div>';
+  }
+  return h;
+}
+
 function currentLead() {
   return (S.members || []).filter(function (m) { return m.slot_dir === '_lead'; })[0] || null;
 }
@@ -548,6 +573,58 @@ async function markEvidence() {
   await loadRoster2();
 }
 
+/* ── 3c. B 档平台自验（D后端-69）：平台自己写测试消息、自己看它被取走没有 ──
+   取件发生在两次点击**之间**：第一次新发（拿 probe_id），之后每次都带同一条 probe_id 再看 ——
+   每次都新发就永远看不到「被取走」。没取走 ⇒ 证据一个字不记（PROBE_NOT_PICKED，这不是失败）。 */
+async function bridgeProbe(seq) {
+  if (!S.ws) return;
+  if (!seq) seq = (currentLead() || {}).member_seq;
+  if (!seq) { say('evMsg', '还没有工位可查 —— 先把名单建起来', 'bad'); return; }
+  const btn = $('probeBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '正在看邮箱…'; }
+  S.probeIds = S.probeIds || {};
+  const body = {};
+  if (S.probeIds[seq]) body.probe_id = S.probeIds[seq];
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) +
+    '/members/' + encodeURIComponent(seq) + '/bridge-probe', body);
+  if (btn) { btn.disabled = false; btn.textContent = '检查取件（平台自验）'; }
+  const out = $('probeOut');
+  if (!out) return;
+  const d = r.data || {};
+  const p = d.probe || {};
+  const pid = p.id || d.probe_id || '';
+  if (pid) { S.probeIds[seq] = pid; if (btn) btn.title = 'probe_id=' + pid; }
+  /* 没取走（409）：显示 probe.reason / probe.advice，保留 probe_id 等「再看同一条」 */
+  if (!r.ok && d.code === 'PROBE_NOT_PICKED') {
+    out.innerHTML = banner('warn', '⏳ 还没看到它取走 —— <b>证据一个字没记</b>' +
+      '（这不是失败：取件发生在两次点击之间）。等一会儿<b>再点一次</b>（会带同一条 probe_id）。') +
+      '<div class="msg">probe：<code>' + esc(pid || '—') + '</code></div>' +
+      (p.reason ? '<div class="msg">现状：' + esc(p.reason) + '</div>' : '') +
+      (p.advice ? '<div class="msg">建议：' + esc(p.advice) + '</div>' : '') +
+      (p.inbox ? '<div class="msg">邮箱：<code>' + esc(p.inbox) + '</code>' +
+        (p.inbox_guessed ? '（路径是<b>按工位名推的</b> —— 同岗位多人会共用；要精确到人，桥的隔间里写清邮箱）' : '') +
+        '</div>' : '');
+    return;
+  }
+  if (!r.ok) { out.innerHTML = errHtml(d, r.status); return; }
+  let h;
+  if (p.answered) {
+    h = banner('ok', '✓ 平台亲眼看到：测试消息被<b>取走</b>了，它还<b>回了话</b> —— bridge_ok + mailbox_ok 都记成「平台验的」' +
+      (d.state === 'active' ? '，工位推进到 <b>active</b>' : ''));
+  } else if (p.picked_up) {
+    h = banner('ok', '✓ 平台亲眼看到测试消息被取走了 —— bridge_ok 记「平台验的」' +
+      '<br><span class="msg">它还没回话（mailbox_ok 没记）—— 回话是另一件事，别混。</span>');
+  } else {
+    h = banner('warn', '写了测试消息，这一眼还没看到取走 —— 证据没记。再点一次（同一条 probe_id）');
+  }
+  h += '<div class="msg">probe：<code>' + esc(pid || '—') + '</code>（下次点带同一条 —— 每次都新发就永远看不到取走）</div>' +
+    (p.verdict ? '<div class="msg">判定：' + esc(p.verdict) + '</div>' : '') +
+    (p.inbox ? '<div class="msg">邮箱：<code>' + esc(p.inbox) + '</code>' +
+      (p.inbox_guessed ? '（路径是<b>按工位名推的</b> —— 同岗位多人会共用）' : '') + '</div>' : '');
+  out.innerHTML = h;
+  await loadRoster2();
+}
+
 /* ── 4. 回执 + 工位 ───────────────────────────────────────── */
 async function submitRcpt() {
   if (!S.ws) { say('rcptMsg', '先选工作间', 'bad'); return; }
@@ -588,7 +665,7 @@ async function loadRoster2() {
         ? '<br><span class="msg">' + (rs.detail || []).map(mdInline).join('<br>') + '</span>'
         : ''));
   }
-  let h = '<table><tr><th>工位</th><th>harness</th><th>状态</th><th>档位</th><th>覆盖范围</th><th>会话名</th><th>成员拉人</th></tr>' +
+  let h = '<table><tr><th>工位</th><th>harness</th><th>状态</th><th>谁验的</th><th>档位</th><th>覆盖范围</th><th>会话名</th><th>成员拉人</th></tr>' +
     S.members.map(function (m) {
       const cls = m.state === 'active' ? 'ok' : (m.state === 'pending' ? 'warn' : '');
       /* ★老板 10-31 SOP：名单定了之后，平台把每个成员的对接单拼好（自动带工作间路径），
@@ -596,6 +673,10 @@ async function loadRoster2() {
       const pull = m.slot_dir === '_lead'
         ? '<span class="msg">组长走 UNIT-02</span>'
         : '<button class="p" onclick="memberKit(' + Number(m.member_seq) + ')">生成对接单</button>';
+      /* D后端-69：B 档成员也能平台自验 —— 点一次发测试消息，之后每次都带同一条 probe_id 再看 */
+      const probeBtn = (m.tier === 'b_bridge')
+        ? '<br><button onclick="bridgeProbe(' + Number(m.member_seq) + ')">检查取件（平台自验）</button>'
+        : '';
       /* D后端-67 §2：actual_name 是**人给的**，没填就没核过 —— 不许显示出"已核对"的样子 */
       const nameLine = m.actual_name
         ? '<div class="msg">实际名：' + esc(m.actual_name) +
@@ -604,10 +685,11 @@ async function loadRoster2() {
       return '<tr><td>' + esc(m.slot_dir) + '<div class="msg">#' + m.member_seq + '</div></td>' +
         '<td>' + esc(m.harness_id || '—') + '</td>' +
         '<td class="' + cls + '">' + esc(m.state) + '</td>' +
+        '<td>' + evidenceSrcHTML(m) + '</td>' +
         '<td>' + esc(m.tier || '—') + '</td>' +
         '<td>' + esc(m.verified_scope || '（没写）') + '</td>' +
         '<td>' + esc(m.session_label || '') + nameLine + '</td>' +
-        '<td>' + pull + '</td></tr>';
+        '<td>' + pull + probeBtn + '</td></tr>';
     }).join('') + '</table>';
   h += '<div class="msg">' + esc(r.data.hint || '') + '</div>';
   $('slotsOut').innerHTML = head + h;
@@ -648,6 +730,14 @@ async function memberKit(seq) {
           '（平台不瞎填 —— 先把这个工位的 harness 定下来，再拼一份）')
       : banner('ok', '桥参数（模板 <code>' + esc(d.member_bridge_template || '—') + '</code>）' +
           '已拼在正文末尾 —— 填的是<b>它自己的工位路径</b>，整段复制，别手改');
+    /* D后端-68：A 档对接单多了「## 6b. 回话口令」—— 一次性口令在正文里，
+       它答对了平台**自己**记 protocol_ok（platform-observed），不用你打勾。 */
+    if (d.handshake_issued) {
+      note.innerHTML += banner('ok', '正文里有「## 6b. 回话口令」—— <b>整段复制别漏</b>：' +
+        '它要用那份一次性口令打一次 <code>' + esc(d.handshake_endpoint || 'handshake 端点') + '</code>，' +
+        '答对了平台<b>自己</b>记「它真读到过这张单子」（平台验的，不用你打勾）' +
+        '<br><span class="msg">⚠ 成员单<b>每次拼都换新口令，旧的当场作废</b> —— 别拿两次拼的比对，也别存旧口令。</span>');
+    }
   }
   say('rcptMsg', '✓ #' + seq + ' 对接单拼好了（工作间路径 + 会话名 + 回执头 + 桥参数都在这一段里）—— 整段复制发给该成员，手动拉它进来', 'ok');
 }
@@ -957,9 +1047,12 @@ function evidenceStepsHTML(d) {
   if (!steps.length) return '';
   const have = (d && d.evidence_have) || [];
   let h = '<table><tr><th>步</th><th>动作</th><th>状态</th><th>说明</th></tr>';
-  steps.forEach(function (s) {
+  steps.forEach(function (s, i) {
     const lv = s.level ? '<div class="msg">可作证据：' + esc(levelLabel(s.level)) + '</div>' : '';
-    h += '<tr><td>' + esc(String(s.n)) + '</td><td>' + esc(s.name || '') + '</td>' +
+    /* ★2026-11-05：后端四步表的元素**没有** `n` 字段（只有 name/ok/what/level）⇒
+       原来显示 "undefined"；序号这里自己数，别指望后端给。 */
+    const no = (s.n != null && s.n !== '') ? s.n : (i + 1);
+    h += '<tr><td>' + esc(String(no)) + '</td><td>' + esc(s.name || '') + '</td>' +
       '<td class="' + (s.ok ? 'ok' : 'bad') + '">' + (s.ok ? '✓' : '✗') + lv + '</td>' +
       '<td>' + mdInline(s.what) + '</td></tr>';
   });
@@ -969,8 +1062,13 @@ function evidenceStepsHTML(d) {
     : '还没有可用档（只能按 L4 人眼确认）') +
     '　—— 有一档够格就能过，<b>不是四步都要打勾</b></div>';
   const snap = (d && d.artifacts_snapshot) || {};
+  /* ★2026-11-05：没扫过时后端 `slot_exists=false` 是"还没看"，**不是"目录不在"** ——
+     原来直接显示"不在（多半岗位名与目录名不一致）"，会把人引去改名单。 */
+  const slotTxt = snap.scanned_at
+    ? (snap.slot_exists ? '在' : '<b class="bad">不在</b>（多半岗位名与目录名不一致）')
+    : '<span class="msg">未知（还没扫过 —— 不等于不在）</span>';
   h += '<div class="msg">上次扫盘：' + (snap.scanned_at ? esc(snap.scanned_at) : '还没扫过') +
-    '　工位目录' + (snap.slot_exists ? '在' : '<b class="bad">不在</b>（多半岗位名与目录名不一致）') +
+    '　工位目录' + slotTxt +
     '　盘上文件 <b>' + esc(String(snap.total_files || 0)) + '</b> 个' +
     ((snap.files_preview || []).length ? '：' + esc(snap.files_preview.join('、')) : '') + '</div>';
   return h;
@@ -1008,6 +1106,215 @@ async function loadEvidenceView() {
   if (!r.ok) { box.innerHTML = errHtml(r.data, r.status); return; }
   box.innerHTML = evidenceViewHTML(r.data);
   say('evMsg', lv ? ('预演 ' + lv + ' 已算') : '只读视图已取', 'ok');
+  await loadPeerView();
+}
+
+/* ── 7b. 跨组织采信（V130）：交付登记 / 本侧重算 / 争议冻结 ──────────────────
+ * 硬口径（老板 2026-11-04 拍板，别在界面上改写）：
+ *   ① `accepted_self` **不是通过**（只有它自己说）；② `accepted_peer` 才算本侧核过；
+ *   ③ `disputed` 冻结待裁（记录不删）；④ `refuted` 已证伪（可直接降级）；
+ *   ⑤ **平台不判谁对** —— 界面只摆事实与双方主张，不替人裁决。
+ * 判据：没有 `accepted_peer` 的跨组织结果，后端 `review` 会拒（PEER_NOT_REVIEWED / DISPUTE_OPEN / PEER_REFUTED）。
+ */
+const PEER_STATE_TEXT = {
+  accepted_self: '未复核：只有它自己说',
+  accepted_peer: '已复核：本侧重算一致',
+  disputed: '有争议，不采信（冻结待裁）',
+  refuted: '已证伪（可直接降级）'
+};
+const PEER_STATE_CLS = { accepted_self: 'st-self', accepted_peer: 'st-peer',
+  disputed: 'st-dispute', refuted: 'st-refuted' };
+
+function peerBadge(state) {
+  const st = String(state || '');
+  if (!st) return '<span class="peer-badge st-none">不是跨组织任务</span>';
+  return '<span class="peer-badge ' + (PEER_STATE_CLS[st] || 'st-none') + '">' +
+    esc(PEER_STATE_TEXT[st] || st) + '</span>';
+}
+
+function _peerDiffHtml(v) {
+  const d = v.peer_diff || {};
+  const files = d.files || [];
+  if (!files.length) return '';
+  const bad = files.filter(function (f) { return f.status !== 'match'; });
+  let h = '<div class="peer-diff">逐文件比对：一致 <b>' + Number(d.matched || 0) + '</b>　不一致 <b>' +
+    Number(d.mismatched || 0) + '</b>　本侧缺 <b>' + Number(d.missing_local || 0) + '</b>　' +
+    '对端没给 hash <b>' + Number(d.no_hash || 0) + '</b>' + (d.why ? '<br>' + esc(d.why) : '') + '</div>';
+  if (bad.length) {
+    h += '<table><tr><th>文件</th><th>结论</th><th>为什么</th></tr>' + bad.slice(0, 10).map(function (f) {
+      return '<tr class="bad-row"><td><code>' + esc(f.key) + '</code></td><td>' + esc(f.status) +
+        '</td><td>' + esc(f.why || '') + '</td></tr>';
+    }).join('') + '</table>';
+  }
+  return h;
+}
+
+function _peerDisputeHtml(v) {
+  const d = v.dispute;
+  if (!d) return '';
+  return '<div class="peer-dispute"><b>争议记录（记录不删，冻结待裁）</b><br>' +
+    '发起：' + esc(d.raised_by || '未记') + '　待裁：' + esc(d.adjudicator || '未指定') +
+    (d.why ? '<br>为什么：' + esc(d.why) : '') +
+    '<br>双方主张：' + (d.claims || []).map(function (c) {
+      return '<br>· <b>' + esc(c.by || '未署名') + '</b>：' + esc(c.claim || '');
+    }).join('') + '</div>';
+}
+
+function peerViewHTML(v) {
+  v = v || {};
+  let h = '<div class="peer-box"><div class="peer-head"><b>跨组织采信</b>' + peerBadge(v.accept_state) +
+    (v.peer_checked_at ? '<span class="msg">复核于 ' + esc(v.peer_checked_at) + '</span>' : '') + '</div>';
+  if (!v.external) {
+    h += '<div class="msg">这条是<b>内部任务</b>：验收只看证据档（上面四步表），没有采信态。' +
+      '如果这活儿其实是外部公司交的，展开下面「这活儿是对端交的」，把它的交付登记进来。</div>';
+  } else {
+    h += '<div class="msg">' + mdInline(v.why || '') + '</div>';
+    h += '<div class="msg"><b>它会说「对得上 / 已完成」不算平台核过</b> —— 采信只认本侧重算与可指向的凭据。</div>';
+    h += _peerDiffHtml(v);
+    h += _peerDisputeHtml(v);
+    /* ★2026-11-05：后端的 `next` 是**通用**口径（"去做复核"/"先挂争议"），
+       在这两种状态下会指错路（已经复核过没对齐 / 已经挂了争议还在说"先挂"）——
+       界面按**当前状态**给下一步，别让人原地打转。 */
+    const pc = v.peer_check || {};
+    let nextTxt = mdInline(v.next || '');
+    if (v.accept_state === 'accepted_peer') nextTxt = '';
+    else if (v.accept_state === 'disputed') nextTxt = '等裁决方给结论：对得上就重新派活/重交证据再复核；证伪就保持 refuted。';
+    else if (v.accept_state === 'refuted') nextTxt = '这条已被证伪，不能验收通过；要重交得重新派活。';
+    else if (v.accept_state === 'accepted_self' && pc.at) nextTxt = '本侧已经重算过、但没对齐 —— 对不齐就挂争议交人裁（③），别在这里反复点。';
+    if (nextTxt) h += '<div class="msg">下一步：' + nextTxt + '</div>';
+  }
+  h += '<details class="peer-form-wrap"><summary class="msg">' +
+    (v.external ? '登记新的交付 / 重做复核 / 挂争议' : '这活儿是对端交的（登记它的交付）') + '</summary>' +
+    '<div class="peer-form">' +
+    '<label>对端给的说法（原话，可空）<textarea id="peerResult" placeholder="例：已完成，产物在 报告.md"></textarea></label>' +
+    '<label>对端给的产物清单（每行：相对路径 | 64 位 sha256 | 字节数）' +
+    '<textarea id="peerFiles" class="peer-files" placeholder="报告.md | 2f1c…（64 位十六进制） | 128"></textarea></label>' +
+    '<div class="peer-actions"><button onclick="peerDelivery()">① 登记这条交付</button>' +
+    '<span class="msg" id="peerMsg"></span></div>' +
+    '<div class="peer-actions"><button class="p" onclick="peerReview()">② 本侧重算并复核</button>' +
+    '<span class="msg">平台真扫本侧 <code>产物/</code> 逐个比 sha256 —— 对不上就停在「未复核」</span></div>' +
+    '</div>' +
+    '<div class="peer-form" style="border-top:1px solid var(--rule);margin-top:10px;padding-top:10px">' +
+    '<label>争议发起方<input id="peerBy" placeholder="例：接收方 / 组长"></label>' +
+    '<label>交付方主张<textarea id="peerClaimA" placeholder="例：我交的就是 v2，sha256 是 0…"></textarea></label>' +
+    '<label>接收方主张<textarea id="peerClaimB" placeholder="例：本侧重算 sha256 对不上，是另一个文件"></textarea></label>' +
+    '<label>待谁裁<input id="peerJudge" placeholder="例：组长 / 第三方复核"></label>' +
+    '<label>处置<select id="peerOutcome">' +
+    '<option value="disputed">有争议未决（冻结待裁，不能验收通过）</option>' +
+    '<option value="refuted">已被证据证伪（可直接降级）</option></select></label>' +
+    '<div class="peer-actions"><button onclick="peerDispute()">③ 挂争议 / 判证伪</button>' +
+    '<span class="msg" id="peerJudgeMsg"></span></div>' +
+    '</div></details></div>';
+  return h;
+}
+
+function _peerOpen() {
+  const d = document.querySelector('#peerView .peer-form-wrap');
+  if (d) d.open = true;
+}
+
+async function loadPeerView() {
+  const box = $('peerView');
+  if (!box) return;
+  if (!S.ws || !$('revTask') || !$('revTask').value) {
+    box.innerHTML = '<div class="peer-box"><div class="peer-head"><b>跨组织采信</b>' +
+      peerBadge('') + '</div><div class="msg">先选一条任务。</div></div>';
+    return;
+  }
+  const seq = $('revTask').value;
+  const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) +
+    '/tasks/' + encodeURIComponent(seq) + '/peer-review');
+  if (!r.ok) {
+    box.innerHTML = '<div class="peer-box"><div class="peer-head"><b>跨组织采信</b>' + peerBadge('') +
+      '</div>' + errHtml(r.data, r.status) + '</div>';
+    return;
+  }
+  box.innerHTML = peerViewHTML(r.data);
+}
+
+/** 解析「相对路径 | sha256 | 字节数」清单；**看不懂就当场说**，不静默丢弃。 */
+function _peerParseFiles() {
+  const box = $('peerFiles');
+  const lines = String((box && box.value) || '').split('\n');
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const parts = line.split('|').map(function (x) { return x.trim(); });
+    if (parts.length < 2) return { error: '第 ' + (i + 1) + ' 行看不懂：「' + line + '」（要 相对路径 | sha256 | 字节数）' };
+    const sha = parts[1];
+    if (!/^[0-9a-fA-F]{64}$/.test(sha)) return { error: '第 ' + (i + 1) + ' 行的 sha256 不是 64 位十六进制：' + sha };
+    const bytes = parts[2] ? Number(parts[2]) : undefined;
+    if (parts[2] && (isNaN(bytes) || bytes < 0)) return { error: '第 ' + (i + 1) + ' 行的字节数不是数字：' + parts[2] };
+    out.push({ name: parts[0], sha256: sha.toLowerCase(), bytes: bytes });
+  }
+  return { files: out };
+}
+
+async function peerDelivery() {
+  if (!S.ws || !$('revTask') || !$('revTask').value) { say('peerMsg', '先选任务', 'bad'); return; }
+  const p = _peerParseFiles();
+  if (p.error) { say('peerMsg', p.error, 'bad'); return; }
+  const seq = $('revTask').value;
+  const body = {
+    source: 'manual',
+    result: ($('peerResult') ? $('peerResult').value.trim() : ''),
+    artifacts: p.files
+  };
+  say('peerMsg', '正在登记…');
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) +
+    '/tasks/' + encodeURIComponent(seq) + '/peer-delivery', body);
+  if (!r.ok) { $('peerMsg').innerHTML = errHtml(r.data, r.status).replace(/<\/?div[^>]*>/g, ''); return; }
+  await loadPeerView();
+  _peerOpen();
+  say('peerMsg', '✓ 已登记（采信态 accepted_self：只有它自己说，**不算通过**）', 'ok');
+}
+
+async function peerReview() {
+  if (!S.ws || !$('revTask') || !$('revTask').value) { say('peerMsg', '先选任务', 'bad'); return; }
+  const p = _peerParseFiles();
+  if (p.error) { say('peerMsg', p.error, 'bad'); return; }
+  if (!p.files.length) {
+    say('peerMsg', '先在清单里贴对端给的 sha256（没有 hash 就没有可重算的东西）', 'bad');
+    return;
+  }
+  const seq = $('revTask').value;
+  say('peerMsg', '正在本侧重算…');
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) +
+    '/tasks/' + encodeURIComponent(seq) + '/peer-review',
+    { peer_files: p.files, checked_by: 'workbench' });
+  if (!r.ok) { $('peerMsg').innerHTML = errHtml(r.data, r.status).replace(/<\/?div[^>]*>/g, ''); return; }
+  const d = r.data || {};
+  await loadPeerView();
+  _peerOpen();
+  say('peerMsg', d.accept_state === 'accepted_peer'
+    ? '✓ 复核通过：本侧重算一致（accepted_peer）'
+    : ('✗ 复核没对齐 ⇒ 仍停在「只有它自己说」：' + (d.why || '')),
+    d.accept_state === 'accepted_peer' ? 'ok' : 'bad');
+}
+
+async function peerDispute() {
+  if (!S.ws || !$('revTask') || !$('revTask').value) { say('peerJudgeMsg', '先选任务', 'bad'); return; }
+  const seq = $('revTask').value;
+  const by = ($('peerBy') ? $('peerBy').value.trim() : '');
+  const a = ($('peerClaimA') ? $('peerClaimA').value.trim() : '');
+  const b = ($('peerClaimB') ? $('peerClaimB').value.trim() : '');
+  if (!a || !b) { say('peerJudgeMsg', '两边主张都要写（争议记录必须留下双方各自说了什么）', 'bad'); return; }
+  say('peerJudgeMsg', '正在记…');
+  const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) +
+    '/tasks/' + encodeURIComponent(seq) + '/dispute', {
+      raised_by: by || '未署名',
+      claims: [{ by: '交付方', claim: a }, { by: '接收方', claim: b }],
+      adjudicator: ($('peerJudge') ? $('peerJudge').value.trim() : ''),
+      outcome: ($('peerOutcome') ? $('peerOutcome').value : 'disputed')
+    });
+  if (!r.ok) { $('peerJudgeMsg').innerHTML = errHtml(r.data, r.status).replace(/<\/?div[^>]*>/g, ''); return; }
+  await loadPeerView();
+  _peerOpen();
+  const st = (r.data || {}).accept_state;
+  say('peerJudgeMsg', st === 'refuted'
+    ? '✓ 已记为「已证伪」（这条不能验收通过）'
+    : '✓ 已挂争议（冻结待裁；记录不删，不能验收通过）', 'ok');
 }
 
 async function loadTasks() {
@@ -1055,7 +1362,11 @@ async function doReview() {
     const d0 = r.data || {};
     $('revOut').innerHTML = errHtml(d0, r.status) +
       (d0.steps ? evidenceStepsHTML(d0) : '') +
-      (d0.next_detail ? '<div class="msg">下一步：' + mdInline(d0.next_detail) + '</div>' : '');
+      (d0.next_detail ? '<div class="msg">下一步：' + mdInline(d0.next_detail) + '</div>' : '') +
+      ((d0.code === 'PEER_NOT_REVIEWED' || d0.code === 'DISPUTE_OPEN' || d0.code === 'PEER_REFUTED')
+        ? '<div class="msg">这是<b>跨组织任务</b>的采信问题（不是证据档不够）—— 去下面「跨组织采信」' +
+          '做本侧重算或挂争议，再回来验收。<b>它会说「对得上」不算平台核过。</b></div>'
+        : '');
     say('revMsg', '没落闸：' + (d0.code || ('HTTP ' + r.status)), 'bad');
     return;
   }
@@ -1115,21 +1426,117 @@ async function closeWs() {
  * ★2026-11-01（V122 批 1）：四类 → 七类（新增 CLARIFY / ACT / RECOMMEND）。
  *   纪律：这里**不许再写死类型清单** —— 下拉与表单都按 types 生成，以后加类型不用改前端。 */
 const AILP_LABELS = {
-  proposal: '提案', confidence: '置信度', basis_ids: '依据（指回 msg_id / 任务号）',
-  contradiction: '矛盾（哪两条对不上）', evidence_ids: '证据（指回 msg_id 列表）',
-  target_id: '改哪条（真实 msg_id）', modifications: '改什么', new_confidence: '新置信度',
-  echo_target: '呼应对象', shared_context: '共享上下文',
-  counter_proposal: '反提案（可选）',
+  proposal: '提案', confidence: '把握程度', basis_ids: '依据',
+  contradiction: '哪里对不上', evidence_ids: '证据',
+  target_id: '改哪条', modifications: '要改什么', new_confidence: '改成多确定',
+  echo_target: '呼应哪条', shared_context: '共享的上下文',
+  counter_proposal: '反提案',
   /* 新三类的字段（V122 批 1） */
-  question: '你的问题', to_ref: '问的是哪一条（真实 msg_id）',
-  task_ref: '任务号（任务账本里真有的，如 T-001）', owner: '谁负责（名单里的人）',
-  due: '截止（可选）', reason: '为什么（改置信度/推荐都要说清）'
+  question: '你的问题', to_ref: '问的是哪条',
+  task_ref: '任务号', owner: '谁负责',
+  due: '截止', reason: '为什么'
 };
 const AILP_COLORS = {
   PROPOSE: 'var(--accent)', CHALLENGE: 'var(--bad)', REFINE: 'var(--warn)', CONTEXT_ECHO: 'var(--ok)',
   CLARIFY: 'var(--muted)', ACT: 'var(--accent)', RECOMMEND: 'var(--ok)'
 };
-const AILP = { types: null };
+const AILP = { types: null, items: [], tasks: [], refs: [] };
+
+/** 超过这么多条才在块内上下滚（短列表保持自然高度，不给 3 条内容加个小滚动条）。 */
+const AILP_SCROLL_AT = 6;
+
+/* ★2026-11-05（老板："结构化讨论区有啥用，用户体验不好"）：
+ * 原来这张表单是**把 agent 的报文格式直接摊给人填**（msg_id / 0~1 置信度 / 手抄任务号）——
+ * 人当然不知道那些是什么。现在的口径：
+ *   ① 先让人**看懂这间在讨论什么**（列表在上，卡片说人话）；
+ *   ② 想说一句时，**选一句人话**（提方案/质疑/问一句/派个活），字段能选就不手填；
+ *   ③ 协议细节（信封/字段表）仍然由后端 `/api/ailp/types` 决定，前端不另立口径。 */
+
+/** 人话入口 → 后端类型（值必须与 `/api/ailp/types` 的 msg_type 一致）。 */
+const AILP_QUICK = {
+  PROPOSE: { label: '提个方案', hint: '一句话说清你建议做什么；依据可以从下面已有条目里选' },
+  CHALLENGE: { label: '质疑一条', hint: '指出哪一条对不上：证据可以选任务号或已有讨论；外部证据（链接/文件/实验）要先「登记成证据」再引用' },
+  CLARIFY: { label: '问一句', hint: '问清楚一件事；问的是哪条可以选' },
+  ACT: { label: '派个活', hint: '谁做什么、什么时候；任务号从账本里选' }
+};
+
+/** 一条消息的可读摘要（给"引用哪条"的下拉 + 卡片标题用）。 */
+function _ailpBrief(it) {
+  const p = (it && it.payload) || {};
+  const keys = ['proposal', 'question', 'modifications', 'shared_context', 'reason',
+    'contradiction', 'echo_target', 'task_ref'];
+  let s = '';
+  for (let i = 0; i < keys.length; i++) {
+    const v = p[keys[i]];
+    if (v) { s = Array.isArray(v) ? v.join('、') : String(v); if (s) break; }
+  }
+  if (!s) {
+    const k = Object.keys(p)[0];
+    if (k) s = Array.isArray(p[k]) ? p[k].join('、') : String(p[k]);
+  }
+  s = s.replace(/\s+/g, ' ').slice(0, 46);
+  return (s || '（这条没写正文）');
+}
+
+/** 「引用哪条」的选项：只列**账本里真实存在**的东西（后端 A014 会校验，前端先给对的选择）。
+ *
+ *  ★2026-11-05 实测（AILP 的 `evidence_ids` 用 `任务/T-002` 被 422）：
+ *    后端认的是**三类账本内实体** —— `msg_id` / 任务号（`T-001`）/ manifest 条目（`_lead/建模.md`）。
+ *    外部证据（URL/文件/实验）必须先 `POST …/evidence/register` 变成 `ev-xxxx` 才能引用。
+ *    ⇒ 下拉直接把这三类列出来，**第一条讨论也有得选**（原来只能选已有 msg_id ⇒ 首条永远发不出去）。
+ */
+function _ailpRefOptions(kind) {
+  const out = [];
+  (AILP.items || []).forEach(function (it, i) {
+    const id = String(it.msg_id || '');
+    if (!id) return;
+    out.push([id, '讨论 #' + (it.seq != null ? it.seq : (i + 1)) + '　' +
+      String(it.msg_type || '') + ' · ' + _ailpBrief(it)]);
+  });
+  (AILP.tasks || []).forEach(function (t) {
+    const id = 'T-' + String(t.task_seq).padStart(3, '0');
+    out.push([id, '任务 ' + id + '　' + String(t.title || '').slice(0, 40)]);
+  });
+  (AILP.files || []).forEach(function (f) {
+    out.push([String(f), '文件 ' + String(f)]);
+  });
+  if (!out.length) {
+    return '<option value="">（这间还没有可引用的东西：先派个活、或先在 manifest 里登记文件）</option>';
+  }
+  return out.map(function (x) {
+    return '<option value="' + esc(x[0]) + '">' + esc(x[1]) + '</option>';
+  }).join('');
+}
+
+/** 七个类型的中文名（后端枚举不动；界面不让人看英文）。 */
+const AILP_TYPE_ZH = {
+  PROPOSE: '提案', CHALLENGE: '质疑', REFINE: '改进', CONTEXT_ECHO: '呼应',
+  CLARIFY: '提问', ACT: '行动项', RECOMMEND: '推荐'
+};
+
+function _ailpTypeLabel(t) {
+  const zh = AILP_TYPE_ZH[t] || _ailpQuickLabel(t) || '';
+  return zh ? (zh + '（' + t + '）') : String(t || '');
+}
+function _ailpQuickLabel(t) {
+  return (AILP_QUICK[t] || {}).label || '';
+}
+
+/** 人话按钮：设类型 + 展开 + 提示下一步（不代替用户写内容）。 */
+function ailpQuick(type) {
+  const d = document.getElementById('ailpCompose');
+  if (d) d.open = true;
+  const sel = $('ailpType');
+  if (sel) {
+    const has = Array.prototype.some.call(sel.options, function (o) { return o.value === type; });
+    if (has) sel.value = type;
+  }
+  renderAilpForm();
+  const h = (AILP_QUICK[type] || {}).hint || '';
+  say('ailpSendMsg', h ? ('已切到「' + (AILP_QUICK[type].label || type) + '」：' + h) : '');
+  const box = $('ailpForm');
+  if (box && box.scrollIntoView) box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
 
 /* 下拉选项由 types 生成（以前写死在 v5.html ⇒ 后端加了新类型，界面上根本选不到） */
 function fillAilpTypeOptions() {
@@ -1138,8 +1545,7 @@ function fillAilpTypeOptions() {
   const types = AILP.types || [];
   const keep = sel.value;
   sel.innerHTML = types.map(function (t) {
-    return '<option value="' + esc(t.msg_type) + '">' + esc(t.msg_type) +
-      (AILP_LABELS[t.msg_type] ? ' ' + esc(AILP_LABELS[t.msg_type]) : '') + '</option>';
+    return '<option value="' + esc(t.msg_type) + '">' + esc(_ailpTypeLabel(t.msg_type)) + '</option>';
   }).join('');
   if (keep && types.some(function (t) { return t.msg_type === keep; })) sel.value = keep;
 }
@@ -1165,115 +1571,317 @@ async function loadAilpTypes() {
   fillAilpTypeOptions();
   renderAilpForm();
 }
+/** 一个字段 → 一个控件。原则：**能选就不手填**（msg_id / 任务号 / 置信度这些不是人该背的）。 */
+function _ailpControl(f, optional) {
+  const name = String(f.name || '');
+  const kind = ailpFieldKind(f.type);
+  const id = 'aip_' + name;
+  const label = esc(AILP_LABELS[name] || name) + (optional ? '<span class="msg">（可选）</span>' : '');
+  const tail = optional ? ' data-optional="1"' : '';
+
+  if (kind === 'number') {
+    /* 置信度这类：原来要人敲 0~1 —— 改成三档人话 */
+    return '<label class="f">' + label +
+      '<select id="' + id + '" data-kind="number"' + tail + '>' +
+      '<option value="">（不填）</option>' +
+      '<option value="0.8">很有把握（0.8）</option>' +
+      '<option value="0.5">一般（0.5）</option>' +
+      '<option value="0.2">还没底（0.2）</option>' +
+      '</select></label>';
+  }
+  if (name === 'basis_ids' || name === 'evidence_ids') {
+    return '<label class="f" style="flex-basis:100%;min-width:320px">' + label +
+      '<select id="' + id + '" data-kind="list" multiple size="4"' + tail +
+      ' style="min-width:320px;max-height:150px">' +
+      _ailpRefOptions('list') + '</select>' +
+      '<span class="msg">按住 Ctrl / ⌘ 可多选 —— 选项就是这间已有的讨论 / 任务 / 文件，不用抄 id</span></label>';
+  }
+  if (name === 'target_id' || name === 'to_ref') {
+    return '<label class="f" style="flex:1;min-width:250px">' + label +
+      '<select id="' + id + '" data-kind="str"' + tail + '>' +
+      '<option value="">（不指定 —— 指整段讨论）</option>' + _ailpRefOptions('one') + '</select></label>';
+  }
+  if (name === 'task_ref') {
+    const opts = (AILP.tasks || []).map(function (t) {
+      return '<option value="T-' + String(t.task_seq).padStart(3, '0') + '">T-' +
+        String(t.task_seq).padStart(3, '0') + '　' + esc(t.title || '') + '（' + esc(t.state || '') + '）</option>';
+    }).join('');
+    return '<label class="f">' + label +
+      '<select id="' + id + '" data-kind="str"' + tail + '>' +
+      (opts || '<option value="">（账本里还没有任务）</option>') + '</select></label>';
+  }
+  if (name === 'owner') {
+    const opts = (S.members || []).map(function (m) {
+      return '<option value="' + esc(m.display_name || m.role || '') + '">' +
+        esc((m.role || '') + ' · ' + (m.display_name || '')) + '</option>';
+    }).join('');
+    return '<label class="f">' + label +
+      '<select id="' + id + '" data-kind="str"' + tail + '>' +
+      (opts || '<option value="">（名单里还没有人）</option>') + '</select></label>';
+  }
+  const ph = kind === 'list' ? '逗号分隔，例：T-001,T-002' : '一句话说清';
+  return '<label class="f" style="flex:1;min-width:220px">' + label +
+    '<input id="' + id + '" data-kind="' + kind + '" placeholder="' + esc(ph) + '"' + tail + '></label>';
+}
+
 function renderAilpForm() {
   const def = ailpTypeDef($('ailpType').value);
   const box = $('ailpForm');
   if (!box) return;
   if (!def) { box.innerHTML = '<div class="msg">字段表还没取到（GET /api/ailp/types）。</div>'; return; }
-  box.innerHTML = '<div class="row">' + (def.required_payload || []).map(function (f) {
-    const kind = ailpFieldKind(f.type);
-    const ph = kind === 'list' ? '逗号分隔，例：T-001,T-002' : (kind === 'number' ? '0 ~ 1' : '');
-    return '<label class="f" style="flex:1;min-width:220px">' + esc(AILP_LABELS[f.name] || f.name) +
-      '<input id="aip_' + esc(f.name) + '" data-kind="' + kind + '" placeholder="' + esc(ph) + '"></label>';
-  }).join('') + ((def.optional_payload || []).map(function (f) {
-    const kind = ailpFieldKind(f.type);
-    const ph = kind === 'list' ? '逗号分隔，例：T-001（可选）' : (kind === 'number' ? '0 ~ 1（可选）' : '（可选，留空不发）');
-    return '<label class="f" style="flex:1;min-width:220px">' + esc(AILP_LABELS[f.name] || f.name) +
-      '<input id="aip_' + esc(f.name) + '" data-kind="' + kind + '" data-optional="1" placeholder="' + esc(ph) + '"></label>';
-  }).join('')) + '</div>' +
-    '<div class="msg">这四类的字段来自 <code>GET /api/ailp/types</code>（含 optional_payload，可选字段留空就不发）；' +
-    '依据 / 证据不许空，<code>manifest_ref</code> 必须是本工作间 manifest 里的真实条目。</div>';
+  const q = AILP_QUICK[def.msg_type] || {};
+  box.innerHTML = (q.hint ? ('<div class="msg">' + esc(q.hint) + '</div>') : '') +
+    '<div class="row">' + (def.required_payload || []).map(function (f) {
+      return _ailpControl(f, false);
+    }).join('') + ((def.optional_payload || []).map(function (f) {
+      return _ailpControl(f, true);
+    }).join('')) + '</div>';
 }
+
+function _ailpRead(el, kind) {
+  if (!el) return undefined;
+  if (kind === 'list') {
+    if (el.multiple) {
+      return Array.prototype.map.call(el.selectedOptions || [], function (o) { return o.value; })
+        .filter(Boolean);
+    }
+    return String(el.value || '').split(/[,，\s]+/).filter(Boolean);
+  }
+  const raw = String(el.value || '').trim();
+  if (raw === '') return undefined;
+  if (kind === 'number') {
+    const n = parseFloat(raw);
+    return isNaN(n) ? null : n;
+  }
+  return raw;
+}
+
 function ailpPayloadFromForm() {
   const def = ailpTypeDef($('ailpType').value);
   const payload = {};
   const bad = [];
   ((def && def.required_payload) || []).forEach(function (f) {
     const el = $('aip_' + f.name);
-    if (!el) return;
-    const kind = el.getAttribute('data-kind');
-    const raw = el.value.trim();
-    if (!raw) { bad.push(AILP_LABELS[f.name] || f.name); return; }
-    if (kind === 'list') payload[f.name] = raw.split(/[,，\s]+/).filter(Boolean);
-    else if (kind === 'number') {
-      const n = parseFloat(raw);
-      if (isNaN(n)) { bad.push((AILP_LABELS[f.name] || f.name) + '（要数字）'); return; }
-      payload[f.name] = n;
-    } else payload[f.name] = raw;
+    const kind = el ? el.getAttribute('data-kind') : ailpFieldKind(f.type);
+    const v = _ailpRead(el, kind);
+    if (v === undefined || (Array.isArray(v) && !v.length)) {
+      bad.push(AILP_LABELS[f.name] || f.name);
+      return;
+    }
+    if (v === null) { bad.push((AILP_LABELS[f.name] || f.name) + '（要数字）'); return; }
+    payload[f.name] = v;
   });
   ((def && def.optional_payload) || []).forEach(function (f) {
     const el = $('aip_' + f.name);
     if (!el) return;
-    const kind = el.getAttribute('data-kind');
-    const raw = el.value.trim();
-    if (!raw) return; /* 可选：留空就不发 */
-    if (kind === 'list') payload[f.name] = raw.split(/[,，\s]+/).filter(Boolean);
-    else if (kind === 'number') {
-      const n = parseFloat(raw);
-      if (isNaN(n)) { bad.push((AILP_LABELS[f.name] || f.name) + '（要数字）'); return; }
-      payload[f.name] = n;
-    } else payload[f.name] = raw;
+    const kind = el.getAttribute('data-kind') || ailpFieldKind(f.type);
+    const v = _ailpRead(el, kind);
+    if (v === undefined || (Array.isArray(v) && !v.length)) return;   /* 可选：留空就不发 */
+    if (v === null) { bad.push((AILP_LABELS[f.name] || f.name) + '（要数字）'); return; }
+    payload[f.name] = v;
   });
   return { payload: payload, bad: bad };
 }
 
-function ailpCard(it) {
+function _ailpMsgLabel(id) {
+  const items = AILP.items || [];
+  for (let i = 0; i < items.length; i++) {
+    if (String(items[i].msg_id || '') === String(id)) {
+      return '#' + (items[i].seq != null ? items[i].seq : (i + 1)) + ' ' + _ailpBrief(items[i]);
+    }
+  }
+  return String(id || '');
+}
+
+function _ailpWho(s) {
+  return (s === 'user') ? '我' : String(s || '（未署名）');
+}
+
+/** ISO → 本地 `11-05 19:47`（原值留在 title 里，取证时还能看原文）。 */
+function _ailpWhen(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return String(iso);
+  const p = function (x) { return String(x).padStart(2, '0'); };
+  return p(dt.getMonth() + 1) + '-' + p(dt.getDate()) + ' ' +
+    p(dt.getHours()) + ':' + p(dt.getMinutes());
+}
+
+function _ailpClip(v, n) {
+  const s = Array.isArray(v) ? v.join('、') : String(v == null ? '' : v);
+  return s.length > n ? (s.slice(0, n) + '…') : s;
+}
+
+const AILP_REF_FIELDS = {
+  basis_ids: 1, evidence_ids: 1, target_id: 1, to_ref: 1, echo_target: 1, task_ref: 1
+};
+const AILP_NUM_FIELDS = { confidence: 1, new_confidence: 1 };
+
+/** 一个字段值 → 显示 HTML：引用类做成 chip（`msg_id` 映射成 `#2 改进`），其余走弱 markdown。 */
+function _ailpValueHtml(key, v) {
+  if (Array.isArray(v)) {
+    if (!v.length) return '';
+    return v.map(function (x) {
+      return '<span class="ailp-chip">' + esc(AILP_REF_FIELDS[key] ? _ailpMsgLabel(x) : String(x)) + '</span>';
+    }).join('');
+  }
+  if (v === null || v === undefined || v === '') return '';
+  if (typeof v === 'object') return '<code>' + esc(JSON.stringify(v)) + '</code>';
+  if (AILP_REF_FIELDS[key]) {
+    return '<span class="ailp-chip">' + esc(_ailpMsgLabel(String(v))) + '</span>';
+  }
+  return mdInline(String(v));
+}
+
+/** 一条讨论的卡片（2026-11-05 老板：「卡片是否过小，有很多信息怎么办」）。
+ *
+ *  三处结构性改动：
+ *    ① 不再 `.card` 套 `.card`（换成 `.ailp-item`，有效宽度回来）；
+ *    ② 宽屏**左元信息 / 右正文**（`.ailp-item` 是 grid），信息多也不往下堆；
+ *    ③ 字段 >2 个或正文 >160 字 ⇒ **默认只给摘要**，点「展开全部 N 项」看细节。
+ */
+function ailpCard(it, idx) {
   const color = AILP_COLORS[it.msg_type] || 'var(--line)';
   const def = ailpTypeDef(it.msg_type);
   const p = it.payload || {};
+  const keys = [];
+  ((def && def.required_payload) || []).forEach(function (f) { keys.push(f.name); });
+  Object.keys(p).forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); });
+
   const rows = [];
-  const seen = {};
-  ((def && def.required_payload) || []).forEach(function (f) {
-    seen[f.name] = 1;
-    rows.push([AILP_LABELS[f.name] || f.name, p[f.name]]);
+  let textLen = 0;
+  keys.forEach(function (k) {
+    const raw = p[k];
+    const empty = (raw === null || raw === undefined || raw === '' ||
+      (Array.isArray(raw) && !raw.length));
+    if (empty) return;                     /* ★空字段不显示 —— 不再拿「（空）」占地方 */
+    rows.push([k, AILP_LABELS[k] || k, raw]);
+    textLen += String(Array.isArray(raw) ? raw.join('、') : raw).length;
   });
-  Object.keys(p).forEach(function (k) {
-    if (!seen[k]) rows.push([AILP_LABELS[k] || k, p[k]]);
-  });
-  const body = rows.map(function (r2) {
-    const v = r2[1];
-    let txt;
-    if (Array.isArray(v)) txt = v.length ? v.join('、') : '（空）';
-    else if (v === null || v === undefined || v === '') txt = '（空）';
-    else if (typeof v === 'object') txt = JSON.stringify(v);
-    else txt = String(v);
-    return '<div style="margin:2px 0"><span class="msg">' + esc(r2[0]) + '：</span>' + esc(txt) + '</div>';
+
+  /* 折叠规则：**短条目全显示**（3 个字段且不超 200 字就是一眼能看完的），
+     只有"字段多"或"正文长"才收起 —— 否则每张卡都挂一个「展开」，等于白加一层点击。 */
+  const collapse = rows.length > 3 || textLen > 200;
+  const no = (it.seq != null) ? ('#' + it.seq) : ('#' + (idx + 1));
+  const when = _ailpWhen(it.timestamp);
+
+  const meta = '<div class="ailp-meta">' +
+    '<span class="ailp-no">' + esc(no) + '</span>' +
+    '<span class="ailp-type" style="color:' + color + '">' + esc(_ailpTypeLabel(it.msg_type)) + '</span>' +
+    '<span class="ailp-route" title="' + esc(_ailpWho(it.sender) + ' → ' + (it.target || '')) + '">' +
+    esc(_ailpWho(it.sender)) + ' → ' + esc(it.target || '') + '</span>' +
+    (when ? '<span class="ailp-when" title="' + esc(it.timestamp || '') + '">' + esc(when) + '</span>' : '') +
+    (it.manifest_ref ? '<span class="ailp-ref" title="挂在哪份文件/任务">挂：' + esc(it.manifest_ref) + '</span>' : '') +
+    '</div>';
+
+  const fieldRows = rows.map(function (r2) {
+    return '<div class="ailp-f"><div class="ailp-k">' + esc(r2[1]) + '</div>' +
+      '<div class="ailp-v">' + _ailpValueHtml(r2[0], r2[2]) + '</div></div>';
   }).join('');
-  return '<div class="card" style="margin:8px 0;padding:10px 12px;border-left:3px solid ' + color + '">' +
-    '<div><b style="color:' + color + '">' + esc(it.msg_type) + '</b>　' +
-    esc(it.sender) + ' → ' + esc(it.target) +
-    '　<span class="msg">' + esc(it.timestamp || '') + '</span></div>' +
-    '<div class="msg">指回：<code>' + esc(it.manifest_ref || '（没写）') + '</code></div>' +
-    body + '</div>';
+
+  let body;
+  if (!rows.length) {
+    body = '<div class="ailp-sum msg">（这条没有正文 —— 只记了类型与去向）</div>';
+  } else if (!collapse) {
+    body = fieldRows;
+  } else {
+    /* 摘要取**最长的正文类字段**（提案/要改什么/问题/为什么…），
+       引用类（任务号/依据）与数字（把握程度）留在展开里 —— 拿"谁负责"当摘要没有意义。 */
+    const textRows = rows.filter(function (r2) {
+      return !AILP_REF_FIELDS[r2[0]] && !AILP_NUM_FIELDS[r2[0]];
+    });
+    const head = textRows.slice().sort(function (a, b) {
+      return String(b[2] == null ? '' : b[2]).length - String(a[2] == null ? '' : a[2]).length;
+    })[0] || rows[0];
+    body = '<div class="ailp-sum">' + mdInline(_ailpClip(head[2], 150)) + '</div>' +
+      '<details class="ailp-more"><summary>展开全部 ' + rows.length + ' 项</summary>' +
+      fieldRows + '</details>';
+  }
+
+  return '<article class="ailp-item" style="border-left-color:' + color + '">' +
+    meta + '<div class="ailp-body">' + body + '</div></article>';
 }
 
 async function loadAilp() {
   if (!S.ws) return;
   await loadAilpTypes();
-  const mf = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) + '/manifest');
+  const base = '/api/workshop/' + encodeURIComponent(S.ws);
+  /* 三件事一起取：能挂的文件/任务、可引用的已有条目、账本任务（派活用） */
+  const got = await Promise.all([
+    api('GET', base + '/manifest'),
+    api('GET', base + '/tasks'),
+    api('GET', base + '/ailp?limit=30')
+  ]);
+  const mf = got[0]; const tk = got[1]; const r = got[2];
+
   const refs = [];
   if (mf.ok && mf.data && mf.data.manifest) {
     (mf.data.manifest.entry_points || []).forEach(function (x) { refs.push(x); });
     (mf.data.manifest.active_tasks || []).forEach(function (x) { refs.push(x); });
   }
-  $('ailpRef').innerHTML = refs.map(function (r) {
-    return '<option value="' + esc(r) + '">' + esc(r) + '</option>';
-  }).join('') || '<option value="">（manifest 里还没有条目）</option>';
+  const refSel = $('ailpRef');
+  if (refSel) {
+    refSel.innerHTML = refs.map(function (x) {
+      return '<option value="' + esc(x) + '">' + esc(x) + '</option>';
+    }).join('') || '<option value="">（manifest 里还没有条目）</option>';
+  }
 
-  const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) + '/ailp?limit=30');
-  if (!r.ok) { $('ailpOut').innerHTML = errHtml(r.data, r.status); return; }
-  const items = r.data.items || [];
-  if (!items.length) {
-    $('ailpOut').innerHTML = banner('warn',
-      '还没有结构化消息。讨论区只收 AILP 2.0 四类信封，<b>自由聊天会被拒</b>。');
+  AILP.tasks = (tk.ok && tk.data && tk.data.tasks) || [];
+  AILP.items = (r.ok && r.data && r.data.items) || [];
+  AILP.files = refs.slice();          /* 依据下拉里的"文件"选项 = manifest 的真实条目 */
+  /* 引用下拉的选项来自 AILP.items ⇒ 拿到新条目后要重画表单（否则选不到刚发的那条） */
+  if (AILP.types) renderAilpForm();
+
+  if (!r.ok) {
+    $('ailpOut').innerHTML = errHtml(r.data, r.status);
+    const l0 = $('ailpList');
+    if (l0) { l0.innerHTML = ''; l0.classList.remove('is-scroll'); }
     return;
   }
-  const counts = r.data.counts || {};
-  const sum = Object.keys(counts).map(function (k) { return k + ' ' + counts[k]; }).join(' · ');
-  let h = '<div class="msg">共 <b>' + esc(String(r.data.count || items.length)) + '</b> 条' +
-    (sum ? '：' + esc(sum) : '') + '（按时间正序）</div>';
-  h += items.map(ailpCard).join('');
-  $('ailpOut').innerHTML = h;
+  const list = $('ailpList');
+  if (!AILP.items.length) {
+    $('ailpOut').innerHTML = banner('ok',
+      '<b>这间还没有结构化讨论（0 条）。</b>它本来就不是必填项 —— ' +
+      '只有当你想留下「谁提了什么、依据是哪条」时才用：展开下面「我要说一句」，' +
+      '点一句人话（提个方案 / 质疑一条 / 问一句 / 派个活），填两句就能发。');
+    if (list) { list.innerHTML = ''; list.classList.remove('is-scroll'); }
+    say('ailpLoadMsg', '0 条', '');
+    return;
+  }
+  const counts = (r.data && r.data.counts) || {};
+  const sum = Object.keys(counts).map(function (k) {
+    return (_ailpTypeLabel(k) || k) + ' ' + counts[k];
+  }).join(' · ');
+  const total = String(r.data.count || AILP.items.length);
+  /* 条目多才内滚（见 .ailp-list.is-scroll）；统计行放「↓ 最新」——长列表滚上去后一键回到底 */
+  const willScroll = AILP.items.length > AILP_SCROLL_AT;
+  $('ailpOut').innerHTML = '<div class="row" style="margin:2px 0 6px;flex-wrap:nowrap;align-items:center">' +
+    '<span class="msg" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"' +
+    (sum ? ' title="' + esc(sum) + '"' : '') + '>共 <b>' + esc(total) + '</b> 条' +
+    (sum ? '<span class="msg">　·　' + esc(sum) + '</span>' : '') +
+    '（按时间正序，最新的在下面）</span>' +
+    (willScroll ? '<button class="btn mini" onclick="ailpScrollLatest()" style="flex:none" ' +
+      'title="条目多，这一块内部上下滚；点这里回到底部最新一条">↓ 最新</button>' : '') +
+    '</div>';
+  if (list) {
+    list.innerHTML = AILP.items.map(ailpCard).join('');
+    list.classList.toggle('is-scroll', willScroll);
+    if (willScroll) {
+      /* 打开就定位到**最新**（时间正序 ⇒ 底部）；这是"看讨论"最常用的落点 */
+      list.scrollTop = list.scrollHeight;
+    } else {
+      list.scrollTop = 0;
+    }
+  }
+  say('ailpLoadMsg', '已刷新（' + total + ' 条' + (willScroll ? ' · 块内可滚' : '') + '）', 'ok');
+}
+
+/** 「↓ 最新」：滚到列表底部（最新一条）。 */
+function ailpScrollLatest() {
+  const l = $('ailpList');
+  if (!l) return;
+  l.scrollTop = l.scrollHeight;
+  if (l.focus) l.focus({ preventScroll: true });
 }
 
 async function sendAilp() {
@@ -1292,10 +1900,20 @@ async function sendAilp() {
     payload: got.payload
   };
   const r = await api('POST', '/api/workshop/' + encodeURIComponent(S.ws) + '/ailp', body);
-  if (!r.ok) { $('ailpOut').innerHTML = errHtml(r.data, r.status); return; }
-  $('ailpOut').innerHTML = banner('ok', '✓ 收下了：' + esc(r.data.msg_id) +
-    '<br><span class="msg">平台只校验与记账，没有替你或替它说话。</span>');
-  say('ailpSendMsg', '已提交', 'ok');
+  const msg = $('ailpSendMsg');
+  if (!r.ok) {
+    /* ★失败不再把上面的讨论列表冲掉（原来直接写 ailpOut ⇒ 一报错就看不见历史） */
+    const d = r.data || {};
+    if (msg) {
+      msg.innerHTML = '<span class="bad">✗ ' + esc(d.code || ('HTTP ' + r.status)) + '：' +
+        esc(d.error || '没发出去') + '</span>' + (d.next ? '<br>下一步：' + esc(d.next) : '');
+    }
+    return;
+  }
+  if (msg) {
+    msg.innerHTML = '<span class="ok">✓ 收下了（' + esc(r.data.msg_id || '') +
+      '）—— 平台只校验与记账，没有替你或替它说话</span>';
+  }
   await loadAilp();
 }
 

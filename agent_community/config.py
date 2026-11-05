@@ -31,10 +31,15 @@ CONFIG_DIR = _resolve_config_dir()
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "ai_provider": "openai",
-    "ai_base_url": "https://api.example.com",
+    # ★2026-11-05（老板拍"好"）：**开箱不假装配了 AI**。
+    #   原来是 `openai` + 示例域名 + 占位模型 ⇒ 界面显示「已配置」，实际解析不到任何服务
+    #   （违反产品化红线②"开箱不许是看起来配好、其实必然失败的假数据"）。
+    #   现在默认空 ⇒ `/api/status` 走 "not-configured" 并说清怎么配；
+    #   老配置文件里若仍是占位值，`_ai_health_snapshot()` 会判成 `placeholder` 并说明"等于没配"。
+    "ai_provider": "",
+    "ai_base_url": "",
     "ai_api_key": "",
-    "ai_model": "example-model-flash",
+    "ai_model": "",
     # 内部 AI 接管模式：remote（真实 AI，默认）/ manual（外部接管）/ off（纯规则降级）
     "ai_mode": "remote",
     # manual 模式下等待外部回写的超时秒数，超时降级为纯规则

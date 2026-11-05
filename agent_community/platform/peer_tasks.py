@@ -132,9 +132,11 @@ def _map_remote_status(info: dict) -> tuple[str, str]:
 
 
 def _artifacts_of(info: dict) -> list:
-    """从对端回执里抽**产物清单**（V64）：只留名字/大小/归属，**不带内容**。
+    """从对端回执里抽**产物清单**（V64）：只留名字/大小/hash/归属，**不带内容**。
 
     诚实边界：`owner=remote` 表示"文件在对端那台机器上"，本侧**不自动下载**。
+    ★V130：`sha256` / `slot_dir` 必须留下来 —— 跨组织复核要拿对端的 hash 做本侧重算比对；
+    丢了 hash，「复核」就只剩一句"它说对得上"（等于没复核）。
     """
     out = []
     for a in ((info or {}).get("artifacts") or [])[:50]:
@@ -144,6 +146,8 @@ def _artifacts_of(info: dict) -> list:
         out.append({
             "name": str(a.get("name") or "?")[:200],
             "bytes": md.get("bytes"),
+            "sha256": md.get("sha256"),
+            "slot_dir": md.get("slot_dir"),
             "member_id": md.get("member_id"),
             "role": md.get("role"),
             "owner": md.get("owner") or "remote",

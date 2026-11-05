@@ -5,10 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>监控室 · 画面墙</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="hub.css">
 <style>
 /* 本页只补 hub.css 没有的变量；CRT 皮肤令牌已退役（备份 theme-crt.css.bak_20261029） */
-:root{--rule-strong:rgba(255,53,39,.45)}
+:root{--rule-strong:rgba(var(--accent-rgb),.45)}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--ink);font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
 .topbar b{letter-spacing:2px;font-size:14px}
@@ -27,7 +29,7 @@ body{background:var(--bg);color:var(--ink);font-size:13px;height:100vh;display:f
 .sw{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer;user-select:none}
 .sw i{width:26px;height:13px;border:1px solid var(--rule-strong);display:inline-block;position:relative}
 .sw i::after{content:'';position:absolute;top:1px;left:1px;width:9px;height:9px;background:var(--dim)}
-.sw.on i::after{left:14px;background:var(--accent);box-shadow:0 0 6px rgba(255,53,39,.6)}
+.sw.on i::after{left:14px;background:var(--accent);box-shadow:0 0 6px rgba(var(--accent-rgb),.6)}
 .sw.on{color:var(--ink)}
 .win-null{color:var(--dim);font-size:11px}
 .win-no{color:var(--yellow);font-size:11px}
@@ -44,8 +46,38 @@ body{background:var(--bg);color:var(--ink);font-size:13px;height:100vh;display:f
 #zoomOv img{max-width:94vw;max-height:88vh;background:#000}
 #zoomOv .cap{color:var(--muted);font-size:12px}
 .err{color:var(--red);font-size:11px;margin-top:4px}
+
+  /* ── 会话观察窗（D后端-71）：两种格子要一眼分得开 ── */
+  .tag{font-size:10px;letter-spacing:1px;padding:1px 6px;border:1px solid var(--rule-strong);color:var(--muted)}
+  .tag.window{color:var(--accent);border-color:rgba(var(--accent-rgb),.5)}
+  .tag.session{color:#00FFFF;border-color:rgba(0,255,255,.45)}
+  .tag.none{color:var(--dim);border-color:var(--rule)}
+  .tile.kind-session{cursor:default;border-left:3px solid rgba(0,255,255,.45);background:#0b0d0d}
+  .tile.kind-session:hover{box-shadow:none;border-color:var(--rule)}
+  .sess-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .sess-head b{color:var(--ink);font-size:12.5px}
+  .sess-meta{font-size:10.5px;color:var(--dim)}
+  .sess-body{max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px}
+  .sm{font-size:11.5px;line-height:1.6;padding:5px 8px;border-left:2px solid var(--rule);background:rgba(255,255,255,.02)}
+  .sm .who{font-size:10px;letter-spacing:1px;color:var(--dim);display:block;margin-bottom:2px}
+  .sm.user{border-left-color:var(--muted)}
+  .sm.assistant{border-left-color:rgba(0,255,255,.5)}
+  .sm .tx{word-break:break-word;white-space:pre-wrap;color:var(--ink)}
+  .sess-why{color:var(--yellow);font-size:11.5px;line-height:1.7;word-break:break-word}
+  .sess-note{margin-top:6px;font-size:10.5px;line-height:1.6;color:var(--dim);border-top:1px dashed var(--rule);padding-top:5px}
+  .sess-caution{margin-top:5px;font-size:10.5px;line-height:1.6;color:var(--yellow)}
+  .sess-btns{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+  .sess-btns button{background:transparent;border:1px solid var(--rule-strong);color:var(--muted);
+    font-family:inherit;font-size:10.5px;padding:2px 8px;cursor:pointer}
+  .sess-btns button:hover{color:var(--ink);border-color:var(--rule-strong)}
+  .tri{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+  .tri span{font-size:10.5px;padding:1px 6px;border:1px solid var(--rule);color:var(--muted)}
+  .tri .unv{color:var(--yellow);border-color:rgba(224,160,74,.4)}
+  .tri .ver{color:var(--green);border-color:rgba(143,179,155,.4)}
+  .tri-note{font-size:10.5px;color:var(--dim);margin-top:4px;line-height:1.6;word-break:break-word}
 </style>
 <link rel="stylesheet" href="chrome.css">
+<link rel="stylesheet" href="glass.css">
 </head>
 <body class="">
 <header class="topbar chrome-top chrome-fixed">
@@ -65,11 +97,11 @@ body{background:var(--bg);color:var(--ink);font-size:13px;height:100vh;display:f
 </div>
 <div class="layout">
   <div class="col">
-    <h3>候选（能开哪几个 · 为什么不能开）</h3>
+    <h3>候选（能看画面 / 能看会话 / 都看不了——为什么）</h3>
     <div id="agentsList"><div class="empty">加载中…</div></div>
   </div>
   <div class="col right">
-    <h3>画面墙（快照 · 1 帧/秒 · 点瓦片放大）</h3>
+    <h3>监控墙（画面快照 1 帧/秒 + 会话观察窗 · 点画面放大）</h3>
     <div id="wall" class="wall"><div class="empty">还没开任何一路——在左侧把开关打开。</div></div>
   </div>
 </div>

@@ -1,0 +1,105 @@
+/* ============================================================
+   统一组件层 ui.css（2026-11-05 · 基准 = **对接中心**）
+   —— 老板：「统一平台所有 UI 设计风格（以对接中心为主）」
+
+   分工（别把两件事混在一份文件里）：
+     · tokens.css  = 颜色 / 字体 / 字号 / 间距 / 圆角 / 阴影 / 辉光（**只有变量**）
+     · ui.css      = 按钮 / 输入 / 卡片 / 标签 / 表格 / 状态色 / 滚动条 / 焦点环（**只有组件**）
+
+   引入顺序（重要）：
+       tokens.css → ui.css → 页面自己的样式
+     页面自己的样式仍可覆盖本文件（旧页迁移期间需要它）；新页面直接复用本文件即可。
+
+   纪律：
+     · 颜色一律 `var(--…)`，**不许在这里写死 #hex**（主题换肤靠 tokens 一层就够）；
+     · 只定义"长得一样的东西"，不定义布局（栅格/间距归页面）。
+   ============================================================ */
+
+html { color-scheme: dark; }
+:focus-visible { outline: 2px solid var(--navy-lit); outline-offset: 2px; }
+* { scrollbar-width: thin; scrollbar-color: var(--bg4) transparent; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: var(--bg5); border-radius: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ── 文字层级（对接中心：正文 14、正文强调 16、节标题 22、刊头 32） ── */
+h1, h2, h3, h4 { line-height: 1.35; letter-spacing: .01em; }
+h1 { font-size: var(--fs-hero); font-weight: 900; }
+h2 { font-size: var(--fs-h2); font-weight: 900; }
+h3 { font-size: var(--fs-body); font-weight: 900; }
+h4 { font-size: 13px; font-weight: 800; }
+code { font-family: var(--mono); font-size: 11.5px; color: var(--ink);
+  background: var(--bg3); border: 1px solid var(--rule); border-radius: 6px; padding: 1px 7px; }
+
+/* ── 按钮（对接中心的四种：普通 / 主操作 / 幽灵 / 危险；另有 mini） ── */
+.btn { font-family: inherit; font-size: 12px; font-weight: 700; line-height: 1.2;
+  padding: 7px 15px; border: 1px solid var(--rule); border-radius: var(--radius-sm);
+  background: var(--bg3); color: var(--ink); cursor: pointer; touch-action: manipulation;
+  transition: background-color .15s, border-color .15s, color .15s, box-shadow .18s ease; }
+.btn:hover { border-color: var(--accent); color: var(--accent); box-shadow: var(--rgb-glow); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; box-shadow: none; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #1a120b; font-weight: 800; }
+.btn.primary:hover { filter: brightness(1.1); color: #1a120b; }
+.btn.ghost { background: transparent; color: var(--muted); }
+.btn.ghost:hover { background: var(--accent-soft); }
+.btn.danger { border-color: var(--red); color: var(--red); }
+.btn.danger:hover { background: var(--red); color: #fff; }
+.btn.mini { font-size: 11px; padding: 4px 10px; border-radius: 6px; }
+.btn .spin { display: inline-block; width: 11px; height: 11px; vertical-align: -1px;
+  border: 2px solid var(--dim); border-top-color: var(--accent); border-radius: 50%;
+  animation: ui-rot .7s linear infinite; }
+@keyframes ui-rot { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .btn, .btn .spin { transition: none !important; animation: none !important; }
+}
+
+/* ── 输入（对接中心：暗底、8px 圆角、聚焦走藏蓝辉光，不用亮红框） ── */
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field > label, .field > span { font-size: 12px; color: var(--muted); }
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select, textarea {
+  font-family: inherit; font-size: 13px; color: var(--ink);
+  background: var(--bg); border: 1px solid var(--rule); border-radius: var(--radius-sm);
+  padding: 7px 10px; min-height: 34px; max-width: 100%; }
+textarea { min-height: 64px; resize: vertical; line-height: 1.6; }
+input:not([type="checkbox"]):focus, select:focus, textarea:focus {
+  border-color: var(--navy-lit); box-shadow: 0 0 0 3px var(--navy-soft); outline: none; }
+input::placeholder, textarea::placeholder { color: var(--dim); }
+
+/* ── 卡片（对接中心：bg2 + 1px rule + 12px 圆角） ── */
+.card { background: var(--bg2); border: 1px solid var(--rule); border-radius: var(--radius-md);
+  padding: 16px 18px; }
+.card > h3:first-child { margin-top: 0; color: var(--muted); font-size: 13px;
+  letter-spacing: .02em; display: flex; align-items: center; gap: 8px; }
+
+/* ── 标签 / 徽标 ── */
+.tag, .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px;
+  font-weight: 700; border-radius: 999px; padding: 2px 9px;
+  background: var(--bg3); border: 1px solid var(--rule); color: var(--muted); }
+.tag.ok, .chip.ok { color: var(--green); border-color: var(--green); background: var(--green-soft); }
+.tag.warn, .chip.warn { color: var(--yellow); border-color: var(--yellow); background: var(--yellow-soft); }
+.tag.bad, .chip.bad { color: var(--red); border-color: var(--red); background: var(--red-soft); }
+.tag.info, .chip.info { color: var(--info); border-color: var(--navy-lit); background: var(--info-soft); }
+
+/* ── 表格（只统一观感；列宽/换行由页面决定） ── */
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 6px 9px; text-align: left; vertical-align: top; font-size: 12.5px; }
+th { color: var(--muted); font-weight: 800; border-bottom: 1px solid var(--rule); }
+td { border-bottom: 1px dashed var(--rule); }
+
+/* ── 状态文字（各页都在用 .ok/.bad/.warn，统一语义色） ── */
+.ok { color: var(--green); }
+.bad { color: var(--red); }
+.warn { color: var(--yellow); }
+.info { color: var(--info); }
+.msg, .sub, .muted { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.lead { color: var(--ink); font-size: 13.5px; line-height: 1.75; }
+
+/* ── 提示条（统一 banner：ok / bad / warn / info） ── */
+.banner { border-radius: var(--radius-sm); padding: 8px 11px; font-size: 12.5px;
+  margin: 8px 0; border: 1px solid var(--rule); background: var(--bg3); color: var(--ink); }
+.banner.ok { background: var(--green-soft); border-color: rgba(var(--green-rgb), .5); color: var(--green); }
+.banner.bad { background: var(--red-soft); border-color: rgba(var(--accent-rgb), .5); color: var(--red); }
+.banner.warn { background: var(--yellow-soft); border-color: rgba(var(--yellow-rgb), .5); color: var(--yellow); }
+.banner.info { background: var(--info-soft); border-color: rgba(91, 141, 217, .45); color: var(--info); }

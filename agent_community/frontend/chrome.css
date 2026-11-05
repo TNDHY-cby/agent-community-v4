@@ -61,7 +61,7 @@
   transform:scale(1.02);
 }
 .topbar.chrome-top .live-links a[aria-current="page"]{
-  color:var(--accent); border-color:rgba(255,53,39,.5); background:var(--accent-soft);
+  color:var(--accent); border-color:rgba(var(--accent-rgb),.5); background:var(--accent-soft);
 }
 /* 状态 LED（仪表台读数）：颜色不单独承载信息，同时带文字 */
 .topbar.chrome-top .hdrws{font-family:var(--mono); font-size:11px; color:var(--muted); white-space:nowrap}
@@ -104,7 +104,7 @@ body.chrome-offset .app{min-height:calc(100vh - var(--tb))}
 /* 远处结构体透出的光晕：不给焦点，只给纵深 */
 .masthead::after{
   content:""; position:absolute; right:-40px; top:-60px; width:340px; height:340px;
-  background:radial-gradient(circle,rgba(255,53,39,.14),transparent 62%);
+  background:radial-gradient(circle,rgba(var(--accent-rgb),.14),transparent 62%);
   pointer-events:none;
 }
 .mh-in{max-width:1320px; margin:0 auto; padding:34px 28px 26px 32px; position:relative; z-index:1}
@@ -135,8 +135,8 @@ body.chrome-offset .app{min-height:calc(100vh - var(--tb))}
    四角螺栓保留（机械锚点，不参与 hover，避免抢泛光）。 */
 .card.armor,.panel.armor,.acard.armor,.tile.armor{
   position:relative; background-color:var(--armor-bg);
-  border:1px solid rgba(232,228,219,.055); border-radius:10px;
-  box-shadow:inset 0 0 0 1px rgba(232,228,219,.03);
+  border:1px solid rgba(var(--ink-rgb),.055); border-radius:10px;
+  box-shadow:inset 0 0 0 1px rgba(var(--ink-rgb),.03);
   transition:box-shadow .18s ease, transform .18s ease, border-color .18s ease, background-color .18s ease;
   /* 四角螺栓：必须配 background-size，否则渐变铺满整卡压住正文 */
   background-image:
@@ -153,22 +153,22 @@ body.chrome-offset .app{min-height:calc(100vh - var(--tb))}
    卡片 hover 不再发蓝光、不再提亮到发灰，只在深炭色内部做极轻的受光变化 + 微放大。 */
 .card.armor:hover,.panel.armor:hover,.acard.armor:hover,.tile.armor:hover{
   z-index:3; filter:brightness(1.08);
-  border-color:rgba(232,228,219,.20);
+  border-color:rgba(var(--ink-rgb),.20);
   box-shadow:
-    inset 0 1px 0 rgba(232,228,219,.18),
+    inset 0 1px 0 rgba(var(--ink-rgb),.18),
     inset 0 -1px 0 rgba(0,0,0,.5),
-    inset 0 0 0 1px rgba(232,228,219,.13),
+    inset 0 0 0 1px rgba(var(--ink-rgb),.13),
     0 6px 14px rgba(0,0,0,.5),
     0 16px 34px rgba(0,0,0,.65);
   transform:scale(1.015);
 }
 /* 重点面板（怎么用 / 必读）：常态稍亮一档；顶部警戒条已按老板要求取消 */
-.armor.armor-hi{box-shadow:inset 0 0 0 1px rgba(232,228,219,.09),0 4px 14px rgba(0,0,0,.35)}
+.armor.armor-hi{box-shadow:inset 0 0 0 1px rgba(var(--ink-rgb),.09),0 4px 14px rgba(0,0,0,.35)}
 .armor.armor-hi:hover{
   z-index:3; filter:brightness(1.08);
-  border-color:rgba(232,228,219,.20);
-  box-shadow:inset 0 1px 0 rgba(232,228,219,.18),inset 0 -1px 0 rgba(0,0,0,.5),
-             inset 0 0 0 1px rgba(232,228,219,.13),
+  border-color:rgba(var(--ink-rgb),.20);
+  box-shadow:inset 0 1px 0 rgba(var(--ink-rgb),.18),inset 0 -1px 0 rgba(0,0,0,.5),
+             inset 0 0 0 1px rgba(var(--ink-rgb),.13),
              0 6px 14px rgba(0,0,0,.5),0 16px 34px rgba(0,0,0,.65);
   transform:scale(1.015);
 }
@@ -181,8 +181,8 @@ html body.chrome-soft :is(.card,.panel,.acard,.tile,.mcard,.agent-card,.bc-panel
   .bridge-panel,.budget-panel,.setup-panel,.setup-think-card,.h-card,.of-card,.sf-card,
   .wsv-panel,.ev-card,.tl-panel){
   border-radius:10px;
-  border-color:rgba(232,228,219,.075);
-  box-shadow:inset 0 0 0 1px rgba(232,228,219,.025);
+  border-color:rgba(var(--ink-rgb),.075);
+  box-shadow:inset 0 0 0 1px rgba(var(--ink-rgb),.025);
   transition:box-shadow .18s ease, transform .18s ease, border-color .18s ease, background-color .18s ease;
 }
 html body.chrome-soft :is(.card,.panel,.acard,.tile,.mcard,.agent-card,.bc-panel,
@@ -195,12 +195,12 @@ html body.chrome-soft :is(.card,.panel,.acard,.tile,.mcard,.agent-card,.bc-panel
      ④ 卡片不要蓝光、不要彩色顶条、保持深色 → 蓝色预算只留给「输入框聚焦 / 导航 hover」，
         卡片 hover 只用骨白受光边 + 极淡提亮（仍是深炭色），不做发光。 */
   z-index:3;
-  border-color:rgba(232,228,219,.20);
-  background-image:linear-gradient(180deg,rgba(232,228,219,.06),rgba(232,228,219,.035));
+  border-color:rgba(var(--ink-rgb),.20);
+  background-image:linear-gradient(180deg,rgba(var(--ink-rgb),.06),rgba(var(--ink-rgb),.035));
   box-shadow:
-    inset 0 1px 0 rgba(232,228,219,.18),      /* 顶部受光边 */
+    inset 0 1px 0 rgba(var(--ink-rgb),.18),      /* 顶部受光边 */
     inset 0 -1px 0 rgba(0,0,0,.5),            /* 底部背光边 */
-    inset 0 0 0 1px rgba(232,228,219,.13),    /* 极淡骨白内线，不构成亮框 */
+    inset 0 0 0 1px rgba(var(--ink-rgb),.13),    /* 极淡骨白内线，不构成亮框 */
     0 6px 14px rgba(0,0,0,.5),
     0 16px 34px rgba(0,0,0,.65);
   transform:scale(1.015);
@@ -221,7 +221,7 @@ html body.chrome-soft .app-debox :is(.panel,.disc-zone):hover{
   transform:none;
   background-image:none;
   box-shadow:none;
-  border-top-color:rgba(232,228,219,.32);
+  border-top-color:rgba(var(--ink-rgb),.32);
 }
 @media (prefers-reduced-motion:reduce){
   /* 保留极淡提亮（静态反馈仍有效），只去掉缩放/位移与过渡 */
@@ -241,36 +241,36 @@ html body.chrome-soft .app-debox :is(.panel,.disc-zone):hover{
    ④ 文字/图标仍用 --info（亮一档保可读），藏蓝只负责「发光」不负责「描亮」。
    用 html body.chrome-soft 拿 (0,3,3) 特异性压过各页内联；v5 不引 chrome.js，见其页内同规格规则。 */
 html body.chrome-soft :is(input,select,textarea):not([type=checkbox]):not([type=range]){
-  border-color:rgba(232,228,219,.075);
-  border-bottom-color:rgba(232,228,219,.20);
+  border-color:rgba(var(--ink-rgb),.075);
+  border-bottom-color:rgba(var(--ink-rgb),.20);
   transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease;
 }
 html body.chrome-soft :is(input,select,textarea):not([type=checkbox]):not([type=range]):focus{
   outline:none;
-  border-color:rgba(232,228,219,.10);
+  border-color:rgba(var(--ink-rgb),.10);
   background-color:#151821;
-  box-shadow:inset 0 -2px 0 rgba(74,118,190,.78),
+  box-shadow:inset 0 -2px 0 rgba(var(--navy-lit-rgb),.78),
              0 0 26px rgba(45,92,175,.40),
              0 0 52px rgba(30,62,130,.24);
 }
 /* 键盘焦点只加强光晕，不补闭合 outline（闭合细环 + 底边线 = 双线重影，观感像被框住） */
 html body.chrome-soft :is(input,select,textarea):not([type=checkbox]):focus-visible{
   outline:none;
-  box-shadow:inset 0 -3px 0 rgba(74,118,190,.86),
+  box-shadow:inset 0 -3px 0 rgba(var(--navy-lit-rgb),.86),
              0 0 30px rgba(45,92,175,.50),
              0 0 60px rgba(30,62,130,.30);
 }
 /* 按钮/页签的键盘焦点同样归藏蓝，替换旧页的红色 --focus-ring（红纪律） */
 html body.chrome-soft :is(button,.view-tab):focus-visible{
   outline:2px solid var(--navy-lit,#4A76BE); outline-offset:2px;
-  box-shadow:0 0 0 3px var(--navy-soft,rgba(36,69,127,.20)),
+  box-shadow:0 0 0 3px var(--navy-soft,rgba(var(--navy-rgb),.20)),
              0 0 20px var(--navy-glow,rgba(45,92,175,.34));
 }
 /* 例外：桥接响应框属「警戒待办」，保留琥珀语义（特异性高于上面的通用规则） */
 html body.chrome-soft .bridge-panel .bp-response-area textarea:focus{
-  border-color:rgba(217,171,83,.34);
+  border-color:rgba(var(--yellow-rgb),.34);
   box-shadow:inset 0 -2px 0 var(--yellow,#D9AB53),
-             0 0 0 3px rgba(217,171,83,.14),0 0 22px rgba(217,171,83,.24);
+             0 0 0 3px rgba(var(--yellow-rgb),.14),0 0 22px rgba(var(--yellow-rgb),.24);
 }
 
 /* ========== 4. 面板头（通栏横条 + 刻蚀编号） ========== */
@@ -302,7 +302,7 @@ html body.chrome-soft .bridge-panel .bp-response-area textarea:focus{
 }
 .btn.mech:hover{
   background:#2E2822; border-color:var(--ink); color:var(--ink);
-  box-shadow:0 0 16px rgba(232,228,219,.16),0 6px 16px rgba(0,0,0,.5);
+  box-shadow:0 0 16px rgba(var(--ink-rgb),.16),0 6px 16px rgba(0,0,0,.5);
   transform:scale(1.02);
 }
 /* 按下仍保留机械按压的瞬时位移，无过渡由 :active 覆盖 */

@@ -462,12 +462,17 @@ async def api_save_config(request: Request):
     # 这里**不动** `configured` 的既有语义（会牵动未追完的前端分支），
     # 改用几个增量字段，前端据此如实显示。
     #
-    # P1-5 修正：`load_config()` 会合并 `DEFAULT_CONFIG`（ai_model 默认
-    # example-model-flash），所以**生效 model 永远非空**，按生效值判 model_missing
+    # P1-5 修正：`load_config()` 会合并 `DEFAULT_CONFIG`，所以**生效 model 永远非空**，按生效值判 model_missing
     # 几乎不可达。真正有意义的是「**用户本次有没有真选**」——
     # 下拉停在"请选择模型"时提交的是空值，此时虽有默认兜底，也该告诉用户
     # 「你没选，实际用的是 XXX」，而不是让他以为自己选上了。
+    #
+    # ⚠️ ★2026-11-05（`0e04b7c` 起）：`DEFAULT_CONFIG` 的 ai_* 已改成**空**（开箱＝没配，不再假装配好了），
+    #   所以上面"永远非空"的前提**不再成立** —— 空提交现在是真的没有生效模型。
+    #   按「失败要说话」：只回一个 `model_missing: true` 等于"报故障但不给出路"，
+    #   必须同时给出**填哪个、在哪填**（`model_missing_hint`）。
     _model_selected = bool(str(body.get("ai_model") or "").strip())
+    _model_missing = bool(ai_mode == "remote" and not _model_selected)
         # ★EXT-20261022-01（A）：占位符不拦截，但**必须提醒**（黄条），别让用户以为配好了
     _warns = []
     try:
@@ -492,7 +497,12 @@ async def api_save_config(request: Request):
         "provider_loaded": _new_provider is not None,
         "provider_error": _provider_error,
         # 本次提交是否选了模型（空 -> 已回退到 model 字段的实际值）
-        "model_missing": bool(ai_mode == "remote" and not _model_selected),
+        "model_missing": _model_missing,
+        # ★2026-11-05：只给布尔值等于"报故障不给出路" ⇒ 同时给出怎么补（按「失败要说话」）
+        **({"model_missing_hint": (
+            "你这次没选模型 —— remote 模式必须有模型，现在等于没配（AI 用不了）。"
+            "去「设置 → 平台 AI」选一个模型再保存；要沿用上次的就别清空那个下拉、直接保存。")}
+           if _model_missing else {}),
         "model_effective": model,
         "base_url": base_url,
         # 提交的 key 是否是掩码（已忽略、保留原 key）—— 前端据此提示

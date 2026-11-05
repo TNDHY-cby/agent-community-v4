@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""判据：**公司间合作 P1 —— 单机双实例真投**（V61 §6）。
+"""判据：**公司间合作** —— 单机双实例真投 + 跨组织证据采信（V61 §6 / V130 §5）。
 
 ```bash
-python tools/cross_company_check.py     # 约 25 秒
+python tools/cross_company_check.py     # 约 30 秒
 ```
 
 ## 它证明什么
@@ -11,7 +11,7 @@ python tools/cross_company_check.py     # 约 25 秒
 **A 公司把任务派给 B 公司 → B 真的收到并建成工作间 → A 能回查状态 → 两侧数据互不污染**。
 这条**不需要 frp、不需要公网**（frp 只是把地址换成穿透后的地址，见 V61 §6 的 P3）。
 
-## 九格判据
+## 二十格（V61~V64）
 
 | 格 | 判据 |
 |---|---|
@@ -23,10 +23,22 @@ python tools/cross_company_check.py     # 约 25 秒
 | ⑤ | **回查**：`tasks/get` 能按 taskId 查回来 |
 | ⑥ | **不带 token ⇒ 401**；**错 token ⇒ 401/403**（不许裸奔） |
 | ⑦ | **隔离**：A 的数据目录里**没有** B 的工作间 id |
-| ⑧ | 收尾：两个实例都停掉，不留进程 |
+| ⑧~⑳ | 平台业务端点链：登记对端 / 验证 / 派活 / 回查 / 停用 / 错令牌如实失败 / 隧道建议 / 外部任务可见 / 回执刷新 / 产物清单 / 断线如实标不可达 / 收尾 |
+
+## ㉑~㉖：跨组织证据采信（`V130` §5，2026-11-04 老板拍板）
+
+| # | 格 | 断言 |
+|---|---|---|
+| ㉑ | 自证 ≠ 采信 | 只给"我干完了" ⇒ 采信态 `accepted_self`，**验收不给过**（`PEER_NOT_REVIEWED`） |
+| ㉒ | 复核通过 | 对端给产物 + sha256，本侧**真重算一致** ⇒ `accepted_peer`，账本有 `peer_checked_at`，此后验收可过 |
+| ㉓ | 复核不通过 | 故意给错 sha256 ⇒ 采信态停在 `accepted_self` + `peer_diff` 列出不一致文件 |
+| ㉔ | 凭据不存在 | `L1` 但 `evidence_ref` 指向的路径不存在 ⇒ `L1_PROOF_MISSING`，按 `L4` 算 |
+| ㉕ | 挂争议后不可验收 | 两方主张冲突 ⇒ `disputed` 且**从可验收里摘出**（记录不删） |
+| ㉖ | 争议有留痕 | `dispute` 含发起方/双方主张/待裁对象；**只读视图**能查到 |
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import socket
@@ -379,6 +391,142 @@ def main() -> int:
         cell("⑲ 按工作间过滤生效；对端停掉后刷新 ⇒ unreachable（不假装在跑）",
              len(only) == 1 and not other and t3.get("status") == "unreachable",
              "匹配 %d 条 ｜ 其它间 %d 条 ｜ 断线后状态=%s" % (len(only), len(other), t3.get("status")))
+
+        # ══ V130：跨组织证据采信 —— 20 → 26 格（2026-11-04 老板拍板）══
+        # 夹具：A 侧真建一个工作间 + 名单 + 派活三条 ⇒ 账本里 T-001~T-003。
+        # 然后走**真 HTTP 端点**：peer-delivery（交付方自证）→ peer-review（本侧重算）→ dispute → review（落闸）。
+        ws_a = dir_a / "ws_a"
+        slot_a = "前端组/员工01"
+        for d in (ws_a / "_lead", ws_a / "前端组", ws_a / slot_a / "任务", ws_a / slot_a / "产物"):
+            d.mkdir(parents=True, exist_ok=True)
+        (ws_a / "_lead" / "建模.md").write_text("# 建模\n", encoding="utf-8")
+        (ws_a / "前端组" / "分工.md").write_text("- 版本: 1\n", encoding="utf-8")
+        (ws_a / "前端组" / "_notice.md").write_text("", encoding="utf-8")
+        st, made_a = req(base_a, "/api/workshop", {"name": "跨组织验收间（示例）",
+                                                  "hall_content": "方向",
+                                                  "workshop_path": str(ws_a)})
+        wid_a = str((made_a or {}).get("workshop_id") or "")
+        mk = req(base_a, "/api/mind/A-01", {})[1] or {}
+        req(base_a, "/api/workshop/%s/manifest" % wid_a,
+            {"mind_path": str(mk.get("mind_path") or ""), "entry_points": ["_lead/建模.md"]})
+        txt_a = ("#回执 v1\n类型: 名单\n工作间: %s\n成员: 组长\n凭据:\n序号: 5\n---\n"
+                 "岗位: %s | harness: h_x | model: m | 人数: 1\n---\n行数: 1" % (wid_a, slot_a))
+        req(base_a, "/api/workshop/%s/intake?source=C&confirm=1" % wid_a, {"text": txt_a})
+        roster_a = req(base_a, "/api/workshop/%s/roster" % wid_a)[1] or {}
+        seq_a = ((roster_a.get("members") or [{}])[0] or {}).get("member_seq")
+        req(base_a, "/api/workshop/%s/members/%s/evidence" % (wid_a, seq_a),
+            {"paste_seen": True, "press_ok": True, "rename_seen": True,
+             "verified_scope": "夹具：三项齐"})
+        tseqs = []
+        for i in (1, 2, 3):
+            _st, dsp = req(base_a, "/api/workshop/%s/dispatch" % wid_a,
+                           {"member_seq": seq_a, "title": "跨组织验收用 %d" % i, "goal": "验收"})
+            tseqs.append(int((dsp or {}).get("task_seq") or i))
+
+        # ㉑ 自证 ≠ 采信：只给"我干完了"，验收必须被拒
+        req(base_a, "/api/workshop/%s/tasks/%d/peer-delivery" % (wid_a, tseqs[0]),
+            {"source": "manual", "result": "我做完了", "artifacts": []})
+        st_self, rv_self = req(base_a, "/api/workshop/%s/tasks/%d/review" % (wid_a, tseqs[0]),
+                               {"result": "通过", "evidence_level": "L4"})
+        cell("㉑ 自证 ≠ 采信（accepted_self 不给过验收）",
+             st_self == 400 and (rv_self or {}).get("code") == "PEER_NOT_REVIEWED"
+             and (rv_self or {}).get("peer_accepted") == "accepted_self",
+             "HTTP %s ｜ %s" % (st_self, (rv_self or {}).get("code")))
+
+        # ㉒ 复核通过：本侧真重算，与"对端给的 sha256"一致
+        #    ① 先从 B 侧真工作间里取它交的产物（⑱ 造的那份）② A 侧工位写**同样字节**
+        #    ③ 对端清单里的 sha256 = B 侧文件的真 hash ④ 本侧平台自己扫盘重算
+        b_ws2, b_dir = "", None
+        for _ in range(20):
+            _st, wl2 = req(base_b, "/api/workshops")
+            for w in (wl2 or {}).get("workshops") or []:
+                if isinstance(w, dict) and title2[:10] in str(w.get("name") or ""):
+                    b_ws2 = str(w.get("workshop_id") or "")
+                    break
+            if b_ws2:
+                break
+            time.sleep(0.3)
+        if b_ws2:
+            _st, wbody2 = req(base_b, "/api/workshop/%s" % b_ws2)
+            b_dir = Path(str((wbody2 or {}).get("workspace_dir") or ""))
+        b_file = next(iter(b_dir.rglob("报告.md")), None) if b_dir and b_dir.is_dir() else None
+        peer_sha, peer_bytes, peer_rel = "", 0, "码农_9/报告.md"
+        detail_22 = "B 侧没找到可复核的产物（工作间=%s）" % (b_ws2 or "未找到")
+        if b_file and b_file.is_file():
+            data = b_file.read_bytes()
+            peer_sha, peer_bytes = hashlib.sha256(data).hexdigest(), len(data)
+            (ws_a / slot_a / "产物" / "报告.md").write_bytes(data)     # 两边各算一次同一份文件
+            peer_files = [{"name": peer_rel, "sha256": peer_sha, "bytes": peer_bytes}]
+            req(base_a, "/api/workshop/%s/tasks/%d/peer-delivery" % (wid_a, tseqs[0]),
+                {"source": "a2a", "external_task_id": tid3, "result": "交付报告.md",
+                 "artifacts": peer_files})
+            st_pr, pr = req(base_a, "/api/workshop/%s/tasks/%d/peer-review" % (wid_a, tseqs[0]),
+                            {"peer_files": peer_files, "checked_by": "验收人（示例）"})
+            gv = req(base_a, "/api/workshop/%s/tasks/%d/peer-review" % (wid_a, tseqs[0]))[1] or {}
+            _st, rv_ok = req(base_a, "/api/workshop/%s/tasks/%d/review" % (wid_a, tseqs[0]),
+                             {"result": "通过", "evidence_level": "L0"})
+            detail_22 = ("对端 sha=%s… ｜ 采信=%s ｜ peer_checked_at=%s ｜ 复核后验收=%s"
+                         % (peer_sha[:8] or "?", (pr or {}).get("accept_state"),
+                            "有" if gv.get("peer_checked_at") else "缺",
+                            (rv_ok or {}).get("state") or (rv_ok or {}).get("code")))
+            cell("㉒ 复核通过 ⇒ accepted_peer + peer_checked_at（此后验收可过）",
+                 st_pr == 200 and (pr or {}).get("accept_state") == "accepted_peer"
+                 and bool(gv.get("peer_checked_at")) and (rv_ok or {}).get("state") == "accepted",
+                 detail_22)
+        else:
+            cell("㉒ 复核通过 ⇒ accepted_peer + peer_checked_at（此后验收可过）", False, detail_22)
+
+        # ㉓ 复核不通过：故意给错 sha256
+        wrong = "0" * 64
+        req(base_a, "/api/workshop/%s/tasks/%d/peer-delivery" % (wid_a, tseqs[1]),
+            {"source": "a2a", "result": "我交了 v2",
+             "artifacts": [{"name": peer_rel, "sha256": wrong, "bytes": peer_bytes}]})
+        st_pr2, pr2 = req(base_a, "/api/workshop/%s/tasks/%d/peer-review" % (wid_a, tseqs[1]),
+                          {"peer_files": [{"name": peer_rel, "sha256": wrong, "bytes": peer_bytes}]})
+        diff2 = (pr2 or {}).get("diff") or {}
+        bad = [f for f in (diff2.get("files") or []) if f.get("status") != "match"]
+        cell("㉓ 复核不通过 ⇒ 停在 accepted_self + peer_diff 列出不一致文件",
+             st_pr2 == 200 and (pr2 or {}).get("accept_state") == "accepted_self"
+             and bool(bad) and bad[0].get("status") == "sha_mismatch",
+             "采信=%s ｜ 差异=%s" % ((pr2 or {}).get("accept_state"),
+                                    [(f.get("key"), f.get("status")) for f in bad][:3]))
+
+        # ㉔ 凭据不存在：L1 + 指向不存在的路径 ⇒ 按 L4 算
+        ghost = str(dir_a / "不存在的凭据.db")
+        st_l1, rv_l1 = req(base_a, "/api/workshop/%s/tasks/%d/review" % (wid_a, tseqs[1]),
+                           {"result": "通过", "evidence_level": "L1", "evidence_ref": ghost})
+        cell("㉔ 凭据路径不存在 ⇒ L1_PROOF_MISSING（按 L4 算）",
+             st_l1 == 400 and (rv_l1 or {}).get("code") == "L1_PROOF_MISSING"
+             and "L4" in str((rv_l1 or {}).get("error") or ""),
+             "HTTP %s ｜ %s" % (st_l1, (rv_l1 or {}).get("code")))
+
+        # ㉕ / ㉖ 挂争议：两方主张冲突 ⇒ disputed、从可验收摘下、留痕可查
+        req(base_a, "/api/workshop/%s/tasks/%d/peer-delivery" % (wid_a, tseqs[2]),
+            {"source": "a2a", "result": "我交了 v2"})
+        st_dp, dp = req(base_a, "/api/workshop/%s/tasks/%d/dispute" % (wid_a, tseqs[2]),
+                        {"raised_by": "接收方",
+                         "claims": [{"by": "交付方", "claim": "我交的就是 v2，sha256 是 0…"},
+                                    {"by": "接收方", "claim": "本侧重算 sha256 对不上，是另一个文件"}],
+                         "adjudicator": "组长（示例）", "why": "两边哈希不一致，平台不判谁对"})
+        st_rv5, rv5 = req(base_a, "/api/workshop/%s/tasks/%d/review" % (wid_a, tseqs[2]),
+                          {"result": "通过", "evidence_level": "L4"})
+        tasks_a = req(base_a, "/api/workshop/%s/tasks" % wid_a)[1] or {}
+        still = [t for t in (tasks_a.get("tasks") or [])
+                 if int(t.get("task_seq") or 0) == tseqs[2]]
+        cell("㉕ 挂争议 ⇒ disputed + 从可验收里摘出（记录不删）",
+             st_dp == 200 and (dp or {}).get("accept_state") == "disputed"
+             and (dp or {}).get("passable") is False and (rv5 or {}).get("code") == "DISPUTE_OPEN"
+             and bool(still),
+             "采信=%s ｜ 验收=%s ｜ 账本里这条还在=%s"
+             % ((dp or {}).get("accept_state"), (rv5 or {}).get("code"), bool(still)))
+
+        gd = req(base_a, "/api/workshop/%s/tasks/%d/peer-review" % (wid_a, tseqs[2]))[1] or {}
+        dis = gd.get("dispute") or {}
+        cell("㉖ 争议有留痕（发起方 / 双方主张 / 待裁对象，只读视图查得到）",
+             bool(dis) and dis.get("raised_by") == "接收方"
+             and len(dis.get("claims") or []) == 2 and bool(dis.get("adjudicator")),
+             "发起=%s ｜ 主张=%d 条 ｜ 待裁=%s"
+             % (dis.get("raised_by"), len(dis.get("claims") or []), dis.get("adjudicator")))
     finally:
         for p in reversed(procs):
             try:
@@ -398,10 +546,12 @@ def main() -> int:
         shutil.rmtree(tmp, ignore_errors=True)
 
     print("-" * 96)
-    print("结论：%s" % ("**公司间合作（P1 + V62 通用框架 + V63 外部任务 + V64 产物清单）全绿**"
+    print("结论：%s" % ("**公司间合作（P1 + V62 通用框架 + V63 外部任务 + V64 产物清单 + "
+                      "V130 跨组织证据采信）全绿**"
                       "（双实例 / 真投 / 真收 / 回查 / 鉴权 / 隔离 / 登记对端 / 验证 / 派活 / 回查 / 停用 / "
                       "错令牌如实失败 / 隧道建议 / 外部任务可见 / 回执刷新 / **对端交了什么** / "
-                      "断线如实标不可达 / 收尾）"
+                      "断线如实标不可达 / **自证≠采信 / 复核通过 / 复核不通过 / 凭据不存在 / "
+                      "争议冻结 / 争议留痕** / 收尾）"
                       if not fails else "**有 %d 格失败**" % fails))
     return 0 if not fails else 1
 

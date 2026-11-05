@@ -4081,6 +4081,8 @@ async function dockOpenArchive(hid){
   const _wake = (d.archive && d.archive.wakeup_method) || (d.harness && d.harness.wakeup_method) || '';
   dockLoadCapability(hid, _wake === 'clipboard');
   dockLoadAttest(hid);   /* ⑤ 能力与证据：抽屉打开即异步加载；clipboard=人工中转，只给「我确认它回了」 */
+  dockLoadMcpIn(hid);    /* ⑨ 它来过的证据（入站，只读） */
+  dockLoadMcpOut(hid);   /* ⑧ 最近 MCP 调用（出站，只读；状态五值分开显示） */
   dockMountDeliverIn('dkArcDeliverBox-' + hid, hid);   /* ⑦ 送话（FE-30）：档案一打开就能跟这个人说话 */
   _dockScrollTo('dkArchiveDrawer');
 }
@@ -4154,6 +4156,12 @@ function dockDrawerHtml(d){
     // ★FE-30 ⑦：送话（按员工走统一投递层）—— 与「送话给员工」瓦片是**同一份渲染**
     '<details id="dkArcDeliver-' + esc(d.harness_id) + '" open><summary>⑦ 送话（按员工 · 平台自己找目标与通道）</summary>' +
     '<div id="dkArcDeliverBox-' + esc(d.harness_id) + '"><p class="sub">正在解析目标…</p></div></details>' +
+    // ★V128（D后端-70）⑧：**平台调它**的工具 → 结果表（出站）；只读，和 ⑨ 分开摆，别合成一块
+    '<details id="dkMcpOut-' + esc(d.harness_id) + '"><summary>⑧ 最近 MCP 调用（<b>我们找它办的事</b> · 出站 · 只读）</summary>' +
+    '<div class="dk-det-body"><p class="sub">加载中…（平台每 20 秒查一次它那边有没有终态）</p></div></details>' +
+    // ★相邻但不同事：⑨ 是**它来调平台**（入站），⑧ 是**平台调它**（出站）
+    '<details id="dkMcpIn-' + esc(d.harness_id) + '"><summary>⑨ 它来过的证据（<b>它调过平台的工具吗</b> · 入站 · 只读）</summary>' +
+    '<div class="dk-det-body"><p class="sub">加载中…</p></div></details>' +
     '<div class="dock-facts">平台刚判定的档位事实（只读）：档位 <b>' + esc(f.interface_class || '—') +
     '</b> · 平台能叫醒：<b>' + (f.can_be_woken_by_platform ? '能' : '不能') +
     '</b> · 导出候选与脚本的真相都在档案里。</div>' +
@@ -4224,6 +4232,139 @@ async function dockAttestAudit(hid){
     msg.textContent = '记录未成功：' + ((d.error || d.reason) || ('HTTP ' + res.status)) + (d.how_to_fix ? (' · ' + d.how_to_fix) : '');
     msg.style.color = 'var(--red,#FF0000)';
   }
+}
+
+/* ══ 档案 ⑧⑨ MCP 两张表（V128 / D后端-70）════════════════════════════
+ * ⑧ 出站：**平台调它的工具**，结果怎么了（GET …/mcp-calls）。⑨ 入站：**它来调过平台吗**（GET /api/mcp/calls）。
+ * 两张表回答的问题不同，**别合成一块**（一个证明"它来过"，一个记录"我们找它办的事"）。
+ *
+ * 硬要求（D后端-70 §3「失败要说话」）：
+ *   ① `unsupported` / `expired` 绝不许渲染成成功或空白；
+ *   ② 不许只给一个绿勾而不给状态词（用户会当成"任务成了"）；
+ *   ③ `still_pending > 0` 必须提示"还有 N 条在跑"，否则用户以为漏了；
+ *   ④ `text` 是**对方回的原文**，界面必须写明"不是平台核对过的结论"（V130 同一口径）。
+ */
+const MCP_STATE_TEXT = {
+  pending: '在跑（平台每 20 秒查一次）',
+  working: '对方正在做',
+  done: '已完成（拿到终态结果）',
+  failed: '对方报失败',
+  cancelled: '对方已取消',
+  unsupported: '查不了：它不支持异步任务（只能同步等）',
+  expired: '超时未完成（24 小时没终态，平台已出队）'
+};
+const MCP_STATE_CLS = {
+  pending: 'st-pending', working: 'st-pending', done: 'st-done',
+  failed: 'st-bad', cancelled: 'st-bad', unsupported: 'st-unknown', expired: 'st-warn'
+};
+
+function _mcpWhen(sec) {
+  const n = Number(sec || 0);
+  if (!n) return '';
+  const dt = new Date(n * 1000);
+  if (isNaN(dt.getTime())) return '';
+  const p = x => String(x).padStart(2, '0');
+  return p(dt.getMonth() + 1) + '-' + p(dt.getDate()) + ' ' +
+    p(dt.getHours()) + ':' + p(dt.getMinutes());
+}
+
+function _mcpClip(s, n) {
+  const t = String(s || '');
+  return t.length > n ? (t.slice(0, n) + '…（原话更长，已截断）') : t;
+}
+
+function _mcpStateBadge(state) {
+  const st = String(state || '').toLowerCase() || 'pending';
+  const txt = MCP_STATE_TEXT[st] || ('未知状态 ' + st);
+  const cls = MCP_STATE_CLS[st] || 'st-unknown';
+  return '<span class="mcp-state ' + cls + '">' + esc(txt) + '</span>';
+}
+
+/** ⑧ 出站：平台调它 MCP 工具的**每次结果**（只读）。 */
+async function dockLoadMcpOut(hid) {
+  const block = document.getElementById('dkMcpOut-' + hid);
+  const body = _dkDetailsBody(block, true);
+  if (!block || !body) return;
+  const r = await dockGet('/api/docking/harness/' + encodeURIComponent(hid) + '/mcp-calls?limit=20');
+  const d = (r && r.data) || {};
+  if (!r || !r.ok || d.error) {
+    body.innerHTML = '<div class="dock-err">✗ 读不到调用记录：' +
+      escPlain(d.error || ('HTTP ' + (r && r.status))) + '</div>' +
+      '<p class="sub">读不到就说读不到 —— <b>不显示成"没有调用"</b>（那会让您以为没发生过）。</p>';
+    return;
+  }
+  const calls = d.calls || [];
+  if (!calls.length) {
+    body.innerHTML = '<div class="dock-warn">这个接入还没调过外部 MCP 工具（0 次）—— ' +
+      '空是"还没发生"，不是出错。等平台真调过一次（比如派活/自检），这里才会有记录。</div>';
+    return;
+  }
+  let h = '<p class="wiz-hint">共 ' + Number(d.count || calls.length) + ' 条（新的在前）' +
+    (d.note ? '　·　' + escPlain(String(d.note)) : '') + '</p>';
+  if (Number(d.still_pending || 0) > 0) {
+    h += '<div class="dock-warn">还有 <b>' + Number(d.still_pending) +
+      '</b> 条在跑 —— 后台每 20 秒查一次，<b>别以为漏了</b>。</div>';
+  }
+  h += '<p class="sub">这里的「结果」是<b>对方回的原文</b>，平台没替它核实内容 —— ' +
+    '别把「已完成」当成「干得对」（干得对看任务账本的证据档与采信态）。</p>';
+  h += calls.map(function (c) {
+    const st = String(c.state || 'pending').toLowerCase();
+    const bits = [];
+    if (c.workshop_id) {
+      bits.push('挂任务 <code>' + esc(String(c.workshop_id)) + '#' + esc(String(c.task_seq || '')) + '</code>');
+    }
+    if (c.handle) bits.push('句柄 <code>' + esc(_mcpClip(c.handle, 40)) + '</code>');
+    if (c.tries) bits.push('查了 ' + Number(c.tries) + ' 次');
+    const when = _mcpWhen(c.last_at || c.added_at);
+    if (when) bits.push('<span class="sub">' + esc(when) + '</span>');
+    let detail = '';
+    if (st === 'done' && c.text) {
+      detail = '<pre class="mcp-text">' + esc(_mcpClip(c.text, 600)) + '</pre>';
+    } else if (st === 'failed' || st === 'cancelled') {
+      detail = '<pre class="mcp-text">' + esc(_mcpClip(c.error || c.text || '（对方没给原因）', 600)) + '</pre>';
+    } else if (st === 'unsupported' || st === 'expired') {
+      detail = '<p class="sub">' + escPlain(c.why || c.error || '') + '</p>';
+    } else if (c.why) {
+      detail = '<p class="sub">' + escPlain(c.why) + '</p>';
+    }
+    return '<div class="mcp-row">' +
+      '<div><b>' + esc(String(c.tool || c.kind || '（未记工具名）')) + '</b>　' +
+      _mcpStateBadge(st) + '</div>' +
+      (bits.length ? '<div class="sub">' + bits.join('　') + '</div>' : '') +
+      detail + '</div>';
+  }).join('');
+  body.innerHTML = h;
+}
+
+/** ⑨ 入站：**它来调过平台吗**（`/api/mcp/calls` 留痕；空＝一次都没来过）。 */
+async function dockLoadMcpIn(hid) {
+  const block = document.getElementById('dkMcpIn-' + hid);
+  const body = _dkDetailsBody(block, true);
+  if (!block || !body) return;
+  const r = await dockGet('/api/mcp/calls?limit=20');
+  const d = (r && r.data) || {};
+  if (!r || !r.ok || d.error) {
+    body.innerHTML = '<div class="dock-err">✗ 读不到留痕：' +
+      escPlain(d.error || ('HTTP ' + (r && r.status))) + '</div>';
+    return;
+  }
+  const calls = d.calls || [];
+  if (!calls.length) {
+    body.innerHTML = '<div class="dock-warn">它还没来调过平台（0 次）—— ' +
+      '把平台挂成它的 MCP 服务器、它真用过一次工具之后，这里才会有东西。</div>';
+    return;
+  }
+  body.innerHTML = '<p class="wiz-hint">平台留痕 ' + Number(d.count || calls.length) +
+    ' 条（新的在前）：这是<b>它调平台</b>的记录，不是平台调它。</p>' +
+    calls.map(function (c) {
+      const ok = (c.kind === 'tools/call')
+        ? (c.ok === false ? '<span class="mcp-state st-bad">✗ 失败</span>'
+                          : '<span class="mcp-state st-done">✓ 成功</span>')
+        : '';
+      return '<div class="mcp-row"><div><code>' + escPlain(String(c.client || '（未知客户端）')) +
+        '</code>　' + escPlain(String(c.tool || c.kind || '')) + '　' + ok + '</div>' +
+        '<div class="sub">' + escPlain(String(c.at || '')) + '</div></div>';
+    }).join('');
 }
 
 /* ══ 档案 ⑤ 能力与证据（V73，DSH 226）════════════════════════

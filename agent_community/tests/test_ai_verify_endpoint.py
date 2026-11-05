@@ -22,8 +22,8 @@ _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
     sys.path.append(str(_ROOT))
 
-CFG = {"ai_provider": "openai", "ai_model": "example-model",
-       "ai_base_url": "https://api.example.com", "ai_api_key": "sk-example",
+CFG = {"ai_provider": "openai", "ai_model": "demo-model",
+       "ai_base_url": "http://127.0.0.1:9/v1", "ai_api_key": "sk-example",
        "ai_mode": "remote"}
 
 
@@ -128,3 +128,20 @@ def test_verify_does_not_create_config_file(client, monkeypatch):
     assert f.exists() == existed, "验证连通创建了配置文件：%s" % f
     if existed:
         assert f.stat().st_mtime_ns == before
+
+def test_verify_cache_hits_when_base_url_has_path(client, monkeypatch):
+    """base_url 带路径（`.../v1` 这种最常见写法）时，「验证连通」的结论也必须能在状态页查到。
+
+    起因（2026-11-05 实测）：`verify` 存缓存用归一化后的 base_url（`.../v1` → `...`），
+    而 `cached_verdict` 用原始值算指纹 ⇒ 永远 miss，界面一直说"还没验证过"。
+    """
+    from agent_community.platform import ai_verify
+
+    async def ok_probe(norm, model, api_key, timeout):
+        return {"ok": True, "status": 200, "elapsed_ms": 3, "reason": ""}
+
+    monkeypatch.setattr(ai_verify, "_probe_once", ok_probe, raising=False)
+    _set_cfg(monkeypatch, ai_base_url="http://127.0.0.1:9/v1")
+    assert client.post("/api/ai/verify").json()["ok"] is True
+    ai = client.get("/api/status").json()["ai"]
+    assert ai["reachable"] is True and ai["source"] == "cache", ai

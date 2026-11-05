@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#0B0A08">
 <title>工作间对接中心 · 从接组长到验收</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="boot.css">
 <link rel="stylesheet" href="hub.css?v=20261029b">
 <style>
@@ -15,7 +17,7 @@
                           ② 左侧常驻舱段导轨（滚动高亮当前舱段，替代原顶部跳转条）
                           ③ 卡片改制装甲面板（面板头横条 + 刻蚀编号 + 斜切角 + 螺栓） */
   html{scroll-behavior:smooth}
-  body{background:#0B0A08;color:var(--ink);
+  body{background:var(--bg);color:var(--ink);
        font-family:-apple-system,BlinkMacSystemFont,"Noto Sans SC","Segoe UI","Microsoft YaHei",sans-serif;
        font-size:16px;line-height:1.6}
   /* ── 顶栏（fixed：划到哪都在） ── */
@@ -24,19 +26,19 @@
   .topbar .logo-mark{color:var(--accent);font-size:15px}
   .topbar .logo .sub{font-size:11px;color:var(--muted);font-weight:400;margin-left:6px}
   .topbar .position{border-left:2px solid var(--accent);font-size:12px;color:var(--muted)}
-  .topbar .live-links a{border-radius:4px;background:#161311;padding:8px 12px;min-height:40px;display:inline-flex;align-items:center;
+  .topbar .live-links a{border-radius:4px;background:var(--bg2);padding:8px 12px;min-height:40px;display:inline-flex;align-items:center;
     transition:box-shadow .18s ease, transform .18s ease, background-color .18s ease}
-  .topbar .live-links a:hover{background:var(--info-soft);color:var(--info);border-color:var(--navy-lit,#4A76BE);
+  .topbar .live-links a:hover{background:var(--info-soft);color:var(--info);border-color:var(--navy-lit,var(--navy-lit));
     box-shadow:0 0 18px rgba(45,92,175,.28),0 4px 12px rgba(0,0,0,.4);transform:scale(1.02)}
-  .topbar .live-links a[aria-current]{color:var(--accent);border-color:rgba(255,53,39,.5)}
+  .topbar .live-links a[aria-current]{color:var(--accent);border-color:rgba(var(--accent-rgb),.5)}
   .topbar .hdrws{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
   /* ★2026-10-31（老板「回不去刚才那个工作间」）：顶栏给一个**带 ws_id 的回程键**——
      原来「工作间」那枚只跳 /workshop.html（列表页），等于回不到本间。
      点击区 44px 起（硬规则：≥44×44），和 live-links 同一套 hover。 */
-  .topbar .hdr-back{font-size:12px;color:var(--ink);background:#161311;border:1px solid var(--rule);
+  .topbar .hdr-back{font-size:12px;color:var(--ink);background:var(--bg2);border:1px solid var(--rule);
     border-radius:4px;padding:0 12px;min-height:44px;display:inline-flex;align-items:center;gap:6px;
     text-decoration:none;white-space:nowrap;transition:box-shadow .18s ease,transform .18s ease,background-color .18s ease}
-  .topbar .hdr-back:hover{background:var(--info-soft);color:var(--info);border-color:var(--navy-lit,#4A76BE);
+  .topbar .hdr-back:hover{background:var(--info-soft);color:var(--info);border-color:var(--navy-lit,var(--navy-lit));
     box-shadow:0 0 18px rgba(45,92,175,.28),0 4px 12px rgba(0,0,0,.4);transform:scale(1.02)}
   .topbar .hdr-back[hidden]{display:none}
   @media (prefers-reduced-motion:reduce){.topbar .hdr-back{transition:none}.topbar .hdr-back:hover{transform:none}}
@@ -46,12 +48,12 @@
   .hdrws[data-led="ok"]::before{background:var(--led-ok);box-shadow:0 0 5px var(--led-ok)}
   .hdrws[data-led="warn"]::before{background:var(--led-warn);box-shadow:0 0 5px var(--led-warn)}
   /* ── 巨构刊头 ── */
-  .masthead{position:relative;background:linear-gradient(180deg,#14110F 0%,#0B0A08 100%);
+  .masthead{position:relative;background:linear-gradient(180deg,var(--surface-1) 0%,var(--bg-deep) 100%);
             border-bottom:1px solid var(--rule);overflow:hidden}
   .masthead::before{content:"";position:absolute;left:0;top:0;bottom:10px;width:8px;
     background:var(--accent);box-shadow:var(--glow-engine)}          /* 红立柱＝发动机点火（全页唯一强发光） */
   .masthead::after{content:"";position:absolute;right:-40px;top:-60px;width:340px;height:340px;
-    background:radial-gradient(circle,rgba(255,53,39,.14),transparent 62%);pointer-events:none}  /* 远处结构体透出的光晕 */
+    background:radial-gradient(circle,rgba(var(--accent-rgb),.14),transparent 62%);pointer-events:none}  /* 远处结构体透出的光晕 */
   .mh-in{max-width:1320px;margin:0 auto;padding:34px 28px 26px 32px;position:relative;z-index:1}
   .mh-tag{font-family:var(--mono);font-size:11px;letter-spacing:.22em;color:var(--muted)}
   .mh-tag b{color:var(--accent);font-weight:800}
@@ -77,33 +79,33 @@
   .shell{display:grid;grid-template-columns:232px minmax(0,1fr);max-width:1320px;margin:0 auto;align-items:start}
   .bay-rail{position:sticky;top:calc(var(--tb,56px));max-height:calc(100vh - var(--tb,56px));
         overflow-y:auto;border-right:1px solid var(--rule);padding:18px 0 40px}
-  .bay-rail-h{font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;color:#89847C;
+  .bay-rail-h{font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;color:var(--dim);
           padding:0 18px 10px;border-bottom:1px solid var(--rule);margin-bottom:8px}
   .bay-rail-h span{color:var(--muted)}
   .bay-rail a{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:center;
           padding:8px 16px 8px 14px;border-left:3px solid transparent;text-decoration:none;
           color:var(--muted);font-size:13px;transition:none}
-  .bay-rail a b{font-family:var(--mono);font-size:10.5px;font-weight:800;color:#89847C;letter-spacing:.04em}
-  .bay-rail a:hover{color:var(--ink);background:#141110}
-  .bay-rail a.active{border-left-color:var(--accent);color:var(--ink);background:#181411}
+  .bay-rail a b{font-family:var(--mono);font-size:10.5px;font-weight:800;color:var(--dim);letter-spacing:.04em}
+  .bay-rail a:hover{color:var(--ink);background:var(--surface-1)}
+  .bay-rail a.active{border-left-color:var(--accent);color:var(--ink);background:var(--surface-2)}
   .bay-rail a.active b{color:var(--accent)}                                /* 红只标「当前舱段」——红回到信息位 */
   /* 无工作间语境时收起舱段（老板 2026-10-30「只能从工作间进入」）——用类切换，别写死 inline display */
   .ws-out{display:none!important}
   .main{padding:24px 28px 96px;min-width:0;
-    background-image:repeating-linear-gradient(0deg,rgba(232,228,219,.028) 0 1px,transparent 1px 48px),
-                     repeating-linear-gradient(90deg,rgba(232,228,219,.028) 0 1px,transparent 1px 48px)}
+    background-image:repeating-linear-gradient(0deg,rgba(var(--ink-rgb),.028) 0 1px,transparent 1px 48px),
+                     repeating-linear-gradient(90deg,rgba(var(--ink-rgb),.028) 0 1px,transparent 1px 48px)}
   /* ── 面板：常态隐框，hover 浮起泛光（2026-10-29 老板反馈「直角+直接框不好看」）──
      去掉 clip-path 斜切：它既造成生硬直角，又会裁掉 box-shadow 使浮起投影做不出来。 */
-  .card{position:relative;background-color:#181512;
-        border:1px solid rgba(232,228,219,.055);border-radius:10px;
+  .card{position:relative;background-color:var(--bg2);
+        border:1px solid rgba(var(--ink-rgb),.055);border-radius:10px;
         padding:16px;margin:0 0 20px;scroll-margin-top:calc(var(--tb,56px) + 16px);
-        box-shadow:inset 0 0 0 1px rgba(232,228,219,.03);
+        box-shadow:inset 0 0 0 1px rgba(var(--ink-rgb),.03);
         transition:box-shadow .18s ease, transform .18s ease, border-color .18s ease;
         background-image:
-          radial-gradient(circle 2px,#5A544A 1.5px,transparent 1.9px),
-          radial-gradient(circle 2px,#5A544A 1.5px,transparent 1.9px),
-          radial-gradient(circle 2px,#5A544A 1.5px,transparent 1.9px),
-          radial-gradient(circle 2px,#5A544A 1.5px,transparent 1.9px);
+          radial-gradient(circle 2px,var(--line-soft) 1.5px,transparent 1.9px),
+          radial-gradient(circle 2px,var(--line-soft) 1.5px,transparent 1.9px),
+          radial-gradient(circle 2px,var(--line-soft) 1.5px,transparent 1.9px),
+          radial-gradient(circle 2px,var(--line-soft) 1.5px,transparent 1.9px);
         background-repeat:no-repeat;
         background-size:4px 4px,4px 4px,4px 4px,4px 4px;
         background-position:24px 10px,calc(100% - 10px) 10px,10px calc(100% - 10px),calc(100% - 24px) calc(100% - 10px)}
@@ -122,23 +124,23 @@
                0 16px 34px rgba(0,0,0,.65);
     transform:scale(1.015)}
   .card:hover .v5-sec{text-shadow:var(--rgb-split-sec)}
-  .howto{box-shadow:inset 0 0 0 1px rgba(232,228,219,.09),0 4px 14px rgba(0,0,0,.35)}
+  .howto{box-shadow:inset 0 0 0 1px rgba(var(--ink-rgb),.09),0 4px 14px rgba(0,0,0,.35)}
   /* 顶部琥珀警戒条已按老板要求取消：功能卡片保持深色，不放彩色条 */
   /* 面板头：横条 + 刻蚀编号 + 虚线延长线（把 .v5-sec 拉出卡片内距成为通栏） */
   .v5-sec{display:flex;align-items:center;gap:12px;margin:-16px -16px 14px;padding:11px 16px;
-          background:#1E1A16;border-bottom:1px solid #322D26;font-size:19px;font-weight:900;letter-spacing:.02em;
+          background:var(--surface-3);border-bottom:1px solid var(--bg5);font-size:19px;font-weight:900;letter-spacing:.02em;
           transition:text-shadow .18s ease}
           /* ★2026-10-30 色差改为 hover 触发（老板：色差只在鼠标位于功能卡片上、
              卡片放大才出现）—— 常态保持干净，见 .card:hover 处 */
   .v5-sec:before{content:"";width:9px;height:9px;border:2px solid var(--muted);flex:none}
-  .v5-sec .n{color:#918877;font-family:var(--mono);font-size:16px;font-weight:800;letter-spacing:.06em;white-space:nowrap;
+  .v5-sec .n{color:var(--dim);font-family:var(--mono);font-size:16px;font-weight:800;letter-spacing:.06em;white-space:nowrap;
              text-shadow:none}  /* 铭牌编号摘出色差：弱灰等宽字叠色差会糊成蓝绿团（1x 实测），保持刻蚀稳定感 */
   .v5-sec:after{content:"";flex:1;height:2px;
-    background:repeating-linear-gradient(90deg,#3A342C 0 10px,transparent 10px 16px)}
+    background:repeating-linear-gradient(90deg,var(--bg5) 0 10px,transparent 10px 16px)}
   /* 当前段不再用红连线（老板 2026-10-29「不要上边缘红条」）：
      改为面板头在深炭色内提亮一档，定位仍由左侧舱段导轨的 active 红边负责 */
-  .card.is-current .v5-sec{background:#241F1A}
-  .card.is-current{border-color:#4A443B}
+  .card.is-current .v5-sec{background:var(--bg4)}
+  .card.is-current{border-color:var(--line-soft)}
   .v5-sub{font-size:12.5px;color:var(--muted);font-weight:400;letter-spacing:0;margin:0 0 10px}
   .howto ol{margin:6px 0 0;padding-left:20px}
   .howto li{font-size:13px;color:var(--muted);margin:4px 0}
@@ -148,15 +150,15 @@
   label.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted)}
   .row > label{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding:3px 0;min-height:28px}
   /* 常态：不画常驻实框，靠背景明度分层，只留一条极淡底线暗示「可填写」 */
-  input,select,textarea{background:#100E0C;color:var(--ink);
-        border:1px solid rgba(232,228,219,.075);border-bottom-color:rgba(232,228,219,.20);
+  input,select,textarea{background:var(--bg-deep);color:var(--ink);
+        border:1px solid rgba(var(--ink-rgb),.075);border-bottom-color:rgba(var(--ink-rgb),.20);
         border-radius:4px;padding:8px 10px;font:inherit;min-width:180px;
         transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease}
   /* 聚焦（老板 2026-10-29「亮蓝突兀、把输入框框起来没高级感」）：
      去掉亮蓝 2px 闭合粗框，改「藏蓝底边受光线 + 两层藏蓝柔光晕 + 背景微提亮」——发光而不闭合。 */
   input:not([type=checkbox]):focus,select:focus,textarea:focus{
-        outline:none;border-color:rgba(232,228,219,.10);background:#151821;
-        box-shadow:inset 0 -2px 0 rgba(74,118,190,.78),
+        outline:none;border-color:rgba(var(--ink-rgb),.10);background:#151821;
+        box-shadow:inset 0 -2px 0 rgba(var(--navy-lit-rgb),.78),
                    0 0 26px rgba(45,92,175,.40),
                    0 0 52px rgba(30,62,130,.24)}
   /* 键盘焦点：把光晕再提一档即可满足 WCAG 2.4.7 可见性。
@@ -164,22 +166,22 @@
      正是老板说的「把输入框框起来了」的观感来源。 */
   input:not([type=checkbox]):focus-visible,select:focus-visible,textarea:focus-visible{
         outline:none;
-        box-shadow:inset 0 -3px 0 rgba(74,118,190,.86),
+        box-shadow:inset 0 -3px 0 rgba(var(--navy-lit-rgb),.86),
                    0 0 30px rgba(45,92,175,.50),
                    0 0 60px rgba(30,62,130,.30)}
-  .row > label input[type=checkbox]{min-width:0;width:22px;height:22px;margin:0;accent-color:var(--navy-lit,#4A76BE)}
-  input[type=checkbox]{accent-color:var(--navy-lit,#4A76BE);width:22px;height:22px;min-width:0}
-  input[type=checkbox]:focus-visible{outline:2px solid var(--navy-lit,#4A76BE);outline-offset:2px}
+  .row > label input[type=checkbox]{min-width:0;width:22px;height:22px;margin:0;accent-color:var(--navy-lit,var(--navy-lit))}
+  input[type=checkbox]{accent-color:var(--navy-lit,var(--navy-lit));width:22px;height:22px;min-width:0}
+  input[type=checkbox]:focus-visible{outline:2px solid var(--navy-lit,var(--navy-lit));outline-offset:2px}
   textarea{width:100%;min-height:88px;font-family:var(--mono);font-size:13px}
   /* 机械感改由「按下瞬时位移」承载；hover 用泛光+微放大，不再靠硬边直角、不再上浮 */
-  button{background:#241F1A;color:var(--ink);border:1px solid #4A443B;border-radius:4px;
+  button{background:var(--bg4);color:var(--ink);border:1px solid var(--line-soft);border-radius:4px;
          min-height:44px;padding:7px 14px;font:inherit;cursor:pointer;
          box-shadow:var(--shadow-hard-sm);
          transition:box-shadow .18s ease, transform .18s ease, background-color .18s ease}
-  button:hover{background:#2E2822;
+  button:hover{background:var(--surface-4);
          /* ★2026-10-30 五修（老板：不要增强白框了）：描边不再翻白、撤掉白色泛光，
             按钮 hover 只留红蓝对角柔光 + 投影 —— 白框不再是一种响应语言 */
-         border-color:rgba(232,228,219,.28);
+         border-color:rgba(var(--ink-rgb),.28);
          box-shadow:var(--rgb-glow),0 6px 16px rgba(0,0,0,.5);
          transform:scale(1.02)}
   button:active{transform:translate(1px,1px);box-shadow:none;transition:none}
@@ -193,17 +195,17 @@
   }
   .msg{font-size:12.5px;color:var(--muted)}
   .ok{color:var(--green)} .bad{color:var(--red)} .warn{color:var(--yellow)}
-  pre{background:#100E0C;border:1px solid #3A342C;border-radius:4px;padding:10px;
+  pre{background:var(--bg-deep);border:1px solid var(--bg5);border-radius:4px;padding:10px;
       overflow:auto;max-height:280px;font-size:12px;white-space:pre-wrap}
   table{width:100%;border-collapse:collapse;font-size:12.5px}
-  th,td{border-bottom:1px solid #322D26;padding:6px 8px;text-align:left;vertical-align:top}
+  th,td{border-bottom:1px solid var(--bg5);padding:6px 8px;text-align:left;vertical-align:top}
   th{color:var(--muted);font-weight:600}
   .banner{border-radius:4px;padding:8px 10px;font-size:12.5px;margin:8px 0;border:1px solid}
-  .banner.bad{background:var(--red-soft);border-color:rgba(255,53,39,.5);color:var(--red)}
-  .banner.ok{background:var(--green-soft);border-color:rgba(134,179,148,.5);color:var(--green)}
-  .banner.warn{background:var(--yellow-soft);border-color:rgba(217,171,83,.5);color:var(--yellow)}
+  .banner.bad{background:var(--red-soft);border-color:rgba(var(--accent-rgb),.5);color:var(--red)}
+  .banner.ok{background:var(--green-soft);border-color:rgba(var(--green-rgb),.5);color:var(--green)}
+  .banner.warn{background:var(--yellow-soft);border-color:rgba(var(--yellow-rgb),.5);color:var(--yellow)}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  code{background:#100E0C;border:1px solid #3A342C;border-radius:4px;
+  code{background:var(--bg-deep);border:1px solid var(--bg5);border-radius:4px;
        padding:1px 5px;font-size:12px;font-family:var(--mono)}
   [id$="Out"]{overflow-x:auto}
   /* ── 窄屏：导轨降为顶部横向舱段条 ── */
@@ -241,7 +243,67 @@
     .v5-sec{font-size:17px}
     .v5-sec:after{display:none}      /* 折行时虚线与斜切不协调（Nitpick），窄屏直接收掉 */
   }
+  /* ── 结构化讨论的条目卡（2026-11-05 老板：「卡片是否过小，有很多信息怎么办」）──────
+     三条硬约束：
+       ① **不再卡片套卡片**（原来 .card 里又 .card ⇒ 有效宽度被吃掉两层 padding）；
+       ② 宽屏**左元信息 / 右正文**两列，信息多也不会一行行往下堆；窄屏塌成一列；
+       ③ 长内容**默认只给摘要 + 一句「展开全部 N 项」**，不做"一屏十条卡片"。 */
+  .ailp-item{display:grid;grid-template-columns:186px minmax(0,1fr);gap:12px;
+    padding:10px 12px;margin:8px 0;border-left:3px solid var(--line);
+    background:#141210;border-radius:4px}
+  @media (max-width:820px){.ailp-item{grid-template-columns:1fr;gap:6px}}
+  .ailp-meta{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);min-width:0}
+  .ailp-meta .ailp-no{font-family:var(--mono);color:var(--muted)}
+  .ailp-meta .ailp-type{font-size:12.5px;font-weight:600}
+  .ailp-meta .ailp-route,.ailp-meta .ailp-ref,.ailp-meta .ailp-when{
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ailp-body{min-width:0}
+  .ailp-sum{font-size:13.5px;line-height:1.65;word-break:break-word}
+  .ailp-f{display:grid;grid-template-columns:88px minmax(0,1fr);gap:8px;margin:4px 0;
+    font-size:13px;line-height:1.65}
+  .ailp-f .ailp-k{color:var(--muted);font-size:12.5px;padding-top:1px}
+  .ailp-f .ailp-v{word-break:break-word}
+  @media (max-width:560px){.ailp-f{grid-template-columns:1fr;gap:1px}}
+  .ailp-more{margin-top:6px}
+  .ailp-more>summary{cursor:pointer;font-size:12px;color:var(--muted);list-style:none}
+  .ailp-more>summary:before{content:"▸ ";color:var(--accent)}
+  .ailp-more[open]>summary:before{content:"▾ "}
+  .ailp-chip{display:inline-block;margin:1px 4px 1px 0;padding:1px 7px;border-radius:999px;
+    font-size:12px;border:1px solid rgba(var(--ink-rgb),.16);background:#1a1714;
+    color:var(--ink);white-space:nowrap}
+  /* ── 讨论列表的滚动（2026-11-05 老板：「是否内置上下滚动的页面」）──────────────
+     取舍：**只在条目多时才内滚**（>6 条）。理由：
+       · 短列表内滚 = 给 3 条内容加个小滚动条，纯添噪；
+       · 长列表整页拉长 = 把后面的 UNIT-09/协议台推得很远（实测 13 条时整页 8126px）；
+       · 内滚必须 `overscroll-behavior:contain`，否则滚到底会带着整页一起滚（触控板最容易误触）。 */
+  .ailp-list{border-radius:6px}
+  .ailp-list.is-scroll{max-height:min(62vh,640px);overflow-y:auto;overscroll-behavior:contain;
+    padding-right:8px;scrollbar-width:thin;
+    mask-image:linear-gradient(to bottom,transparent 0,#000 10px,#000 calc(100% - 10px),transparent 100%)}
+  .ailp-list.is-scroll::-webkit-scrollbar{width:8px}
+  .ailp-list.is-scroll::-webkit-scrollbar-thumb{background:rgba(var(--ink-rgb),.18);border-radius:4px}
+  .ailp-list.is-scroll::-webkit-scrollbar-track{background:transparent}
+  .ailp-list:focus-visible{outline:1px solid var(--accent);outline-offset:2px}
+  /* ── V130 跨组织采信（四值徽标 + 差异表 + 争议卡；2026-11-05）────────────────     口径：`accepted_self` 不是通过；`disputed` 冻结待裁；`refuted` 已证伪。
+     颜色只做分组，**结论以文字为准**（截图取证时不能只看颜色）。 */
+  .peer-box{margin:10px 0;padding:10px 12px;border:1px solid var(--rule);border-radius:6px;background:#151210}
+  .peer-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .peer-badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;
+    border:1px solid currentColor;font-weight:600}
+  .peer-badge.st-self{color:var(--yellow)} .peer-badge.st-peer{color:var(--green)}
+  .peer-badge.st-dispute{color:var(--red)} .peer-badge.st-refuted{color:var(--red)}
+  .peer-badge.st-none{color:var(--muted)}
+  .peer-diff{margin:6px 0;font-size:12.5px}
+  .peer-diff .bad-row{color:var(--red)}
+  .peer-dispute{margin:8px 0;padding:8px 10px;border-left:3px solid var(--red);background:var(--red-soft)}
+  .peer-form{display:grid;gap:6px;margin-top:8px}
+  .peer-form label{display:grid;gap:3px;font-size:12px;color:var(--muted)}
+  .peer-form input,.peer-form textarea,.peer-form select{font:inherit;font-size:13px}
+  .peer-form textarea{min-height:58px}
+  .peer-form .peer-files{min-height:52px;font-family:var(--mono);font-size:12px}
+  .peer-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
 </style>
+<link rel="stylesheet" href="glass.css">
 </head>
 <body>
 <header class="topbar">
@@ -425,7 +487,12 @@
       <label><input type="checkbox" id="evProto"> A 档已真调通</label>
       <label><input type="checkbox" id="evBridge"> B 档桥通（生成桥 + 取件成功）</label>
       <label><input type="checkbox" id="evMailbox" title="老板 SOP：只通没有取件，最高只记 acked"> B 档真从 _inbox 取走一次</label>
+      <!-- ★D后端-68/69：A/B 档都能平台自验了 —— 打勾只该留给 C 档和人工申报。
+           「检查取件」平台自己写一条测试消息、自己看它被取走没有；第一次拿 probe_id，
+           之后每次点都带同一条再看（取件发生在两次点击之间）。 -->
+      <button onclick="bridgeProbe()" id="probeBtn" title="平台自己往它邮箱写一条测试消息，再看有没有被取走 —— 取走了记「平台验的」">检查取件（平台自验）</button>
     </div>
+    <div class="v5-sub">A 档：它用对接单第 6b 节的一次性口令自己答一次，平台<b>自己</b>记（不用你打勾）。B 档：点上面「检查取件」。打勾只用于 C 档和没接自验的老路径 —— 界面上「平台验的」和「你打的勾」长得不一样。</div>
     <div class="row">
       <label class="f" style="flex:1">覆盖范围（必填，写清到哪一段）
         <input id="evScope" placeholder="例：粘贴+回车+改名，未验证它能回话">
@@ -437,6 +504,7 @@
       <span class="msg" id="evMsg"></span>
     </div>
     <div id="evOut"></div>
+    <div id="probeOut"></div>
     </details>
   </div>
 
@@ -504,7 +572,7 @@
 
   <div class="card" id="sec7">
     <div class="v5-sec"><span class="n">UNIT-07</span>验收（证据有一档够格就行；L3 一律拒）</div>
-    <div class="v5-sub">给结论前先看<b>证据四步表</b>：第 1、4 步是硬前置与收尾（派活记录 / 人拍板），第 2、3 步是<b>可用证据档</b>（产物真在盘上 ⇒ L0，有回执留痕 ⇒ L2）——<b>不是四步都要打勾</b>，画成进度条就是撒谎。L1 是「它库已有」，必须写凭据，界面一律标<b>平台未核对</b>；L3（大模型自报）永远拒。</div>
+    <div class="v5-sub">给结论前先看<b>证据四步表</b>：第 1、4 步是硬前置与收尾（派活记录 / 人拍板），第 2、3 步是<b>可用证据档</b>（产物真在盘上 ⇒ L0，有回执留痕 ⇒ L2）——<b>不是四步都要打勾</b>，画成进度条就是撒谎。L1 是「它库已有」，必须写凭据，界面一律标<b>平台未核对</b>；L3（大模型自报）永远拒。<br><b>跨组织</b>的活还多一层<b>采信态</b>：只有「本侧独立重算一致」（<code>accepted_peer</code>）才算通过；「只有它自己说」<code>accepted_self</code>、<code>disputed</code>、<code>refuted</code> 一律不许过 —— <b>它会说「对得上」不算平台核过</b>。</div>
     <div class="row">
       <label class="f">任务<select id="revTask" onchange="loadEvidenceView()"></select></label>
       <label class="f">预演档位
@@ -518,6 +586,8 @@
       <span class="msg" id="evMsg"></span>
     </div>
     <div id="evView"></div>
+    <!-- ★V130：跨组织的活多一段「采信态」——没有 accepted_peer 就不算验收通过 -->
+    <div id="peerView"></div>
     <div class="row">
       <label class="f">结论
         <select id="revResult">
@@ -549,26 +619,40 @@
 
   <div class="card" id="sec8">
     <span id="ailp" class="v5-anchor" aria-hidden="true"></span>
-    <div class="v5-sec"><span class="n">UNIT-08</span>结构化讨论（AILP 2.0，自由聊天会被拒）</div>
-    <div class="v5-sub">讨论区只认**强类型信封**（类型清单由 <code>GET /api/ailp/types</code> 决定，2026-11-01 起是七类：提案/质疑/改进/呼应/提问/行动项/推荐），选类型 → 表单会按字段表生成 → 发一条；闲聊发不进来。</div>
+    <div class="v5-sec"><span class="n">UNIT-08</span>结构化讨论 <span class="msg">（可选 · 给 agent 之间留条目，人一般用不到）</span></div>
+    <div class="v5-sub">这里<b>不是聊天室</b>。它只解决一件事：多个 agent 一起干活时，<b>每句话要能追到依据</b> —— 谁提的方案、谁质疑了哪一条、依据是哪条消息或哪个任务。平台只校验与记账，<b>不生成内容</b>；自由聊天会被拒。<br>人要看的是<b>下面这份讨论本身</b>；想补一句再展开「我要说一句」。</div>
     <div class="row">
-      <label class="f">类型
-        <!-- ★2026-11-01：**选项不再写死**，由 loadAilpTypes() 按 /api/ailp/types 填（一处真相）。
-             以前这里固定四类 ⇒ 后端加了 CLARIFY/ACT/RECOMMEND，界面上根本选不到。 -->
-        <select id="ailpType" onchange="renderAilpForm()"></select>
-      </label>
-      <label class="f">发给<input id="ailpTarget" placeholder="组长 / 员工01"></label>
-      <label class="f">manifest_ref（必须真实条目）<select id="ailpRef"></select></label>
       <button onclick="loadAilp()">刷新讨论</button>
+      <span class="msg" id="ailpLoadMsg"></span>
     </div>
-    <div id="ailpForm"></div>
-    <div class="row">
-      <button class="p" onclick="sendAilp()">发一条</button>
-      <span class="msg" id="ailpSendMsg"></span>
-    </div>
-    <div class="msg">字段表由 <code>GET /api/ailp/types</code> 提供（唯一真源）；平台只校验与记账，不生成内容；
-      讨论区只认这四类信封，<b>自由聊天会被拒（422）</b>。</div>
     <div id="ailpOut"></div>
+    <!-- 条目多时这里内部上下滚（>6 条才启用，见 .ailp-list.is-scroll）；短列表保持自然高度 -->
+    <div id="ailpList" class="ailp-list" tabindex="0" role="log"
+         aria-label="结构化讨论条目（按时间正序，最新的在下面）"></div>
+    <details id="ailpCompose">
+      <summary class="msg">我要说一句 / 补一条（展开 —— 不懂协议也能发：选一句人话，填两句就够）</summary>
+      <div class="row">
+        <button onclick="ailpQuick('PROPOSE')">提个方案</button>
+        <button onclick="ailpQuick('CHALLENGE')">质疑一条</button>
+        <button onclick="ailpQuick('CLARIFY')">问一句</button>
+        <button onclick="ailpQuick('ACT')">派个活</button>
+      </div>
+      <div class="row">
+        <label class="f">类型
+          <!-- ★2026-11-01：**选项不再写死**，由 loadAilpTypes() 按 /api/ailp/types 填（一处真相）。
+               以前这里固定四类 ⇒ 后端加了 CLARIFY/ACT/RECOMMEND，界面上根本选不到。 -->
+          <select id="ailpType" onchange="renderAilpForm()"></select>
+        </label>
+        <label class="f">发给<input id="ailpTarget" placeholder="组长 / 员工01"></label>
+        <label class="f">挂在哪份文件 / 任务上<select id="ailpRef"></select></label>
+      </div>
+      <div id="ailpForm"></div>
+      <div class="row">
+        <button class="p" onclick="sendAilp()">发一条</button>
+        <span class="msg" id="ailpSendMsg"></span>
+      </div>
+      <div class="msg">字段表由 <code>GET /api/ailp/types</code> 提供（唯一真源）；依据 / 引用都能从<b>下面已有条目里选</b>，不用手抄 id；平台只校验与记账，不生成内容。</div>
+    </details>
   </div>
 
   <div class="card" id="sec9">

@@ -41,10 +41,12 @@ WHO = {"派活记录": "组长", "产物在盘上": "员工", "回执留痕": "�
 
 # ── ① 档位校验（`POST …/review` 与只读视图共用） ──────────────────────
 def check_level(level: str, evidence_ref: str = "", *, artifacts_empty=None,
-                artifacts_total=None) -> dict:
+                artifacts_total=None, proof_exists=None) -> dict:
     """判这一档能不能用来「通过」。返回 `{"ok": bool, ...}`，**永远不抛**。
 
     - `artifacts_empty`：`True`/`False` = 这次**真扫过**盘；`None` = 没扫（不知道，不算"空"）。
+    - `proof_exists`：`True`/`False` = 路由层对**像路径的凭据**真 `stat` 过；`None` = 不是路径形态
+      （人工凭据，平台本来就核对不了，`V130` §4 规则二：读不到才不算 L1）。
     """
     lvl = str(level or "").strip().upper()
     ref = str(evidence_ref or "").strip()
@@ -65,6 +67,12 @@ def check_level(level: str, evidence_ref: str = "", *, artifacts_empty=None,
                          "**没有凭据的 L1 按 L4（人眼确认）算**",
                 "next": "要么补 evidence_ref（哪个库/哪个会话/谁核的/用什么工具核的），"
                         "要么直接改成 L4 并按人眼确认留 who/when"}
+    # 规则一之二（V130 §4 规则二）：**凭据指向的东西必须真的存在**；路径 stat 不到 ⇒ 不算 L1
+    if lvl == "L1" and ref and proof_exists is False:
+        return {"ok": False, "code": "L1_PROOF_MISSING", "normalized": "L4",
+                "error": "L1 的凭据 `%s` 指向的路径**不存在**（平台真 stat 过）⇒ 按 L4 算，不采信" % ref[:200],
+                "next": "改成真实存在的路径，或把凭据换成可核的具体位置（哪个库/哪个会话/谁核的）；"
+                        "确实只有人眼看过就选 L4"}
 
     # 规则二：产物真空时只许 L4
     if artifacts_empty is True and lvl in NEEDS_ARTIFACTS:
@@ -95,6 +103,61 @@ def check_level(level: str, evidence_ref: str = "", *, artifacts_empty=None,
         out["warn"] = (out.get("warn", "") + "；" if out.get("warn") else "") + \
             "这次没有扫产物，平台无法确认盘上有没有文件"
     return out
+
+
+# ── ②' 跨组织复核视图（`V130` §4；只读纯函数） ──────────────────────────
+def proof_looks_like_path(evidence_ref: str) -> bool:
+    """凭据像不像**本机文件路径**（像才去 `stat`；不像就按人工凭据、如实说平台未核对）。
+
+    只认：Windows 盘符 / UNC / POSIX 绝对路径 / `./`、`../` 前缀。
+    不做"含斜杠就算路径"——那会把「a2a/session #12」这类文字凭据 `stat` 成不存在，
+    反而把**对的人工凭据误拒**（宁可如实说"平台没核"，也不许冤枉人）。
+    """
+    r = str(evidence_ref or "").strip()
+    if not r:
+        return False
+    if len(r) >= 3 and r[1] == ":" and r[2] in ("\\", "/"):
+        return True
+    return r.startswith(("\\\\", "/", "./", "../", ".\\", "..\\", "~/"))
+
+
+def build_cross_org(external: dict | None) -> dict:
+    """把账本 `external` 段摊成**人看得懂的跨组织采信**（纯函数，不写盘）。"""
+    ext = external or {}
+    state = str(ext.get("peer_accepted") or ("accepted_self" if ext else ""))
+    meaning = {
+        "accepted_self": "未复核：只有它自己说",
+        "accepted_peer": "已复核：本侧重算一致",
+        "disputed": "有争议，不采信（冻结待裁）",
+        "refuted": "已证伪（可直接降级）",
+    }.get(state, state)
+    diff = ext.get("peer_diff") or {}
+    files = diff.get("files") or []
+    bad = [f for f in files if f.get("status") not in ("match", None)]
+    dv = ext.get("dispute") or {}
+    return {
+        "accept_state": state, "accept_meaning": meaning,
+        "can_pass": state == "accepted_peer",
+        "peer_checked_at": ext.get("peer_checked_at", ""),
+        "peer_check": ext.get("peer_check") or {},
+        "diff_summary": "" if not files else "%d 个文件：一致 %d / 不一致 %d / 本侧缺 %d / 无 hash %d" % (
+            len(files), diff.get("matched", 0), diff.get("mismatched", 0),
+            diff.get("missing_local", 0), diff.get("no_hash", 0)),
+        "diff_bad": [{"key": f.get("key"), "status": f.get("status"), "why": f.get("why")}
+                     for f in bad[:10]],
+        "diff_ok_sample": [f.get("key") for f in files if f.get("status") == "match"][:10],
+        "dispute": ({"raised_by": dv.get("raised_by"), "claims": dv.get("claims") or [],
+                     "adjudicator": dv.get("adjudicator"), "outcome": dv.get("outcome"),
+                     "why": dv.get("why"), "at": dv.get("at")} if dv else None),
+        "why": ("只有交付方自证，接收方还没独立复核；**这不叫通过**" if state == "accepted_self"
+                else ("本侧真重算一致" if state == "accepted_peer"
+                      else ("双方主张冲突、未裁决 ⇒ 冻结待裁（记录不删）" if state == "disputed"
+                            else "已有证据证明这条交付不成立"))),
+        "next": ("" if state == "accepted_peer" else
+                 "POST …/tasks/{seq}/peer-review 做本侧重算" if state == "accepted_self" else
+                 "把双方主张与待裁对象写进 POST …/tasks/{seq}/dispute" if state == "disputed" else
+                 "退回返工/拒收；要重交得重新派活"),
+    }
 
 
 # ── ② 四步表（`GET …/evidence-view` 与 `POST …/review` 成败都用它） ──
@@ -194,6 +257,7 @@ def build_view(*, task_seq: int, rec: dict | None, slot_dir: str = "",
         nxt = ("看过产物后点「通过」（evidence_level 用 %s）；没看过就点「返工」"
                % (have[0] if have else "L4"))
 
+    ext = (rec or {}).get("external") or {}
     return {"task_seq": int(task_seq), "slot_dir": slot_dir,
             "steps": steps, "evidence_have": have,
             "blocking": blocking, "who_should_fix": WHO.get(blocking, ""),
@@ -203,6 +267,8 @@ def build_view(*, task_seq: int, rec: dict | None, slot_dir: str = "",
                                    "total_files": total,
                                    "slot_exists": exists,
                                    "files_preview": list(files.keys())[:3]},
+            # ★V130：**跨组织任务多一段采信态**（内部任务为 None，四步表口径不变）
+            "cross_org": build_cross_org(ext) if ext else None,
             "manual_required": False,
             "manual_hint": ""}
 

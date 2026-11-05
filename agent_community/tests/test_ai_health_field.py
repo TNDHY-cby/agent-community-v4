@@ -62,8 +62,9 @@ def test_not_configured_is_honest(client, monkeypatch):
 
 
 def test_configured_but_unverified_is_null_not_true(client, monkeypatch):
-    _set_cfg(monkeypatch, ai_provider="openai", ai_model="example-model",
-             ai_base_url="https://api.example.com", ai_api_key="sk-example")
+    # ⚠️ 样例**不能用占位值**（占位值现在判成"没配"，见 test_placeholder_config_is_not_configured）
+    _set_cfg(monkeypatch, ai_provider="openai", ai_model="demo-model",
+             ai_base_url="http://127.0.0.1:9/v1", ai_api_key="sk-example")
     ai = client.get("/api/status").json()["ai"]
     assert ai["configured"] is True
     assert ai["reachable"] is None, "没验证过必须给 null（未知），不许谎报 true"
@@ -73,10 +74,12 @@ def test_configured_but_unverified_is_null_not_true(client, monkeypatch):
 def test_cached_success_and_failure_are_reported(client, monkeypatch):
     from agent_community.platform import ai_verify
     from agent_community.platform.ai_verify import _fingerprint, _store
-    cfg = {"ai_provider": "openai", "ai_model": "example-model",
-           "ai_base_url": "https://api.example.com", "ai_api_key": "sk-example"}
+    cfg = {"ai_provider": "openai", "ai_model": "demo-model",
+           "ai_base_url": "http://127.0.0.1:9/v1", "ai_api_key": "sk-example"}
     _set_cfg(monkeypatch, **cfg)
-    fp = _fingerprint(cfg["ai_provider"], cfg["ai_base_url"], cfg["ai_model"], cfg["ai_api_key"])
+    from agent_community.platform.ai_verify import _precheck
+    _norm, _rj, _h = _precheck(cfg["ai_provider"], cfg["ai_base_url"], cfg["ai_model"])
+    fp = _fingerprint(cfg["ai_provider"], _norm, cfg["ai_model"], cfg["ai_api_key"])
 
     # ④a 成功结论
     _store(fp, True, {"ok": True, "status": 200, "reason": "", "at": time.time()})
@@ -96,8 +99,8 @@ def test_cached_success_and_failure_are_reported(client, monkeypatch):
 def test_ai_detail_is_plain_text_for_ui(client, monkeypatch):
     """`detail` 是**直接显示在界面上**的：不许带 markdown 记号（`**` 会原样露出）。
     前端早就为"星号原样露出"修过一次（通道 186 的 mdLite 那笔）——这里守住同一口径。"""
-    _set_cfg(monkeypatch, ai_provider="openai", ai_model="example-model",
-             ai_base_url="https://api.example.com", ai_api_key="sk-example")
+    _set_cfg(monkeypatch, ai_provider="openai", ai_model="demo-model",
+             ai_base_url="http://127.0.0.1:9/v1", ai_api_key="sk-example")
     ai = client.get("/api/status").json()["ai"]
     assert "**" not in ai["detail"], "detail 里出现了 markdown 记号：%r" % ai["detail"]
 
@@ -110,10 +113,12 @@ def test_status_never_triggers_a_probe(client, monkeypatch):
     """连打两次，结论时间不许被刷新（证明 /api/status 没去探活）。"""
     from agent_community.platform import ai_verify
     from agent_community.platform.ai_verify import _fingerprint, _store
-    cfg = {"ai_provider": "openai", "ai_model": "example-model",
-           "ai_base_url": "https://api.example.com", "ai_api_key": "sk-example"}
+    cfg = {"ai_provider": "openai", "ai_model": "demo-model",
+           "ai_base_url": "http://127.0.0.1:9/v1", "ai_api_key": "sk-example"}
     _set_cfg(monkeypatch, **cfg)
-    fp = _fingerprint(cfg["ai_provider"], cfg["ai_base_url"], cfg["ai_model"], cfg["ai_api_key"])
+    from agent_community.platform.ai_verify import _precheck
+    _norm, _rj, _h = _precheck(cfg["ai_provider"], cfg["ai_base_url"], cfg["ai_model"])
+    fp = _fingerprint(cfg["ai_provider"], _norm, cfg["ai_model"], cfg["ai_api_key"])
     _store(fp, True, {"ok": True, "status": 200, "reason": "", "at": time.time() - 60})
 
     a1 = client.get("/api/status").json()["ai"]

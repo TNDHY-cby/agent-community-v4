@@ -82,7 +82,10 @@ def test_gate_in_serialized_workshop():
 
 
 def test_placeholder_config_warns_but_saves():
-    r = C.post("/api/config", json={"ai_mode": "remote", "ai_base_url": "https://api.example.com",
+    # ★2026-11-05：不传 provider 会被 400 挡（正确：不能存一个没 provider 的配置）。
+    #   本条测的是"占位符要警告但能保存"，与 provider 无关 ⇒ 补上 openai 保持原意。
+    r = C.post("/api/config", json={"ai_provider": "openai", "ai_mode": "remote",
+                                    "ai_base_url": "https://api.example.com",
                                     "ai_model": "example-model-flash", "api_key": "sk-example"})
     assert r.status_code == 200, r.text
     body = r.json()

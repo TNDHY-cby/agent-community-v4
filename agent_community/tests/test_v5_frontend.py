@@ -597,3 +597,75 @@ def test_member_kit_bridge_missing_is_honest(tmp_path, monkeypatch):
     j = c.post("/api/workshop/WS-MK2/members/%d/kit" % seq, json={}).json()
     assert "HARNESS_ID" in j.get("member_bridge_missing", []), \
         "没定 harness 就要列进 missing（平台不猜）"
+
+
+def test_evidence_source_display_three_way():
+    """D后端-68/69：谁验的必须分三样显示 —— platform-observed（平台验的）、
+    user-check（你打的勾）、什么都没有（证据 0 项）。打勾的不许写成"已验证"。"""
+    js = _live_js()
+    html = HTML.read_text(encoding="utf-8")
+    assert "evidence_sources" in js and "evidence_at" in js, "名单没接「谁验的」字段"
+    assert "platform-observed" in js and "平台验的" in js, "平台观测到的没单独显示"
+    assert "你打的勾" in js, "user-check 没单独显示（不许混成已验证）"
+    assert "证据 0 项" in js, "没证据的要明写 0 项，别装模作样"
+    assert "已验证" not in js, "活代码里不许出现「已验证」—— 打勾≠验证（V116 §6）"
+    assert "谁验的" in js, "名单表头要有「谁验的」列"
+
+
+def test_bridge_probe_reuses_probe_id_and_is_honest():
+    """D后端-69：取件发生在两次点击之间 —— 重试必须带同一条 probe_id；
+    没取走要如实说没记证据，并显示 probe.reason / advice；inbox_guessed 要提醒。"""
+    js = _live_js()
+    html = HTML.read_text(encoding="utf-8")
+    assert "bridge-probe" in js, "没接 bridge-probe 端点"
+    assert "probe_id" in js, "重试没带 probe_id —— 每次都新发就永远看不到取走"
+    assert "PROBE_NOT_PICKED" in js, "没取走（409）要按「还没取走」处理，不是失败"
+    assert "reason" in js and "advice" in js, "probe.reason / probe.advice 要原样显示"
+    assert "inbox_guessed" in js, "邮箱是按工位名推的要提醒，别当 100% 精确"
+    assert "这不是失败" in js, "没取走不许渲染成失败"
+    assert 'id="probeBtn"' in html and "bridgeProbe()" in html, "UNIT-03 缺「检查取件」按钮"
+
+
+def test_member_kit_tells_handshake_and_no_compare():
+    """D后端-68：成员单多了 6b 回话口令 —— 界面要提醒整段复制别漏、口令一次性、别比对。"""
+    js = _live_js()
+    assert "handshake_issued" in js and "handshake_endpoint" in js, "成员单没接 handshake 字段"
+    assert "6b" in js and "回话口令" in js, "没提醒 6b 节（漏了它平台就验不着）"
+    assert "作废" in js, "没说口令一次性/旧口令作废 —— 用户会拿旧口令反复试"
+    assert "别拿两次拼的比对" in js, "成员单已不可逐字重复，界面不许暗示可比对"
+
+
+def test_evidence_source_display_three_way():
+    """D后端-68/69：谁验的必须分三样显示 —— platform-observed（平台验的）、
+    user-check（你打的勾）、什么都没有（证据 0 项）。打勾的不许写成"已验证"。"""
+    js = _live_js()
+    html = HTML.read_text(encoding="utf-8")
+    assert "evidence_sources" in js and "evidence_at" in js, "名单没接「谁验的」字段"
+    assert "platform-observed" in js and "平台验的" in js, "平台观测到的没单独显示"
+    assert "你打的勾" in js, "user-check 没单独显示（不许混成已验证）"
+    assert "证据 0 项" in js, "没证据的要明写 0 项，别装模作样"
+    assert "已验证" not in js, "活代码里不许出现「已验证」—— 打勾≠验证（V116 §6）"
+    assert "谁验的" in js, "名单表头要有「谁验的」列"
+
+
+def test_bridge_probe_reuses_probe_id_and_is_honest():
+    """D后端-69：取件发生在两次点击之间 —— 重试必须带同一条 probe_id；
+    没取走要如实说没记证据，并显示 probe.reason / advice；inbox_guessed 要提醒。"""
+    js = _live_js()
+    html = HTML.read_text(encoding="utf-8")
+    assert "bridge-probe" in js, "没接 bridge-probe 端点"
+    assert "probe_id" in js, "重试没带 probe_id —— 每次都新发就永远看不到取走"
+    assert "PROBE_NOT_PICKED" in js, "没取走（409）要按「还没取走」处理，不是失败"
+    assert "reason" in js and "advice" in js, "probe.reason / probe.advice 要原样显示"
+    assert "inbox_guessed" in js, "邮箱是按工位名推的要提醒，别当 100% 精确"
+    assert "这不是失败" in js, "没取走不许渲染成失败"
+    assert 'id="probeBtn"' in html and "bridgeProbe()" in html, "UNIT-03 缺「检查取件」按钮"
+
+
+def test_member_kit_tells_handshake_and_no_compare():
+    """D后端-68：成员单多了 6b 回话口令 —— 界面要提醒整段复制别漏、口令一次性、别比对。"""
+    js = _live_js()
+    assert "handshake_issued" in js and "handshake_endpoint" in js, "成员单没接 handshake 字段"
+    assert "6b" in js and "回话口令" in js, "没提醒 6b 节（漏了它平台就验不着）"
+    assert "作废" in js, "没说口令一次性/旧口令作废 —— 用户会拿旧口令反复试"
+    assert "别拿两次拼的比对" in js, "成员单已不可逐字重复，界面不许暗示可比对"

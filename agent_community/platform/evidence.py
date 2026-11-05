@@ -226,7 +226,147 @@ def summary_has_quotes(card: dict, summary: str) -> bool:
     return False
 
 
-# ── ⑤ 委派话术（写给 **agent** 看的纯文本；与 V54 话术同口径：一处真相、无 markdown 星号）──
+# ── ⑤ 跨组织采信态与逐文件复核（`V130` §4，2026-11-04 老板拍板）──────────
+#
+# 两套档位**不许混**（`V130` §2 已定稿的正确说法）：
+#   · 通道活性档（原 A/B/C）回答"这条回执渠道通不通"——证明通路，**不进验收**；
+#   · 结果证据档（证据 L0/L1/L2/L4）回答"这个结果能不能被独立复核"——≥L1 才进验收。
+# 这一节新增的是第三件事：**复核结论算不算数**（采信态），四值，落任务账本 `external` 段。
+
+#: 采信态四值（`V130` §4 规则三）。`accepted_self` **不是**通过。
+ACCEPT_STATES = ("accepted_self", "accepted_peer", "disputed", "refuted")
+ACCEPT_MEANING = {
+    "accepted_self": "未复核：只有它自己说",
+    "accepted_peer": "已复核：本侧重算一致",
+    "disputed": "有争议，不采信（冻结待裁）",
+    "refuted": "已证伪（可直接降级）",
+}
+#: 只有这一档能进验收（§6 的唯一硬后果）
+ACCEPT_CAN_PASS = {"accepted_self": False, "accepted_peer": True,
+                   "disputed": False, "refuted": False}
+#: 交付方还没复核时的默认值 —— 不许默认成"已采信"
+ACCEPT_DEFAULT = "accepted_self"
+
+
+def accept_state(*, disputed: bool = False, refuted: bool = False,
+                 peer_checked: bool = False, peer_ok: bool = False) -> dict:
+    """算采信态（纯函数）。优先级：**已证伪 > 有争议 > 复核结果 > 自证**。
+
+    - 只有交付方自证（没做过本侧复核）⇒ `accepted_self`；
+    - 本侧真重算且全部一致 ⇒ `accepted_peer`；
+    - 有争议 ⇒ `disputed`（冻结待裁，**不**因为复核通过就自动解除）；
+    - 已证伪 ⇒ `refuted`（可直接降级）。
+    """
+    if refuted:
+        state, why = "refuted", "已有证据证明这条交付不成立"
+    elif disputed:
+        state, why = "disputed", "双方主张冲突且未裁决 —— 平台不替人判谁对，但**不采信**"
+    elif peer_checked and peer_ok:
+        state, why = "accepted_peer", "接收方独立重算一致"
+    elif peer_checked and not peer_ok:
+        state, why = "accepted_self", "复核做了但**没对齐** ⇒ 仍只算自证（差异表见 peer_diff）"
+    else:
+        state, why = "accepted_self", "只有交付方自证，接收方还没独立复核"
+    return {"state": state, "meaning": ACCEPT_MEANING[state],
+            "can_pass": ACCEPT_CAN_PASS[state], "why": why,
+            "next": "" if ACCEPT_CAN_PASS[state] else
+                    ("先挂争议并说清待谁裁（POST …/dispute）" if state == "disputed" else
+                     "接收方独立重算产物 sha256（POST …/tasks/{seq}/peer-review）；"
+                     "自证换不到采信")}
+
+
+def _norm_sha(v: Any) -> str:
+    return _s(v).lower()
+
+
+def diff_peer_artifacts(peer_files: Iterable[dict], local_files: dict, *,
+                        local_slot_dir: str = "") -> dict:
+    """**逐文件重算比对**（`V130` §4 规则二）：对端给的 `sha256` 清单 vs 本侧真扫结果。
+
+    - `peer_files`：`[{name, sha256, bytes, slot_dir?}]`（A2A 回执里的产物清单就是这个形状）；
+    - `local_files`：`artifacts.snapshot()` 的 `files`（`{相对产物目录的路径: {sha256, bytes}}`）。
+
+    ⚠️ **比对键是「相对 `产物/` 的路径」**，不是绝对路径：两个组织的工位目录名天然不同
+    （岗位名/成员编号各叫各的），拿整条路径去比会永远对不上。键是怎么来的写在 `key_from` 里。
+
+    返回 `ok=True` 仅当：有可比的 hash、没有 sha/字节不一致、没有"对端说有本侧没有"。
+    本侧多出文件只记进 `extra_local`（不阻断，但要让人看见）。
+    """
+    peer = [x for x in (peer_files or []) if isinstance(x, dict)]
+    local = {str(k).replace("\\", "/"): (v or {}) for k, v in (local_files or {}).items()}
+    rows, seen = [], set()
+    matched = mismatched = missing = no_hash = 0
+
+    for item in peer:
+        name = _s(item.get("name")).replace("\\", "/")
+        if not name:
+            continue
+        slot = _s(item.get("slot_dir")).strip("/")
+        if slot and name.startswith(slot + "/"):
+            key, key_from = name[len(slot) + 1:], "剥掉对端工位目录"
+        elif "/" in name and local_slot_dir and name.startswith(str(local_slot_dir).strip("/") + "/"):
+            key, key_from = name.split("/", 1)[1], "剥掉本侧工位目录"
+        elif "/" in name:
+            key, key_from = name.split("/", 1)[1], "剥掉第一段（两边工位目录名不同）"
+        else:
+            key, key_from = name, "原样"
+        if key in seen:
+            continue
+        seen.add(key)
+
+        want, want_bytes = _norm_sha(item.get("sha256")), item.get("bytes")
+        got = local.get(key) or {}
+        have, have_bytes = _norm_sha(got.get("sha256")), got.get("bytes")
+        row = {"key": key, "key_from": key_from, "peer_name": name,
+               "peer_sha256": want, "local_sha256": have,
+               "peer_bytes": want_bytes, "local_bytes": have_bytes}
+        if not want:
+            row.update({"status": "peer_no_hash",
+                        "why": "对端只给了文件名没给 sha256 —— 没有可重算的东西，不算复核"})
+            no_hash += 1
+        elif not got:
+            row.update({"status": "missing_local",
+                        "why": "对端清单里有这个文件，本侧 `产物/` 里没有（同名相对路径都没有）"})
+            missing += 1
+        elif want != have:
+            row.update({"status": "sha_mismatch",
+                        "why": "两边 sha256 不一致 ⇒ 内容不是同一份（不是路径对不上）"})
+            mismatched += 1
+        elif want_bytes is not None and have_bytes is not None and int(want_bytes) != int(have_bytes):
+            row.update({"status": "bytes_mismatch",
+                        "why": "sha 相同但字节数不同 —— 说明有一侧的数字是编的，要重算"})
+            mismatched += 1
+        else:
+            row.update({"status": "match", "why": "sha256（与字节数）一致"})
+            matched += 1
+        rows.append(row)
+
+    extra = [{"key": k, "sha256": _s((v or {}).get("sha256"))}
+             for k, v in local.items() if k not in seen]
+    ok = bool(rows) and not (mismatched or missing or no_hash)
+    if not rows:
+        why = "对端一条可复核的文件都没给（空清单不算复核）"
+        nxt = "让它交产物并给 sha256；只有「我做完了」这句话最多算 L4"
+    elif not ok:
+        parts = []
+        if mismatched:
+            parts.append("%d 个文件 sha256/字节不一致" % mismatched)
+        if missing:
+            parts.append("%d 个对端说有、本侧没有" % missing)
+        if no_hash:
+            parts.append("%d 个对端没给 sha256" % no_hash)
+        why = "复核没通过：" + "；".join(parts)
+        nxt = "看 peer_diff 里每个文件的差异；对不齐就挂争议（POST …/dispute）交人裁"
+    else:
+        why = "全部 %d 个文件 sha256 一致（本侧独立重算）" % matched
+        nxt = ""
+    return {"ok": ok, "matched": matched, "mismatched": mismatched,
+            "missing_local": missing, "no_hash": no_hash,
+            "extra_local": extra[:50], "files": rows,
+            "why": why, "next": nxt}
+
+
+# ── ⑥ 委派话术（写给 **agent** 看的纯文本；与 V54 话术同口径：一处真相、无 markdown 星号）──
 def search_instruction(question: str, must_cover: Iterable[str] = (), deadline_minutes: int = 0,
                        base_url: str = "") -> str:
     """检索委派的正文（发给搜索者 agent 的话）。**平台不搜**，只把要求说清、把回报格式钉死。"""

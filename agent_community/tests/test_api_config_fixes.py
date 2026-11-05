@@ -138,8 +138,13 @@ class TestConfigSaveHonesty:
                           "ai_base_url": "https://x.com", "ai_api_key": "k",
                           "ai_model": ""})
         assert out["model_missing"] is True, "remote 模式空提交必须显式告警"
-        # 兜底值照样生效（load_config 合并 DEFAULT_CONFIG）
-        assert out["model_effective"], "应给出实际生效的模型，便于提示用户"
+        # ★2026-11-05（0e04b7c 之后）：DEFAULT_CONFIG 不再带占位模型 ⇒ 没有"兜底生效的模型"了。
+        #   正确口径：model_effective 为空 **且** 明确告诉用户"没配"（不许假装配好了）。
+        assert not out["model_effective"], (
+            "默认已不带占位模型，空提交不应凭空出现一个 model_effective：%r" % out["model_effective"])
+        hint = str(out.get("model_missing_hint") or out.get("next") or out.get("howto") or "")
+        assert ("模型" in hint) or ("model" in hint.lower()), (
+            "空模型时必须给出一句人话提示（填哪个/在哪填）：%r" % out)
 
     def test_model_present_clears_flag(self):
         out = self._post({"ai_provider": "openai", "ai_mode": "remote",
@@ -148,13 +153,19 @@ class TestConfigSaveHonesty:
         assert out["model_missing"] is False
 
     def test_blank_selection_does_not_wipe_saved_model(self):
-        """**修正审查初判**：`load_config()` 合并 DEFAULT_CONFIG，
-        空提交会回退到已保存值 —— 所以「保存会把模型配置冲掉」的说法**不成立**，
-        P0-3 的真实影响是「状态不一致 + 想换模型换不了」，不是数据破坏。"""
+        """**不得冲掉已保存的模型** —— 真两步测（原版只做一次空提交，其实没测到这件事）。
+
+        ★2026-11-05：`0e04b7c` 之后 `DEFAULT_CONFIG` 不再带占位模型，
+        "空提交会回退到默认值"这层兜底没了 ⇒ 必须**先把一个模型存进去**，再看空提交会不会把它冲掉。
+        """
+        first = self._post({"ai_provider": "openai", "ai_mode": "remote",
+                            "ai_base_url": "https://x.com", "ai_api_key": "k",
+                            "ai_model": "keep-me-model"})
+        assert first.get("model_effective") == "keep-me-model", first
         out = self._post({"ai_provider": "openai", "ai_mode": "remote",
                           "ai_base_url": "https://x.com", "ai_api_key": "k",
                           "ai_model": ""})
-        assert out["model_effective"], "空提交不得导致 model 变空"
+        assert out["model_effective"], "空提交不得导致已保存的 model 变空"
         assert out["model"] == out["model_effective"]
 
     def test_base_url_echoed_normalized(self):

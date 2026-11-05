@@ -164,6 +164,20 @@ async def review(workshop_id: str, task_seq: int, request: Request):
                              "next": "按实际结论填；拿不准先选「返工」并写备注"}, status_code=400)
     wp = str(getattr(ws, "workspace_dir", "") or "")
     rec = _ledger.get(workshop_id, task_seq)
+    # ★V130 §4 规则二：`L1` 的凭据若**像本机路径**就真 stat 一次（读不到 ⇒ 不算 L1，按 L4 算）。
+    #   不像路径的（"哪个库/哪个会话/谁核的"）不 stat —— 平台本来核对不了这类，如实标"人工凭据"。
+    ref = str(body.get("evidence_ref") or "").strip()
+    proof_exists = None
+    if ref and _ev.proof_looks_like_path(ref):
+        p = Path(ref)
+        if not p.is_absolute() and wp:
+            p = Path(wp) / ref
+        try:
+            proof_exists = p.exists()
+        except OSError as e:                                   # noqa: BLE001 — 探不到 ≠ 不存在，如实留 None
+            print("[p4] 凭据路径探测失败（%s: %s）；按「平台未核对」处理" % (type(e).__name__, e),
+                  flush=True)
+            proof_exists = None
     arts_summary = None
     scanned = None
     if rec:
@@ -173,7 +187,8 @@ async def review(workshop_id: str, task_seq: int, request: Request):
             arts_summary = _arts.summary_for_task(scanned, slot, "T-%03d" % task_seq)
     out = _ledger.review(workshop_id, task_seq, result=result,
                          evidence_level=str(body.get("evidence_level") or ""),
-                         evidence_ref=str(body.get("evidence_ref") or ""),
+                         evidence_ref=ref,
+                         proof_exists=proof_exists,
                          note=str(body.get("note") or ""),
                          artifacts=arts_summary, who=str(body.get("who") or "lead"))
     view = _evidence_view(workshop_id, task_seq,

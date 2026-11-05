@@ -42,6 +42,57 @@
 > 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
 > ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
 
+## [4.42.0] - 2026-11-06
+
+本批四件事：**跨组织证据采信（V130）** ＋ **MCP 成员的痕迹与会话可见** ＋ **监控室会话观察窗** ＋ **大厅与界面统一**，
+外加两处开箱诚实性修正。
+
+一句话：**"它自己说完成了"到"平台认可完成了"之间，现在有一道必须走的复核；而"看不见窗口"的成员，现在也能被看见。**
+
+### 跨组织证据采信（V130）
+- **采信态四值**：`accepted_self`（只有交付方自证）/ `accepted_peer`（接收方独立复核通过）/
+  `disputed`（有争议、冻结待裁）/ `refuted`（已被证伪、可直接降级）；
+- **硬规则**：跨组织任务的验收**必须**是 `accepted_peer` —— 其余三种分别返回
+  `PEER_NOT_REVIEWED` / `DISPUTE_OPEN` / `PEER_REFUTED`，各带"下一步该干什么"。**自报永远换不到采信。**
+- **新端点**：`POST /api/workshop/{ws}/tasks/{seq}/peer-review`（喂对端 `sha256` 清单，本侧**真扫盘重算**，
+  给逐文件差异表；对不上就停在 `accepted_self` + `peer_diff`）、`GET` 同路径只读看采信态、
+  `POST …/dispute`（记发起方、双方主张、待裁对象，冻结而不删）。
+- `L1` 凭据由**路由层真 `stat`** 过再入账：指向不存在 ⇒ `L1_PROOF_MISSING`（按 `L4` 算）。
+
+### MCP 成员的痕迹与会话可见（V131 第一批）
+- `GET /api/harness/{id}/activity`：把「它自己报的进度 / 平台发起的调用 / 它调平台的工具」合成一条时间线，
+  每条标 `source`（self_reported · platform_observed）与 `judge`（unverified · verified）；
+  外加它会话一节。**三件事分开**：在干活 / 干完了 / 干得对。
+- `GET /api/docking/harness/{id}/mcp-calls`：平台调它 MCP 工具的结果（pending/done/unsupported/expired）。
+- 读会话逻辑抽到 `platform/activity_read.py`（活动视图与监控室**一处真相**）。
+
+### 监控室会话观察窗
+- `GET /api/monitor/{id}/session`（短缓存 `AC_MONITOR_SESSION_TTL`，默认 5 秒，轮询不打崩对方）；
+  `GET /api/monitor/agents` 每行新增 `watch_kind`（window · session · none）/ `session_watchable` / `session_why`。
+- 界面：左栏按 kind 分三色标（画面 / 会话 / 看不了），右墙画面格与会话格并列；
+  **读不了时只显示 why 与怎么补，不给「现在读一次」这种按了也不会变的按钮**；
+  会话格底部钉住「它说『对得上』不算平台核过」；深链 `/monitor.html?session=<hid>`。
+
+### 大厅与界面统一（前端）
+- 大厅顶栏**只留「设置」**，功能按钮搬进大堂常驻工具条（对接中心仍在工具条右侧，文案不变）；
+- 结构化讨论卡片改人话、条目卡两列与折叠、列表内滚；统一 UI 设计风格（第三、四刀）；
+- 停掉对已退役端点 `/api/bridge/pending` 的轮询（原来每 3 秒一次 404 刷控制台）。
+
+### 开箱诚实性
+- **默认配置不再写占位 AI**：开箱＝"没配"，界面不再假装配好了；老配置里仍是占位值的判成 `placeholder`
+  并说明"等于没配"；
+- 保存时**没选模型**（remote 模式）不再只回一个布尔值，而是同时给出 `model_missing_hint`
+  （填哪个、在哪填）——「失败要说话」，不许只报故障不给出路。
+
+### 判据
+- `tools/cross_company_check.py`：**20 → 26 格**（自证≠采信 / 复核通过 / 复核不通过 / 凭据不存在 /
+  争议冻结 / 争议留痕），双实例真投真收；
+- 新增 `tools/mcp_activity_check.py`（**12 格**）、`tools/monitor_session_ui_check.py`（前端，**9 格**，真浏览器）；
+- 全量 `agent_community/tests` 绿；`pre_release_check --fast` 12 项；`dual_platform_check` 两侧真跑。
+
+### 接口面
+- 业务路由 **387 → 391**（V130 的 peer-review POST/GET + dispute 等；`/api/workshop/{ws_id}/…` 域 120 → 124）。
+
 ## [4.41.0] - 2026-11-04
 
 本批 = **MCP 协议继续开发**（只读资源面 + 异步结果自动回收）＋ **主发布远端切到 GitHub** ＋ 两个既有问题修复。

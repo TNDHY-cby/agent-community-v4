@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>监控室 · 画面墙（含 MCP 会话观察窗）</title>
+<style>
+  :root{--bg:#0d1014;--panel:#151a21;--line:#232a34;--ink:#e9eef5;--dim:#93a0b4;
+        --ok:#3fb950;--warn:#d29922;--bad:#f85149;--self:#f0b429;--accent:#58a6ff;--mute:#6b7684}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:26px 22px 56px}
+  header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+  h1{font-size:19px;margin:0;font-weight:600}
+  .pill{font-size:11.5px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);
+        color:var(--dim);background:#11161d}
+  .sub{color:var(--dim);font-size:12.5px;margin:0 0 18px}
+  .wall{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:940px){.wall{grid-template-columns:1fr}}
+  .cell{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+        overflow:hidden;display:flex;flex-direction:column}
+  .cell .bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);
+             background:#11161d}
+  .cell .bar .nm{font-weight:600;font-size:13.5px}
+  .cell .bar .k{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:6px;padding:0 6px}
+  .live{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ok)}
+  .live .b{width:7px;height:7px;border-radius:50%;background:var(--ok);
+           box-shadow:0 0 0 3px rgba(63,185,80,.15)}
+  .live.off{color:var(--mute)} .live.off .b{background:var(--mute);box-shadow:none}
+  .body{padding:14px;flex:1;min-height:300px}
+  /* 窗口格 */
+  .screen{border:1px solid var(--line);border-radius:10px;background:#0a0d11;height:238px;
+          display:grid;place-items:center;position:relative;overflow:hidden}
+  .screen:after{content:"";position:absolute;inset:0;
+     background:repeating-linear-gradient(0deg,rgba(255,255,255,.02) 0 1px,transparent 1px 3px)}
+  .screen .t{color:var(--mute);font-size:12.5px;text-align:center;padding:0 18px;z-index:1}
+  .meta{margin-top:10px;font-size:11.5px;color:var(--dim);line-height:1.9}
+  .meta code{background:#0a0d11;border:1px solid var(--line);border-radius:5px;padding:0 5px}
+  /* 会话格 */
+  .chat{max-height:300px;overflow:auto;padding-right:4px}
+  .msg{display:flex;gap:8px;margin-bottom:11px}
+  .av{width:24px;height:24px;flex:0 0 24px;border-radius:6px;display:grid;place-items:center;
+      font-size:11px;font-weight:700}
+  .av.user{background:#1d2735;color:#8fb8ff}
+  .av.agent{background:#2b2410;color:#f0c95c}
+  .bub{flex:1;background:#10151b;border:1px solid var(--line);border-radius:10px;padding:8px 11px;
+       word-break:break-word}
+  .who2{font-size:11px;color:var(--dim);margin-bottom:2px}
+  .trace{margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
+  .trace h3{font-size:11.5px;color:var(--dim);margin:0 0 8px;letter-spacing:.03em}
+  .tr{display:flex;gap:8px;font-size:12px;margin-bottom:6px;align-items:baseline}
+  .tr .dot{width:6px;height:6px;border-radius:50%;flex:0 0 6px;margin-top:6px}
+  .tr.self .dot{background:var(--self)} .tr.obs .dot{background:var(--ok)}
+  .tr .j{font-size:10.5px;border:1px solid;border-radius:5px;padding:0 5px}
+  .j.unverified{color:var(--self);border-color:#4a3b12} .j.verified{color:var(--ok);border-color:#214a2c}
+  .why{margin-top:10px;background:#1b1210;border:1px solid #4b2a2a;border-radius:9px;
+       padding:9px 11px;color:#ffb4ae;font-size:12px}
+  .note{margin-top:8px;font-size:11.5px;color:var(--mute)}
+  .foot{margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:940px){.foot{grid-template-columns:1fr}}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px}
+  .box h2{font-size:12px;color:var(--dim);margin:0 0 8px;letter-spacing:.04em}
+  .box p{margin:0;font-size:12.5px;color:#c6cfdb;line-height:1.85}
+  .box b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>监控室 · 画面墙</h1>
+    <span class="pill" id="maxwatch">最多同时 6 路</span>
+    <span class="pill">画面不出本机</span>
+  </header>
+  <p class="sub">有窗口的看<b>画面</b>；没有窗口的（MCP 这类）看<b>会话</b>。同一面墙，两种格子。</p>
+
+  <div class="wall">
+    <!-- 左格：有窗口的成员（本期真数据里没有，如实标注） -->
+    <div class="cell">
+      <div class="bar">
+        <span class="nm">桌面 / 桥类成员</span>
+        <span class="k">watch_kind=window</span>
+        <span class="live off"><span class="b"></span>本期无此类接入</span>
+      </div>
+      <div class="body">
+        <div class="screen"><div class="t">窗口画面由 <code>/api/monitor/{id}/frame</code> 提供<br>
+          （需要桥就绪；没有窗口的成员不会出现在这一格）</div></div>
+        <div class="meta">
+          取帧：<code>GET /api/monitor/{id}/frame</code> ｜ 连续流：<code>…/stream</code><br>
+          开/关：<code>POST /api/monitor/watched {harness_id, on}</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右格：MCP 会话观察窗（真实数据） -->
+    <div class="cell">
+      <div class="bar">
+        <span class="nm" id="mname">MCP 成员</span>
+        <span class="k">watch_kind=session</span>
+        <span class="live" id="mlive"><span class="b"></span>会话可读</span>
+      </div>
+      <div class="body">
+        <div class="chat" id="chat"></div>
+        <div class="trace" id="trace"></div>
+        <div id="whybox"></div>
+        <div class="note" id="mnote"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="box">
+      <h2>为什么放在监控室</h2>
+      <p>MCP 这类成员<b>没有窗口</b>，原来的监控室对它们只能是空的 —— 但"看不见窗口"不等于"看不见它在干什么"。
+         它自己有会话，平台能读（<b>只读一次、不存副本</b>），所以给它一格<b>会话观察窗</b>，
+         和窗口格并排，用户不用去别的地方找。</p>
+    </div>
+    <div class="box">
+      <h2>三件事别混成一个绿勾</h2>
+      <p><b>在干活</b>：看有没有它自己报的进度（可能是它自己说的，标"未复核"）。<br>
+         <b>干完了</b>：看平台发起的调用有没有终态。<br>
+         <b>干得对</b>：看证据档与采信态 —— 会话里它说"对得上"<b>不算</b>平台核过。</p>
+    </div>
+  </div>
+</div>
+
+<script id="payload" type="application/json">__PAYLOAD__</script>
+<script>
+(function(){
+  let d;
+  try { d = JSON.parse(document.getElementById('payload').textContent.trim()); }
+  catch(e){ return; }
+  const $=id=>document.getElementById(id);
+  const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const ag=(d.agents||[]).find(a=>a.session_watchable)||{};
+  const ses=d.session||{}, act=d.activity||{};
+
+  $('mname').textContent = ag.harness_name || ag.harness_id || 'MCP 成员';
+  if(!ses.capable){ $('mlive').className='live off'; $('mlive').innerHTML='<span class="b"></span>读不到会话'; }
+  if(d.max_watch) $('maxwatch').textContent = '最多同时 ' + d.max_watch + ' 路';
+
+  const items = ses.items || [];
+  $('chat').innerHTML = items.length ? items.map(m=>{
+    const u=/user|human|人/i.test(m.role);
+    return `<div class="msg"><div class="av ${u?'user':'agent'}">${u?'人':'A'}</div>
+      <div class="bub"><div class="who2">${esc(m.role)} · ${esc(m.at)}</div>${esc(m.text)}</div></div>`;
+  }).join('') : '<div class="note">还没有读到消息。</div>';
+
+  if(!ses.capable){
+    $('whybox').innerHTML = `<div class="why">${esc(ses.why||'（没给原因）')}${ses.note?`<br><span class="note">${esc(ses.note)}</span>`:''}</div>`;
+  }
+
+  const rows=(act.work_trace||[]).slice(-4).reverse();
+  $('trace').innerHTML = `<h3>同时在看的「工作痕迹」（最近 ${rows.length} 条）</h3>` + (rows.length?rows.map(r=>{
+    const self=r.source==='self_reported';
+    const jl=r.judge==='verified'?'平台可核':(r.judge==='unverified'?'未复核':'不适用');
+    return `<div class="tr ${self?'self':'obs'}"><span class="dot"></span>
+      <span style="color:#93a0b4;font-variant-numeric:tabular-nums">${esc(r.at)}</span>
+      <span class="j ${r.judge==='verified'?'verified':'unverified'}">${jl}</span>
+      <span>${esc(r.text).slice(0,90)}</span></div>`;
+  }).join('') : '<div class="note">还没有痕迹。</div>');
+
+  $('mnote').textContent = ses.capable
+    ? `读于 ${ses.read_at||'—'} · 工具 ${ses.tool||'—'} · ${ses.cached?'（5 秒缓存命中，未再打对方）':'（本次真读）'}`
+    : '';
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+/* ============================================================
+   玻璃皮肤层 glass.css（2026-11-06 · 老板：「其他页面也更新这种美术设计」）
+   —— 把大厅功能卡片那套「毛玻璃 + 半透明」推广到全站的主面板。
+
+   为什么单独一层、而不是改各页的 .card：
+     · 各页 .card 的布局/尺寸/内边距 是各自的，不该在这里重写；
+     · 玻璃是**观感层**：只改 背景 / 边框 / 圆角 / 阴影 / backdrop-filter。
+     引入顺序：tokens.css → ui.css → 页面 <style> → **glass.css**（最后）；
+     同特异性下后者胜 ⇒ 能盖住各页自己的 .card，又不碰布局。
+
+   硬约束（别把这些加进来）：
+     · 不改 padding / margin / width / display / font-size（布局归页面）；
+     · 不动「已是有意设计」的元素：`.hall-entry`（大厅卡片，已单独调过）、
+       `.ailp-item`（讨论列表条目，不是面板）、`.msg/.banner`（提示条）；
+     · 不支持 backdrop-filter 时降级成更实的半透明底（不留灰雾）。
+   ============================================================ */
+
+:is(.card, .panel, .dock-tile, .wiz-lane, .wiz-mcp-calls, .mcard, .h-card,
+    .disc-zone, .rw-v5, .cap, .booth, .rules, .rc-noev, .shared, .dock-modal,
+    .wiz-notes, .wiz-call-row, .wf-card, .q3-row) {
+  background-color: rgba(24, 22, 20, .55);
+  background-image: linear-gradient(115deg, rgba(255, 255, 255, .065) 0%, rgba(255, 255, 255, 0) 48%);
+  border: 1px solid rgba(255, 255, 255, .09);
+  border-radius: 14px;
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .10), 0 10px 26px rgba(0, 0, 0, .26);
+}
+
+/* 弹窗/抽屉要更"厚"：它浮在内容之上，模糊太轻会读不清 */
+:is(.dock-modal, .wiz-modal, .ac-modal) {
+  background-color: rgba(20, 18, 17, .72);
+  backdrop-filter: blur(22px) saturate(1.25);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 24px 60px rgba(0, 0, 0, .55);
+}
+
+/* 主内容区给一层极淡的红/蓝光斑 —— 玻璃要有"可透的东西"，否则 blur 看不出来。
+   ⚠️ 只加在**当前没有背景图**的容器上（这些容器都继承 body 的底，不会盖掉页面纹理）。 */
+:is(.main, .stage, .stage-body, .ws-content, .col-center, .content, .wrap) {
+  background-image:
+    radial-gradient(720px 340px at 12% 4%, rgba(var(--accent-rgb), .07), transparent 70%),
+    radial-gradient(820px 420px at 88% 92%, rgba(var(--navy-rgb), .09), transparent 72%);
+}
+
+/* 面板里的标题栏/分区线别被玻璃边吃掉 */
+:is(.card, .panel, .dock-tile) > h3:first-child { border-bottom-color: rgba(255, 255, 255, .07); }
+
+/* 降级：不支持 backdrop-filter 时用更实的底（否则半透明=一层灰雾，可读性变差） */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :is(.card, .panel, .dock-tile, .wiz-lane, .wiz-mcp-calls, .mcard, .h-card,
+      .disc-zone, .rw-v5, .cap, .booth, .rules, .rc-noev, .shared, .dock-modal,
+      .wiz-notes, .wiz-call-row, .wf-card, .q3-row) {
+    background-color: rgba(28, 26, 24, .88);
+  }
+}
+
+/* 低性能/省电场景：关掉模糊（有 rgba 底兜底，视觉不崩） */
+@media (prefers-reduced-transparency: reduce) {
+  :is(.card, .panel, .dock-tile, .dock-modal) {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: rgba(28, 26, 24, .9);
+  }
+}
+
+/* ── 对接中心是「装甲直角」作者（body.app-bg-dock .dock-tile 特异性更高），
+      这里用同前缀把玻璃盖上去：瓦片圆角 10px（比卡片小一档）。 ── */
+body.app-bg-dock :is(.dock-tile, .card, .wiz-lane, .wiz-mcp-calls, .dock-modal) {
+  background-color: rgba(24, 22, 20, .55);
+  background-image: linear-gradient(115deg, rgba(255,255,255,.065) 0%, rgba(255,255,255,0) 48%);
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 10px;
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 10px 26px rgba(0,0,0,.26);
+}
+body.app-bg-dock .dock-tile:hover {
+  background-color: rgba(32,30,27,.62);
+  border-color: rgba(var(--accent-rgb),.5);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 16px 34px rgba(0,0,0,.36),
+              0 0 0 1px rgba(var(--accent-rgb),.22), var(--rgb-glow);
+}

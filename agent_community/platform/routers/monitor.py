@@ -86,6 +86,28 @@ async def monitor_agents():
         row = watched.get(hid) or {}
         hwnd, resolve_why = _hwnd_for(hid)
         able, able_why = mn.can_capture(hid, hwnd)
+        # ★2026-11-04（老板：「在监控室里开拓一个专门给 MCP 这类无法在原生 harness 里体现会话的
+        #   agent 的会话观察窗」）：**没有窗口 ≠ 不能看**。协议型 + 它自己有「读会话」工具
+        #   ⇒ 这格不显示画面，显示**会话观察窗**。两种格子同属监控室，用户不用去别处找。
+        _names = []
+        # ⚠️ 必须从**活对象**取 tools：`_info_of()` / `info.model_dump()` 里**没有 tools**
+        #    （2026-11-04 判据 ⑨/⑪ 两次抓到的：用 dict 取永远是空 ⇒ 会话观察窗误判成"它没给工具"）
+        _live = getattr(_sess(hid), "info", None)
+        for _t in (getattr(_live, "tools", None) or []):
+            _n = str((_t.get("name") if isinstance(_t, dict) else getattr(_t, "name", "")) or "")
+            if _n:
+                _names.append(_n)
+        try:
+            from .docking import _pick_session_read_tool
+
+            _session_readable = bool(_pick_session_read_tool([{"name": n} for n in _names]))
+        except Exception:                                    # noqa: BLE001 — 判不出来就不提供
+            _session_readable = False
+        # ⚠️ `wakeup_method` 在 model_dump 里也拿不准（可能是枚举/不在 dump 里），一律从**活对象**取
+        _wm = getattr(_live, "wakeup_method", "") or info.get("wakeup_method") or ""
+        _proto = str(getattr(_wm, "value", _wm)).lower() in (
+            "mcp", "http", "http_api", "a2a", "grpc", "ws")
+        _watch_kind = "window" if ok_bridge else ("session" if (_proto and _session_readable) else "none")
         rows.append({
             "harness_id": hid,
             "harness_name": info.get("harness_name") or hid,
@@ -96,6 +118,11 @@ async def monitor_agents():
                         "why": row.get("why") or ""},
             "window": {"hwnd": int(hwnd), "resolved_by": resolve_why,
                        "can_capture": able, "why": able_why},
+            "watch_kind": _watch_kind,
+            "session_watchable": bool(_proto and _session_readable),
+            "session_why": ("" if (_proto and _session_readable) else
+                            ("它不是协议型（没有可读的会话接口）" if not _proto else
+                             "它没有暴露「读会话」工具（session_messages 之类）—— 让它补一个")),
             "last_ok_at": row.get("last_ok_at", 0),
         })
     # 能开的排前面，其次按名字（用户一眼看到"我现在能开哪几个"）
@@ -104,6 +131,59 @@ async def monitor_agents():
             "max_watch": mn.max_watch(),
             "watched_on": len([r for r in rows if r["monitor"]["on"]]),
             "note": "开关就在这个列表上：POST /api/monitor/watched {harness_id, on}"}
+
+
+#: 会话观察窗的短缓存（监控室是轮询的；别每一拍都去打对方的工具）
+_SESSION_CACHE: dict = {}
+
+
+@router.get("/api/monitor/{harness_id}/session")
+async def monitor_session(harness_id: str, limit: int = 20, refresh: int = 0):
+    """**会话观察窗**：给"没有窗口"的协议型成员看它自己的会话（只读）。
+
+    ★2026-11-04 老板：「在监控室里开拓一个专门给 MCP 这类无法在原生 harness 里体现会话的
+    agent 的会话观察窗」。所以监控室有**两种并列的格子**：
+
+    | 成员类型 | 看什么 | 端点 |
+    |---|---|---|
+    | 有窗口（桥就绪） | 窗口画面 | `/{id}/frame`、`/{id}/stream` |
+    | 没窗口但有「读会话」工具（协议型） | **会话** | 本端点 |
+    | 两者都没有 | —— | `watch_kind=none`，如实说缺什么 |
+
+    三条纪律：① 只读、不写任何状态；② 读不到就说清（`capable=false` + `why` + 怎么补），
+    **不返回空表装成功**；③ 短缓存（`AC_MONITOR_SESSION_TTL`，默认 5 秒），轮询不打崩对方。
+    """
+    from fastapi.responses import JSONResponse
+
+    from .. import activity_read as _ar
+
+    sess = _sess(harness_id)
+    if sess is None:
+        return JSONResponse({"ok": False, "code": "NO_SUCH_HARNESS",
+                             "error": "没有这个接入：%s" % harness_id}, status_code=404)
+    info = _info_of(harness_id)
+    names = []
+    # ⚠️ 同上：tools 只在**活对象**上，`_info_of()` 的 dict 里没有
+    for t in (getattr(getattr(sess, "info", None), "tools", None) or []):
+        n = str((t.get("name") if isinstance(t, dict) else getattr(t, "name", "")) or "")
+        if n:
+            names.append(n)
+
+    ttl = float(mn.cfg_int("AC_MONITOR_SESSION_TTL", 5))
+    key = "%s|%d" % (harness_id, max(1, min(int(limit or 20), 50)))
+    now = time.time()
+    hit = _SESSION_CACHE.get(key)
+    if hit and not int(refresh or 0) and (now - hit[0]) < ttl:
+        return {**hit[1], "cached": True, "age_ms": int((now - hit[0]) * 1000)}
+
+    payload = await _ar.read_session(harness_id, getattr(sess, "info", None), names, limit=limit)
+    _SESSION_CACHE[key] = (now, payload)
+    if len(_SESSION_CACHE) > 32:                              # 有界：别无限攒
+        for k in list(_SESSION_CACHE)[:-32]:
+            _SESSION_CACHE.pop(k, None)
+    return {**payload, "harness_id": harness_id, "cached": False, "age_ms": 0,
+            "how_to_read": ("这是**它自己库里的内容**，平台只读、不存副本；"
+                            "读不到时 `why` 会写清是它没给工具、还是调不通")}
 
 
 @router.get("/api/monitor/watched")

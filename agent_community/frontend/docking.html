@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#0F0E0C">
 <title>对接中心 · 前台</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="hub.css">
 <link rel="stylesheet" href="docking.css">
 <link rel="stylesheet" href="boot.css">
@@ -17,8 +19,20 @@
     .wiz-mcp-calls { margin: 10px 0 4px; padding: 8px 10px; border: 1px dashed rgba(140,140,160,.4); border-radius: 6px; }
     .wiz-call-row { line-height: 1.7; }
       .wiz-mcp-notes { margin: 10px 0 4px; padding: 8px 10px; border: 1px dashed rgba(140,140,160,.4); border-radius: 6px; }
+    /* ★V128（D后端-70）⑧⑨ 两张 MCP 表：五个状态必须一眼分得开（灰/黄不是"成功"） */
+    .mcp-row { margin: 8px 0; padding: 7px 9px; border-left: 2px solid rgba(140,140,160,.35); line-height: 1.7; }
+    .mcp-state { display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 999px;
+      font-size: 11.5px; border: 1px solid currentColor; white-space: nowrap; }
+    .mcp-state.st-pending { color: #7FA8D9; }
+    .mcp-state.st-done { color: #8FB39B; }
+    .mcp-state.st-bad { color: #FF6B6B; }
+    .mcp-state.st-warn { color: #FFB000; }
+    .mcp-state.st-unknown { color: #9A968E; }
+    .mcp-text { white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow: auto;
+      font-size: 12px; background: var(--bg3); padding: 6px 8px; border-radius: 6px; margin: 5px 0 0; }
 </style>
 <link rel="stylesheet" href="chrome.css">
+<link rel="stylesheet" href="glass.css">
 </head>
 <body class="app-bg-dock">
 <a class="skip-link" href="#dockingMain">跳到主内容</a>

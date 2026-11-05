@@ -255,7 +255,11 @@ def cached_verdict(provider_type: str, base_url: str, model: str, api_key: str,
     返回 `None`（从没验过）或：
       `{"ok": bool, "status": int, "detail": str, "ts": float, "age_s": float, "fresh": bool}`
     """
-    fp = _fingerprint(provider_type, base_url, model, api_key)
+    # ★2026-11-05：**先归一化再算指纹** —— 与 `verify_provider_async()` 存缓存时一致。
+    #   否则 base_url 带路径（如常见的 `.../v1`）时，归一后是去掉路径的地址 ⇒ 指纹永远对不上，
+    #   「验证连通」成功了，状态页却一直显示"还没验证过"。
+    _norm, _reject, _h = _precheck(provider_type, base_url, model)
+    fp = _fingerprint(provider_type, _norm, model, api_key)
     with _lock:
         entry = _cache.get(fp)
         if not entry:

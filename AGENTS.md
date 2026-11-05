@@ -66,7 +66,7 @@ python tools/pre_release_check.py       # ★发布前一条命令跑五类判�
 python tools/handover_ptr_check.py      # ★交接链判据：HANDOVER 的「现行继承书」必须**只有一个**且指向真文件、dev sha 真存在
                                         #   （2026-10-22 夜场二收工时顶部躺着两条"现行"，上面那条只覆盖到 v4.15.0 ⇒ 新会话一开局就用过期坐标）
 python tools/core_check.py              # ★核心体检一条命令（**28 项**，约 20 分钟）：六协议矩阵+闭环、建立会话、多轮派活、任务全链路、acp 真拉起、看门狗救活、一键更新、掉线恢复链、多成员并发派活、证据链 V55、辩论模式 V52、隔间继承 V53、通道生命周期 V28、受控重启 V58、只读日志尾 V59、任务树+资源库、巡逻员人工点派、视觉拉起、公司间合作 P1、**外部访问（只读档/令牌/cookie）**、**中转 M1/M2/M3**、桥产物落点
-python tools/cross_company_check.py     # 公司间合作 P1：两个独立实例真投 / 真收 / 回查 / 鉴权 / 数据隔离 / 产物清单（**20 格**，不需要 frp）
+python tools/cross_company_check.py     # 公司间合作：两个独立实例真投 / 真收 / 回查 / 鉴权 / 数据隔离 / 产物清单 / **跨组织采信（自证≠采信·复核·争议冻结）**（**26 格**，不需要 frp）
 python tools/external_access_check.py   # 外部访问 V65：只读档 / 三种令牌携带 / 401与403区分 / ?token= 种 cookie（九格）
 python tools/relay_check.py             # 中转 V66 M1：一 Hub + 两终端互达 / 终端零入站 / 鉴权 / 断线重连 / 队列有界（九格）
 python tools/relay_crossnet_check.py    # 中转跨网络：Non-loopback 地址 + WSL 另一网络栈；TLS 缺件**如实 SKIP**（不假绿）
@@ -107,6 +107,7 @@ python tools/truth_check.py              # ★真相核对**真机**十格（V10
 python tools/mcp_loop_check.py           # ★**MCP 高级协议全链路十五格**（V104）：自己起临时实例（换端口+换数据目录），一个真 MCP 客户端走完 建活→看活→加成员→自检→发言→交回执；`--peer-url` 指一个真 MCP 对端才谈得上"自检通"
 python tools/mcp_tools_check.py            # ★**MCP 工具面十九格**（V105；⚠️ MCP 只是「调工具」，不是协作协议 —— 见 V116 §1.1）：临时实例上一个真 MCP 客户端把平台 14 个工具**逐个真调**（建间带任务/发言进讨论区/回执说清结果），最后核对留痕；跑完删临时实例
 python tools/mcp_resources_check.py        # ★**MCP 只读资源面十二格**（V127）：能力声明 `subscribe=false` / 6 固定 + 5 模板 / 逐个真读且是合法 JSON / 数据是真的（真建 12 个工作间）/ 不存在 ⇒ -32002 / **脱敏（令牌·盘符·POSIX 路径）** / 超限先翻页（`?cursor=`）/ 读不改状态 / HTTP 与 stdio 逐字一致 / 未知方法 -32601·坏 URI -32602 不崩
+python tools/mcp_activity_check.py         # ★**成员活动视图 + 监控室会话观察窗十二格**（V131）：临时实例 + 会读/不会读会话的两个假 MCP 对端，验「它自己报的 vs 平台做的」分开标（source/judge）、能读会话就真读、没工具就如实说为什么、5 秒缓存不打对方
 python tools/protocol_peer_check.py       # ★**高级协议真对端二十七格**（V106 + V119 批 B）：A2A / gRPC 各起一个真对端，派活 → 平台真建任务 → 同一条查得到 → 真回报；含不带令牌必被拒（fail-closed）；
                                         #   A2A 追加六格：卡上如实声明「不流式但可长轮询」/ tasks/watch 超时如实说没变 / 未声明能力 -32004 / **产物（v5 目录 diff+sha256）与验收结论（L1）随任务一起出去**
 python tools/acp_check.py                 # ★**ACP 落地九格**：真拉起 / 多轮上下文不丢 / 多会话不串 / 重启后旧会话被明确拒（fresh-only 不假装续上）/ 拉起失败立刻报（带 stderr，不挂 30s）

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>成员活动视图 · 工作痕迹与会话</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#161a21; --line:#242a34; --ink:#e8ecf3; --dim:#98a2b3;
+    --self:#f0b429; --obs:#3fb950; --bad:#f85149; --warn:#d29922; --mute:#6e7681;
+    --accent:#58a6ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1120px;margin:0 auto;padding:28px 22px 60px}
+  h1{font-size:19px;margin:0 0 4px;font-weight:600}
+  .sub{color:var(--dim);font-size:12.5px;margin-bottom:20px}
+  .grid{display:grid;grid-template-columns:1.35fr 1fr;gap:18px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .card h2{font-size:13px;letter-spacing:.04em;color:var(--dim);font-weight:600;
+           margin:0 0 14px;text-transform:uppercase}
+  .who{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--obs)}
+  .name{font-weight:600;font-size:15px}
+  .tags{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 2px}
+  .tag{font-size:11.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);
+       color:var(--dim);background:#11151b}
+  .tag.on{color:#7ee787;border-color:#2a4b33;background:#0f1c14}
+  .tag.off{color:#ff9b95;border-color:#4b2a2a;background:#1c1210}
+  /* 三件事 */
+  .three{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0 4px}
+  .q{background:#11151b;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .q .k{font-size:11.5px;color:var(--dim);margin-bottom:4px}
+  .q .v{font-size:13.5px;font-weight:600}
+  .v.ok{color:var(--obs)} .v.self{color:var(--self)} .v.no{color:var(--mute)} .v.bad{color:var(--bad)}
+  /* 时间线 */
+  .tl{list-style:none;margin:0;padding:0}
+  .tl li{position:relative;padding:0 0 16px 22px;border-left:1px solid var(--line);margin-left:6px}
+  .tl li:last-child{border-left-color:transparent;padding-bottom:0}
+  .tl li:before{content:"";position:absolute;left:-4.5px;top:5px;width:8px;height:8px;
+                border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px #0f1115}
+  .tl li.self:before{background:var(--self)} .tl li.obs:before{background:var(--obs)}
+  .tl li.bad:before{background:var(--bad)} .tl li.mute:before{background:var(--mute)}
+  .row{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+  .t{color:var(--mute);font-size:11.5px;font-variant-numeric:tabular-nums}
+  .kind{font-size:11.5px;color:var(--dim);border:1px solid var(--line);border-radius:6px;
+        padding:0 6px}
+  .txt{margin-top:3px;color:var(--ink);word-break:break-word}
+  .note{margin-top:3px;color:var(--mute);font-size:11.5px}
+  .judge{font-size:11px;padding:0 6px;border-radius:6px;border:1px solid}
+  .judge.unverified{color:var(--self);border-color:#4a3b12;background:#1c1708}
+  .judge.verified{color:var(--obs);border-color:#214a2c;background:#0d1a11}
+  .judge.na{color:var(--mute);border-color:var(--line)}
+  /* 会话 */
+  .msg{display:flex;gap:8px;margin-bottom:12px}
+  .av{width:24px;height:24px;border-radius:6px;flex:0 0 24px;display:grid;place-items:center;
+      font-size:11px;font-weight:700}
+  .av.user{background:#1f2a3a;color:#8fb8ff}
+  .av.agent{background:#2b2410;color:#f0c95c}
+  .bub{background:#11151b;border:1px solid var(--line);border-radius:10px;padding:8px 11px;
+       flex:1;word-break:break-word}
+  .who2{font-size:11.5px;color:var(--dim);margin-bottom:2px}
+  .empty{color:var(--mute);font-size:13px;padding:14px 0}
+  .why{margin-top:10px;background:#1c1210;border:1px solid #4b2a2a;border-radius:10px;
+       padding:10px 12px;color:#ffb4ae;font-size:12.5px}
+  .why code{color:#ffd7d3}
+  .cav{margin-top:14px;background:#1a1508;border:1px solid #4a3b12;border-radius:10px;
+       padding:10px 12px;color:#e3c169;font-size:12.5px}
+  .foot{margin-top:18px;color:var(--mute);font-size:11.5px;line-height:1.8}
+  .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>成员活动视图 · 工作痕迹与会话</h1>
+  <div class="sub" id="sub">只读视图：把「它自己报的」「平台自己做的」分开摆，三件事不混成一个绿勾。</div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>身份与能力</h2>
+        <div class="who">
+          <span class="dot" id="dot"></span>
+          <span class="name" id="hname">—</span>
+          <span class="t" id="hkind"></span>
+        </div>
+        <div class="tags" id="caps"></div>
+        <div class="three" id="three"></div>
+        <div class="tags" id="counts" style="margin-top:12px"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>工作痕迹（按时间正序）</h2>
+        <ul class="tl" id="tl"></ul>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>它的会话</h2>
+        <div id="sess"></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>怎么读这张表</h2>
+        <div class="foot" id="howto"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot" id="caveats"></div>
+</div>
+
+<script id="payload" type="application/json">__PAYLOAD__</script>
+<script>
+(function(){
+  const raw = document.getElementById('payload').textContent.trim();
+  let d;
+  try { d = JSON.parse(raw); } catch(e){ document.getElementById('sub').textContent = '没有数据（payload 为空）'; return; }
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  const idn = d.identity || {}, sess = d.session || {}, cnt = d.counts || {};
+  $('hname').textContent = idn.name || d.harness_id || '—';
+  $('hkind').textContent = (idn.kind ? ('协议：' + idn.kind) : '') + (idn.status ? (' · ' + idn.status) : '');
+  $('dot').style.background = /online|entered|ready/i.test(idn.status||'') ? 'var(--obs)' : 'var(--mute)';
+
+  const tools = idn.tools || [];
+  const has = n => tools.some(t => String(t).toLowerCase().includes(n));
+  const cap = (label, ok) => `<span class="tag ${ok?'on':'off'}">${ok?'✓':'✗'} ${label}</span>`;
+  $('caps').innerHTML = cap('能发言 session_post', has('session_post'))
+                      + cap('能读会话', !!sess.capable)
+                      + cap('能列会话', has('sessions_list') || has('list_sessions'));
+
+  const rows = d.work_trace || [];
+  const prog = rows.filter(r=>r.kind==='progress').length;
+  const obs  = rows.filter(r=>r.source==='platform_observed').length;
+  // 三件事
+  const alive = prog>0 ? ['ok','在干活（它报了 '+prog+' 步）'] : ['no','没有它的过程记录'];
+  const done  = rows.some(r=>r.kind==='outbound_call' && r.judge==='verified')
+              ? ['ok','有终态记录'] : (rows.length ? ['self','只有自报/在途'] : ['no','暂无记录']);
+  const right = sess.capable ? ['self','会话可读，但内容未复核'] : ['no','未复核（它没给读会话工具）'];
+  const cls3 = {ok:'ok',self:'self',no:'no',bad:'bad'};
+  $('three').innerHTML = `
+    <div class="q"><div class="k">① 它在干活吗</div><div class="v ${cls3[alive[0]]}">${alive[1]}</div></div>
+    <div class="q"><div class="k">② 它干完了吗</div><div class="v ${cls3[done[0]]}">${done[1]}</div></div>
+    <div class="q"><div class="k">③ 它干得对吗</div><div class="v ${cls3[right[0]]}">${right[1]}</div></div>`;
+
+  $('counts').innerHTML =
+      `<span class="tag">它自己报 ${cnt.progress||0}</span>`
+    + `<span class="tag">平台发起 ${cnt.outbound||0}</span>`
+    + `<span class="tag">它调平台 ${cnt.platform_tool_calls||0}</span>`
+    + `<span class="tag">合计 ${rows.length}</span>`;
+
+  const KMAP = {progress:'它自己报的进度', outbound_call:'平台发起·调它的工具',
+                inbound_tool_call:'它调平台的工具'};
+  $('tl').innerHTML = rows.length ? rows.map(r=>{
+    const j = r.judge==='verified' ? 'verified' : (r.judge==='unverified' ? 'unverified':'na');
+    const jl = r.judge==='verified' ? '平台可核' : (r.judge==='unverified' ? '未复核':'不适用');
+    const liCls = (r.source==='self_reported' ? 'self' : 'obs')
+                + (String(r.extra&&r.extra.state||'')==='failed' ? ' bad':'');
+    return `<li class="${liCls}">
+      <div class="row">
+        <span class="t">${esc(r.at)}</span>
+        <span class="kind">${esc(KMAP[r.kind]||r.kind)}</span>
+        <span class="judge ${j}">${jl}</span>
+      </div>
+      <div class="txt">${esc(r.text)}</div>
+      ${r.note?`<div class="note">${esc(r.note)}</div>`:''}
+    </li>`;
+  }).join('') : '<div class="empty">还没有任何痕迹。</div>';
+
+  if (!sess.capable){
+    $('sess').innerHTML = `<div class="empty">读不到它的会话。</div>
+      <div class="why">${esc(sess.why||'（没有给出原因）')}${sess.note?`<br><span class="t">${esc(sess.note)}</span>`:''}</div>`;
+  } else {
+    const items = sess.items || [];
+    $('sess').innerHTML = (items.length ? items.map(m=>{
+      const u = /user|human|问/i.test(m.role);
+      return `<div class="msg">
+        <div class="av ${u?'user':'agent'}">${u?'人':'A'}</div>
+        <div class="bub"><div class="who2">${esc(m.role)} · ${esc(m.at)}</div>${esc(m.text)}</div>
+      </div>`;
+    }).join('') : '<div class="empty">工具读通了，但没有解析出消息。</div>')
+    + `<div class="note" style="margin-top:10px">读于 ${esc(sess.read_at)} · 工具 <span class="mono">${esc(sess.tool)}</span> · ${esc(sess.note||'')}</div>`;
+  }
+
+  $('howto').innerHTML = esc(d.how_to_read || '')
+    + `<br><br><b style="color:#f0b429">未复核</b> = 它说的，平台没验；<b style="color:#3fb950">平台可核</b> = 平台自己做的或能重算；
+       <b style="color:#6e7681">不适用</b> = 这条不是证据。`;
+
+  const cav = d.caveats || [];
+  $('caveats').innerHTML = cav.length
+    ? cav.map(c=>`<div class="cav">⚠️ ${esc(c)}</div>`).join('')
+    : '';
+})();
+</script>
+</body>
+</html>
