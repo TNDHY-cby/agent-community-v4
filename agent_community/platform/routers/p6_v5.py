@@ -175,25 +175,75 @@ async def discuss(workshop_id: str, request: Request):
     if to_whom and ws_path:
         from ..dispatch import append_notice as _append_notice
 
-        slot = "_lead" if to_whom in ("lead", "all") else to_whom.split(":", 1)[1]
         line = "[AILP %s] %s → %s：%s" % (norm.get("msg_type"), norm.get("sender"),
                                           to_whom, str(norm.get("manifest_ref") or ""))
-        try:
-            notified = dict(_append_notice(ws_path, slot, line) or {})
-            notified["slot"] = slot
-            try:
-                from .. import notice_log as _nl
+        if to_whom.startswith("squad:"):
+            # ★2026-11-07：`squad:<id>` = **整队通知** —— 逐个成员写各自的 `_notice.md`，
+            #   通知账**逐条**记（每人一条 `written`），不是"发一条算全队收到"。
+            from .. import squads as _sq_mod
+            from .. import v5_roster as _roster_mod
 
-                _nl.record(workshop_id, target=to_whom, slot=slot, channel="notice_file",
-                           result="written" if notified.get("ok") else "failed",
-                           detail="AILP %s" % norm.get("msg_type"),
-                           ref=norm.get("msg_id") or "")
-            except Exception as _e:                            # noqa: BLE001 — 记账失败不影响消息
-                print("[notice] 记通知账失败（不影响消息）: %s" % _e, flush=True)
-        except Exception as e:                                 # noqa: BLE001 — 通知写不进去不能把消息吞了
-            notified = {"ok": False, "error": "通知没写进去：%s: %s" % (type(e).__name__, e),
-                        "slot": slot,
-                        "note": "消息本身**已经记下了**（这条不会丢），只是对方没被点名提醒"}
+            _sid = to_whom.split(":", 1)[1]
+            _cl = list(getattr(ws, "squads", None) or [])
+            _sq = _sq_mod.find(_cl, _sid)
+            if not _sq:
+                return JSONResponse({"ok": False, "code": "NO_SUCH_SQUAD",
+                                     "error": "没有这个小队：%s" % _sid,
+                                     "next": "GET …/squads 看现有的"}, status_code=404)
+            _seqs = _sq_mod.squad_members_of(_cl, _sid)
+            if not _seqs:
+                return JSONResponse({"ok": False, "code": "SQUAD_EMPTY",
+                                     "error": "这个小队还没有成员，整队通知发不出去",
+                                     "next": "POST …/squads/%s {member_seqs: [...]} 先加人" % _sid},
+                                    status_code=409)
+            _by_seq = {int((m or {}).get("member_seq") or 0): (m or {})
+                       for m in ((_roster_mod.roster(workshop_id) or {}).get("members") or [])}
+            _ok_rows, _fails = [], []
+            for _s in _seqs:
+                _slot = str((_by_seq.get(int(_s)) or {}).get("slot_dir") or "").strip().strip("/")
+                if not _slot:
+                    _fails.append({"member_seq": _s, "why": "名单里没有这个成员（成员号对不上）"})
+                    continue
+                _ok = False
+                try:
+                    _r = _append_notice(ws_path, _slot, line)
+                    _ok = bool(_r.get("ok"))
+                    _ok_rows.append({"member_seq": _s, "slot": _slot, "ok": _ok,
+                                     "file": _r.get("file") or ""})
+                except Exception as e:                         # noqa: BLE001 — 单个成员失败不影响其它人
+                    _fails.append({"member_seq": _s, "why": "%s: %s" % (type(e).__name__, e)})
+                try:
+                    from .. import notice_log as _nl
+
+                    _nl.record(workshop_id, target=to_whom, slot=_slot, channel="notice_file",
+                               result="written" if _ok else "failed",
+                               detail="AILP %s（整队）" % norm.get("msg_type"),
+                               ref=norm.get("msg_id") or "")
+                except Exception as _e:                        # noqa: BLE001 — 记账失败不影响通知
+                    print("[notice] 记整队通知账失败: %s" % _e, flush=True)
+            notified = {"ok": bool(_ok_rows), "squad": _sid, "count": len(_seqs),
+                        "written": [n for n in _ok_rows if n.get("ok")], "failed": _fails,
+                        "note": ("整队通知逐个成员各写一份 `_notice.md`；"
+                                 "**写了不等于看到了**（见 notice-log）")}
+        else:
+            slot = "_lead" if to_whom in ("lead", "all") else to_whom.split(":", 1)[1]
+            try:
+                notified = dict(_append_notice(ws_path, slot, line) or {})
+                notified["slot"] = slot
+                try:
+                    from .. import notice_log as _nl
+
+                    _nl.record(workshop_id, target=to_whom, slot=slot, channel="notice_file",
+                               result="written" if notified.get("ok") else "failed",
+                               detail="AILP %s" % norm.get("msg_type"),
+                               ref=norm.get("msg_id") or "")
+                except Exception as _e:                        # noqa: BLE001 — 记账失败不影响消息
+                    print("[notice] 记通知账失败（不影响消息）: %s" % _e, flush=True)
+            except Exception as e:                             # noqa: BLE001 — 通知写不进去不能把消息吞了
+                notified = {"ok": False, "error": "通知没写进去：%s: %s" % (type(e).__name__, e),
+                            "slot": slot,
+                            "note": "消息本身**已经记下了**（这条不会丢），只是对方没被点名提醒"}
+
     return {"ok": True, "msg_id": norm["msg_id"], "msg_type": norm["msg_type"],
             "manifest_ref": norm["manifest_ref"], "recorded_at": norm["received_at"],
             "to": norm.get("to") or "", "thread": norm.get("thread") or "",

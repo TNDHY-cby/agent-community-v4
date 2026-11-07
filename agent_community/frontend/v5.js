@@ -648,6 +648,118 @@ async function submitRcpt() {
   await loadRoster2();
 }
 
+/* ★2026-11-07 前端接活：三级视图 —— 工作间 → **分队** → 成员（老板 11-07 定词）。
+   口径照后端 `platform/squads.view()`，前端不自己发明：
+     · 分队只是**编队**（不叫"分组"）：账本仍按 `workshop_id+task_seq` 逐条、验收逐条、
+       **没有整队一键通过**、分队没有自己的组长；
+     · 组长在编队语境里叫 **领袖**，是**工作间级**拍板人：单列、**不进分队**、也不算"未编队"。
+   取不到 `/squads` 就退回原来的平铺名单（编队是增强，不是前提）。 */
+async function loadSquadsOf(ws) {
+  try {
+    const r = await api('GET', '/api/workshop/' + encodeURIComponent(ws) + '/squads');
+    return (r.ok && r.data && r.data.ok) ? r.data : null;
+  } catch (e) { return null; }
+}
+
+function rosterRowHTML(m) {
+  const cls = m.state === 'active' ? 'ok' : (m.state === 'pending' ? 'warn' : '');
+  /* ★老板 10-31 SOP：名单定了之后，平台把每个成员的对接单拼好（自动带工作间路径），
+     用户手动拉人 —— 平台不代发、不代建会话。组长走 UNIT-02，不在这里重复出按钮。 */
+  const pull = m.slot_dir === '_lead'
+    ? '<span class="msg">组长走 UNIT-02</span>'
+    : '<button class="p" onclick="memberKit(' + Number(m.member_seq) + ')">生成对接单</button>';
+  /* D后端-69：B 档成员也能平台自验 —— 点一次发测试消息，之后每次都带同一条 probe_id 再看 */
+  const probeBtn = (m.tier === 'b_bridge')
+    ? '<br><button onclick="bridgeProbe(' + Number(m.member_seq) + ')">检查取件（平台自验）</button>'
+    : '';
+  /* D后端-67 §2：actual_name 是**人给的**，没填就没核过 —— 不许显示出"已核对"的样子 */
+  const nameLine = m.actual_name
+    ? '<div class="msg">实际名：' + esc(m.actual_name) +
+      (m.name_check && m.name_check.match === false ? ' <b class="warn">（与名单不一致，只提醒）</b>' : '') + '</div>'
+    : '<div class="msg">未核过实际名</div>';
+  return '<tr><td>' + esc(m.slot_dir) + '<div class="msg">#' + m.member_seq + '</div></td>' +
+    '<td>' + esc(m.harness_id || '—') + '</td>' +
+    '<td class="' + cls + '">' + esc(m.state) + '</td>' +
+    '<td>' + evidenceSrcHTML(m) + '</td>' +
+    '<td>' + esc(m.tier || '—') + '</td>' +
+    '<td>' + esc(m.verified_scope || '（没写）') + '</td>' +
+    '<td>' + esc(m.session_label || '') + nameLine + '</td>' +
+    '<td>' + pull + probeBtn + '</td></tr>';
+}
+
+/* 按**分队**渲染名单（表格内分节行）。用到的成员记录仍取 `/roster` 的真数据，
+   分队只给"谁在哪个分队 + 方向/状态/未结数"——**不新增任何语义**。
+   ★2026-11-07 老板定词：小队（不叫"分组"）→ **分队**；没进分队的 → **未编队**；
+     组长在编队语境里叫 **领袖**，且**领袖不进分队**（工作间级拍板人）。
+     词表在 `team-words.js`（一处真相），这里只取词、不写死。 */
+const TW = window.TEAM_WORDS || {
+  unit: '分队', unnamed: '未命名分队', unassigned: '未编队', unassignedHint: '还没编入任何分队',
+  leader: '领袖', leaderHint: '领袖 · 不进分队 · 拍板 / 验收', memberHint: '谁进哪个分队由领袖定',
+  unitCount: function (n) { return n + ' 个分队'; },
+  emptyUnit: function () { return '这个分队还没有人（谁进哪个分队由领袖定）'; },
+  footNote: function () { return '分队只是编队：账本仍按任务号逐条、验收逐条，没有整队一键通过。'; },
+  leadMisfiled: function (names) {
+    return '领袖是领袖、不进分队 —— 但「' + names + '」里配了它；平台不把它算进分队（请在该分队里把它去掉）。';
+  }
+};
+
+function rosterGroupedHTML(members, sqData) {
+  const bySeq = {};
+  members.forEach(function (m) { bySeq[String(m.member_seq)] = m; });
+  const sep = function (title, meta, badge, cls) {
+    return '<tr class="sq-sep' + (cls ? ' ' + cls : '') + '"><td colspan="8"><span class="sq-name">' + esc(title) + '</span>' +
+      (meta ? '<span class="sq-meta">' + esc(meta) + '</span>' : '') +
+      (badge ? '<span class="sq-badge">' + esc(badge) + '</span>' : '') + '</td></tr>';
+  };
+  let h = '';
+  const used = {};
+  /* 领袖不进分队：即使后端数据把 `_lead` 编进了某个分队，也不在分队里显示它 —— 但要**说出来**，
+     不静默吞掉（否则用户会以为"我明明配了它"）。 */
+  const leadSeq = String(((sqData.workshop || {}).lead || {}).member_seq || '');
+  const misfiled = [];
+  (sqData.squads || []).forEach(function (g) {
+    const st = g.status === 'active' ? '进行中' : (g.status === 'paused' ? '已暂停' : '已关闭');
+    const meta = [g.direction || '', st, Number(g.member_count || 0) + ' 人' +
+      (Number(g.open_tasks || 0) > 0 ? ' · 未结 ' + Number(g.open_tasks) : '')].filter(Boolean).join(' · ');
+    h += sep(g.name || g.squad_id || TW.unnamed, meta, '');
+    const rows = Array.isArray(g.members) ? g.members : [];
+    const visible = rows.filter(function (r) {
+      if (leadSeq && String(r.member_seq) === leadSeq) {
+        misfiled.push(g.name || g.squad_id || TW.unnamed);
+        return false;
+      }
+      return true;
+    });
+    if (!visible.length) {
+      h += '<tr class="sq-empty"><td colspan="8">' + esc(TW.emptyUnit()) + '</td></tr>';
+    } else {
+      visible.forEach(function (r) {
+        const m = bySeq[String(r.member_seq)] ||
+          { member_seq: r.member_seq, slot_dir: r.slot_dir, harness_id: r.harness_id, state: r.state };
+        used[String(r.member_seq)] = true;
+        h += rosterRowHTML(m);
+      });
+    }
+  });
+  const lead = (sqData.workshop || {}).lead || {};
+  if (lead && lead.member_seq) {
+    used[String(lead.member_seq)] = true;
+    h += sep(TW.leader, TW.leaderHint, '');
+    h += rosterRowHTML(bySeq[String(lead.member_seq)] || lead);
+  }
+  if (misfiled.length) {
+    h += '<tr class="sq-note"><td colspan="8">' + esc(TW.leadMisfiled(misfiled.join('、'))) + '</td></tr>';
+  }
+  const loose = members.filter(function (m) {
+    return !used[String(m.member_seq)] && String(m.slot_dir || '') !== '_lead';
+  });
+  if (loose.length) {
+    h += sep(TW.unassigned, TW.unassignedHint, loose.length + ' 人');
+    loose.forEach(function (m) { h += rosterRowHTML(m); });
+  }
+  return h;
+}
+
 async function loadRoster2() {
   if (!S.ws) return;
   const r = await api('GET', '/api/workshop/' + encodeURIComponent(S.ws) + '/roster');
@@ -665,32 +777,11 @@ async function loadRoster2() {
         ? '<br><span class="msg">' + (rs.detail || []).map(mdInline).join('<br>') + '</span>'
         : ''));
   }
+  /* ★2026-11-07：有 `/squads` 就按**分队**显示（工作间 → 分队 → 成员）；
+     取不到就退回平铺名单 —— 编队是增强，不能让"取不到分队"变成"看不见名单"。 */
+  const sqData = await loadSquadsOf(S.ws);
   let h = '<table><tr><th>工位</th><th>harness</th><th>状态</th><th>谁验的</th><th>档位</th><th>覆盖范围</th><th>会话名</th><th>成员拉人</th></tr>' +
-    S.members.map(function (m) {
-      const cls = m.state === 'active' ? 'ok' : (m.state === 'pending' ? 'warn' : '');
-      /* ★老板 10-31 SOP：名单定了之后，平台把每个成员的对接单拼好（自动带工作间路径），
-         用户手动拉人 —— 平台不代发、不代建会话。组长走 UNIT-02，不在这里重复出按钮。 */
-      const pull = m.slot_dir === '_lead'
-        ? '<span class="msg">组长走 UNIT-02</span>'
-        : '<button class="p" onclick="memberKit(' + Number(m.member_seq) + ')">生成对接单</button>';
-      /* D后端-69：B 档成员也能平台自验 —— 点一次发测试消息，之后每次都带同一条 probe_id 再看 */
-      const probeBtn = (m.tier === 'b_bridge')
-        ? '<br><button onclick="bridgeProbe(' + Number(m.member_seq) + ')">检查取件（平台自验）</button>'
-        : '';
-      /* D后端-67 §2：actual_name 是**人给的**，没填就没核过 —— 不许显示出"已核对"的样子 */
-      const nameLine = m.actual_name
-        ? '<div class="msg">实际名：' + esc(m.actual_name) +
-          (m.name_check && m.name_check.match === false ? ' <b class="warn">（与名单不一致，只提醒）</b>' : '') + '</div>'
-        : '<div class="msg">未核过实际名</div>';
-      return '<tr><td>' + esc(m.slot_dir) + '<div class="msg">#' + m.member_seq + '</div></td>' +
-        '<td>' + esc(m.harness_id || '—') + '</td>' +
-        '<td class="' + cls + '">' + esc(m.state) + '</td>' +
-        '<td>' + evidenceSrcHTML(m) + '</td>' +
-        '<td>' + esc(m.tier || '—') + '</td>' +
-        '<td>' + esc(m.verified_scope || '（没写）') + '</td>' +
-        '<td>' + esc(m.session_label || '') + nameLine + '</td>' +
-        '<td>' + pull + probeBtn + '</td></tr>';
-    }).join('') + '</table>';
+    (sqData ? rosterGroupedHTML(S.members, sqData) : S.members.map(rosterRowHTML).join('')) + '</table>';
   h += '<div class="msg">' + esc(r.data.hint || '') + '</div>';
   $('slotsOut').innerHTML = head + h;
 

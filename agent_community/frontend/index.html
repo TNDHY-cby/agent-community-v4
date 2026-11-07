@@ -493,9 +493,10 @@ button.hall-entry{appearance:none;-webkit-appearance:none}
    毛玻璃三件套：半透明底 + backdrop blur + 斜向高光（反射感）；细亮边 + 顶部内高光。
    ⚠️ 空态背景必须给"可透的东西"（两团极低透明度光斑），否则纯色底上的 blur 看不出来。 */
 .hall-empty{
-  background-image:
-    radial-gradient(560px 280px at 18% 8%, rgba(var(--accent-rgb),.11), transparent 72%),
-    radial-gradient(720px 380px at 82% 88%, rgba(var(--navy-rgb),.13), transparent 72%);
+  /* ★2026-11-07（老板：「这里的分割感太重」）：光斑不再挂在空态元素上 ——
+     空态自己的矩形上边就是"有光到没光"的硬切，正好压在卡片下沿。改挂到消息区（见 `.hall-messages::after`），
+     交界处被卡片玻璃盖住，看不见了。 */
+  background-image:none;
 }
 .hall-entries .hall-entry{
   background-color: rgba(22,21,19,.42);
@@ -617,15 +618,32 @@ button.hall-entry{appearance:none;-webkit-appearance:none}
 }
 .hall-messages.has-msgs::before{display:none}
 .hall-messages > *{position:relative;z-index:1}
+/* ★2026-11-07（老板：「这里的分割感太重」）：空态氛围光斑改挂在这里 ——
+   它覆盖**整个消息区（含卡片下方那段 padding）**，上边界被卡片玻璃盖住 ⇒ 不再有"从有光到没光"的横切；
+   下边界跟着 `.hall-messages` 自己的 mask 一起渐隐。有消息时关掉（原来也只在空态有）。 */
+.hall-messages::after{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    radial-gradient(820px 560px at 16% -6%, rgba(var(--accent-rgb),.10), transparent 74%),
+    radial-gradient(900px 640px at 84% 106%, rgba(var(--navy-rgb),.12), transparent 74%);
+}
+.hall-messages.has-msgs::after{display:none}
 /* ★2026-11-06 FINAL 磨砂玻璃：卡片=覆盖层（不占布局），消息滚到卡片下方被 blur；
    卡片底部渐隐到透明 ⇒ 与消息区之间没有硬边界（老板：「不要分开」）。 */
 .hall-view{position:relative}
 .hall-cards{
   position:absolute;top:0;left:0;right:0;z-index:6;
-  padding:16px 28px 22px;
-  background:linear-gradient(180deg,rgba(15,14,12,.94) 0%,rgba(15,14,12,.80) 72%,rgba(15,14,12,0) 100%);
+  padding:16px 28px 34px;
+  background:linear-gradient(180deg,rgba(15,14,12,.94) 0%,rgba(15,14,12,.88) 48%,rgba(15,14,12,.46) 78%,rgba(15,14,12,0) 100%);
   backdrop-filter:blur(18px) saturate(1.18);
   -webkit-backdrop-filter:blur(18px) saturate(1.18);
+  /* ★2026-11-07（老板：「这里的分割感太重」）：
+     光把 background 渐变到透明不够 —— backdrop-filter 的模糊是**整块硬边**，
+     它不会跟着背景一起淡出 ⇒ 卡片下沿仍是一条可见的"模糊/不模糊"接缝。
+     用 mask 让**整块（含磨砂）**一起渐隐：从卡片底边（100% - 34px = 容器 padding-bottom 起点）开始，
+     到容器底完全透明，接缝消失。卡片本体在 100%-34px 以上，不受影响。 */
+  -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 34px),rgba(0,0,0,.55) calc(100% - 14px),transparent 100%);
+  mask-image:linear-gradient(to bottom,#000 calc(100% - 34px),rgba(0,0,0,.55) calc(100% - 14px),transparent 100%);
 }
 .hall-messages{padding-top:var(--cards-h,236px);padding-bottom:18px}
 /* ★2026-11-06（老板：「消息条应该和『第一次用』的设计一样」）

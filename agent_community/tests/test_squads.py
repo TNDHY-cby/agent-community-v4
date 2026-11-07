@@ -75,7 +75,7 @@ def test_05_view_is_three_levels_with_counts():
 def test_06_cell_has_no_lead_field():
     cs, _ = C.new_squad([], name="前端", squad_id="fe")
     assert not any(k in cs[0] for k in ("lead", "lead_harness_id", "reviewer")), cs[0]
-    assert "没有自己的组长" in C.view(cs, [], [])["note"]
+    assert "组长不进分队" in C.view(cs, [], [])["note"]
 
 
 def test_07_empty_cell_has_no_members():
@@ -90,7 +90,7 @@ def test_08_update_members_and_status():
     _cs3, err2 = C.update_squad(cs2, "fe", {"squad_id": "x"})
     assert "不能改" in err2
     _cs4, err3 = C.update_squad(cs2, "nope", {"status": "paused"})
-    assert "没有这个" in err3 and "小队" in err3
+    assert "没有这个" in err3 and "分队" in err3
 
 
 # ── 拆分建议（V138 §〇 三条件）──────────────────────────────────────

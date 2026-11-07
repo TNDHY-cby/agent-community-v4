@@ -42,6 +42,63 @@
 > 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
 > ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
 
+## [4.45.0] - 2026-11-08
+
+本批把 **V134 审计的最后五条收干净**（⑥ / ⑧⑨⑩ / ⑤ 与"组长枢纽"的延伸），并让两件事第一次"自己会说话"：
+**催办**（做了没回执 / 交了没验收，平台主动提醒）与**跨间交接的接收方确认**（发了 ≠ 对方收了）。
+外加一条老板定词的落地（**分队**）与一处前端资产缺陷的修复。
+
+一句话：**"通知了/收到了"、"登记了/还在"、"发了/接了"、"做了/交回执了" —— 这四对不再混为一件事。**
+
+### 收件目录与资源库（V134 ⑥ ⑩）
+- **路径校验** `artifact_inbox.validate_artifact_inbox_dir()`：相对路径必须落在工作区内（挡 `../..`）；
+  绝对路径不能是盘根、不能落系统目录、不能是网络/设备路径（`\\server\share`、`\\?\`）；
+  三处受理（注册 400 `BAD_INBOX_DIR` / 改档案 400 / 扫描兜底"这轮不扫它并说清不是没有新文件"）。
+- **事件登记进资源库**：`POST …/scan-inbox {"register": true}` ⇒ 新事件写进 `ws.resources`
+  （`source=inbox` + `sha256` + 绝对路径 + `slot_dir`/`found_at`），幂等（同 path+sha256 不重复）；
+  `dry_run` 不登记。组长终于能"一处看全貌"，不用一个个工位翻。
+- **资源库存在性**：`GET …/resources` 每条 `exists` 是**刚真 stat** 的结果（在=true / 不在=false+why / 核不了=null）。
+- **事件 ↔ 任务 ↔ 验收**（V134 ⑤）：`GET …/inbox-events` 每条补 `task_seq/task_state/task_reviewed_by/
+  _source/_at` + `task_tier` ⇒ "文件 → 哪条任务 → 谁验收"一处可见。
+
+### 通知投递账与档位矩阵（V134 ⑧ ⑨）
+- `platform/notice_log.py`：`written`（只写进通知文件，**对方看没看平台不知道**）/ `delivered`（真投递且核过）/
+  `failed`（带真实原因）三类分开记；接进产物转组长与 `ailp` 点名；`GET …/notice-log`。
+- `platform/tier_matrix.py`：**唯一一张**"档位 × 四件事（派活/通知/产物/验收）"行为码表 +
+  `GET /api/tier-matrix` + `GET …/tier-plan`；**新增档位不填满整行 ⇒ 守卫直接红**。
+- **催办** `platform/nudge.py` + `GET/POST …/nudge`：`issued` 超阈值催成员回执、`delivered` 超阈值催组长验收；
+  **同一条任务同一天只催一次**、**没时间戳的不催**；`dry_run` 一个字不写。
+  后台循环 `AC_NUDGE_WATCH_SEC`（**默认 0＝关**）>0 时自动跑，与端点**共用 `nudge.apply()` 一条路**。
+
+### 跨间交接：接收方确认
+- `POST …/handovers/{hid}/ack`：目标间确认 ⇒ 目标 `_handover_in.md` 写 `[已接收]`、来源 `_handover_out.md`
+  写 `[对方已接收]`、通知账记一笔；**幂等**；响应明写「**确认 ≠ 干完了**」。
+- `GET …/handovers` 的 `out/in` 每条带 `acked`，另给 `out_acked/in_acked` 计数。
+
+### 分队（老板定词）与组长不进分队
+- 人话文案「小队」→「**分队**」（字段名不变：`squads`/`squad_id`/`member_seqs`）；
+  `GET …/squads` 的 note：「工作间 → **分队** → 成员…**组长不进分队**（他负责拍板与验收）」。
+- **数据层真门**：`POST …/squads` 与 `POST …/squads/{id}` 的 `member_seqs` 含当前 `_lead` ⇒
+  **400 `LEAD_NOT_IN_SQUAD`**（前端显示层过滤之外，数据里也不许落）。
+- 老板 2026-11-08 拍板「**叫组长就行**」：后端文案不用"领袖"，全站就叫组长。
+
+### 修掉的真问题（都不是"测试写错"）
+- `task_ledger.list_tasks()` 返回 **list**，两处当 dict 用 ⇒ 账本非空时 500（空账本因 `[] or {}` 反而"过"，假绿）；
+- 催办循环里 `env_spec.get_int` **不存在** ⇒ import 失败被吞 ⇒ 循环静默返回，开关形同虚设；
+- `_nudge_watch_loop` 插在 `@asynccontextmanager` 与 `_app_lifespan` 之间 ⇒ **抢走 lifespan 装饰器**，
+  `create_task` 报 `AsyncGeneratorContextManager`（启动日志只说"后台催办没起来"）；
+- 资源登记用事件里的 `file`（相对）当 path ⇒ 资源库 `exists` 拼错目录（假红），改用 `dir`+`file` 拼绝对路径；
+- 前端资产 `industrial.css` 有两处被吞掉的首字母（`0x0C`+`lex:`、`0x08`+`order-radius`/`0x08`+`ackground-blend-mode`）
+  ⇒ 还原成 `flex:` / `border-radius` / `background-blend-mode`，`test_doc_credibility` 转绿。
+
+### 判据
+`lead_hub_check` 16 格、`lead_plan_check` 14 格、`lead_prelist_check` 15 格、`workshop_comm_check` 10 格、
+`squads_check` 12 格、`cross_handover_check` 8 格、`notice_tier_check` 12 格、`nudge_check` 8 格、
+`artifact_inbox_check` 12 格；单测新增 `test_nudge`(8) / `test_tier_matrix`(5) / `test_squads`(11) /
+`test_workshop_comm`(6) / `test_lead_*`(37)；全量 2690+ 条绿；`test_core_matrix` 需服务在跑（起服务后 3/3）。
+
+接口面 412 → **420**；设计稿 183 份。
+
 ## [4.44.0] - 2026-11-07
 
 本批把 `V134` 审计**最后五条**收干净（⑧⑨⑩ + ⑥ + 跨间交接的接收方确认），

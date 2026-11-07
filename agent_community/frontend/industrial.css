@@ -1,0 +1,1130 @@
+﻿/* ============================================================
+   工业金属皮 v2（industrial.css）· 2026-11-08
+   —— 照老板给的参考图重做。参考图的画风特征（先分析，再落地）：
+
+   ① **两段式互补结构**：浅灰区与深灰区的交界不是直线，是**45° 折线咬合**
+      （像两块加工过的金属板扣在一起）。这是整张图的构图主角。
+   ② **凸/凹靠倒角，不靠渐变**：
+        凸起 = 顶边亮线 + 底边暗线 + 外投影
+        凹陷 = 顶边暗影 + 底边亮线 + 内侧阴影
+      —— 全图没有一处"大面积渐变"，全靠这四种线/影。
+   ③ **硬几何**：45° 切角、直角取代大圆角、圆形凹槽、细长凹线（groove）。
+   ④ **配色**：中性灰（浅 #C6C2BC / 中 #3A3937 / 深 #202020）+ **一处**品红霓虹。
+   ⑤ **丝印细节**：等宽大写 + 大字距、极小的标签、竖线阵列（散热线）、刻度、编号。
+   ⑥ **克制**：红色只出现在一条发光带和两个小圆点上 —— 整图 90% 是灰。
+
+   老板定的分工（2026-11-08）：
+     · 白色 → **侧边栏**（凸起）
+     · 灰色 → **中间框**（凹陷）
+     · 黑/灰 + 阴影 → **按钮**
+     · 红色 → **点缀，位置待老板定**（本版先全部撤掉，只保留可开关的一个变量）
+   ============================================================ */
+
+:root{
+  --ind-light:#C6C2BC;      /* 浅面板（侧栏） */
+  --ind-light-2:#CFCBC5;    /* 浅面板上的凸块 */
+  --ind-mid:#3A3937;        /* 中灰（主区面） */
+  --ind-deep:#202020;       /* 深灰（凹陷底） */
+  --ind-deeper:#141312;     /* 近黑（凹槽/输入框） */
+  --ind-btn:#2E2C29;        /* 按钮面（黑灰） */
+  --ind-line-w:rgba(255,255,255,.13);   /* 深底上的亮线 */
+  --ind-line-k:rgba(0,0,0,.28);         /* 浅底上的暗线 */
+  --ind-r:5px;               /* 小圆角：工业感不做大圆角 */
+  --ind-accent:#E01848;      /* 品红：**本版未使用**，等老板定位置 */
+  --ind-accent-on:0;         /* 0 = 关闭红色点缀；1 = 打开 */
+}
+
+/* ─────────────────────────────────────────────
+   ① 侧边栏：浅灰、凸起
+   ───────────────────────────────────────────── */
+html body .col-left,
+html body .col-right{
+  background-color:var(--ind-light) !important;
+  color:#1B1917 !important;
+  /* 凸起三件套：顶亮线 / 底暗线 / 外投影（不是渐变） */
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.85),
+    inset 0 -1px 0 rgba(0,0,0,.25),
+    0 16px 32px -18px rgba(0,0,0,.9) !important;
+}
+/* 浅底上的文字：统一深色（浅底上不存在"浅灰字"，那就是看不见） */
+html body .col-left, html body .col-left *,
+html body .col-right, html body .col-right *{ color:#1B1917 !important; }
+/* 次要信息留一档灰：可读但不抢标题 */
+html body .col-left .msg, html body .col-right .msg,
+html body .col-left .rv5-meta, html body .col-right .rv5-meta,
+html body .col-left .rv5-state, html body .col-right .rv5-state,
+html body .col-left .rv5-foot, html body .col-right .rv5-foot,
+html body .col-left .rv5-src, html body .col-right .rv5-src{ color:#5C574F !important; }
+html body .col-left .rv5-row, html body .col-right .rv5-row,
+html body .col-left .sq-grp, html body .col-right .sq-grp{ border-color:rgba(0,0,0,.16) !important; }
+html body .col-left .rv5-src, html body .col-right .rv5-src{ background-color:rgba(0,0,0,.07) !important; }
+html body .col-left .col-header, html body .col-right .col-header{
+  color:#1B1917 !important; border-bottom:1px solid rgba(0,0,0,.22) !important;
+}
+
+/* 侧栏里的工作间卡：比侧栏亮一档的凸块（凸起 = 顶亮 + 底暗 + 小投影） */
+html body .workshop-item{
+  background-color:var(--ind-light-2) !important;
+  border:1px solid rgba(0,0,0,.18) !important;
+  border-radius:var(--ind-r) !important;
+  color:#1B1917 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.9),
+    inset 0 -1px 0 rgba(0,0,0,.14),
+    0 2px 4px rgba(0,0,0,.16) !important;
+}
+/* 当前项：不用红色（红色位置待定）⇒ 用"更深一档 + 内凹"表示被选中 */
+html body .workshop-item.active{
+  background-color:#B9B4AD !important;
+  border-color:rgba(0,0,0,.35) !important;
+  box-shadow:
+    inset 0 2px 5px rgba(0,0,0,.35),
+    inset 0 -1px 0 rgba(255,255,255,.55) !important;
+}
+/* 卡内小按钮：浅底上的"深色小凸块"（黑灰 + 阴影，不是红） */
+html body .wi-actions button{
+  background:linear-gradient(180deg,#4A4642 0%,#33302D 100%) !important;
+  border:1px solid rgba(0,0,0,.45) !important;
+  border-radius:4px !important;
+  color:#EDEAE4 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.18),
+    0 1px 2px rgba(0,0,0,.35) !important;
+}
+html body .wi-actions button:hover{ background:linear-gradient(180deg,#565149 0%,#3C3834 100%) !important; }
+
+/* ─────────────────────────────────────────────
+   ② 中间框：灰色、凹陷
+   ───────────────────────────────────────────── */
+html body .col-center{ background-color:var(--ind-deep) !important; }
+html body .app-debox :is(.disc-zone,.panel){
+  background-color:var(--ind-mid) !important;
+  background-image:none !important;
+  border:1px solid rgba(0,0,0,.75) !important;
+  border-radius:8px !important;
+  padding-left:16px !important;
+  padding-right:16px !important;
+  /* 凹陷三件套：顶部内影 / 底缘受光 / 外部下缘亮线（凹槽的唇） */
+  box-shadow:
+    inset 0 3px 10px rgba(0,0,0,.80),
+    inset 0 -1px 0 rgba(255,255,255,.07),
+    0 1px 0 rgba(255,255,255,.06) !important;
+}
+/* 中间区的输入控件：更深一档的凹槽 */
+html body .app-debox input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html body .app-debox textarea,
+html body .app-debox select{
+  background-color:var(--ind-deeper) !important;
+  border:1px solid rgba(0,0,0,.9) !important;
+  border-radius:4px !important;
+  color:#E8E4DB !important;
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.06) !important;
+}
+html body .app-debox input:focus,
+html body .app-debox textarea:focus,
+html body .app-debox select:focus{
+  outline:0 !important;
+  border-color:rgba(255,255,255,.28) !important;
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.9), 0 0 0 2px rgba(255,255,255,.10) !important;
+}
+
+/* ─────────────────────────────────────────────
+   ③ 按钮：黑/灰 + 阴影（凸起小块）
+   ───────────────────────────────────────────── */
+html body .app-debox .btn,
+html body .app-debox button:not(.btn),
+html body .app-debox .chat-input button,
+html body .app-debox .btn.primary,
+html body .app-debox .dock-entry-btn,
+html body .app-debox .dock-entry-btn.alt{
+  background:linear-gradient(180deg,#3E3B37 0%,#2A2825 100%) !important;
+  border:1px solid rgba(255,255,255,.10) !important;
+  border-radius:4px !important;
+  color:#E8E4DB !important;
+  text-shadow:0 1px 0 rgba(0,0,0,.4) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.16),
+    inset 0 -1px 0 rgba(0,0,0,.65),
+    0 2px 4px rgba(0,0,0,.45) !important;
+}
+html body .app-debox .btn:hover,
+html body .app-debox button:not(.btn):hover,
+html body .app-debox .chat-input button:hover,
+html body .app-debox .dock-entry-btn:hover{
+  background:linear-gradient(180deg,#4B4742 0%,#35322E 100%) !important;
+  border-color:rgba(255,255,255,.20) !important;
+}
+/* 主操作：比次按钮亮一档 + 更强的阴影（仍不用红） */
+html body .app-debox .chat-input button,
+html body .app-debox .btn.primary,
+html body .app-debox .dock-entry-btn{
+  background:linear-gradient(180deg,#55504A 0%,#3A3632 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.24),
+    inset 0 -1px 0 rgba(0,0,0,.6),
+    0 3px 8px rgba(0,0,0,.55) !important;
+}
+
+/* ─────────────────────────────────────────────
+   ④ 步骤条：直角小块（设备按钮排），当前项用"内凹"而不是红色
+   ───────────────────────────────────────────── */
+html body .app-debox .fb-step{
+  border-radius:3px !important;
+  background-color:var(--ind-btn) !important;
+  border:1px solid rgba(255,255,255,.10) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 1px 2px rgba(0,0,0,.4) !important;
+}
+html body .app-debox .fb-step.done{
+  background-color:#3B3835 !important;
+}
+html body .app-debox .fb-step.active{
+  background-color:#0F0E0D !important;
+  border-color:rgba(255,255,255,.22) !important;
+  color:#F2EFE9 !important;
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.12) !important;
+}
+
+/* ─────────────────────────────────────────────
+   ⑤ 红色点缀：**本版关闭**（老板说位置由他定）
+      打开方式：把 --ind-accent-on 改成 1，下面的规则就会生效（当前只有顶栏一条线）
+   ───────────────────────────────────────────── */
+html body .chrome-top{
+  border-bottom:1px solid rgba(255,255,255,.09) !important;
+}
+
+/* ─────────────────────────────────────────────
+   ⑥ 侧栏与主区的**互补结构**（参考图的核心构图）
+   —— 交界不是一条直线，而是一处 45° 折角：浅色侧栏在主区上沿"咬"进去一块，
+      下面再折回来。用伪元素挂在侧栏右缘（不动布局、不裁内容）。
+   ───────────────────────────────────────────── */
+html body .col-left{ position:relative !important; border-right:1px solid rgba(0,0,0,.35) !important; }
+html body .col-left::after{
+  content:""; position:absolute; top:0; right:-14px; width:14px; height:190px;
+  background-color:var(--ind-light);
+  clip-path:polygon(0 0, 100% 22%, 0 100%);
+  pointer-events:none;
+  box-shadow:3px 0 10px -4px rgba(0,0,0,.55);
+  z-index:2;
+}
+/* 主区左缘一条暗槽，接住这块折角（互补的"凹"） */
+html body .col-center{
+  position:relative !important;
+  border-left:1px solid rgba(0,0,0,.55) !important;
+}
+html body .col-center::before{
+  content:""; position:absolute; left:0; top:0; width:3px; height:190px;
+  background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,0) 70%);
+  pointer-events:none;
+  z-index:1;
+}
+/* 右栏同理（左缘切角，与主区右缘咬合） */
+html body .col-right{ position:relative !important; border-left:1px solid rgba(0,0,0,.35) !important; }
+html body .col-right::before{
+  content:""; position:absolute; top:0; left:-14px; width:14px; height:190px;
+  background-color:var(--ind-light);
+  clip-path:polygon(100% 0, 0 22%, 100% 100%);
+  pointer-events:none;
+  box-shadow:-3px 0 10px -4px rgba(0,0,0,.55);
+  z-index:2;
+}
+/* 顶部状态条在浅底上也要能读 */
+html body .statusbar,
+html body .status-bar,
+html body .bottom-bar{ color:#1B1917 !important; }
+
+/* ─────────────────────────────────────────────
+   ⑦ 金属质感（第三次修正：上一版是**纯色 + 线**，那是"涂装"不是"金属"）
+   —— 金属的表面一定有连续的明暗变化，只是幅度很小（6~10%），看不出"分带"：
+        · 每个平面：一条 178° 的极缓渐变（顶略亮 → 底略暗）
+        · 叠一层 1.5% 的细颗粒（哑光砂面，低到不显脏）
+        · 倒角处一条亮棱（1px，浅底 .35 / 深底 .12）
+   —— 这三样合起来才是"金属块"，缺一样都会退回"塑料色块"。
+   ───────────────────────────────────────────── */
+:root{
+  --ind-grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='48' height='48' filter='url(%23g)' opacity='0.5'/%3E%3C/svg%3E");
+}
+
+/* 浅色侧栏：金属块（顶亮 → 底暗，只差 10%） */
+html body .col-left,
+html body .col-right{
+  background-image:
+    var(--ind-grain),
+    linear-gradient(178deg,#D4D0CA 0%,#C8C4BE 44%,#B6B2AC 100%) !important;
+  background-blend-mode:overlay, normal;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.55),      /* 倒角亮棱（不是纯白，.55 才像金属反光） */
+    inset 0 -1px 0 rgba(0,0,0,.22),
+    inset 1px 0 0 rgba(255,255,255,.35),
+    inset -1px 0 0 rgba(0,0,0,.14),
+    0 16px 32px -18px rgba(0,0,0,.9) !important;
+}
+
+/* 中灰面板：金属块（顶亮 → 底暗，只差 8%） */
+html body .app-debox :is(.disc-zone,.panel){
+  background-image:
+    var(--ind-grain),
+    linear-gradient(180deg,#454239 0%,#3B3A37 46%,#302E2B 100%) !important;
+  background-blend-mode:overlay, normal;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.14),      /* 倒角亮棱 */
+    inset 0 -1px 0 rgba(0,0,0,.70),
+    inset 2px 0 0 rgba(255,255,255,.05),      /* 左侧微亮棱 */
+    inset -2px 0 0 rgba(0,0,0,.35),           /* 右侧暗棱 */
+    inset 0 3px 10px rgba(0,0,0,.55),         /* 凹陷内影 */
+    0 1px 0 rgba(255,255,255,.06) !important;
+}
+
+/* 按钮：金属小块（渐变更陡一点，因为小件受光更明显） */
+html body .app-debox .btn,
+html body .app-debox button:not(.btn),
+html body .app-debox .chat-input button,
+html body .app-debox .btn.primary,
+html body .app-debox .dock-entry-btn,
+html body .app-debox .dock-entry-btn.alt{
+  background-image:
+    var(--ind-grain),
+    linear-gradient(180deg,#4E4A44 0%,#3A3733 52%,#282622 100%) !important;
+  background-blend-mode:overlay, normal;
+}
+
+/* 侧栏工作间卡：浅色金属小块 */
+html body .workshop-item{
+  background-image:
+    var(--ind-grain),
+    linear-gradient(180deg,#D8D4CE 0%,#CFCBC5 50%,#BFBAB4 100%) !important;
+  background-blend-mode:overlay, normal;
+}
+
+/* 输入框（凹槽底）：也是金属，只是更深 */
+html body .app-debox input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html body .app-debox textarea,
+html body .app-debox select{
+  background-image:
+    var(--ind-grain),
+    linear-gradient(180deg,#0B0A09 0%,#141312 55%,#1C1A18 100%) !important;
+  background-blend-mode:overlay, normal;
+}
+
+/* ─────────────────────────────────────────────
+   ⑧ 侧栏按钮：白字 → **简易刻纹图标**（2026-11-08 老板：「白字很刺眼，换成简易图标刻纹」）
+   做法：
+     · 文字用 font-size:0 隐掉（title 还在，悬停仍能看到中文）；
+     · 图标用 ::before + **按 title 属性选符**（不用改 HTML、不用加图标库）；
+     · 刻纹效果 = 深色半透明字 + 下缘一条白色高光（凹刻的行业做法）；
+     · 按钮本身去掉凸块（刻在面板上的东西不该鼓起来），hover 才浮出一点底色。
+   ───────────────────────────────────────────── */
+html body .wi-actions{ gap:2px !important; }
+html body .wi-actions button{
+  font-size:0 !important;              /* 隐掉文字 */
+  flex:0 0 auto !important;
+  width:30px !important;
+  height:24px !important;
+  padding:0 !important;
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+  color:transparent !important;
+  position:relative;
+  border-radius:3px !important;
+}
+html body .wi-actions button::before{
+  font-size:14px !important;
+  line-height:24px !important;
+  display:block;
+  text-align:center;
+  font-weight:400 !important;
+  letter-spacing:0 !important;
+  color:rgba(42,38,32,.55) !important;                 /* 刻痕本体：深色半透明 */
+  text-shadow:0 1px 0 rgba(255,255,255,.80) !important; /* 下缘受光 → 凹刻 */
+}
+html body .wi-actions button[title="置顶"]::before{ content:"↑"; }
+html body .wi-actions button[title="重命名"]::before{ content:"✎"; }
+html body .wi-actions button[title^="删除"]::before{ content:"✕"; }
+html body .wi-actions button:hover{ background-color:rgba(0,0,0,.07) !important; }
+html body .wi-actions button:hover::before{ color:rgba(18,16,14,.88) !important; }
+html body .wi-actions button.wi-act-danger:hover::before{ color:#B3123A !important; }
+
+/* 左上「返回大厅」原本是红底白字 —— 在浅灰侧栏上最刺眼的那一块，改成刻纹导航 */
+html body .sidebar-back{
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+  color:rgba(42,38,32,.78) !important;
+  text-shadow:0 1px 0 rgba(255,255,255,.75) !important;
+  font-weight:600 !important;
+}
+html body .sidebar-back:hover{
+  background-color:rgba(0,0,0,.07) !important;
+  color:rgba(18,16,14,.9) !important;
+}
+
+/* ── 刻纹按钮：彻底去掉浏览器默认按钮块（否则图标底下仍浮着一个灰块） ── */
+html body .wi-actions button{
+  appearance:none !important;
+  -webkit-appearance:none !important;
+  background-image:none !important;
+  outline:0 !important;
+}
+html body .wi-actions button:focus-visible{
+  box-shadow:0 0 0 2px rgba(60,55,48,.45) !important;
+  background-color:rgba(0,0,0,.06) !important;
+}
+
+/* ── 底部状态条与侧栏导航：同一套浅色金属（原来深底 + 浅字，在浅栏下面很跳） ── */
+html body .statusbar{
+  background-image:linear-gradient(180deg,#C6C2BC 0%,#B8B4AE 100%) !important;
+  border-top:1px solid rgba(0,0,0,.28) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.55) !important;
+  color:#1B1917 !important;
+}
+html body .statusbar, html body .statusbar *{ color:#1B1917 !important; }
+html body .statusbar .sb-item strong{ color:#0E0C0B !important; }
+/* 侧栏里的导航链接（监控室/看板/回执/隔间…）在浅底上必须是深色 */
+html body .col-left a, html body .col-left button:not(.wi-act){ color:#1B1917 !important; }
+
+/* 侧栏底部那组导航（监控室/看板/回执/隔间）是**内联 style** 写的浅色，
+   普通规则盖不住 ⇒ 用更高特异性 + 双保险（color + text-fill-color） */
+html body .col-left a,
+html body .col-left a:link,
+html body .col-left a:visited,
+html body .col-left div a{
+  color:#1B1917 !important;
+  -webkit-text-fill-color:#1B1917 !important;
+  opacity:1 !important;
+}
+html body .col-left a:hover{ color:#000 !important; -webkit-text-fill-color:#000 !important; }
+
+/* 按 href 精准命中左栏底部那四个导航链接（它们的内联 style 写死了 var(--muted)，
+   而且可能不在 .col-left 里；用 href 比猜容器稳） */
+html body a[href="/monitor.html"],
+html body a[href="/ops.html"],
+html body a[href="/handover.html"],
+html body a[href="/booths.html"]{
+  color:#2A2620 !important;
+  -webkit-text-fill-color:#2A2620 !important;
+  opacity:1 !important;
+}
+
+/* ─────────────────────────────────────────────
+   ⑨ 栏间「机械连接件」（2026-11-08 老板：「三个栏直直的有些突兀，增加拓展点缀」）
+   —— 三栏之间不再是一条直边，改成：**拼缝（深1px+亮1px）＋ 三颗铆钉 ＋ 顶部折角**。
+      全部是伪元素，不动布局、不裁内容。
+   ───────────────────────────────────────────── */
+/* 左栏右缘：拼缝 + 铆钉（铆钉 = 深色圆心 + 亮色外环，像压进去的金属钉） */
+html body .col-left::before{
+  content:""; position:absolute; right:-3px; top:0; bottom:0; width:3px;
+  pointer-events:none; z-index:3;
+  background-image:
+    radial-gradient(circle 3px at 50% 12%, rgba(0,0,0,.42) 0 1.4px, rgba(255,255,255,.55) 1.4px 2.6px, transparent 2.6px),
+    radial-gradient(circle 3px at 50% 46%, rgba(0,0,0,.42) 0 1.4px, rgba(255,255,255,.55) 1.4px 2.6px, transparent 2.6px),
+    radial-gradient(circle 3px at 50% 82%, rgba(0,0,0,.42) 0 1.4px, rgba(255,255,255,.55) 1.4px 2.6px, transparent 2.6px),
+    linear-gradient(90deg, rgba(0,0,0,.32) 0 1px, rgba(255,255,255,.42) 1px 2px, transparent 2px);
+}
+/* 右栏左缘：镜像 */
+html body .col-right::after{
+  content:""; position:absolute; left:-3px; top:0; bottom:0; width:3px;
+  pointer-events:none; z-index:3;
+  background-image:
+    radial-gradient(circle 3px at 50% 12%, rgba(0,0,0,.42) 0 1.4px, rgba(255,255,255,.55) 1.4px 2.6px, transparent 2.6px),
+    radial-gradient(circle 3px at 50% 46%, rgba(0,0,0,.42) 0 1.4px, rgba(255,255,255,.55) 1.4px 2.6px, transparent 2.6px),
+    radial-gradient(circle 3px at 50% 82%, rgba(0,0,0,.42) 0 1.4px, rgba(255,255,255,.55) 1.4px 2.6px, transparent 2.6px),
+    linear-gradient(90deg, rgba(0,0,0,.32) 0 1px, rgba(255,255,255,.42) 1px 2px, transparent 2px);
+}
+/* 折角加大：14 → 26px（原来的太小，看不出"咬合"） */
+html body .col-left::after{
+  right:-26px !important; width:26px !important; height:230px !important;
+  clip-path:polygon(0 0, 100% 26%, 0 100%) !important;
+  box-shadow:4px 0 12px -6px rgba(0,0,0,.6) !important;
+}
+html body .col-right::before{
+  left:-26px !important; width:26px !important; height:230px !important;
+  clip-path:polygon(100% 0, 0 26%, 100% 100%) !important;
+  box-shadow:-4px 0 12px -6px rgba(0,0,0,.6) !important;
+}
+/* 中栏顶部：一条 45° 的小折角（呼应参考图上沿的斜切） */
+html body .col-center::after{
+  content:""; position:absolute; left:0; right:0; top:0; height:14px;
+  pointer-events:none; z-index:4;
+  background:linear-gradient(180deg, rgba(255,255,255,.05), transparent);
+  clip-path:polygon(0 0, 100% 0, 100% 100%, 68% 100%, 52% 0);
+}
+
+/* ── 拼缝/铆钉放大到"正常尺寸能看见"（第一次只有 3px，缩略图上直接消失）──
+   实测：1px 线在 1000px 宽的截图上缩放后看不见 ⇒ 拼缝 6px、铆钉直径 11px、折角 40px。 */
+html body .col-left::before,
+html body .col-right::after{
+  width:6px !important;
+  background-image:
+    radial-gradient(circle 6px at 50% 11%, rgba(0,0,0,.45) 0 3.2px, rgba(255,255,255,.62) 3.2px 5.4px, rgba(0,0,0,.25) 5.4px 6px, transparent 6px),
+    radial-gradient(circle 6px at 50% 45%, rgba(0,0,0,.45) 0 3.2px, rgba(255,255,255,.62) 3.2px 5.4px, rgba(0,0,0,.25) 5.4px 6px, transparent 6px),
+    radial-gradient(circle 6px at 50% 81%, rgba(0,0,0,.45) 0 3.2px, rgba(255,255,255,.62) 3.2px 5.4px, rgba(0,0,0,.25) 5.4px 6px, transparent 6px),
+    linear-gradient(90deg, rgba(0,0,0,.45) 0 2px, rgba(255,255,255,.55) 2px 3px, rgba(0,0,0,.30) 3px 4px, transparent 4px) !important;
+}
+html body .col-left::before{ right:-6px !important; }
+html body .col-right::after{ left:-6px !important; }
+html body .col-left::after{
+  right:-40px !important; width:40px !important; height:260px !important;
+  clip-path:polygon(0 0, 100% 28%, 0 100%) !important;
+}
+html body .col-right::before{
+  left:-40px !important; width:40px !important; height:260px !important;
+  clip-path:polygon(100% 0, 0 28%, 100% 100%) !important;
+}
+
+/* ── 拼缝改到**栏内侧**（外侧的 right:-6px 被 .col-left 的 overflow 裁掉了，
+      实测缩略图上一点都看不见；内侧 5px 保证一定渲染在可见区域内）── */
+html body .col-left::before,
+html body .col-right::after{
+  width:5px !important;
+  background-image:linear-gradient(90deg,
+    rgba(0,0,0,0) 0 1px,
+    rgba(0,0,0,.42) 1px 2px,          /* 暗缝 */
+    rgba(255,255,255,.60) 2px 3px,    /* 亮棱（受光的加工边） */
+    rgba(0,0,0,.30) 3px 4px,
+    rgba(0,0,0,0) 4px 5px) !important;
+}
+html body .col-left::before{ right:0 !important; left:auto !important; }
+html body .col-right::after{ left:0 !important; right:auto !important;
+  background-image:linear-gradient(270deg,
+    rgba(0,0,0,0) 0 1px,
+    rgba(0,0,0,.42) 1px 2px,
+    rgba(255,255,255,.60) 2px 3px,
+    rgba(0,0,0,.30) 3px 4px,
+    rgba(0,0,0,0) 4px 5px) !important; }
+
+/* ─────────────────────────────────────────────
+   ⑩ 刻纹图标重做（2026-11-08 老板：「置顶的箭头太细了，重命名也要优化」）
+   —— 之前用的是 Unicode 字符（↑ ✎ ✕），笔画细、各平台字形还不一致。
+      改成 **SVG 形状 + mask**：
+        · 形状写死（几何、方正、粗笔画 2.2px，工业风），粗细可控；
+        · 颜色走 background-color（能跟刻纹色一致），不是 SVG 里写死；
+        · 凹刻感用 drop-shadow(0 1px 0 白) —— 对 mask 出来的形状同样有效。
+   ───────────────────────────────────────────── */
+html body .wi-actions button::before{
+  content:"" !important;
+  width:15px !important;
+  height:15px !important;
+  margin:0 auto !important;
+  display:block !important;
+  font-size:0 !important;
+  text-shadow:none !important;
+  background-color:rgba(38,34,29,.66) !important;
+  -webkit-mask-size:contain; mask-size:contain;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  -webkit-mask-position:center; mask-position:center;
+  filter:drop-shadow(0 1px 0 rgba(255,255,255,.80));
+}
+/* 置顶：粗箭头 + 底部托线（"顶到最上面"的读法，比单箭头稳） */
+html body .wi-actions button[title="置顶"]::before{
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 12.5V4M4.2 7.4L8 3.6l3.8 3.8' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='square' stroke-linejoin='miter'/%3E%3Cpath d='M3.4 14.6h9.2' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='square'/%3E%3C/svg%3E");
+          mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 12.5V4M4.2 7.4L8 3.6l3.8 3.8' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='square' stroke-linejoin='miter'/%3E%3Cpath d='M3.4 14.6h9.2' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='square'/%3E%3C/svg%3E");
+}
+/* 重命名：实心笔身 + 底边基线（比 ✎ 更"机械"） */
+html body .wi-actions button[title="重命名"]::before{
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9.6 3.2l3.2 3.2-7 7-3.2 0 0-3.2z' fill='%23000'/%3E%3Cpath d='M2.6 14.8h10.8' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='square'/%3E%3C/svg%3E");
+          mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9.6 3.2l3.2 3.2-7 7-3.2 0 0-3.2z' fill='%23000'/%3E%3Cpath d='M2.6 14.8h10.8' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='square'/%3E%3C/svg%3E");
+}
+/* 删除：粗叉 */
+html body .wi-actions button[title^="删除"]::before{
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 4l8 8M12 4l-8 8' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='square'/%3E%3C/svg%3E");
+          mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 4l8 8M12 4l-8 8' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='square'/%3E%3C/svg%3E");
+}
+html body .wi-actions button:hover::before{ background-color:rgba(14,12,10,.92) !important; }
+html body .wi-actions button.wi-act-danger:hover::before{ background-color:#B3123A !important; }
+
+/* 让刻纹按钮真正"无底"：上一步被 .app-debox button:not(.btn) 的金属块盖住了
+   （同类 !important 时它特异性更高）—— 这里用同前缀 + 后写，压回来。 */
+html body .app-debox .wi-actions button{
+  background:transparent !important;
+  background-image:none !important;
+  border:0 !important;
+  box-shadow:none !important;
+}
+html body .app-debox .wi-actions button:hover{
+  background-color:rgba(0,0,0,.07) !important;
+}
+
+/* ─────────────────────────────────────────────
+   ⑪ 顶部流程条：换浅色 + 不再溢出被裁（2026-11-08 老板：「上边栏的流程可以换成白的，
+      而且不要做得太长而被遮挡」）
+   实测原因：.fb-step 原来 min-width:112px、5 个 + gap + padding ≈ 616px，
+   而中栏只有约 525px ⇒ 被 .fishbone{overflow:hidden} 直接裁掉一截（"被遮挡"就是这么来的）。
+   修法：① 背景换浅色金属（与侧栏同一套）；② 步骤改成 flex:1 1 0; min-width:0
+   —— 5 段平分中栏宽度，不再溢出；③ 字号/内边距/圆角一并收小（设备面板的按钮排）。
+   ───────────────────────────────────────────── */
+html body .app-debox .fishbone{
+  background-image:linear-gradient(180deg,#D4D0CA 0%,#C4C0BA 100%) !important;
+  border-bottom:1px solid rgba(0,0,0,.30) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.65), inset 0 -1px 0 rgba(0,0,0,.10) !important;
+  gap:3px !important;
+  padding:0 10px !important;
+  overflow:hidden !important;
+}
+html body .app-debox .fb-step{
+  flex:1 1 0 !important;        /* 平分宽度，永不超过容器 */
+  min-width:0 !important;       /* 允许收缩（原来 112px 是溢出的根因） */
+  padding:6px 6px !important;
+  font-size:11px !important;
+  gap:5px !important;
+  border-radius:4px !important;
+  background-image:linear-gradient(180deg,#E2DED8 0%,#CCC8C2 100%) !important;
+  border:1px solid rgba(0,0,0,.22) !important;
+  color:#1B1917 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.88),
+    0 1px 0 rgba(0,0,0,.12) !important;
+  transform:none !important;
+}
+html body .app-debox .fb-step .fb-num{ font-size:10px !important; color:#5F5A53 !important; opacity:1 !important; }
+/* 当前步骤：深色小块（内凹），不用红色 —— 红色位置仍等老板定 */
+html body .app-debox .fb-step.active{
+  background-image:linear-gradient(180deg,#3E3B37 0%,#211F1D 100%) !important;
+  color:#F6F3EE !important;
+  border-color:rgba(0,0,0,.65) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.16), 0 2px 7px rgba(0,0,0,.55) !important;
+}
+html body .app-debox .fb-step.active .fb-num{ color:#EDE9E2 !important; }
+/* 已完成：中灰（比未完成深一档，比当前浅） */
+html body .app-debox .fb-step.done{
+  background-image:linear-gradient(180deg,#BAB5AE 0%,#A7A29B 100%) !important;
+  color:#2A2620 !important;
+  border-color:rgba(0,0,0,.30) !important;
+}
+
+/* 流程条文字挤：5 段平分后每段约 100px，数字+中文贴在一起。
+   收字号（11→10.5）、缩 gap（5→4）、数字右侧留 3px，中文强制不换行不省略。 */
+html body .app-debox .fb-step{ font-size:10.5px !important; gap:3px !important; }
+html body .app-debox .fb-step .fb-num{ margin-right:2px !important; letter-spacing:0 !important; }
+html body .app-debox .fb-step{ letter-spacing:.01em !important; }
+
+/* ─────────────────────────────────────────────
+   ⑫ 返回大厅 → 一个**粗箭头方块**（2026-11-08 老板：「不用标返回大厅，一个粗箭头按钮即可」）
+   —— 原样式是 fixed 的红底白字胶囊（在浅灰侧栏上又红又长，所以"很奇怪"）。
+      改成：36×30 的浅色金属凸块 + 18px 粗箭头（SVG mask，与另三个刻纹图标同一套笔画）。
+   ───────────────────────────────────────────── */
+html body .sidebar-back{
+  width:36px !important;
+  height:30px !important;
+  padding:0 !important;
+  gap:0 !important;
+  justify-content:center !important;
+  font-size:0 !important;                 /* 隐藏 "←" 这个文本节点 */
+  color:transparent !important;
+  background-image:linear-gradient(180deg,#DAD6D0 0%,#C2BEB8 100%) !important;
+  border:1px solid rgba(0,0,0,.26) !important;
+  border-radius:5px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.90),
+    inset 0 -1px 0 rgba(0,0,0,.18),
+    0 2px 5px rgba(0,0,0,.35) !important;
+  top:10px !important;
+  left:10px !important;
+}
+html body .sidebar-back .sb-text{ display:none !important; }
+html body .sidebar-back::before{
+  content:"" !important;
+  width:18px !important;
+  height:18px !important;
+  background-color:#24211E !important;
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13.2 8H4.2M4.2 8l4.4-4.4M4.2 8l4.4 4.4' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='square' stroke-linejoin='miter'/%3E%3C/svg%3E");
+          mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13.2 8H4.2M4.2 8l4.4-4.4M4.2 8l4.4 4.4' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='square' stroke-linejoin='miter'/%3E%3C/svg%3E");
+  -webkit-mask-size:contain; mask-size:contain;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  -webkit-mask-position:center; mask-position:center;
+  filter:drop-shadow(0 1px 0 rgba(255,255,255,.85));
+}
+html body .sidebar-back:hover{
+  background-image:linear-gradient(180deg,#E6E2DC 0%,#CCC8C2 100%) !important;
+  transform:none !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.95),
+    inset 0 -1px 0 rgba(0,0,0,.18),
+    0 3px 8px rgba(0,0,0,.40) !important;
+}
+
+/* ─────────────────────────────────────────────
+   ⑬ 顶部流程条：**深底 + 白色小块**（2026-11-08 老板：「上边栏增加黑色占比，减少白色」）
+   —— 上一版整条是浅灰（白占满），太重太亮。现在反过来：
+      条本身 = 深色金属（与中区同色系，黑色占比大）；步骤 = 白色小凸块（白色只出现在块上）；
+      当前步骤 = 更白 + 外圈亮线（对比最强）。这就是参考图里"黑底白块按钮排"的读法。
+   ───────────────────────────────────────────── */
+html body .app-debox .fishbone{
+  background-image:linear-gradient(180deg,#2F2C29 0%,#232120 100%) !important;
+  border-bottom:1px solid rgba(0,0,0,.65) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.09),
+    inset 0 -1px 0 rgba(0,0,0,.55) !important;
+}
+html body .app-debox .fb-step{
+  background-image:linear-gradient(180deg,#E4E0DA 0%,#C6C2BC 100%) !important;
+  color:#1B1917 !important;
+  border:1px solid rgba(0,0,0,.45) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.92),
+    0 1px 3px rgba(0,0,0,.55) !important;
+}
+html body .app-debox .fb-step .fb-num{ color:#5B564F !important; }
+/* 当前步骤：更白一档 + 一圈亮线（全场最亮的块，不用红色） */
+html body .app-debox .fb-step.active{
+  background-image:linear-gradient(180deg,#FBF9F5 0%,#E6E2DC 100%) !important;
+  color:#0E0C0B !important;
+  border-color:rgba(255,255,255,.55) !important;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.28),
+    inset 0 1px 0 rgba(255,255,255,1),
+    0 2px 8px rgba(0,0,0,.65) !important;
+}
+html body .app-debox .fb-step.active .fb-num{ color:#3A352F !important; }
+/* 已完成：中灰（比未完成暗，比底色亮） */
+html body .app-debox .fb-step.done{
+  background-image:linear-gradient(180deg,#B8B3AC 0%,#9E9891 100%) !important;
+  color:#141210 !important;
+  border-color:rgba(0,0,0,.55) !important;
+}
+/* 顶栏（logo 那条）也压深一档，和流程条连成一条"黑带" */
+html body .chrome-top{
+  background-color:#171614 !important;
+  border-bottom:1px solid rgba(0,0,0,.8) !important;
+  box-shadow:0 1px 0 rgba(255,255,255,.06), 0 6px 16px -10px rgba(0,0,0,.9) !important;
+}
+
+/* ─────────────────────────────────────────────
+   ⑭ 三件一起落地（2026-11-08 老板：「不要问我要不要，做出来给我看看」）
+     ① 顶栏右侧胶囊（已连接 / 已创建 / 画布）压成深色小块（原来浅灰，和白色步骤块撞色）；
+     ② 侧栏与顶栏黑带的交界加一道 1px 亮线收口；
+     ③ **红色落在"当前步骤"**（全页唯一强发光）—— 状态指示最自然的位置。
+   ───────────────────────────────────────────── */
+/* ① 顶栏小胶囊：深底 + 细亮边（不再抢白色步骤块的注意力） */
+html body .app-debox .chrome-top .btn,
+html body .app-debox .topbar .btn,
+html body .app-debox .ws-status,
+html body .app-debox .ws-status *{
+  background-image:linear-gradient(180deg,#2B2926 0%,#1A1917 100%) !important;
+  border:1px solid rgba(255,255,255,.14) !important;
+  color:#D9D5CE !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 1px 0 rgba(0,0,0,.65) !important;
+}
+html body .app-debox .chrome-top .btn:hover,
+html body .app-debox .topbar .btn:hover{
+  background-image:linear-gradient(180deg,#37342F 0%,#232120 100%) !important;
+  border-color:rgba(255,255,255,.22) !important;
+}
+/* ② 侧栏顶缘：一条亮线收口（黑带压在浅侧栏上，不加这条会"直接切断"） */
+html body .col-left, html body .col-right{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.55),
+    inset 0 -1px 0 rgba(0,0,0,.22),
+    inset 1px 0 0 rgba(255,255,255,.35),
+    inset -1px 0 0 rgba(0,0,0,.14),
+    0 16px 32px -18px rgba(0,0,0,.9) !important;
+}
+/* ③ 当前步骤：品红 + 外发光（唯一强发光处） */
+html body .app-debox .fb-step.active{
+  background-image:linear-gradient(180deg,#F5305A 0%,#B4133A 100%) !important;
+  color:#fff !important;
+  border-color:rgba(255,140,165,.65) !important;
+  box-shadow:
+    0 0 20px rgba(224,24,72,.55),
+    inset 0 1px 0 rgba(255,255,255,.38),
+    0 2px 8px rgba(0,0,0,.6) !important;
+}
+html body .app-debox .fb-step.active .fb-num{ color:rgba(255,255,255,.85) !important; }
+
+/* ─────────────────────────────────────────────
+   ⑮ 去掉底部白带（2026-11-08 老板：「底边多余了，去掉底边白带」）
+   —— 之前为了让"深底浅字"不跳，我把 .statusbar 也刷成了浅色金属，
+      结果整页最底多出一条白带。现在改回**深色金属条**（与中区同色系），
+      文字用浅灰 —— 它是"状态栏"，不该比内容更亮。
+   ───────────────────────────────────────────── */
+html body .statusbar{
+  background-image:linear-gradient(180deg,#232120 0%,#1A1918 100%) !important;
+  border-top:1px solid rgba(0,0,0,.65) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07) !important;
+  color:#B6B2AA !important;
+}
+html body .statusbar, html body .statusbar *{ color:#B6B2AA !important; }
+html body .statusbar .sb-item strong{ color:#EDEAE4 !important; }
+
+/* ─────────────────────────────────────────────
+   ⑯ 顶部流程条：**白占比加大**（2026-11-08 老板：「上边栏增加白占比」）
+   —— 上一版是"黑带 + 白块"，白只占块。现在反过来：
+      条本身 = 浅灰（白面，与侧栏同色系，占比大）；步骤 = **深色小块**（黑只占块）。
+      当前步骤仍是品红（唯一强色）。这样顶栏读起来是"浅色面板上嵌了几颗深色按钮"。
+   ───────────────────────────────────────────── */
+html body .app-debox .fishbone{
+  background-image:linear-gradient(180deg,#D2CEC8 0%,#BEBAB4 100%) !important;
+  border-bottom:1px solid rgba(0,0,0,.38) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.70),
+    inset 0 -1px 0 rgba(0,0,0,.12) !important;
+}
+html body .app-debox .fb-step{
+  background-image:linear-gradient(180deg,#3B3834 0%,#232120 100%) !important;
+  color:#EDEAE4 !important;
+  border:1px solid rgba(0,0,0,.55) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.16),
+    0 1px 2px rgba(0,0,0,.35) !important;
+}
+html body .app-debox .fb-step .fb-num{ color:#B6B1A9 !important; }
+html body .app-debox .fb-step.done{
+  background-image:linear-gradient(180deg,#5A554F 0%,#3E3A36 100%) !important;
+  color:#F0EDE7 !important;
+}
+/* 顶栏右侧胶囊仍保持深色小块（在浅条上才跳得出来） */
+
+/* ─────────────────────────────────────────────
+   ⑰ 圆角统一到 4px（2026-11-08 老板：「圆角半径过大，与按钮不匹配，突兀」）
+   —— 之前面板 8px / 卡片 5px / 按钮 4px / 输入框 4px，四种半径混在一起，面板显得"太圆"。
+      工业件的圆角只有一个量级：**4px 给面、3px 给块、2px 给小块**。
+   ───────────────────────────────────────────── */
+html body .app-debox :is(.disc-zone,.panel){ border-radius:4px !important; }
+html body .app-debox :is(.rw-v5,.dock-entry,.nextstep){ border-radius:4px !important; }
+html body .app-debox .fb-step{ border-radius:3px !important; }
+html body .app-debox input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html body .app-debox textarea,
+html body .app-debox select{ border-radius:3px !important; }
+html body .app-debox .btn,
+html body .app-debox button:not(.btn),
+html body .app-debox .chat-input button,
+html body .app-debox .btn.primary,
+html body .app-debox .dock-entry-btn{ border-radius:3px !important; }
+html body .workshop-item{ border-radius:3px !important; }
+html body .wi-actions button{ border-radius:2px !important; }
+html body .sidebar-back{ border-radius:4px !important; }
+html body .app-debox .chip,
+html body .app-debox .ws-status,
+html body .app-debox .tag{ border-radius:3px !important; }
+
+/* ─────────────────────────────────────────────
+   ⑱ 增加倒角（chamfer）—— 2026-11-08 老板：「增加倒角」
+   —— 参考图的标志是 45° 斜切角。做法上要避开 clip-path 的两个坑：
+        ① clip-path 会连同外投影一起裁掉（面板立刻变平）；
+        ② 大尺寸切角会盖住左上标题的红点。
+      所以：**面板用"底色三角"盖出切角**（保留投影），**按钮/步骤块用 clip-path 小倒角**。
+      .col-center 的底色是 #121110，三角就用它，看起来就是"被切掉一块"。
+   ───────────────────────────────────────────── */
+html body .app-debox :is(.disc-zone,.panel){
+  position:relative !important;
+  overflow:visible !important;
+}
+/* 右下角：22px 斜切（右下通常是空白，不会压到内容） */
+html body .app-debox :is(.disc-zone,.panel)::after{
+  content:"" !important;
+  position:absolute; right:-1px; bottom:-1px;
+  width:22px; height:22px;
+  background-color:#121110;
+  clip-path:polygon(100% 100%, 100% 0, 0 100%);
+  pointer-events:none; z-index:3;
+  border-radius:0 !important;
+}
+/* 左上角：10px 小斜切（小到不压标题红点，只做"加工"暗示） */
+html body .app-debox :is(.disc-zone,.panel)::before{
+  content:"" !important;
+  position:absolute; left:-1px; top:-1px;
+  width:10px; height:10px;
+  background-color:#121110;
+  clip-path:polygon(0 0, 100% 0, 0 100%);
+  pointer-events:none; z-index:3;
+  border-radius:0 !important;
+}
+/* 按钮：右下 5px 小倒角（clip-path 不影响它——按钮本来就没有外投影需求） */
+html body .app-debox .btn,
+html body .app-debox button:not(.btn),
+html body .app-debox .chat-input button,
+html body .app-debox .btn.primary,
+html body .app-debox .dock-entry-btn{
+  clip-path:polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%) !important;
+}
+/* 步骤块：右下 4px 倒角 */
+html body .app-debox .fb-step{
+  clip-path:polygon(0 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%) !important;
+}
+/* 左栏工作间卡：右下 6px 倒角 */
+html body .workshop-item{
+  clip-path:polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%) !important;
+}
+
+/* ─────────────────────────────────────────────
+   ⑲ 倒角加大（2026-11-08 老板：「增加倒角（大），然后在倒角上直接圆角（很小）」）
+   ⚠️ 先记一次失败：我试过用 clip-path 做"大倒角 + 圆弧"，结果 **边框和投影全被裁掉**
+      （panel 变成一块没有边的灰面，比原来更差）⇒ 已回退。
+   最终方案仍是"底色三角盖出切角"（能保留边框与投影），只把尺寸放大：
+     右下 22 → 40px、左上 10 → 16px；三角的两个尖角用 border-radius 做 3px 小圆角
+     不可行（三角形不吃 border-radius），所以**改用两个圆角小方块叠在斜边两端**近似圆弧。
+   ───────────────────────────────────────────── */
+/* 右下切角：40px */
+html body .app-debox :is(.disc-zone,.panel)::after{
+  width:40px !important;
+  height:40px !important;
+}
+/* 左上小切角：16px */
+html body .app-debox :is(.disc-zone,.panel)::before{
+  width:16px !important;
+  height:16px !important;
+}
+/* 斜边两端的小圆角：用两个 3px 的"与中区同色"圆点压住尖角（近似刀位圆角） */
+html body .col-center::before{
+  content:""; position:absolute; left:0; top:0; width:100%; height:0;
+  pointer-events:none;
+}
+
+/* 倒角的两个尖端做 4px 小圆角（三角不吃 border-radius ⇒ 用 clip-path 多点近似：
+   把斜边两端各切掉一小段，形成"刀位圆角"）。 */
+html body .app-debox :is(.disc-zone,.panel)::after{
+  clip-path:polygon(
+    100% 100%,
+    100% 5px,
+    calc(100% - 2.6px) calc(100% - 2.6px),
+    calc(100% - 5px) 100%
+  ) !important;
+}
+html body .app-debox :is(.disc-zone,.panel)::before{
+  clip-path:polygon(
+    0 0,
+    5px 0,
+    calc(2.6px) calc(2.6px),
+    0 5px
+  ) !important;
+}
+
+/* ─────────────────────────────────────────────
+   ⑳ 圆角再收小（2026-11-08 老板：「圆角半径过大，特别是上面两个角最明显」）
+   —— 4px 在 1x 屏上看起来仍有明显圆弧，尤其面板上沿两个角。工业件的做法是**近乎直角**：
+      面 2px / 块 2px / 小块 1px / 侧栏 0（侧栏本来就是通栏，不该有圆角）。
+   ───────────────────────────────────────────── */
+html body .app-debox :is(.disc-zone,.panel){ border-radius:2px !important; }
+html body .app-debox :is(.rw-v5,.dock-entry,.nextstep){ border-radius:2px !important; }
+html body .app-debox .fb-step{ border-radius:2px !important; }
+html body .app-debox input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html body .app-debox textarea,
+html body .app-debox select{ border-radius:2px !important; }
+html body .app-debox .btn,
+html body .app-debox button:not(.btn),
+html body .app-debox .chat-input button,
+html body .app-debox .btn.primary,
+html body .app-debox .dock-entry-btn{ border-radius:2px !important; }
+html body .workshop-item{ border-radius:2px !important; }
+html body .wi-actions button{ border-radius:1px !important; }
+html body .sidebar-back{ border-radius:2px !important; }
+/* 侧栏是通栏：上下两角做直角（原来 12px 的圆角在大屏上非常明显） */
+html body .col-left, html body .col-right{ border-radius:0 !important; }
+/* 流程条：直角（它是设备上的一条导轨，不是卡片） */
+html body .app-debox .fishbone{ border-radius:0 !important; }
+/* 右栏的大入口按钮：2px */
+html body .app-debox .dock-entry-btn.alt{ border-radius:2px !important; }
+
+/* ─────────────────────────────────────────────
+   ㉑ 四个角都倒角（2026-11-08 老板：「中间的黑框也要倒角，避免长方形直角」）
+   —— 之前只切了左上 16 / 右下 40，右上与左下仍是直角 ⇒ 还是"长方形"。
+      这次四角全切：右下 40px（最大，参考图的做法）、其它三角各 14px。
+      实现：把四个"与中区同色的三角"直接写进面板的 background-image（尺寸/位置分开给），
+      不再用伪元素（伪元素只有两个，放不下四角），也不再动 border（边框和投影要留着）。
+   ───────────────────────────────────────────── */
+html body .app-debox :is(.disc-zone,.panel){
+  background-image:
+    linear-gradient(135deg,#121110 50%,rgba(18,17,16,0) 50%),
+    linear-gradient(225deg,#121110 50%,rgba(18,17,16,0) 50%),
+    linear-gradient(45deg,#121110 50%,rgba(18,17,16,0) 50%),
+    linear-gradient(315deg,#121110 50%,rgba(18,17,16,0) 50%),
+    linear-gradient(180deg,#454239 0%,#3B3A37 46%,#302E2B 100%) !important;
+  background-size:
+    14px 14px,
+    14px 14px,
+    14px 14px,
+    40px 40px,
+    auto !important;
+  background-position:
+    left top,
+    right top,
+    left bottom,
+    right bottom,
+    center !important;
+  background-repeat:no-repeat !important;
+}
+/* 旧的"盖三角"伪元素作废（否则会和右下 40px 那块重叠出毛边） */
+html body .app-debox :is(.disc-zone,.panel)::before,
+html body .app-debox :is(.disc-zone,.panel)::after{
+  display:none !important;
+}
+
+/* 修：background-blend-mode 还是 ⑦ 那版留下的 overlay, normal（层数对不上），
+   它把四角三角和主渐变混色，整块面被压成近黑。这里显式按 5 层给 normal。 */
+html body .app-debox :is(.disc-zone,.panel){
+  background-blend-mode:normal, normal, normal, normal, normal !important;
+  background-color:#3B3A37 !important;
+}
+
+/* ============================================================
+   ㉒ 整体审查后的五项优化（2026-11-08 老板：「整体看看有哪些地方需要优化的，设计并优化」）
+   审查结论（按影响排序，都是真看出来的，不是套模板）：
+     ① **颜色太杂**：紫"组长"、青"结构化"、绿点、蓝图标、红按钮混在一页 —— 工业件只用"灰阶 + 一处红"。
+     ② **「下一步」还是旧的红色左边框**：整个条像从另一个设计里剪来的。
+     ③ **标签样式**：圆角胶囊（999px）和 2px 直角的面板不是一套语言。
+     ④ **面板间距 14px 偏松**：工业件紧凑，10px 才"成组"。
+     ⑤ **刻纹图标 15px 偏小**：在 30×24 的按钮里视觉重量太轻。
+   ============================================================ */
+
+/* ① + ③ 标签统一：**直角描边小标**（不再用彩色胶囊） */
+html body .app-debox .zone-tag{
+  background:transparent !important;
+  background-image:none !important;
+  border:1px solid rgba(255,255,255,.26) !important;
+  color:#B8B4AC !important;
+  border-radius:2px !important;
+  font-size:9.5px !important;
+  font-weight:700 !important;
+  letter-spacing:.10em !important;
+  padding:1px 6px !important;
+  vertical-align:middle !important;
+}
+/* 其余彩色徽标（tag/chip）一并压成灰阶描边；只有"在线/失败"这类状态色保留 */
+html body .app-debox .tag:not(.ok):not(.warn):not(.bad),
+html body .app-debox .chip:not(.ok):not(.warn):not(.bad){
+  background:transparent !important;
+  border:1px solid rgba(255,255,255,.22) !important;
+  color:#B8B4AC !important;
+  border-radius:2px !important;
+}
+
+/* ② 「下一步」条：去掉红色左边框，改成**深色块 + 左侧品红细条**（与当前步骤同一套语言） */
+html body .app-debox .nextstep{
+  background-image:linear-gradient(180deg,#2B2825 0%,#1E1C1A 100%) !important;
+  border:0 !important;
+  border-left:3px solid var(--ind-accent) !important;
+  border-radius:2px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.07),
+    0 1px 0 rgba(0,0,0,.6) !important;
+  padding:10px 12px !important;
+}
+
+/* ④ 面板间距收紧：14 → 10px */
+html body .app-debox :is(.disc-zone,.panel){ margin-bottom:10px !important; }
+html body .app-debox .rw-v5{ margin:6px 0 0 !important; }
+
+/* ⑤ 刻纹图标放大：15 → 16px，按钮可点区 30×24 → 30×26 */
+html body .wi-actions button{ height:26px !important; }
+html body .wi-actions button::before{ width:16px !important; height:16px !important; }
+
+/* ─────────────────────────────────────────────
+   ㉓ 撤销卡片的倒角（2026-11-08 老板：「停停停，我没让你给卡片做倒角」）
+   —— 我把"中间的黑框也要倒角"执行成了"面板 + 左栏卡片都倒角"，卡片是**我多做的一步**。
+      这里只撤销 .workshop-item（左栏工作间卡）的倒角，恢复矩形；面板的倒角保留。
+      按钮、步骤块的倒角也保留（它们是"块"，不是"卡片"）—— 如果你只想要面板有倒角，
+      说一声我把这两处也一并去掉。
+   ───────────────────────────────────────────── */
+html body .workshop-item{ clip-path:none !important; }
+
+/* ============================================================
+   ㉔ 倒角位置纠正（2026-11-08 老板在截图上标的：
+        **绿圈 = 要**：顶部流程条、顶部状态胶囊、右栏三个入口按钮、左栏顶部 ◀ 按钮
+        **绿叉 = 不要**：中间三个面板的四角倒角（我加错了地方）
+   ⇒ 面板倒角全部撤销；倒角改到"条"和"按钮"上。
+   ============================================================ */
+
+/* ① 面板：撤销四角倒角，恢复纯色面 + 2px 圆角 */
+html body .app-debox :is(.disc-zone,.panel){
+  background-image:linear-gradient(180deg,#454239 0%,#3B3A37 46%,#302E2B 100%) !important;
+  background-size:auto !important;
+  background-position:center !important;
+  background-repeat:repeat !important;
+  background-blend-mode:normal !important;
+  border-radius:2px !important;
+}
+
+/* ② 顶部流程条：左上/右下各切一刀（12px）—— 老板画的白色倒角就是这两处 */
+html body .app-debox .fishbone{
+  clip-path:polygon(
+    12px 0, 100% 0,
+    100% calc(100% - 12px), calc(100% - 12px) 100%,
+    0 100%, 0 12px
+  ) !important;
+}
+
+/* ③ 顶部状态胶囊（已连接 / 已创建）：右下 6px */
+html body .app-debox .ws-status,
+html body .app-debox .ws-status *{
+  clip-path:polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%) !important;
+}
+
+/* ④ 右栏三个入口按钮：右下 8px */
+html body .app-debox .dock-entry-btn,
+html body .app-debox .dock-entry-btn.alt{
+  clip-path:polygon(
+    0 0, 100% 0,
+    100% calc(100% - 8px), calc(100% - 8px) 100%,
+    0 100%
+  ) !important;
+}
+
+/* ⑤ 左栏顶部折叠按钮 ◀：右下 6px */
+html body .app-debox .nav-toggle{
+  clip-path:polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%) !important;
+}
+
+/* ⑥ 顶栏"画布"这类小按钮：右下 5px（与状态胶囊同档） */
+html body .app-debox .chrome-top .btn,
+html body .app-debox .topbar .btn{
+  clip-path:polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%) !important;
+}
+
+/* ============================================================
+   ㉕ 改成**反倒角**（2026-11-08 老板：「不是啊，是反倒角」）
+   —— 之前我做的是"凸倒角"（把外角切掉）。老板要的是**凹进去的缺口**：
+      在角上挖一块（L 形让位槽），像机械件给螺栓留的缺口。
+      路径写法（左上挖 8×8）：
+        (8,0) → 右上 → 右下(100%,100%-8) → (100%-8,100%-8) → (100%-8,100%) → 左下 → (0,8) → (8,8) → 闭合
+      这样两个角都是"向内凹"的直角缺口。
+   ============================================================ */
+html body .app-debox .fishbone{
+  clip-path:polygon(
+    14px 0, 100% 0,
+    100% calc(100% - 14px),
+    calc(100% - 14px) calc(100% - 14px),
+    calc(100% - 14px) 100%,
+    0 100%, 0 14px, 14px 14px
+  ) !important;
+}
+html body .app-debox .dock-entry-btn,
+html body .app-debox .dock-entry-btn.alt{
+  clip-path:polygon(
+    8px 0, 100% 0,
+    100% calc(100% - 8px),
+    calc(100% - 8px) calc(100% - 8px),
+    calc(100% - 8px) 100%,
+    0 100%, 0 8px, 8px 8px
+  ) !important;
+}
+html body .app-debox .ws-status,
+html body .app-debox .ws-status *{
+  clip-path:polygon(
+    6px 0, 100% 0,
+    100% calc(100% - 6px),
+    calc(100% - 6px) calc(100% - 6px),
+    calc(100% - 6px) 100%,
+    0 100%, 0 6px, 6px 6px
+  ) !important;
+}
+html body .app-debox .nav-toggle{
+  clip-path:polygon(
+    6px 0, 100% 0,
+    100% calc(100% - 6px),
+    calc(100% - 6px) calc(100% - 6px),
+    calc(100% - 6px) 100%,
+    0 100%, 0 6px, 6px 6px
+  ) !important;
+}
+html body .app-debox .chrome-top .btn,
+html body .app-debox .topbar .btn{
+  clip-path:polygon(
+    5px 0, 100% 0,
+    100% calc(100% - 5px),
+    calc(100% - 5px) calc(100% - 5px),
+    calc(100% - 5px) 100%,
+    0 100%, 0 5px, 5px 5px
+  ) !important;
+}
+
+/* ============================================================

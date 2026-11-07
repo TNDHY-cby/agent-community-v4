@@ -212,6 +212,58 @@ def main() -> int:
               st8 == 200 and got_good.get("exists") is True
               and got_bad.get("exists") is False and bool(got_bad.get("why")),
               "good=%r bad=%r" % (got_good.get("exists"), got_bad.get("exists")))
+        # ⑨⑩ 收件事件登记进资源库（V134 ⑩ 的最后一块）：登记后 resources 有它且 exists=true；重复扫不重复登记
+        # 先派一条活：事件要能"绑任务"，⑪⑫ 才有东西可看（V134 ⑤）
+        _http(base, "/api/workshop/%s/dispatch" % wid,
+              {"member_seq": seqs.get(S1), "title": "事件绑任务夹具", "goal": "x", "accept": "x"})
+        (ws_root / S1 / "产物" / "交付2.md").write_text("真产物2", encoding="utf-8")
+        st9, b9 = _http(base, "/api/workshop/%s/scan-inbox" % wid, {"register": True})
+        reg = (b9 or {}).get("registered") or {}
+        _st_r, b_r = _http(base, "/api/workshop/%s/resources" % wid)
+        inbox_rows = [r for r in ((b_r or {}).get("resources") or [])
+                      if str(r.get("source") or "") == "inbox"]
+        check("⑨ 收件事件能登记进资源库（带 sha256 / source=inbox，且 exists=true）",
+              st9 == 200 and bool(reg.get("added"))
+              and any(r.get("name") == "交付2.md" and r.get("exists") is True
+                      and r.get("sha256") for r in inbox_rows),
+              "registered=%r inbox_rows=%d" % (json.dumps(reg, ensure_ascii=False)[:200],
+                                               len(inbox_rows)))
+
+        n_before = len(inbox_rows)
+        st10b, b10b = _http(base, "/api/workshop/%s/scan-inbox" % wid, {"register": True})
+        reg2 = (b10b or {}).get("registered") or {}
+        _st_r2, b_r2 = _http(base, "/api/workshop/%s/resources" % wid)
+        n_after = len([r for r in ((b_r2 or {}).get("resources") or [])
+                       if str(r.get("source") or "") == "inbox"])
+        check("⑩ 重复扫不重复登记（同 path+sha256 幂等）",
+              st10b == 200 and n_after == n_before and not (reg2.get("added") or []),
+              "before=%d after=%d reg2=%r" % (n_before, n_after,
+                                              json.dumps(reg2, ensure_ascii=False)[:160]))
+
+        # ⑪⑫ 收件事件 ↔ 任务 ↔ 验收 一处可见（V134 ⑤：原来两套口径）
+        st11, b11 = _http(base, "/api/workshop/%s/inbox-events?limit=20" % wid)
+        evs = [x for x in ((b11 or {}).get("events") or []) if x.get("file") == "交付2.md"]
+        ev = evs[0] if evs else {}
+        check("⑪ 事件里能看到它进了哪条任务（task_id/task_state/未验收）",
+              st11 == 200 and bool(ev) and bool(ev.get("task_id"))
+              and str(ev.get("task_state") or "") in ("issued", "working", "delivered")
+              and ev.get("task_reviewed_by") in ("", None),
+              "event=%r" % json.dumps({k: ev.get(k) for k in
+                                       ("task_id", "task_state", "task_reviewed_by",
+                                        "task_tier")}, ensure_ascii=False))
+
+        _st_rv, b_rv = _http(base, "/api/workshop/%s/tasks/%s/review" % (wid, 1),
+                             {"result": "通过", "evidence_level": "L0"})
+        st12, b12 = _http(base, "/api/workshop/%s/inbox-events?limit=20" % wid)
+        evs2 = [x for x in ((b12 or {}).get("events") or []) if x.get("file") == "交付2.md"]
+        ev2 = evs2[0] if evs2 else {}
+        check("⑫ 验收后同一事件显示谁验收的（task_reviewed_by / state）",
+              _st_rv == 200 and bool(ev2) and str(ev2.get("task_state") or "") == "accepted"
+              and str(ev2.get("task_reviewed_by") or "") in ("user", "_lead", "platform-review"),
+              "review=%s state=%r by=%r resp=%r" % (_st_rv, ev2.get("task_state"),
+                                                ev2.get("task_reviewed_by"),
+                                                json.dumps(b_rv, ensure_ascii=False)[:160]))
+
     finally:
         try:
             srv.terminate()

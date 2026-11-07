@@ -127,6 +127,27 @@ def main() -> int:
         st_mf, b_mf = _http(base, "/api/workshop/%s/manifest" % wid,
                             {"mind_path": str(mk.get("mind_path") or ""),
                              "entry_points": [REF]})
+        # 名单（整队通知需要"成员 → 工位"的对应）
+        (Path(tmpdir) / "lead_inbox").mkdir(parents=True, exist_ok=True)
+        _http(base, "/api/harness/register", {
+            "harness_id": "示例Harness-Lead", "harness_name": "示例Harness-Lead",
+            "harness_type": "custom", "wakeup_method": "file_poll",
+            "wakeup_dir": str(Path(tmpdir) / "lead_inbox"),
+            "tools": [{"name": "write_file"}], "ai": {"model_name": "示例模型"}})
+        _http(base, "/api/harness/register", {
+            "harness_id": "示例Harness-M1", "harness_name": "示例Harness-M1",
+            "harness_type": "custom", "wakeup_method": "a2a",
+            "api_base_url": "http://127.0.0.1:9/a2a/x",
+            "tools": [{"name": "write_file"}], "ai": {"model_name": "示例模型"}})
+        txt = ("#回执 v1\n类型: 名单\n工作间: %s\n成员: 组长\n凭据:\n序号: 11\n---\n" % wid
+               + "岗位: %s | harness: 示例Harness-M1 | model: 示例模型 | 人数: 1\n" % SLOT
+               + "岗位: _lead | harness: 示例Harness-Lead | model: 示例模型 | 人数: 1\n"
+               + "---\n行数: 2")
+        _http(base, "/api/workshop/%s/intake?source=C&confirm=1" % wid, {"text": txt})
+        _roster_b = _http(base, "/api/workshop/%s/roster" % wid)[1] or {}
+        _seq = {str((m or {}).get("slot_dir") or ""): int((m or {}).get("member_seq") or 0)
+                for m in (_roster_b.get("members") or [])}
+
         st_msg, b_msg = _http(base, "/api/workshop/%s/ailp" % wid, _env("msg-c1", to="lead"))
         ntext = ""
         try:
@@ -182,6 +203,28 @@ def main() -> int:
         check("⑧ 自由聊天没被复活（/discuss 仍 410）",
               st_d == 410 and (b_d or {}).get("code") == "FREECHAT_RETIRED",
               "HTTP %s %s" % (st_d, json.dumps(b_d, ensure_ascii=False)[:140]))
+        # ⑨⑩ 整队通知（to=squad:<id>）：逐个成员写 _notice.md，通知账逐条记
+        st_sq, b_sq = _http(base, "/api/workshop/%s/squads" % wid, {
+            "name": "整队通知小队", "squad_id": "n1", "member_seqs": [_seq.get(SLOT)]})
+        st9, b9 = _http(base, "/api/workshop/%s/ailp" % wid, _env("msg-sq-1", to="squad:n1"))
+        _st_rows, b_rows = _http(base, "/api/workshop/%s/notice-log" % wid)
+        sq_rows = [x for x in ((b_rows or {}).get("items") or [])
+                   if x.get("ref") == "msg-sq-1"]
+        _nt = (b9 or {}).get("notified") or {}
+        _written = _nt.get("written") or []
+        check("⑨ 整队通知：逐个成员各写一份通知（不是'发一条算全队收到'）",
+              st_sq == 200 and st9 == 200 and bool(_written)
+              and len(sq_rows) == len(_written)
+              and all(x.get("result") == "written" for x in sq_rows)
+              and _nt.get("count") == len(_written) + len(_nt.get("failed") or []),
+              "squad=%s ailp=%s written=%d rows=%d"
+              % (st_sq, st9, len(_written), len(sq_rows)))
+
+        st10, b10 = _http(base, "/api/workshop/%s/ailp" % wid, _env("msg-sq-2", to="squad:没有这个队"))
+        check("⑩ 整队通知：小队不存在 ⇒ 404（不假装发出去）",
+              st10 == 404 and (b10 or {}).get("code") == "NO_SUCH_SQUAD",
+              "HTTP %s %s" % (st10, json.dumps(b10, ensure_ascii=False)[:160]))
+
     finally:
         try:
             srv.terminate()

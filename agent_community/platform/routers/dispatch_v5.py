@@ -383,6 +383,19 @@ async def dispatch(workshop_id: str, request: Request):
                                  "error": "没有这个**小队**：%s" % squad_id,
                                  "next": "GET …/squads 看现有的"}, status_code=404)
         seqs = _cells_mod.squad_members_of(cl, squad_id)
+        # ★2026-11-07（小队从"分组"变"能管一块"）：**暂停/关闭的小队不许再接新活**
+        _sq = _cells_mod.find(cl, squad_id) or {}
+        _st = str(_sq.get("status") or "active")
+        if _st != "active":
+            return JSONResponse({"ok": False,
+                                 "code": "SQUAD_PAUSED" if _st == "paused" else "SQUAD_CLOSED",
+                                 "error": ("这个小队**暂停**了，不再接新活：%s" if _st == "paused"
+                                           else "这个小队**已关闭**，不再接新活：%s") % squad_id,
+                                 "status": _st,
+                                 "next": ("要接着派活：POST …/squads/%s {\"status\": \"active\"} 先恢复"
+                                          % squad_id) if _st == "paused" else
+                                         ("已关闭是终态：新建一个小队来接手（历史任务与产物仍在）")},
+                                status_code=409)
         if not seqs:
             return JSONResponse({"ok": False, "code": "CELL_EMPTY",
                                  "error": "这个**小队**还没有工位（派不出去）",

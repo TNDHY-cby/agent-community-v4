@@ -19,7 +19,22 @@
     .disc-zone, .rw-v5, .cap, .booth, .rules, .rc-noev, .shared, .dock-modal,
     .wiz-notes, .wiz-call-row, .wf-card, .q3-row) {
   background-color: rgba(30, 28, 25, .50);
-  background-image: linear-gradient(115deg, rgba(255, 255, 255, .10) 0%, rgba(255, 255, 255, 0) 48%);
+  /* ★2026-11-08（老板：「**斜纹太突兀了**」）
+     两件事：① 把 160° 的斜向反光改成**水平（90°）**——斜光带在方块上像"劈了一道"，
+     水平光才稳；② 镜面高光带**拉宽、压低**（40%→70% 的缓坡，峰值 .045），
+     它就不再是"一条亮条"，而是抛光面上"一片很淡的亮"。
+     方向与描边一致（左亮右暗），整个面板只有一个光向。 */
+  background-image:
+    linear-gradient(90deg,
+      rgba(255,255,255,.075) 0%,
+      rgba(255,255,255,.02) 30%,
+      rgba(0,0,0,.03) 62%,
+      rgba(0,0,0,.12) 100%),
+    linear-gradient(90deg,
+      transparent 20%,
+      rgba(255,255,255,.045) 40%,
+      rgba(255,255,255,.01) 52%,
+      transparent 70%);
   border: 1px solid rgba(255, 255, 255, .13);
   border-radius: 14px;
   backdrop-filter: blur(14px) saturate(1.2);
@@ -36,11 +51,15 @@
 }
 
 /* 主内容区给一层极淡的红/蓝光斑 —— 玻璃要有"可透的东西"，否则 blur 看不出来。
-   ⚠️ 只加在**当前没有背景图**的容器上（这些容器都继承 body 的底，不会盖掉页面纹理）。 */
+   ★2026-11-08（老板：「背景的红光团没有做好衔接，很割裂突兀」）：
+   原来半径小（720×340）、边缘 70% 就收住 ⇒ 光斑在**容器边界**处还有可见强度，
+   容器是矩形/有圆角，于是就看到"一块被切成圆角的红片"。
+   现在把半径放大到 1.2~1.4 倍屏宽、强度降到 .10/.12、渐隐拉到 85%~88% ——
+   等光走到容器边界时已经接近 0，**看不出任何切割线**，只剩一片很淡的方向感。 */
 :is(.main, .stage, .stage-body, .ws-content, .col-center, .content, .wrap) {
   background-image:
-    radial-gradient(720px 340px at 12% 4%, rgba(var(--accent-rgb), .15), transparent 70%),
-    radial-gradient(820px 420px at 88% 92%, rgba(var(--navy-rgb), .18), transparent 72%);
+    radial-gradient(1200px 700px at 8% -12%, rgba(var(--accent-rgb), .10), transparent 86%),
+    radial-gradient(1400px 820px at 92% 112%, rgba(var(--navy-rgb), .12), transparent 88%);
 }
 
 /* 面板里的标题栏/分区线别被玻璃边吃掉 */

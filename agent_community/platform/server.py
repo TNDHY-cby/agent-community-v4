@@ -89,6 +89,46 @@ STATIC_DIR = Path(__file__).parent.parent / "frontend"
 DATA_DIR = Path(os.environ.get("AC_DATA_DIR") or (Path(__file__).parent.parent / "data"))
 # ── 状态 ──────────────────────────────────────────────────────
 from contextlib import asynccontextmanager
+async def _nudge_watch_loop() -> None:
+    """后台催办（默认关：`AC_NUDGE_WATCH_SEC`>0 才跑）。
+
+    每轮：遍历所有工作间 → `nudge.plan()` 算"该催谁" → `nudge.apply()` 真写 + 记通知账。
+    **同一条任务同一天只催一次**（apply 里按通知账去重），所以循环再密也不会刷屏。
+    """
+    import asyncio as _aio
+    import os as _os
+
+    # ⚠️ 之前用的是 `env_spec.get_int` —— **这个函数不存在**（只有 `get` / `get_bool`），
+    #    import 失败被 except 吞掉 ⇒ 循环**静默返回**（开关形同虚设，判据⑧抓到）。
+    #    现在直接读环境变量，读不成也把原因打出来（失败要说话）。
+    _raw = _os.environ.get("AC_NUDGE_WATCH_SEC", "0")
+    try:
+        sec = int(str(_raw).strip() or "0")
+    except (TypeError, ValueError):
+        print("[nudge] AC_NUDGE_WATCH_SEC 不是整数（收到 %r）⇒ 后台催办不启用" % _raw, flush=True)
+        sec = 0
+    if sec <= 0:
+        return
+    from . import nudge as _nd
+
+    print("[nudge] 后台催办已启用：每 %d 秒一轮（同一任务同一天只催一次）" % sec, flush=True)
+    while True:
+        try:
+            await _aio.sleep(sec)
+            for wid, ws in list((globals().get("workshops") or {}).items()):
+                try:
+                    out = _nd.apply(str(wid), ws)
+                    n = len(out.get("sent") or [])
+                    if n:
+                        print("[nudge] %s：催了 %d 条" % (wid, n), flush=True)
+                except Exception as e:                         # noqa: BLE001 — 单个工作间出错不影响其它
+                    print("[nudge] %s 催办出错（跳过）: %s: %s" % (wid, type(e).__name__, e), flush=True)
+        except _aio.CancelledError:
+            raise
+        except Exception as e:                                 # noqa: BLE001 — 循环不能因一次异常停掉
+            print("[nudge] 本轮异常（继续）: %s: %s" % (type(e).__name__, e), flush=True)
+
+
 @asynccontextmanager
 async def _app_lifespan(_app):
     """启动时加载持久化数据 + 启动后台任务（http_api outbox 回报轮询）。"""
@@ -168,6 +208,13 @@ async def _app_lifespan(_app):
         task5 = None
         print("[startup] 收件目录监视没起来（可手动 POST …/scan-inbox）：%s: %s"
               % (type(_ie).__name__, _ie), flush=True)
+    # ★2026-11-07（V134 ⑧ 延伸）：后台催办（`AC_NUDGE_WATCH_SEC>0` 才跑；默认关）
+    try:
+        task6 = asyncio.create_task(_nudge_watch_loop())
+    except Exception as _ne:                                   # noqa: BLE001 — 催办起不来要说，但不挡启动
+        task6 = None
+        print("[startup] 后台催办没起来（可手动 POST …/nudge）：%s: %s"
+              % (type(_ne).__name__, _ne), flush=True)
     task = asyncio.create_task(_api_outbox_poll_loop())
     task2 = asyncio.create_task(_leader_poll_loop())
     # 拉起已登记 harness 的桥子进程（bridge_supervisor），让 acp/file_poll 类 harness 能领取 pending 消息
@@ -205,6 +252,8 @@ async def _app_lifespan(_app):
     task4.cancel()
     if task5 is not None:
         task5.cancel()
+        if task6 is not None:
+            task6.cancel()
     try:
         from .peer_poll import stop as _peer_poll_stop
         _peer_poll_stop()
@@ -365,6 +414,8 @@ app.include_router(_peers_router)  # V62 对端公司（我去连谁）：/api/p
 from .routers.relay import router as _relay_router
 from .routers.squads import router as _squads_router
 from .routers.notice_tier import router as _notice_tier_router
+from .routers.nudge import router as _nudge_router
+app.include_router(_nudge_router)  # V134 ⑧ 延伸：/api/workshop/{id}/nudge（该催谁 / 真催一次）
 app.include_router(_notice_tier_router)  # V134 ⑧⑨：/api/workshop/{id}/notice-log · /api/tier-matrix · /api/workshop/{id}/tier-plan
 app.include_router(_squads_router)  # V138 小队模块化工作间：/api/workshop/{id}/squads（三级视图/建/改）
 app.include_router(_relay_router)  # V66 中转（本地优先）：/api/relay/status|send|inbox —— 终端只出站连 Hub

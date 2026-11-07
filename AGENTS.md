@@ -65,6 +65,12 @@ python tools/dual_platform_check.py     # ★双平台真跑（Windows + WSL Lin
 python tools/pre_release_check.py       # ★发布前一条命令跑五类判据（--fast 12 项 / 全量 14 项）
 python tools/handover_ptr_check.py      # ★交接链判据：HANDOVER 的「现行继承书」必须**只有一个**且指向真文件、dev sha 真存在
                                         #   （2026-10-22 夜场二收工时顶部躺着两条"现行"，上面那条只覆盖到 v4.15.0 ⇒ 新会话一开局就用过期坐标）
+python tools/dev_oss_sync_check.py --dev . --oss <发布副本>   # ★发布同步面**内容级**核对：逐文件 sha256 比 dev/oss，
+                                        #   直接给出"哪些文件没同步 / 内容不同"（publish 只看同步命令与 push，不看内容；--check 有差异 exit 1；
+                                        #   `--oss` 省略时按同盘相邻 `<dev名>-oss` 推断，不写死盘符/用户名）
+python tools/ui_shot.py --url http://127.0.0.1:18920 --out temp/shots/hall.png   # ★**界面截图**（交付时附证据）：
+                                        #   真跑 playwright 截真页面；`--check` 自检 node/playwright/chromium 三件（缺哪件就说清怎么装）；
+                                        #   `--full` 整页、`--size WxH` 视口、`--wait` 等待毫秒；找不到时用 --playwright/--chrome/--node 或环境变量覆盖
 python tools/core_check.py              # ★核心体检一条命令（**28 项**，约 20 分钟）：六协议矩阵+闭环、建立会话、多轮派活、任务全链路、acp 真拉起、看门狗救活、一键更新、掉线恢复链、多成员并发派活、证据链 V55、辩论模式 V52、隔间继承 V53、通道生命周期 V28、受控重启 V58、只读日志尾 V59、任务树+资源库、巡逻员人工点派、视觉拉起、公司间合作 P1、**外部访问（只读档/令牌/cookie）**、**中转 M1/M2/M3**、桥产物落点
 python tools/cross_company_check.py     # 公司间合作：两个独立实例真投 / 真收 / 回查 / 鉴权 / 数据隔离 / 产物清单 / **跨组织采信（自证≠采信·复核·争议冻结）**（**26 格**，不需要 frp）
 python tools/external_access_check.py   # 外部访问 V65：只读档 / 三种令牌携带 / 401与403区分 / ?token= 种 cookie（九格）
@@ -100,9 +106,10 @@ python tools/delivery_check.py     # 统一投递层真机判据：channels 选�
 python tools/inject_probe_check.py    # 视觉拉起**真机**判据：真窗口置顶 / 两档投递发生 / 剪贴板写入经核对 / **不弹控制台黑框** / 无文本框窗口如实 exit 3（非 Windows 与无窗口如实跳过）
 python tools/vision_capture_check.py  # 视觉抓图**真机**判据：抓的必须是**整扇窗** —— 真造一个自己声明 DPI 的靶子窗，比"抓图尺寸 vs 真值"（150% 缩放下不声明 DPI 只抓得到左上 2/3；本机 100% 缩放会**如实说这里测不出**，不假绿）
 python tools/frontend_endpoint_check.py  # 前端接线判据：前端 JS 里出现的每个 `/api/…` 都必须**真的挂在后端**（路由自省、参数段按 `{}` 通配、允许"前缀+拼接"写法）；前端改了调用路径就跑它，防"点了按钮 404"
-python tools/workshop_comm_check.py       # ★**工作间日常沟通八格**（V138）：`ailp` 的 `to`（说给组长/某工位/全间）**真通知到**（`_lead/_notice.md` / 该工位 `_notice.md`）、`thread` 回某条（不存在 ⇒ 422 A019）、`to` 非法 ⇒ 422 A018、未读与大厅同一套（只前进）、自由聊天仍 410
+python tools/nudge_check.py                 # ★**催办六格**（V134 ⑧ 延伸）：`GET …/nudge` 列出"派出去了没回执（issued 超阈值）"/"产物到了组长没验收（delivered 超阈值）"；`POST …/nudge` 才真写（`_notice.md` + 通知账 written）；dry_run 一个字不写；同一条任务同一天只催一次；没时间戳的不催
+python tools/workshop_comm_check.py       # ★**工作间日常沟通十格**（V138：含整队通知 `to=squad:<id>`）：`ailp` 的 `to`（说给组长/某工位/全间）**真通知到**（`_lead/_notice.md` / 该工位 `_notice.md`）、`thread` 回某条（不存在 ⇒ 422 A019）、`to` 非法 ⇒ 422 A018、未读与大厅同一套（只前进）、自由聊天仍 410
 python tools/notice_tier_check.py           # ★**通知账/档位矩阵/资源库八格**（V134 ⑧⑨⑩）：产物转组长与 AILP 点名都进通知账、`written` 不许说成已送达；档位矩阵 4 档 × 4 轴齐全且每格有人话；成员按档位出四格计划；资源库登记做**真 stat**（在=true / 不在=false+why）
-python tools/squads_check.py              # ★**小队八格**（V138，老板定名：工作间→**小队**→成员）：建小队落盘/同 id 拒/对**小队**派活展开成每成员一条/账本不新建（键仍是 ws+task_seq）/没有整小队一键验收/三级视图（workshop→squad→slot，`_lead` 单列、未分组列出）/拆分建议只给事实与理由
+python tools/squads_check.py              # ★**小队十格**（V138：含暂停/关闭拦派活，老板定名：工作间→**小队**→成员）：建小队落盘/同 id 拒/对**小队**派活展开成每成员一条/账本不新建（键仍是 ws+task_seq）/没有整小队一键验收/三级视图（workshop→squad→slot，`_lead` 单列、未分组列出）/拆分建议只给事实与理由
 python tools/lead_prelist_check.py        # ★**组长预列表十五格**（V137，老板「组长预列表，各组组长（单/团）适合不同方向/任务」）：按**方向**（只认接入自报的 `fit_directions`）给每方向「**一行结论**（一个人就够/得搭团/没人能接）+ 单 solo + 团 team」两套配置，附**梯队**（还有谁能一个人干）；没报方向的不归任何组；助手可跨方向借并标 `from_direction`；`?task=` 给**任务卡**（命中给方向；未命中给换词建议+现有方向，不退化）
 python tools/lead_plan_check.py            # ★**组长算法十四格**（V136）：两条路（① 单一多协议全能组长；② 少协议组长搭助手互补）—— 有 high ⇒ solo；无 high 能补 ⇒ team（每个助手带 `adds`）；补不齐 ⇒ blocked + 三条出路；`needs` 可缩小；同输入两次结果逐字一致（不排分不推荐）；**组长列表** `/api/lead-roster` 的三组（可独立胜任/需配助手/只能当助手）与每候选的适配度/覆盖/缺什么/谁能补；算法选的人真能选上
 python tools/lead_hub_check.py            # ★**组长枢纽十六格**（V134·V135）：能力面（能写/能读/能收通知/能不能派活/有没有视觉脚本 + 每条"缺什么、平台替它补什么"）、**协议适配度 high/medium/low**（低适配不能当主组长，拦下要说清缺哪项）、**团队视图**（主组长+助手+派活/收回执/读产物/催办四件事覆盖，缺的给平台代做）、验收署名（默认 user；声称 lead 无凭据 403；组长令牌才记 `_lead`）、产物绑任务并推到 delivered、事件未读与已读、对接单投递

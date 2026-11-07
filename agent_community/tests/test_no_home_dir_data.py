@@ -62,6 +62,8 @@ ALLOWED = {
     "agent_community/tests/test_config_isolation.py": "断言隔离生效，必须知道真实配置在哪",
     "tools/autostart.py": "自启位置是**操作系统约定**（Windows 启动文件夹 / Linux XDG），先问系统再兜底",
     "tools/make_shortcut.py": "桌面是**操作系统约定**目录：先问系统（GetFolderPath / XDG），兜底才用 ~/Desktop",
+    "tools/ui_shot.py": "截图工具只在**探测**浏览器/Playwright 装在哪（只读，不写任何数据）；找不到就如实退出",
+    "tools/check_inline_js.py": "只在**探测** dsh 运行时在哪（只读），找不到就说清缺什么",
 }
 
 

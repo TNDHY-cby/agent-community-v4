@@ -194,6 +194,45 @@ def main() -> int:
               and "不替你决定" in str((b_sp or {}).get("note")),
               "HTTP %s %s" % (st_sp, json.dumps(b_sp, ensure_ascii=False)[:200]))
 
+        # ⑨⑩ 小队级暂停（老板 2026-11-07：小队要能"管一块"，不只是分组）
+        _http(base, "/api/workshop/%s/squads/fe" % wid, {"status": "paused"})
+        st9, b9 = _http(base, "/api/workshop/%s/dispatch" % wid,
+                        {"squad_id": "fe", "title": "暂停期间的活", "goal": "x", "accept": "x"})
+        check("⑨ 暂停的小队不接新活（409 SQUAD_PAUSED + 怎么恢复）",
+              st9 == 409 and (b9 or {}).get("code") == "SQUAD_PAUSED"
+              and "恢复" in str((b9 or {}).get("next") or ""),
+              "HTTP %s %s" % (st9, json.dumps(b9, ensure_ascii=False)[:200]))
+
+        _http(base, "/api/workshop/%s/squads/fe" % wid, {"status": "active"})
+        st9b, b9b = _http(base, "/api/workshop/%s/dispatch" % wid,
+                          {"squad_id": "fe", "title": "恢复后的活", "goal": "x", "accept": "x"})
+        _http(base, "/api/workshop/%s/squads/fe" % wid, {"status": "closed"})
+        st10, b10 = _http(base, "/api/workshop/%s/dispatch" % wid,
+                          {"squad_id": "fe", "title": "关闭后的活", "goal": "x", "accept": "x"})
+        check("⑩ 恢复后能派活；关闭是终态（409 SQUAD_CLOSED）",
+              st9b == 200 and bool((b9b or {}).get("ok"))
+              and st10 == 409 and (b10 or {}).get("code") == "SQUAD_CLOSED"
+              and "终态" in str((b10 or {}).get("next") or ""),
+              "恢复=%s 关闭=%s %s" % (st9b, st10, json.dumps(b10, ensure_ascii=False)[:160]))
+
+        # ⑪⑫ 老板 2026-11-07 定词：分队 / 组长不进分队（真门在数据层）
+        _lead_seq = seqs.get("_lead", 0)
+        st11, b11 = _http(base, "/api/workshop/%s/squads" % wid,
+                          {"name": "硬塞组长的分队", "squad_id": "bad",
+                           "member_seqs": [seq1, _lead_seq]})
+        st11b, b11b = _http(base, "/api/workshop/%s/squads/fe" % wid,
+                            {"member_seqs": [seq1, _lead_seq]})
+        check("⑪ 组长不能编进分队（建/改都 400 LEAD_NOT_IN_SQUAD）",
+              _lead_seq > 0 and st11 == 400 and (b11 or {}).get("code") == "LEAD_NOT_IN_SQUAD"
+              and st11b == 400 and (b11b or {}).get("code") == "LEAD_NOT_IN_SQUAD",
+              "lead=%s 建=%s 改=%s" % (_lead_seq, st11, st11b))
+
+        _st_v, b_v = _http(base, "/api/workshop/%s/squads" % wid)
+        note = str((b_v or {}).get("note") or "")
+        check("⑫ 后端文案跟老板定词（分队 / 不叫分组）",
+              "分队" in note and "只是**分组**" not in note and "Cell" not in note and "组长" in note,
+              "note=%r" % note[:120])
+
     finally:
         try:
             srv.terminate()

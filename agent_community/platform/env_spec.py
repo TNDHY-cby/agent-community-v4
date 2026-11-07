@@ -114,6 +114,20 @@ SPEC: dict[str, Var] = {v.name: v for v in [
         "（档案 `artifact_inbox_dir` 或默认 `<工位>/产物/`），平台每这么久扫一轮，"
         "发现新增/内容变化就发事件并写进组长的 `_lead/_notice.md`。**0＝关掉后台扫描**（仍可手动 `POST …/scan-inbox`）",
         default="20", kind="feature", example="60"),
+    Var("AC_NUDGE_ISSUED_MIN",
+        "催办阈值（分钟，默认 30）：任务派出去了（`issued`/`working`）超过这么久还没有回执/产物，"
+        "`GET …/nudge` 会把它列出来，`POST …/nudge` 会给接活的人写一条催办通知。"
+        "**只算不写**的是 GET；真写的是 POST（同一条任务同一天只催一次）",
+        default="30", kind="feature", example="10"),
+    Var("AC_NUDGE_WATCH_SEC",
+        "后台催办的间隔（秒，**默认 0＝关**）：>0 时平台每这么久自动跑一轮催办"
+        "（`issued` 超阈值催成员回执 / `delivered` 超阈值催组长验收），同一任务同一天只催一次。"
+        "**默认关**是因为「平台主动给人写通知」属于自动兜底，不该开箱就动别人的目录",
+        default="0", kind="feature", example="600"),
+    Var("AC_NUDGE_DELIVERED_MIN",
+        "催办阈值（分钟，默认 60）：产物已到（`delivered`）但组长超过这么久没验收，"
+        "`POST …/nudge` 会给组长写一条«等你验收»。",
+        default="60", kind="feature", example="120"),
     Var("AC_STATE_BACKUP_MINUTES",
         "状态快照（`data/backups/`）多久拍一份，默认 30 分钟；**0＝关掉自动快照**。"
         "快照是 `data/*.json` 的字节复制，恢复用 `tools/state_restore.py`",

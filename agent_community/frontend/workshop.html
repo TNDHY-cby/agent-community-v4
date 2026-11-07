@@ -88,7 +88,13 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .workshop-list{flex:1;overflow-y:auto;padding:10px}
 
 
-.workshop-item{padding:12px 14px;border:1px solid var(--rule);border-radius:12px;margin-bottom:8px;background:var(--bg3);cursor:pointer;transition:all .15s}
+/* ★2026-11-08（老板：「C，回到这版，这种做的好，边缘应该增加立体感的描边」；
+   之后又指出「左亮右暗」⇒ 描边也按光向分四边，左最亮、右转暗）。 */
+.workshop-item{padding:12px 14px;border:1px solid rgba(255,255,255,.10);
+  border-left-color:rgba(255,255,255,.22);border-top-color:rgba(255,255,255,.16);
+  border-right-color:rgba(0,0,0,.40);border-bottom-color:rgba(0,0,0,.50);
+  border-radius:12px;margin-bottom:10px;background:var(--bg3);cursor:pointer;
+  transition:all .15s;box-shadow:0 1px 0 rgba(0,0,0,.35), 0 12px 24px -16px rgba(0,0,0,.75)}
 
 
 .workshop-item:hover{border-color:var(--rule-strong);transform:translateY(-1px)}
@@ -121,7 +127,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .wi-actions{display:flex;gap:6px;margin-top:8px}
 
 
-.wi-actions button{flex:1;background:var(--bg4);border:1px solid var(--rule);color:var(--muted);border-radius:7px;font-size:11px;padding:4px 6px;cursor:pointer;transition:all .15s;font-weight:600}
+.wi-actions button{flex:1;background:var(--bg4);border:1px solid var(--rule);color:var(--muted);border-radius:7px;font-size:11px;padding:4px 6px;cursor:pointer;transition:all .15s;font-weight:600;white-space:nowrap}
 
 
 .wi-actions button:hover{color:var(--accent);border-color:var(--accent)}
@@ -279,6 +285,22 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font
 .rv5-meta{color:var(--dim);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rv5-state{margin-left:auto;font-size:10.5px;color:var(--muted);white-space:nowrap}
 .rv5-foot{padding:6px 10px;font-size:10.5px;color:var(--dim);line-height:1.5}
+/* ★2026-11-07 三级视图（工作间 → 小队 → 成员）：小队组头。只在有 /squads 数据时出现，
+   取不到组会退回原来的平铺名单（这些类不会被用到，不影响旧样子）。 */
+.sq-grp{border-bottom:1px solid var(--rule)}
+.sq-grp:last-child{border-bottom:0}
+.sq-gh{display:flex;align-items:center;gap:6px;padding:7px 10px 3px;font-size:10.5px;color:var(--muted)}
+.sq-gname{font-weight:800;color:var(--ink);font-size:12px}
+.sq-gdir{font-size:10px;color:var(--dim);border-left:1px solid var(--rule);padding-left:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42%}
+.sq-badge{margin-left:auto;font-size:10px;border-radius:999px;padding:1px 7px;background:var(--bg4);color:var(--muted);white-space:nowrap}
+.sq-badge.active{background:rgba(58,168,99,.16);color:var(--green,#3AA863)}
+.sq-badge.paused{background:rgba(185,132,50,.18);color:var(--yellow,#B98432)}
+.sq-badge.closed{background:rgba(var(--accent-rgb),.14);color:var(--accent)}
+.sq-goal{padding:1px 10px 5px;font-size:10.5px;color:var(--dim);line-height:1.5}
+.sq-empty{padding:4px 10px 8px;font-size:10.5px;color:var(--dim);font-style:italic}
+/* 领袖被误编进分队时的提示：如实说、不静默（2026-11-07 老板：组长是领袖，不进分队） */
+.sq-note{padding:6px 10px;font-size:10.5px;line-height:1.5;color:var(--yellow,#B98432);
+  background:rgba(185,132,50,.08);border-top:1px solid rgba(185,132,50,.18)}
 
 
 .chat-input{display:flex;gap:10px;margin-top:10px}
@@ -1033,8 +1055,12 @@ body{font-size:var(--t2)}
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="chrome.css">
 <script src="chrome.js" defer></script>
+<script src="team-words.js"></script>
 
 <link rel="stylesheet" href="glass.css">
+<!-- ★2026-11-08 工业金属皮（老板给的参考图）：只在**本页**试，认可后再全站引入。
+     必须排在 glass.css 之后 —— 它要盖掉玻璃层，靠"硬线 + 凹槽 + 小圆角"立起来，不靠渐变。 -->
+<link rel="stylesheet" href="industrial.css">
 </head>
 
 
@@ -1281,10 +1307,13 @@ body{font-size:var(--t2)}
 
 
                     <!-- 工作间资源库：组长登记产出/路径，成员共享查看，可与任务树节点关联 -->
-          <div class="disc-zone zone-3" id="resourceZone" style="margin-top:14px">
+          <div class="disc-zone zone-3" id="resourceZone">
             <div class="side-head" style="display:flex;align-items:center;gap:8px"><h2 style="margin:0">工作间资源库 <span class="zone-tag">共享</span></h2><button class="btn mini" style="margin-left:auto" onclick="refreshResources()">🔄 刷新</button></div>
             <div id="resourceList" style="margin-top:8px"><div class="id-empty">加载中...</div></div>
-            <div style="margin-top:10px;border-top:1px dashed var(--rule);padding-top:10px">
+            <!-- ★2026-11-08（老板指认：「是这个的」——资源库登记区上面那条虚线）：
+                 去掉 `border-top:1px dashed` 这条线，改成**一块略提亮的登记区**（圆角 + 淡底色），
+                 用底色和间距分层，不用线。 -->
+            <div style="margin-top:14px;padding:12px;border-radius:10px;background:rgba(255,255,255,.022)">
               <div style="font-size:11px;font-weight:700;color:var(--dim);margin-bottom:6px">组长登记资源（生成工作间文件夹后上传，供成员查看）</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
                 <input id="resName" placeholder="资源名称，如：周报汇总" style="padding:7px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--bg);color:var(--ink);font-size:12px">
@@ -3422,43 +3451,130 @@ document.addEventListener('click',()=>document.querySelectorAll('.dd-list.open')
    状态中文只是**显示映射**，原始 state 保留在 title 里（口径以后端为准，前端不新增语义）。 */
 const RV5_STATE={pending:'待接',acked:'已收唤醒',entered:'已进入',active:'接上了',blocked:'受阻',lost:'失联'};
 const RV5_SRC={v5:'v5',legacy:'旧名单（v5 为空）',empty:'空',unknown:'取不到'};
+/* ★2026-11-07 前端接活：三级视图 —— 工作间 → **分队** → 成员（老板 11-07 定词）。
+   口径照后端，不自己发明：
+     · 分队只是**编队**（不叫"分组"）：账本仍按 `workshop_id+task_seq`、验收仍逐条、
+       **没有整队一键通过**、分队也没有自己的组长；
+     · 组长在编队语境里叫**领袖**：**工作间级**拍板人，单列、**不进分队**、也不算"未编队"。
+   数据：GET /api/workshop/{id}/squads → {workshop:{cell_count,slot_count,lead,loose_slots}, squads:[...]}
+   词表在 `team-words.js`（一处真相），这里只取词、不写死叫法。 */
+let LAST_V5=null, SQUADS_CACHE=null;
+const TEAMW=window.TEAM_WORDS||{unit:'分队',unnamed:'未命名分队',unassigned:'未编队',
+  unassignedHint:'还没编入任何分队',leader:'领袖',leaderHint:'领袖 · 不进分队 · 拍板 / 验收',
+  memberHint:'谁进哪个分队由领袖定',unitCount:function(n){return n+' 个分队'},
+  emptyUnit:function(){return '这个分队还没有人（谁进哪个分队由领袖定）'},
+  footNote:function(){return '分队只是编队：账本仍按任务号逐条、验收逐条，没有整队一键通过。'},
+  leadMisfiled:function(names){return '领袖不进分队 —— 但「'+names+'」里配了它；平台不把它算进分队（请在该分队里把它去掉）'}};
+
+function _rv5RowHtml(m, opt){
+  m=m||{}; opt=opt||{};
+  const st=String(m.state||'');
+  /* 只读兜底：后端有效名单读 `harness`/`model`，而 v5_roster 落库用 `harness_id`/`model_snapshot` ⇒ 两个名字都认 */
+  const meta=[m.harness||m.harness_id,m.model||m.model_snapshot].filter(Boolean).map(esc).join(' · ')||'（未记 harness/模型）';
+  const tasks=(opt.open_tasks!=null)?('未结 '+Number(opt.open_tasks)+(opt.tasks?(' / 共 '+Number(opt.tasks)):'')):'';
+  return '<div class="rv5-row" title="原始状态：'+esc(st||'（空）')+'">'+
+    '<span class="rv5-dot '+esc(st)+'"></span>'+
+    '<span class="rv5-slot" title="'+esc(m.slot_dir||'')+'">'+esc(m.slot_dir||('工位 '+(m.member_seq??'?')))+'</span>'+
+    '<span class="rv5-meta">'+meta+'</span>'+
+    (tasks?'<span class="rv5-state" style="margin-left:0">'+esc(tasks)+'</span>':'')+
+    '<span class="rv5-state">'+esc(RV5_STATE[st]||st||'状态未记')+'</span></div>';
+}
+
+/* 有分队数据就按分队编排；取不到就退回原来的平铺名单（编队是增强，不是前提）。
+   ★领袖不进分队：即使后端数据把 `_lead` 编进了某个分队，也不在分队里显示它 —— 但要说出来（不静默）。 */
+function _rv5BodyHtml(mem){
+  const sq=(SQUADS_CACHE&&Array.isArray(SQUADS_CACHE.squads))?SQUADS_CACHE.squads:null;
+  if(!sq) return (mem||[]).map(m=>_rv5RowHtml(m)).join('');
+  const bySeq={}; (mem||[]).forEach(m=>{ bySeq[String(m.member_seq)]=m; });
+  const wk=(SQUADS_CACHE&&SQUADS_CACHE.workshop)||{};
+  const leadSeq=String(((wk.lead)||{}).member_seq||'');
+  /* 分队行里只有 harness_id/state，缺 model —— 用名单里的同号记录补齐，显示口径与平铺时一致 */
+  const merge=(row)=>{
+    const base=bySeq[String((row||{}).member_seq)]||{};
+    return Object.assign({},base,{
+      member_seq:(row||{}).member_seq,
+      slot_dir:(row||{}).slot_dir||base.slot_dir,
+      harness_id:(row||{}).harness_id||base.harness_id,
+      state:(row||{}).state||base.state
+    });
+  };
+  const badgeOf=(st)=>st==='active'?'进行中':(st==='paused'?'已暂停':(st==='closed'?'已关闭':st||'进行中'));
+  let h='';
+  const misfiled=[];
+  (sq||[]).forEach(g=>{
+    const st=String((g||{}).status||'active');
+    const rows=Array.isArray((g||{}).members)?g.members:[];
+    const visible=rows.filter(r=>{
+      if(leadSeq&&String(r.member_seq)===leadSeq){ misfiled.push(g.name||g.squad_id||TEAMW.unnamed); return false; }
+      return true;
+    });
+    h+='<div class="sq-grp"><div class="sq-gh">'+
+      '<span class="sq-gname">'+esc(g.name||g.squad_id||TEAMW.unnamed)+'</span>'+
+      (g.direction?'<span class="sq-gdir">'+esc(g.direction)+'</span>':'')+
+      '<span class="sq-badge '+esc(st)+'">'+esc(badgeOf(st))+' · '+Number(g.member_count||0)+' 人'+
+      (Number(g.open_tasks||0)>0?(' · 未结 '+Number(g.open_tasks)):'')+'</span></div>'+
+      (g.goal?'<div class="sq-goal">'+esc(g.goal)+'</div>':'')+
+      (visible.length?visible.map(r=>_rv5RowHtml(merge(r),{open_tasks:r.open_tasks,tasks:r.tasks})).join('')
+        :'<div class="sq-empty">'+esc(TEAMW.emptyUnit())+'</div>')+
+      '</div>';
+  });
+  const lead=wk.lead||{};
+  if(lead&&lead.member_seq){
+    h+='<div class="sq-grp"><div class="sq-gh"><span class="sq-gname">'+esc(TEAMW.leader)+'</span>'+
+      '<span class="sq-gdir">'+esc(TEAMW.leaderHint)+'</span></div>'+_rv5RowHtml(merge(lead))+'</div>';
+  }
+  if(misfiled.length){
+    h+='<div class="sq-note">'+esc(TEAMW.leadMisfiled(misfiled.join('、')))+'</div>';
+  }
+  const loose=Array.isArray(wk.loose_slots)?wk.loose_slots:[];
+  if(loose.length){
+    h+='<div class="sq-grp"><div class="sq-gh"><span class="sq-gname">'+esc(TEAMW.unassigned)+'</span>'+
+      '<span class="sq-gdir">'+esc(TEAMW.unassignedHint)+'</span>'+
+      '<span class="sq-badge">'+loose.length+' 人</span></div>'+
+      loose.map(r=>_rv5RowHtml(merge(r))).join('')+'</div>';
+  }
+  return h;
+}
+
+/* 小队数据单独拉：拿不到就静默退回平铺（不让"分组取不到"变成"名单看不见"）。 */
+function loadSquads(id){
+  if(!id) return;
+  fetch('/api/workshop/'+encodeURIComponent(id)+'/squads').then(r=>r.ok?r.json():null).then(d=>{
+    if(d&&d.ok){ SQUADS_CACHE=d; if(LAST_V5) renderMembersV5(LAST_V5); }
+  }).catch(()=>{ /* 取不到小队不影响名单本身（见上） */ });
+}
+
 function renderMembersV5(d){
   const box=document.getElementById('membersV5');
   const head=document.getElementById('rosterHead');
   if(!box) return;
   d=d||{};
+  LAST_V5=d;
   const mem=Array.isArray(d.members_v5)?d.members_v5:[];
-  const cnt=(d.roster_counts&&typeof d.roster_counts==='object')?d.roster_counts:{};
-  const src=String(d.members_source||'');
-  if(!mem.length){
+  const sqCount=(SQUADS_CACHE&&Array.isArray(SQUADS_CACHE.squads))?SQUADS_CACHE.squads.length:0;
+  if(!mem.length && !sqCount){
     box.style.display='none';
     if(head){head.style.display='none';head.textContent='';}
     return;
   }
+  const cnt=(d.roster_counts&&typeof d.roster_counts==='object')?d.roster_counts:{};
+  const src=String(d.members_source||'');
   const n=mem.length, act=Number(cnt.active||0), prop=Number(cnt.slot_proposed||0);
   if(head){
     head.style.display='';
-    head.textContent='名单 '+n+' 人（接上 '+act+'）· 来源 '+(RV5_SRC[src]||src||'未知');
-    head.title='数据源：GET /api/workshop/{ws_id} 的 members_v5 / roster_counts / members_source（只读，不含凭据）';
+    head.textContent='名单 '+n+' 人（接上 '+act+'）· 来源 '+(RV5_SRC[src]||src||'未知')+(sqCount?(' · '+TEAMW.unitCount(sqCount)):'');
+    head.title='数据源：GET /api/workshop/{ws_id} 的 members_v5 / roster_counts / members_source；小队来自 GET …/squads（都只读、不含凭据）';
   }
   let h='<div class="rv5-head"><b>名单 '+n+' 人</b><span>接上 '+act+'</span>'+
+    (sqCount?'<span>'+esc(TEAMW.unitCount(sqCount))+'</span>':'')+
     '<span class="rv5-src" title="后端 gate 按同一口径算：v5 名单优先，旧名单只在 v5 为空时兜底">来源 '+
     esc(RV5_SRC[src]||src||'未知')+'</span></div>';
-  h+=mem.map(m=>{
-    const st=String(m.state||'');
-    /* 只读兜底：后端 effective_members 现在读 `harness`/`model`，而 v5_roster 落库用的是
-       `harness_id`/`model_snapshot` ⇒ 两个名字都认（已在回执里请他统一，前端不另立语义）。 */
-    const meta=[m.harness||m.harness_id,m.model||m.model_snapshot].filter(Boolean).map(esc).join(' · ')||'（未记 harness/模型）';
-    return '<div class="rv5-row" title="原始状态：'+esc(st||'（空）')+'">'+
-      '<span class="rv5-dot '+esc(st)+'"></span>'+
-      '<span class="rv5-slot" title="'+esc(m.slot_dir||'')+'">'+esc(m.slot_dir||('工位 '+(m.member_seq??'?')))+'</span>'+
-      '<span class="rv5-meta">'+meta+'</span>'+
-      '<span class="rv5-state">'+esc(RV5_STATE[st]||st||'状态未记')+'</span></div>';
-  }).join('');
+  h+=_rv5BodyHtml(mem);
   const foot=[];
   if(prop>0) foot.push('另有 '+prop+' 个岗位**还没人**（slot 有人才有工位，只有工位参与闸门）');
   if(d.roster_why) foot.push('后端说明：'+esc(d.roster_why));
   foot.push('能不能开工看上方「还不能开工」横幅（读 gate），本表不参与判断。');
+  if(sqCount) foot.push(TEAMW.footNote());
   h+='<div class="rv5-foot">'+foot.join('；')+'</div>';
   box.innerHTML=h;
   box.style.display='';
@@ -4136,6 +4252,8 @@ function loadWorkshop(id){
     /* ★2026-10-30（D后端-57）：首屏就把 v5 工位名单画出来（不依赖"选人以后"那段分支——
        原来取名单只发生在 selecting 之后，v5 名单在这里根本没人读，右栏永远「未选员工」）。 */
     renderMembersV5(d);
+    /* ★2026-11-07：小队分组单独拉（失败就退回平铺名单，不影响上面那行） */
+    loadSquads(id);
 
 
     const msgs=d.discussion||[];

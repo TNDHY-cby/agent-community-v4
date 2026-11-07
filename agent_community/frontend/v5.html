@@ -200,6 +200,15 @@
   table{width:100%;border-collapse:collapse;font-size:12.5px}
   th,td{border-bottom:1px solid var(--bg5);padding:6px 8px;text-align:left;vertical-align:top}
   th{color:var(--muted);font-weight:600}
+  /* ★2026-11-07 三级视图（工作间 → 小队 → 成员）：名单表里的分组行。
+     小队只是分组 —— 表里的每一行仍是一个工位，验收仍逐条（见后端 squads.view() 的口径）。 */
+  tr.sq-sep td{background:var(--bg3);border-bottom:1px solid var(--bg5);padding:8px}
+  .sq-name{font-weight:800;color:var(--ink);font-size:12.5px}
+  .sq-meta{margin-left:8px;font-size:11px;color:var(--dim)}
+  .sq-badge{margin-left:8px;font-size:10.5px;border-radius:999px;padding:1px 8px;background:var(--bg4);color:var(--muted);white-space:nowrap}
+  tr.sq-empty td{padding:6px 8px;font-size:11.5px;color:var(--dim);font-style:italic}
+  /* 领袖被误编进分队时的提示：如实说、不静默（2026-11-07 老板：领袖不进分队） */
+  tr.sq-note td{padding:6px 8px;font-size:11px;color:var(--warn,#D8A24A);background:rgba(185,132,50,.08);border-bottom:1px solid var(--bg5)}
   .banner{border-radius:4px;padding:8px 10px;font-size:12.5px;margin:8px 0;border:1px solid}
   .banner.bad{background:var(--red-soft);border-color:rgba(var(--accent-rgb),.5);color:var(--red)}
   .banner.ok{background:var(--green-soft);border-color:rgba(var(--green-rgb),.5);color:var(--green)}
@@ -698,6 +707,7 @@
   </main>
 </div>
 
+<script src="team-words.js"></script>
 <script src="v5.js"></script>
 <script>
 /* 顶栏 fixed：正文与锚点偏移按实高补偿（窄屏换行也算准） */

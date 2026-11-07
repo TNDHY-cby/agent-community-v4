@@ -253,7 +253,9 @@ def validate(envelope, *, allowed: list | None = None, workshop_id: str = "",
     to_whom = str(envelope.get("to") or "").strip()
     if to_whom:
         ok_to = (to_whom in ("lead", "all")
-                 or (to_whom.startswith("member:") and len(to_whom) > len("member:")))
+                 or (to_whom.startswith("member:") and len(to_whom) > len("member:"))
+                 # ★2026-11-07：**整队通知** —— 说给一个小队（端点再校验它真存在）
+                 or (to_whom.startswith("squad:") and len(to_whom) > len("squad:")))
         if not ok_to:
             errs.append(_err("to", "A018",
                              "`to` 值不对：%r" % envelope.get("to"),
@@ -298,7 +300,7 @@ def types_catalog() -> dict:
                      "manifest_ref", "timestamp", "payload"],
         "optional_envelope": [
             {"name": "to", "type": "str",
-             "rule": "说给谁：`lead` / `all` / `member:<工位目录>`；不给＝整个工作间"},
+             "rule": "说给谁：`lead` / `all` / `member:<工位目录>` / `squad:<小队 id>`；不给＝整个工作间"},
             {"name": "thread", "type": "str",
              "rule": "回哪条：必须是本工作间真实存在的 msg_id（A019）；不给＝新话题"},
         ],
