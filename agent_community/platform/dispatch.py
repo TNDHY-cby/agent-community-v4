@@ -146,28 +146,47 @@ def _wakeup_endpoint(harness_id: str) -> str:
     return ""
 
 
+def _harness_info(harness_id: str):
+    """取这个接入的档案（读不到就 None）。派活路线判断要用它。"""
+    try:
+        from .server import harness_manager  # type: ignore[attr-defined]
+        sess = (getattr(harness_manager, "sessions", {}) or {}).get(harness_id)
+        return getattr(sess, "info", None) if sess is not None else None
+    except Exception:                                          # noqa: BLE001 — 结构变了就当拿不到
+        return None
+
+
+def dispatch_route_for(harness_id: str) -> tuple:
+    """★2026-11-06（V132）：多协议时**派活走哪条路**（`a2a` / `http` / `acp` / `visual` / `none`）。
+
+    `none` ＝ 平台**不能**给它派活（例如它只声明了 MCP —— 工具面没有派活语义；
+    或它是桌面型但**还没存视觉脚本**）。
+    `visual` ＝ 桌面型 + 有可用视觉脚本：平台能把一句话**送进它的窗口**，
+    但**结果核不到**（`activate()` 仍返回 `manual`，不假装派活成功）。
+    拿不到档案时按 `http` 处理（与历史行为一致，不代表它一定派得通）。
+    """
+    info = _harness_info(harness_id)
+    if info is None:
+        return "http", "拿不到它的档案，按普通 HTTP 处理"
+    from .protocol_plan import dispatch_route
+
+    return dispatch_route(info)
+
+
 def _harness_is_a2a(harness_id: str) -> bool:
-    """这个 harness 是不是按 **A2A** 接入（`wakeup_method=a2a`，或 `transports` 里声明了 a2a）。
+    """这个 harness 是不是按 **A2A** 接入（`wakeup_method=a2a`，或声明里含 a2a）。
 
     ★2026-11-01（老板：「加入注册功能中啊，明明是最适配的你不加」）：
     为什么要单列一条：A2A 的政策是**任务语义**——派活要发 JSON-RPC `tasks/send`（带 `message.parts`），
     对端还会回一个 task id 供 `tasks/get` 查。**混在普通 HTTP POST 里发，对端不认，
     而我们这边却会记成"已触达"** —— 那是最坏的那种假成功。
+
+    ★2026-11-06：判断口径已交给 `protocol_plan.dispatch_route`（一处真相，多协议时按优先级取）；
+    本函数保留为薄壳（既有调用方与测试仍用它）。
     """
     try:
-        from .server import harness_manager  # type: ignore[attr-defined]
-        sess = (getattr(harness_manager, "sessions", {}) or {}).get(harness_id)
-        if sess is None:
-            return False
-        info = getattr(sess, "info", None)
-        wm = getattr(info, "wakeup_method", "") if info is not None else ""
-        wm = str(getattr(wm, "value", wm) or "").lower()
-        if wm == "a2a":
-            return True
-        declared = [str(getattr(t, "value", t) or "").lower()
-                    for t in (getattr(info, "transports", None) or [])]
-        return "a2a" in declared
-    except Exception:                                          # noqa: BLE001 — 结构变了就当不是 A2A
+        return str(dispatch_route_for(harness_id)[0]) == "a2a"
+    except Exception:                                          # noqa: BLE001 — 判不出来就当不是 A2A
         return False
 
 
@@ -232,13 +251,20 @@ def activate(workshop_path: str, slot_dir: str, *, harness_id: str, tier: str,
                           % queue_timeout()}
 
     if tier == "a_protocol":
+        # ★2026-11-06（V132）：先问"这套协议组合到底能不能派活"。
+        #   只有 MCP 的接入在协议里**没有派活语义**；以前这里会发普通 HTTP POST 到它的 MCP 端点，
+        #   对端不认、我们却可能记成"已触达" —— 那是最坏的假成功，所以现在直接如实说。
+        route, route_why = dispatch_route_for(harness_id)
+        if route == "none":
+            return {"result": "manual", "method": "none", "at": at, "needs_human": True,
+                    "detail": "平台**不能**给这个接入派活：%s" % route_why}
         url = _wakeup_endpoint(harness_id)
         if not url:
             return {"result": "manual", "method": "none", "at": at, "needs_human": True,
                     "detail": "这个 harness 没配唤醒地址（wakeup_url/api_base_url），"
                               "平台**不会假装叫醒它** —— 请人工去它的会话里说一句"}
         # ★2026-11-01：A2A 走自己的信封（tasks/send），不能用下面那套普通 POST
-        if _harness_is_a2a(harness_id):
+        if route == "a2a":
             return _activate_via_a2a(url, task_id, task_rel, at,
                                      timeout_sec=max(timeout_sec, 30), report_hint=report_hint,
                                      context_id=a2a_context_id)
@@ -258,6 +284,45 @@ def activate(workshop_path: str, slot_dir: str, *, harness_id: str, tier: str,
         except (urllib.error.URLError, OSError, TimeoutError) as e:
             return {"result": "failed", "method": "http", "url": url, "at": at,
                     "detail": "唤醒请求失败（%s: %s）" % (type(e).__name__, e)}
+
+    if tier == "c_visual":
+        # ★2026-11-06（老板：「clipboard 是不是可以用视觉脚本，记得说明」）：
+        #   视觉档**不再一律"只能人工"**：档案里存了可用视觉脚本（标题/关键词 + 一句话）就**真投一句**进去。
+        #   ⚠️ 但只到"送进去了"为止：`result` 仍是 `manual`（不假装派活成功），
+        #      `delivered`/`verified` 只描述投递本身；**它有没有执行核不到**，要人看产物或它给回执。
+        info = _harness_info(harness_id)
+        from .protocol_plan import script_ready as _script_ready
+
+        ok, why = (False, "拿不到它的档案") if info is None else _script_ready(info)
+        if ok:
+            try:
+                from .visual_send import send_text as _visual_send
+
+                msg = "看下 %s（%s）；做了就在回执里说一声" % (task_rel, task_id)
+                res = _visual_send(info, msg)
+            except Exception as e:                             # noqa: BLE001 — 视觉投递失败要如实说，不假装已叫人
+                return {"result": "failed", "method": "visual", "at": at,
+                        "detail": "视觉投递没跑起来（%s: %s）—— 请人去它的窗口说一句「看下 %s」"
+                                  % (type(e).__name__, str(e)[:160], task_rel)}
+            if res.get("delivered"):
+                return {
+                    "result": "manual", "method": "visual", "at": at, "needs_human": True,
+                    "delivered": True, "verified": bool(res.get("verified")),
+                    "channel": str(res.get("channel") or ""),
+                    "detail": ("已按视觉脚本把「看下 %s」送进它的窗口（通道 %s；投递核对=%s）；"
+                               "**它有没有执行平台核不到** —— 请人确认，或让它交回报／回执"
+                               % (task_id, res.get("channel") or "?",
+                                  "是" if res.get("verified") else "否")),
+                }
+            return {"result": "manual", "method": "visual", "at": at, "needs_human": True,
+                    "delivered": False, "verified": bool(res.get("verified")),
+                    "channel": str(res.get("channel") or ""),
+                    "detail": "视觉投递没成功：%s —— 请人去它的窗口说一句「看下 %s」"
+                              % (str(res.get("detail") or "原因未知")[:200], task_rel)}
+        return {"result": "manual", "method": "none", "at": at, "needs_human": True,
+                "detail": ("视觉型只能人工：%s。去它的窗口说一句「看下 %s」；"
+                           "想让它自动，就在「脚本激活」工作台做一份视觉脚本（标题/关键词 + 一句话）"
+                           % (why, task_rel))}
 
     return {"result": "manual", "method": "none", "at": at, "needs_human": True,
             "detail": "视觉型只能人工：去它的窗口说一句「看下 %s」" % task_rel}

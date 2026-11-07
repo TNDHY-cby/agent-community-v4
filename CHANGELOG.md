@@ -42,6 +42,59 @@
 > 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
 > ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
 
+## [4.43.0] - 2026-11-07
+
+本批四件**协作层结构性**的事：**组长枢纽（能力面 / 验收署名 / 产物绑任务 / 待验收未读 / 对接单投递）**、
+**组长由协议高适配型承担（单主多助）**、**组长算法与组长列表/预列表**、
+**工作间日常沟通 + 小队（原 Cell）与三级分级**。
+
+一句话：**"组长最适配、能带动不适配者"从一句话变成可算、可看、可拦的东西；
+而"分不分间、谁拍板、怎么说话"三件事，现在都有明确答案和判据。**
+
+### 组长枢纽（V134·V135）
+- **能力面**：`GET /api/workshop/{id}/lead-capabilities`、`GET /api/harness/{id}/capabilities` ——
+  能写/能读/能收通知/能不能派活/有没有视觉脚本，每条 `gaps` 都写清"缺什么、平台替它补什么"；
+  另给**协议适配度** `protocol_fit`（high/medium/low）。
+- **验收署名可兑现**：默认 `reviewed_by=user`（不再默认 lead）；声称组长却无凭据 ⇒ 403 `WHO_NOT_PROVEN`；
+  组长 A 档令牌 ⇒ 记 `_lead`/`token`；成员令牌 ⇒ 403 `NOT_LEAD`。
+- **产物绑任务**：收件目录发现文件 ⇒ 事件带 `task_id` / `needs_review`，账本 `issued→delivered`（**不等于验收**）；
+  同成员多条未完成 ⇒ `task_id_ambiguous`（不猜、不推进）。
+- **待验收未读**：事件 `unread` + `POST …/inbox-events/read`（与大厅同一套 `read_marks`）。
+- **对接单投递**：`POST …/lead-kit/send` —— 视觉投递 / 写 `_notice.md`；都没通道 ⇒ 如实 `NO_TEXT_CHANNEL` + 给正文。
+- **团队视图**：`GET …/lead-team`（主组长 + 助手 + 派活/收回执/读产物/催办四件事覆盖，缺的给 `platform_will`）。
+
+### 组长算法与组长列表／预列表（V136·V137）
+- `GET /api/lead-plan`：**两条路** —— 有 `protocol_fit=high` ⇒ 单一多协议全能组长（solo）；
+  没有则少协议组长 + 助手互补（team，每个助手带 `adds`）；补不齐 ⇒ `blocked` + 三条出路。
+  `?needs=` 可缩小需求；**不排分、不推荐**（同分按名字）。
+- `GET /api/lead-roster` 升级成**组长列表**：三组（可独立胜任 / 需配助手 / 只能当助手）+ 每候选的口径。
+- `GET /api/lead-preliminary`：**组长预列表** —— 按**方向**给「单/团」两套配置 + 一行结论
+  （一个人就够 / 得搭团 / 没人能接）；方向只认接入自报的 `fit_directions`；`?task=` 给任务卡。
+
+### 工作间日常沟通与小队（V138）
+- **沟通**：`ailp` 信封加可选 `to`（说给组长/某成员/全间）与 `thread`（回哪条）；
+  点了名就**真通知到**（`_lead/_notice.md` / 该成员 `_notice.md`）；`POST …/ailp/read` 与 `GET …/ailp` 的 `unread`
+  与大厅同一套 `read_marks`。**自由聊天仍 410**。
+- **小队**（原名 Cell，老板定名）：`Workshop.squads[]` = 一组成员 + 一个方向 + 一份子目标；
+  端点 `GET/POST …/squads`、`GET/POST …/squads/{id}`、`GET …/split-advice`（按三条件给"该不该拆间"）。
+  **三条不许破**：账本仍按 `ws+task_seq`、验收仍逐条（没有整小队一键通过）、小队没有自己的组长。
+- **对小队派活**：`POST …/dispatch` 带 `squad_id` ⇒ 展开成每成员一条（复用原派活核心，闸门/任务号同一条路）。
+- **跨间交接单**：`POST …/handover-to-workshop` + `GET …/handovers` —— 两间各留只追加的痕、
+  目标间组长收到通知；**跨间不做自由聊天**（会打散责任链）。
+- **层级定稿**：工作间（一个组长 + 多支小队）→ **小队**（任务分支：前端/后端…）→ **成员**（一个 agent，最小单位）。
+
+### 判据（都真跑）
+新增 5 个判据工具：`lead_hub_check`（16 格）、`lead_plan_check`（14 格）、`lead_prelist_check`（15 格）、
+`workshop_comm_check`（8 格）、`squads_check`（8 格）、`cross_handover_check`（6 格）；
+新增守卫 `test_v134_lead_hub`（13 条）、`test_lead_algorithm`（8 条）、`test_lead_prelist`（16 条）、
+`test_workshop_comm`（6 条）、`test_squads`（11 条）。
+
+### 修掉的既有问题（不是新功能）
+- `v5_roster.effective_members()` 的 `harness` 字段永远是 `None`（成员记录里叫 `harness_id`）⇒
+  能力面/收件目录全拿不到档案；现在两个名字都认。
+- 判据工具里改档案写成 `POST …/harness/{id}/edit`（真实端点没有 `/edit`）⇒ 405 + 假绿；已修并把断言加强。
+- 接口面 399 → 412；设计稿 179 → 183。
+
 ## [4.42.0] - 2026-11-06
 
 本批四件事：**跨组织证据采信（V130）** ＋ **MCP 成员的痕迹与会话可见** ＋ **监控室会话观察窗** ＋ **大厅与界面统一**，

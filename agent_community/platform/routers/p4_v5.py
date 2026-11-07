@@ -28,6 +28,82 @@ from .. import verify as _verify
 router = APIRouter()
 
 
+def _is_lead_member(workshop_id: str, member: str) -> bool:
+    """`member` 是不是这个工作间的**组长**（名单里 `slot_dir == "_lead"`）。"""
+    want = str(member or "").strip().strip("/")
+    if not want:
+        return False
+    try:
+        for m in (_roster.effective_members(workshop_id).get("members") or []):
+            if str((m or {}).get("slot_dir") or "").strip().strip("/") == want:
+                return want == "_lead"
+    except Exception as e:                                     # noqa: BLE001 — 名单读不到就按"不是组长"（fail-closed）
+        print("[p4] 读名单失败（%s: %s）；本次按'不是组长'处理" % (type(e).__name__, e), flush=True)
+    return False
+
+
+def _resolve_reviewer(workshop_id: str, body: dict, request) -> tuple:
+    """**验收署名必须能兑现**（`V134` ①）：返回 `(who, who_source, err)`。
+
+    三种来源，各自留证（`V134` §① 原话：不许靠请求体默认值冒充组长）：
+
+    | `who_source` | 要求 | 记成 |
+    |---|---|---|
+    | 不填 / `user` | 无 | `who="user"`（界面/人点的，**不冒充组长**） |
+    | `platform` | 无（平台自动出结论，人复核） | `who="platform-review"` |
+    | `token` | 必须带组长 A 档令牌（`Authorization: Bearer` 或 `X-Agent-Token`），且令牌属于本工作间的 `_lead` | `who=<令牌里的成员>`、`who_source="token"` |
+
+    声称自己是某个具名身份（如 `who="lead"`）却拿不出令牌 ⇒ **403 `WHO_NOT_PROVEN`**，不落账。
+    """
+    who_raw = str(body.get("who") or "").strip()
+    src = str(body.get("who_source") or "").strip().lower()
+    # ★先分清"来源"，再看"名字"：来源没写就当 `user`（人点的）；声称具名身份则必须给凭据。
+    #   （首版把"没写 who"也当 user，于是 `who_source=token` 被吞掉、令牌白给 —— 实测抓到的 bug）
+    if src in ("", "user"):
+        if who_raw and who_raw != "user":
+            return "", "", {
+                "ok": False, "code": "WHO_NOT_PROVEN",
+                "error": ("验收署名写成了「%s」，但没给凭据 —— 平台不替你记成某个身份"
+                          "（`V134` ①：验收责任链必须是可兑现的）" % who_raw),
+                "next": ("人点的验收就别填 who（默认 user）；要让组长自己验收，"
+                         "给它签一份 A 档令牌，并在请求里带 `Authorization: Bearer <token>` + `who_source: token`"),
+            }
+        return "user", "user", None
+    if src == "platform":
+        return "platform-review", "platform", None
+    if src != "token":
+        return "", "", {
+            "ok": False, "code": "BAD_WHO_SOURCE",
+            "error": "不认识的验收署名来源：%r" % src,
+            "next": "who_source 只认 user / token / platform；不填就当 user（人点的）",
+        }
+    # 走到这里：who_source=token —— 必须能用令牌证明"我是这个工作间的组长"
+    auth = str(request.headers.get("authorization") or "")
+    bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    token = bearer or str(request.headers.get("x-agent-token") or body.get("token") or "").strip()
+    pair, why = _tok.verify(token)
+    if pair is None:
+        return "", "", {
+            "ok": False, "code": why or "TOKEN_BAD",
+            "error": "用 `who_source=token` 验收，但令牌校验没过（%s）" % (why or "TOKEN_BAD"),
+            "next": "用对接单里那份组长令牌；吊销过/换过工作间都会失效",
+        }
+    wid_tok, member = pair
+    if str(wid_tok) != str(workshop_id):
+        return "", "", {
+            "ok": False, "code": "TOKEN_SCOPE",
+            "error": "这份令牌不属于这个工作间（它属于 %s）" % wid_tok,
+            "next": "用本工作间组长的那份令牌",
+        }
+    if not _is_lead_member(workshop_id, member):
+        return "", "", {
+            "ok": False, "code": "NOT_LEAD",
+            "error": "令牌有效，但 %r 不是这个工作间的组长（名单里没有 `_lead` 工位对得上）" % member,
+            "next": "组长验收要用 `_lead` 工位那份令牌；成员验收不算组长的结论",
+        }
+    return str(member or who_raw), "token", None
+
+
 def _ws(workshop_id: str):
     from ..server import workshops
 
@@ -158,6 +234,10 @@ async def review(workshop_id: str, task_seq: int, request: Request):
         body = {}
     body = body if isinstance(body, dict) else {}
     result = str(body.get("result") or "").strip()
+    # ★2026-11-07（V134 ①）：验收署名必须能兑现 —— 不再默认 "lead"（那是"谁点一下都算组长"）
+    who, who_source, _who_err = _resolve_reviewer(workshop_id, body, request)
+    if _who_err is not None:
+        return JSONResponse(_who_err, status_code=403)
     if result not in ("通过", "返工", "拒收"):
         return JSONResponse({"ok": False, "code": "BAD_REQUEST",
                              "error": "result 只能是 通过 / 返工 / 拒收",
@@ -190,7 +270,9 @@ async def review(workshop_id: str, task_seq: int, request: Request):
                          evidence_ref=ref,
                          proof_exists=proof_exists,
                          note=str(body.get("note") or ""),
-                         artifacts=arts_summary, who=str(body.get("who") or "lead"))
+                         artifacts=arts_summary, who=who, who_source=who_source)
+    out["reviewed_by"] = who
+    out["reviewed_by_source"] = who_source
     view = _evidence_view(workshop_id, task_seq,
                           given_level=str(body.get("evidence_level") or ""),
                           snapshot=scanned if scanned is not None else None)

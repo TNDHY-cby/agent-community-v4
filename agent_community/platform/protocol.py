@@ -10,7 +10,7 @@
 from __future__ import annotations
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from uuid import uuid4
 
@@ -471,11 +471,21 @@ class HarnessInfo(BaseModel):
     transports: list[TransportType] = Field(default_factory=lambda: [TransportType.HTTP])
     preferred_transport: Optional[TransportType] = None   # 显式偏好：平台优先用这个（可选，不填则按 priority）
     callback_url: str = ""        # HTTP 回调地址（如果有）
+    # ★2026-11-06（V132）：**向导层协议**的全量声明（界面多选的结果）。
+    #   为什么不能塞进 transports：向导里的 `http_api` / `acp` / `file_poll` / `clipboard`
+    #   在 `TransportType` 里**没有对应值**（传输层只分 ws/http/sse/pipe/grpc/mcp/a2a），
+    #   硬塞会 400（实测：`transports.1 -> Input should be ...`）。
+    #   ⇒ `wakeup_method` 记**首选**，`protocols` 记**全量**，`transports` 只放真能表达的。
+    protocols: list[str] = Field(default_factory=list)
 
     # ── 接入/激活配置（平台如何拉起该 harness 的新对话）────────
     wakeup_method: WakeupMethod = WakeupMethod.CLIPBOARD   # 接入/激活方式
     wakeup_url: str = ""           # HTTP 回调激活地址
     wakeup_dir: str = ""           # 文件轮询监听目录（如 示例Harness-D 的轮询目录）
+    # ★2026-11-07（V133）：**收件目录**——成员把产物文件放到哪儿，平台就盯哪儿。
+    #   空＝默认 `<工位>/产物/`（与验收/采信同一个落点）；填了＝外部导出目录（桌面型只能"另存为"时用）。
+    #   ⚠️ 这不是桥的 `INBOX_DIR`（那是平台→成员的**出站**邮箱），方向正好相反。
+    artifact_inbox_dir: str = ""
     acp_command: str = ""          # ACP 激活命令（如 示例Harness-E：node --import tsx ... acp-demo ...）
     acp_cwd: str = ""              # ACP 命令的工作目录
 
@@ -515,6 +525,33 @@ class HarnessInfo(BaseModel):
     # 元信息
     description: str = ""
     metadata: dict = Field(default_factory=dict)
+
+    # ★2026-11-07（V137）：**方向树**（它自己说"我适合做什么方向"）。
+    #   组长预列表按方向分组就靠这个字段；**没报的不归任何方向组**（平台不替它编）。
+    fit_directions: list[str] = Field(default_factory=list)
+
+    @field_validator("protocols")
+    @classmethod
+    def _check_protocols(cls, v):
+        """`protocols` 值域＝向导层协议 id（`protocol_tree.PROTOCOL_IDS`，一处真相）。
+
+        未知值**当场拒**，并把可用值列出来 —— 不许静默丢掉（静默丢就是"用户以为记住了"）。
+        """
+        from . import protocol_tree as _tree
+
+        if not v:
+            return []
+        out: list = []
+        for x in v:
+            k = str(x or "").strip().lower()
+            if not k:
+                continue
+            if k not in _tree.PROTOCOL_IDS:
+                raise ValueError("不认识的协议 %r；可用：%s"
+                                 % (str(x), " / ".join(_tree.PROTOCOL_IDS)))
+            if k not in out:
+                out.append(k)
+        return out
 
 
 class HarnessStatus(str, Enum):

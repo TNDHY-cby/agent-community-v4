@@ -521,6 +521,8 @@ _HARNESS_EDITABLE = (
     "harness_name", "harness_type", "harness_version", "description",
     "transports", "preferred_transport", "callback_url",
     "wakeup_method", "wakeup_url", "wakeup_dir", "acp_command", "acp_cwd",
+    # ★2026-11-07（V133）：收件目录（成员把产物放到哪，平台盯哪）
+    "artifact_inbox_dir",
     "api_base_url", "api_message_path", "api_outbox_dir",
     "bridge_dir", "bridge_status",
     "can_wake", "waking_models", "waking_protocols",
@@ -3848,4 +3850,59 @@ async def docking_run_script(request: Request):
             "　（一键激活走不通时，回「脚本激活」工作台重新定位/换一档；"
             "剪贴板兜底档只是把内容放好，**不等于**验证通过。）")
     out["checked_at"] = _now_iso()
+    return out
+
+# ══════════════════════════════════════════════════════════════════════════
+# ★2026-11-06（老板：「不止把话送进去吧，它能把消息发给组长吗」）
+#
+# **给某个接入投一段话**（对接单 / 通知 / 任何一段文本），走它档案里的视觉脚本。
+# 与「一键激活」的区别：那个发的是**固定的激活话术**，这个发**调用方指定的话** ——
+# 所以"把对接单发给组长"这类事才有入口（组长也是一个接入，指向它的 harness_id 即可）。
+#
+# 三条边界（与 `platform/visual_send.py` 同一份口径，别改）：
+#   ① 能送进它的输入框（`verified=true` = 读回来的字与送的一致）；
+#   ② **读不到它的回复** —— 回复要么人看窗口，要么它自己交回执；
+#   ③ 没有脚本就如实说 + 指路去「脚本激活」工作台，不给假成功。
+# ══════════════════════════════════════════════════════════════════════════
+@router.post("/api/docking/harness/{harness_id}/send-text")
+async def docking_send_text(harness_id: str, request: Request):
+    """把**任意一段话**送进它的窗口（按它档案里的视觉脚本定位与投递）。
+
+    body: `{"text": "要送的话", "press_enter": false}`
+    返回：`{ok, delivered, verified, channel, target, detail, note}`
+    `note` 固定说明「只核实话进去了，读不到回复」——前端要原样显示。
+    """
+    from ..server import Utf8JSONResponse
+    from .. import visual_send
+    import asyncio
+
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001 — 坏 JSON 当空，下面会拒
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    text = str(body.get("text") or "").strip()
+    sess = _find_harness(str(harness_id or "").strip())
+    if sess is None:
+        return Utf8JSONResponse(
+            {"ok": False, "code": "NO_SUCH_HARNESS",
+             "error": "没有这个接入：%s（可能已注销或 id 写错）" % harness_id},
+            status_code=404)
+    if not text:
+        return Utf8JSONResponse(
+            {"ok": False, "code": "TEXT_REQUIRED",
+             "error": "没说要送什么（`text` 为空）",
+             "next": "把要送的一段话放进 `text`；要发对接单就用 GET …/lead-kit 拿到正文再送"},
+            status_code=400)
+    info = getattr(sess, "info", None)
+    if info is None:
+        return Utf8JSONResponse(
+            {"ok": False, "code": "NO_PROFILE", "error": "这个接入没有档案信息，没法定位窗口"},
+            status_code=404)
+    out = await asyncio.to_thread(visual_send.send_text, info, text,
+                                  press_enter=bool(body.get("press_enter")))
+    out["harness_id"] = harness_id
+    out["sent_chars"] = len(text)
+    if out.get("code") in ("NO_VISUAL_SCRIPT",):
+        return Utf8JSONResponse(out, status_code=400)
     return out

@@ -12,6 +12,9 @@ from __future__ import annotations
 
 from typing import Any
 
+# 规范版本唯一真源（`mcp` 项的 `spec_version` 从这里取，别在本文件另写一份）
+from ..spec_versions import MCP_NOT_FOLLOWED, MCP_SUPPORTED, MCP_SUPPORTED_MAX
+
 
 def _catalog_base() -> str:
     """平台基址，用于示例字符串 —— **运行时解析，不写死本机端口**。
@@ -97,6 +100,17 @@ _PROTOCOLS: list[dict[str, Any]] = [
         "best_for": "Claude Code / Cursor 等 MCP 客户端挂载；平台也可作为 MCP 客户端调外部工具",
         "example": "claude --mcp-config '{\"servers\":{\"ac4\":{\"command\":\"python\",\"args\":[\"-m\",\"agent_community.mcp_server\"]}}}'",
         "requires": "独立进程：python -m agent_community.mcp_server",
+        # ★2026-11-06 老板拍板：**不跟进 MCP 2026-07-28**（减法版：删 initialize / Mcp-Session-Id /
+        #   ping / logging/setLevel，跟进＝一次传输层迁移）。但口径必须**如实**：
+        #   本平台只支持到 2025-06-18，客户端要求更新版本时 initialize 会协商回这一版。
+        #   版本号唯一真源在 `agent_community/spec_versions.py`（别在这里另写一份）。
+        "spec_version": MCP_SUPPORTED_MAX,
+        "spec_supported": list(MCP_SUPPORTED),
+        "spec_not_followed": list(MCP_NOT_FOLLOWED),
+        "spec_note": ("MCP 协议**只支持到 %s**（%s）；%s **未跟进** —— "
+                      "客户端要求新版时 `initialize` 协商回 %s 并在响应里给出实际版本，不假装支持"
+                      % (MCP_SUPPORTED_MAX, " / ".join(MCP_SUPPORTED),
+                         " / ".join(MCP_NOT_FOLLOWED), MCP_SUPPORTED_MAX)),
     },
     {
         "id": "a2a",

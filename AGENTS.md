@@ -100,6 +100,13 @@ python tools/delivery_check.py     # 统一投递层真机判据：channels 选�
 python tools/inject_probe_check.py    # 视觉拉起**真机**判据：真窗口置顶 / 两档投递发生 / 剪贴板写入经核对 / **不弹控制台黑框** / 无文本框窗口如实 exit 3（非 Windows 与无窗口如实跳过）
 python tools/vision_capture_check.py  # 视觉抓图**真机**判据：抓的必须是**整扇窗** —— 真造一个自己声明 DPI 的靶子窗，比"抓图尺寸 vs 真值"（150% 缩放下不声明 DPI 只抓得到左上 2/3；本机 100% 缩放会**如实说这里测不出**，不假绿）
 python tools/frontend_endpoint_check.py  # 前端接线判据：前端 JS 里出现的每个 `/api/…` 都必须**真的挂在后端**（路由自省、参数段按 `{}` 通配、允许"前缀+拼接"写法）；前端改了调用路径就跑它，防"点了按钮 404"
+python tools/workshop_comm_check.py       # ★**工作间日常沟通八格**（V138）：`ailp` 的 `to`（说给组长/某工位/全间）**真通知到**（`_lead/_notice.md` / 该工位 `_notice.md`）、`thread` 回某条（不存在 ⇒ 422 A019）、`to` 非法 ⇒ 422 A018、未读与大厅同一套（只前进）、自由聊天仍 410
+python tools/squads_check.py              # ★**小队八格**（V138，老板定名：工作间→**小队**→成员）：建小队落盘/同 id 拒/对**小队**派活展开成每成员一条/账本不新建（键仍是 ws+task_seq）/没有整小队一键验收/三级视图（workshop→squad→slot，`_lead` 单列、未分组列出）/拆分建议只给事实与理由
+python tools/lead_prelist_check.py        # ★**组长预列表十五格**（V137，老板「组长预列表，各组组长（单/团）适合不同方向/任务」）：按**方向**（只认接入自报的 `fit_directions`）给每方向「**一行结论**（一个人就够/得搭团/没人能接）+ 单 solo + 团 team」两套配置，附**梯队**（还有谁能一个人干）；没报方向的不归任何组；助手可跨方向借并标 `from_direction`；`?task=` 给**任务卡**（命中给方向；未命中给换词建议+现有方向，不退化）
+python tools/lead_plan_check.py            # ★**组长算法十四格**（V136）：两条路（① 单一多协议全能组长；② 少协议组长搭助手互补）—— 有 high ⇒ solo；无 high 能补 ⇒ team（每个助手带 `adds`）；补不齐 ⇒ blocked + 三条出路；`needs` 可缩小；同输入两次结果逐字一致（不排分不推荐）；**组长列表** `/api/lead-roster` 的三组（可独立胜任/需配助手/只能当助手）与每候选的适配度/覆盖/缺什么/谁能补；算法选的人真能选上
+python tools/lead_hub_check.py            # ★**组长枢纽十六格**（V134·V135）：能力面（能写/能读/能收通知/能不能派活/有没有视觉脚本 + 每条"缺什么、平台替它补什么"）、**协议适配度 high/medium/low**（低适配不能当主组长，拦下要说清缺哪项）、**团队视图**（主组长+助手+派活/收回执/读产物/催办四件事覆盖，缺的给平台代做）、验收署名（默认 user；声称 lead 无凭据 403；组长令牌才记 `_lead`）、产物绑任务并推到 delivered、事件未读与已读、对接单投递
+python tools/artifact_inbox_check.py       # ★**文件投递通道十二格**（V133）：成员把文件放进收件目录（档案 `artifact_inbox_dir` 或默认 `<工位>/产物/`）⇒ 平台扫盘发现（真 sha256）⇒ 事件流 + **写进组长 `_lead/_notice.md`**；验基线不刷历史 / 去重 / 内容变 / 目录不存在要说清 / 只读 / `AC_ARTIFACT_WATCH_SEC=0` 能关
+python tools/protocol_plan_check.py       # ★**多协议选中的能力适配十四格**（V132）：选一组协议 ⇒ 这套组合能干什么（能派活/收回执/读会话/它能调我们）、每协议缺什么、派活走哪条路（**MCP 永不派活**）、同层重复提醒、首选不被偷改；**clipboard 配视觉脚本能自动投递但结果核不到**；**send-text 能给组长投任意一段话（但读不到回复）**；并**真注册**一份多选档案（旧行为：选 HTTP_api 就 400）+ 读平台落盘的 harnesses.json 核对
 python tools/protocol_call_check.py      # ★**逐个协议真调一次接口**（与 protocol_matrix 分工：那个测接入流程，这个测协议接口本身）：HTTP 真打 / WS 真连 / MCP 真走 JSON-RPC stdio / ACP 真拉起子进程握手 / A2A 真起 sidecar 读 Agent Card / gRPC 真起网关真发 RPC；pipe 与 sse 如实跳过并说明为什么
 python tools/verify_session_truth.py --db <对方库> --needle <口令>   # ★**真相核对**（V101/V102）：对方说"我写进去了"不算 —— 去**它自己的库**里查，exit 0 才通；1=库里没有 / 2=核对不了（只读拷贝，库+`-wal`+`-shm` 一起拷）
 python tools/in_session_check.py         # 它能不能在**自己的会话**里说话（session_post 那族工具）；`--send` 时只认读回核对，自报不算
@@ -108,6 +115,7 @@ python tools/mcp_loop_check.py           # ★**MCP 高级协议全链路十五�
 python tools/mcp_tools_check.py            # ★**MCP 工具面十九格**（V105；⚠️ MCP 只是「调工具」，不是协作协议 —— 见 V116 §1.1）：临时实例上一个真 MCP 客户端把平台 14 个工具**逐个真调**（建间带任务/发言进讨论区/回执说清结果），最后核对留痕；跑完删临时实例
 python tools/mcp_resources_check.py        # ★**MCP 只读资源面十二格**（V127）：能力声明 `subscribe=false` / 6 固定 + 5 模板 / 逐个真读且是合法 JSON / 数据是真的（真建 12 个工作间）/ 不存在 ⇒ -32002 / **脱敏（令牌·盘符·POSIX 路径）** / 超限先翻页（`?cursor=`）/ 读不改状态 / HTTP 与 stdio 逐字一致 / 未知方法 -32601·坏 URI -32602 不崩
 python tools/mcp_activity_check.py         # ★**成员活动视图 + 监控室会话观察窗十二格**（V131）：临时实例 + 会读/不会读会话的两个假 MCP 对端，验「它自己报的 vs 平台做的」分开标（source/judge）、能读会话就真读、没工具就如实说为什么、5 秒缓存不打对方
+python tools/visibility_falsify_check.py   # ★**痕迹可见性证伪实验台十三格**（V131 §9）：临时实例 + 3 个 mock 节点（A 正常回传 / B 完全沉默 / C 假装在干活），验「在干活／干完了／干得对」三件事在数据层分得开，并钉死硬阈值：**B 与 C 必须能区分**（否则方案不成立）；`--out` 导出一张不含结论的现象表给 5 人盲判用
 python tools/protocol_peer_check.py       # ★**高级协议真对端二十七格**（V106 + V119 批 B）：A2A / gRPC 各起一个真对端，派活 → 平台真建任务 → 同一条查得到 → 真回报；含不带令牌必被拒（fail-closed）；
                                         #   A2A 追加六格：卡上如实声明「不流式但可长轮询」/ tasks/watch 超时如实说没变 / 未声明能力 -32004 / **产物（v5 目录 diff+sha256）与验收结论（L1）随任务一起出去**
 python tools/acp_check.py                 # ★**ACP 落地九格**：真拉起 / 多轮上下文不丢 / 多会话不串 / 重启后旧会话被明确拒（fresh-only 不假装续上）/ 拉起失败立刻报（带 stderr，不挂 30s）

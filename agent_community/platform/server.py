@@ -158,6 +158,16 @@ async def _app_lifespan(_app):
         asyncio.create_task(_startup_verify())
     else:
         print("[startup] AI 连通性自检未开启（ai_verify_on_startup=False）", flush=True)
+    # ★2026-11-07（V133）：收件目录监视 —— 成员把文件放进收件目录，平台自动发现并转给组长。
+    #   `AC_ARTIFACT_WATCH_SEC=0` 时只保留手动扫（线程会立刻返回并在日志里说清）。
+    try:
+        from .artifact_inbox import watch_loop as _inbox_watch_loop
+
+        task5 = asyncio.create_task(_inbox_watch_loop())
+    except Exception as _ie:                                   # noqa: BLE001 — 监视器起不来要说话，但不挡启动
+        task5 = None
+        print("[startup] 收件目录监视没起来（可手动 POST …/scan-inbox）：%s: %s"
+              % (type(_ie).__name__, _ie), flush=True)
     task = asyncio.create_task(_api_outbox_poll_loop())
     task2 = asyncio.create_task(_leader_poll_loop())
     # 拉起已登记 harness 的桥子进程（bridge_supervisor），让 acp/file_poll 类 harness 能领取 pending 消息
@@ -193,6 +203,8 @@ async def _app_lifespan(_app):
     task2.cancel()
     task3.cancel()
     task4.cancel()
+    if task5 is not None:
+        task5.cancel()
     try:
         from .peer_poll import stop as _peer_poll_stop
         _peer_poll_stop()
@@ -264,6 +276,12 @@ from .routers.audit import router as _audit_router
 app.include_router(_audit_router)  # P2-1 审计：GET /api/audit（自 retired 副本回收，落进 routers/audit.py）
 from .routers.protocols import router as _protocols_router
 app.include_router(_protocols_router)  # V-11 协议目录：GET /api/protocols（单一事实源）
+from .routers.protocol_plan import router as _protocol_plan_router
+app.include_router(_protocol_plan_router)  # V132：POST /api/docking/protocol-plan（多协议组合能干什么）
+from .routers.artifact_inbox import router as _artifact_inbox_router
+app.include_router(_artifact_inbox_router)  # V133：收件目录扫描/事件/状态（成员放文件→平台发现→转组长）
+from .routers.lead_capabilities import router as _lead_caps_router
+app.include_router(_lead_caps_router)  # V134：组长/接入的能力面（能干什么、缺什么、平台补什么）
 from .routers.protocol_brief import router as _brief_router
 app.include_router(_brief_router)  # V-12 协作协议简报：GET /api/protocol-brief（外端 AI onboarding）
 from .routers.policy import router as _policy_router
@@ -290,6 +308,8 @@ from .routers.docking import router as _docking_router
 app.include_router(_docking_router)  # V34 对接中心：GET /api/docking/overview（只读跨间总览；老板 2026-10-15 拍板「做对接中心」）
 from .routers.activity import router as _activity_router
 app.include_router(_activity_router)  # V131 成员活动视图（只读）：痕迹时间线 + 它会话（老板 2026-11-04「MCP 成员要有直观可见的工作痕迹和会话」）
+from .routers.read_marks import router as _read_marks_router
+app.include_router(_read_marks_router)  # 大厅「未读回报」后端水位（FE-33 §5 缺口）：GET/POST /api/workshop/{id}/read，跨设备同步
 from .routers.rooms_discuss import router as _rooms_discuss_router
 app.include_router(_rooms_discuss_router)
 from .routers.assistant import router as _assistant_router
@@ -343,6 +363,8 @@ app.include_router(_logs_router)  # V59 只读日志尾：GET /api/logs/tail（�
 from .routers.peer_companies import router as _peers_router
 app.include_router(_peers_router)  # V62 对端公司（我去连谁）：/api/peers 登记/验证/派活/回查/停用；隧道只体现为一个 http 地址
 from .routers.relay import router as _relay_router
+from .routers.squads import router as _squads_router
+app.include_router(_squads_router)  # V138 小队模块化工作间：/api/workshop/{id}/squads（三级视图/建/改）
 app.include_router(_relay_router)  # V66 中转（本地优先）：/api/relay/status|send|inbox —— 终端只出站连 Hub
 app.add_middleware(
     CORSMiddleware,

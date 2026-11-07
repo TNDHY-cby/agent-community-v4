@@ -23,6 +23,7 @@ MCP 协调层 — 将 agent_community-v4 平台能力暴露为 MCP Server（stdi
 from __future__ import annotations
 
 from .platform_address import base_url_from_env
+from .spec_versions import MCP_SUPPORTED
 import base64
 import json
 import os
@@ -37,10 +38,12 @@ BASE_URL = base_url_from_env().rstrip("/")
 TOKEN = os.environ.get("AC4_TOKEN", "")
 SERVER_NAME = "agent-community-v4-mcp"
 SERVER_VERSION = "4.0.0"
-# MCP 协议版本：列表按「新 → 旧」排列，首个即服务器默认（最高）版本。
+# MCP 协议版本：**唯一真源在 `spec_versions`**（`MCP_SUPPORTED`，新 → 旧排列，首个即默认/最高）。
 # 规范（MCP Lifecycle, 2025-06-18）要求版本协商：客户端在 initialize 里带
 # protocolVersion，服务器支持该版本就回同一个，否则回一个自己支持的版本。
-SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"]
+# 老板 2026-11-06 拍板：**不跟进 2026-07-28**（减法版），口径如实写"支持到 2025-06-18"
+# （见 `spec_versions.mcp_version_note()` 与协议目录的 `spec_version` 字段）。
+SUPPORTED_PROTOCOL_VERSIONS = list(MCP_SUPPORTED)
 PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
 
 
@@ -454,13 +457,11 @@ _TOOL_MAP = {t["name"]: t for t in TOOLS}
 RESOURCE_MAX_BYTES_DEFAULT = 65536
 RESOURCE_PAGE_SIZE = 50
 
-#: 键名里带这些的一律不出资源（令牌、密钥、凭据）
-_SENSITIVE_KEY_RE = re.compile(r"(token|secret|password|passwd|api[_-]?key|credential)", re.I)
-#: Windows 盘符路径 / POSIX 深路径。
-#: ⚠️ 别把 URI 当路径：`ac://workshop/x/y` 里 `/x` 前面是 `/`、`/y` 前面是字母 ⇒ 都不算；
-#:    `https://example.com/a/b` 同理（`/a` 前面是域名里的字母）。所以 lookbehind 排除 `:`、`/`、词字符。
-_WIN_PATH_RE = re.compile(r"[A-Za-z]:\\(?:[^\\/:*?\"<>|\r\n]+\\)*[^\\/:*?\"<>|\r\n]*")
-_POSIX_PATH_RE = re.compile(r"(?<![:\w/])/(?:[^\s/\"']+/){2,}[^\s\"',;)}\]]*")
+# ★2026-11-06：脱敏抽到顶层包 `agent_community/redact.py`（**一处真相**）——
+#   工作过程上报（`platform/progress.py`）也要洗"对方写的自由文本"，
+#   而 `mcp_server` **不能** import `platform.*`（会拽入 FastAPI 污染 stdout，见文件头），
+#   所以两边都从顶层 `redact` 取。这里只留一个别名，别再写第二份正则。
+from .redact import scrub as _scrub  # noqa: E402 — 放这儿是为了紧挨着原来的用法（原 _scrub 已删）
 
 
 class ResourceError(Exception):
@@ -479,25 +480,6 @@ def _max_bytes() -> int:
         return n if n >= 1024 else RESOURCE_MAX_BYTES_DEFAULT
     except Exception:                                          # noqa: BLE001 — 配错就用默认，不拖垮启动
         return RESOURCE_MAX_BYTES_DEFAULT
-
-
-def _scrub(obj):
-    """递归脱敏：敏感键名 → `<hidden>`；字符串里的绝对路径 → `<path>`。"""
-    if isinstance(obj, dict):
-        out = {}
-        for k, v in obj.items():
-            if _SENSITIVE_KEY_RE.search(str(k)):
-                out[k] = "<hidden>"
-            else:
-                out[k] = _scrub(v)
-        return out
-    if isinstance(obj, list):
-        return [_scrub(x) for x in obj]
-    if isinstance(obj, str):
-        s = _WIN_PATH_RE.sub("<path>", obj)
-        s = _POSIX_PATH_RE.sub("<path>", s)
-        return s
-    return obj
 
 
 #: 固定资源（`resources/list` 直接列出；全部不带参数）

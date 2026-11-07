@@ -407,6 +407,13 @@ async def register_harness(request: Request):
     _scripts: dict = {}
     if isinstance(body, dict):
         _scripts = body.pop("scripts", None) or {}
+    # ★2026-11-06（V132）：把界面发来的**向导层协议 id** 翻译成 `HarnessInfo` 认得的形状。
+    #   不翻的后果（实测）：前端多选把 `http_api` / `acp` / `file_poll` / `clipboard` 直接写进
+    #   `transports`，而 `TransportType` 只认 ws/http/sse/pipe/grpc/mcp/a2a ⇒ 注册直接 400
+    #   （`transports.1 -> Input should be ...`）。映射表在 `protocol_tree`（一处真相）。
+    from ..protocol_plan import normalize_register_body as _normalize_register_body
+    if isinstance(body, dict):
+        body = _normalize_register_body(body)
     if _scripts and not isinstance(_scripts, dict):
         return Utf8JSONResponse({"error": "scripts 必须是对象：{动作名: {参数}}"}, status_code=400)
     _bad_actions = [k for k in (_scripts or {}) if k not in _ACTIONS]

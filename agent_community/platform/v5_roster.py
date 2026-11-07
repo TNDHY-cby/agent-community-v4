@@ -127,7 +127,12 @@ def effective_members(workshop_id: str) -> dict:
     """
     snap = roster(workshop_id)
     members = [{"member_seq": m.get("member_seq"), "slot_dir": m.get("slot_dir"),
-                "state": m.get("state"), "harness": m.get("harness"),
+                "state": m.get("state"),
+                # ★2026-11-07（V134 落地时抓到）：成员记录里字段叫 **`harness_id`**，
+                #   这里原来只读 `harness` ⇒ 永远 None，于是"按工位找它的接入"（能力面、
+                #   收件目录、派活路线）全都拿不到档案。两个名字都认，优先 `harness`。
+                "harness": m.get("harness") or m.get("harness_id"),
+                "harness_id": m.get("harness") or m.get("harness_id"),
                 "model": m.get("model"),
                 # 2026-10-31（V116 §8.0 口径二）：把"它现在实际叫什么"与核对结果带出来，
                 # 界面才好如实标"这个名字是你给它的，平台没核过它真实叫什么"。

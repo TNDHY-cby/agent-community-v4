@@ -5137,6 +5137,32 @@ function wsvMonRenderMirror(cam,hid,m){
 
 
 
+<!-- ★2026-11-06（老板：「用户不在工作间内属于未读 ⇒ 大厅通知」）：进间即把已读水位推到最新。
+     口径与 index.html 的 ac_read_<ws_id> 一致；轮询 4s，取不到就不推进（宁可多提醒，不假装已读）。 -->
+<script>
+(function () {
+  try {
+    var keys = ['ws_id', 'ws'];
+    var q = new URLSearchParams(location.search);
+    var id = null;
+    for (var i = 0; i < keys.length && !id; i++) id = q.get(keys[i]);
+    if (!id) return;
+    function mark() {
+      fetch('/api/workshop/' + encodeURIComponent(id))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!d || !d.discussion) return;
+          var mx = -1;
+          d.discussion.forEach(function (m) { if (m && m.seq != null) mx = Math.max(mx, Number(m.seq)); });
+          if (mx >= 0) localStorage.setItem('ac_read_' + id, String(mx));
+        })
+        .catch(function () { /* 取不到就不推进水位 */ });
+    }
+    mark();
+    setInterval(mark, 4000);
+  } catch (e) { /* 不支持 URLSearchParams 的旧浏览器：不标记（不影响主功能） */ }
+})();
+</script>
 </body>
 
 

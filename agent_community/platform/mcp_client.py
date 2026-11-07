@@ -21,9 +21,13 @@ from typing import Any
 
 import httpx
 
+from agent_community.spec_versions import MCP_SUPPORTED_MAX
+
 MCP_DEFAULT_TIMEOUT = 15.0
 MCP_CALL_TIMEOUT = 120.0
-MCP_PROTOCOL_VERSION = "2025-06-18"  # 现行稳定版本；服务端可能返回其他版本，宽容处理
+# 我们**自己**作为 MCP 客户端时声明的版本：与「服务端支持到哪一版」同一份口径（一处真相）。
+# 服务端可能返回其他版本，宽容处理（不因为版本号不同就报错）。
+MCP_PROTOCOL_VERSION = MCP_SUPPORTED_MAX
 
 
 class McpError(Exception):

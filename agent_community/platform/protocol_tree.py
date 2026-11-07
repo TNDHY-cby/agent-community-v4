@@ -38,6 +38,17 @@ STEPS = [
 ]
 
 #: 每种协议一张卡（`cards` 就是界面要挂在该协议下面的"功能卡片"，别平铺）
+#:
+#: ★2026-11-06（老板「做多协议选中适合的功能」；设计 `V132`）—— 每一项额外声明**能力事实**，
+#: 这四组字段是"多选组合能不能闭环"的**唯一真源**（界面与 `protocol_plan` 都读这里，别在两处再写）：
+#:   · `role`             —— 在协作里扮演什么（task=能派活 / tools=只能被调 / session=平台拉起会话 /
+#:                            bridge=它自己来取件 / manual=只能人搬运）
+#:   · `can_dispatch`     —— 平台能不能把活儿**派给它**
+#:   · `can_receive_result` —— 它交回的结果平台收不收得到
+#:   · `can_call_our_tools` —— 它能不能反过来调平台的工具（MCP 就是这一条）
+#:   · `can_read_session` —— 平台能不能读它的会话（"tool"＝要它自己提供读会话工具）
+#:   · `transport`        —— 映射到 `TransportType` 的哪个值；**None ＝ 传输层表达不了**（那就只记在
+#:                            `protocols` 字段里，不许硬塞一个语义不同的值）
 PROTOCOLS = [
     {
         "id": "a2a", "label": "A2A（对方是 A2A agent，有 Agent Card）",
@@ -46,6 +57,9 @@ PROTOCOLS = [
         #   `tasks/send`（JSON-RPC 信封），**不是**普通 HTTP POST —— 这一点必须写清，
         #   否则用户以为"注册成功 = 能派活"，实际派出去的格式它不认。
         "can_be_woken": True, "needs_bridge": False, "needs_session": False,
+        "role": "task", "can_dispatch": True,
+        "can_receive_result": "yes", "can_call_our_tools": False,
+        "can_read_session": "tool", "transport": "a2a",
         "required": ["harness_id", "api_base_url", "ai.model_name"],
         "cards": [
             {"action": "test_now", "title": "读它的 Agent Card（现在就支持）",
@@ -68,6 +82,9 @@ PROTOCOLS = [
     {
         "id": "mcp", "label": "MCP（对方是 MCP 服务端）",
         "can_be_woken": True, "needs_bridge": False, "needs_session": False,
+        "role": "tools", "can_dispatch": False,
+        "can_receive_result": "yes", "can_call_our_tools": True,
+        "can_read_session": "tool", "transport": "mcp",
         "required": ["harness_id", "api_base_url", "ai.model_name"],
         "cards": [
             {"action": "test_now", "title": "直推（无桥）", "detail": "平台直接调它的 tools/list 与 tools/call"},
@@ -82,6 +99,9 @@ PROTOCOLS = [
     {
         "id": "http_api", "label": "HTTP 服务（对方有常驻 HTTP 地址）",
         "can_be_woken": True, "needs_bridge": False, "needs_session": False,
+        "role": "task", "can_dispatch": True,
+        "can_receive_result": "partial", "can_call_our_tools": False,
+        "can_read_session": "no", "transport": "http",
         "required": ["harness_id", "api_base_url", "ai.model_name"],
         "cards": [
             {"action": "copy_guide", "title": "直推", "detail": "平台按 api_base_url 把任务 POST 过去"},
@@ -93,6 +113,9 @@ PROTOCOLS = [
     {
         "id": "acp", "label": "ACP（平台拉起子进程）",
         "can_be_woken": True, "needs_bridge": False, "needs_session": True,
+        "role": "session", "can_dispatch": True,
+        "can_receive_result": "yes", "can_call_our_tools": False,
+        "can_read_session": "yes", "transport": None,
         "required": ["harness_id", "acp_command", "ai.model_name"],
         "cards": [
             {"action": "verify", "title": "平台真拉起", "detail": "按 acp_command 起进程，走 initialize → session/new → prompt"},
@@ -104,6 +127,9 @@ PROTOCOLS = [
     {
         "id": "file_poll", "label": "文件轮询（桥搬件）",
         "can_be_woken": False, "needs_bridge": True, "needs_session": True,
+        "role": "bridge", "can_dispatch": False,
+        "can_receive_result": "partial", "can_call_our_tools": False,
+        "can_read_session": "no", "transport": None,
         "required": ["harness_id", "wakeup_dir", "ai.model_name"],
         "cards": [
             {"action": "open_bridge", "title": "桥搬件", "detail": "平台落盘 → 桥把任务搬进 wakeup_dir → 它自己来取"},
@@ -115,6 +141,15 @@ PROTOCOLS = [
     {
         "id": "clipboard", "label": "人工粘贴（只能人搬运）",
         "can_be_woken": False, "needs_bridge": True, "needs_session": True,
+        "role": "manual", "can_dispatch": False,
+        "can_receive_result": "no", "can_call_our_tools": False,
+        "can_read_session": "no", "transport": None,
+        # ★2026-11-06（老板：「clipboard 是不是可以用视觉脚本，记得说明」）：
+        #   `can_be_woken=False` 说的是**开箱事实**（没有脚本时平台叫不醒桌面型 agent）；
+        #   一旦它的档案里存了**视觉脚本**（`activation_script`：窗口标题/关键词 + 一句要送的话），
+        #   平台就能**自动把话送进它的窗口**（cdp → 原生 → UIA → 半自动，能核实就核实）。
+        #   ⚠️ 但"话送进去了" ≠ "它执行了"：结果平台核不到，仍需人看产物或它自己回报。
+        "visual_script": True,
         "required": ["harness_id", "ai.model_name"],
         "cards": [
             {"action": "manual_chat", "title": "半自动", "detail": "平台把话放剪贴板 + 它能点的位置，人点一下 Ctrl+V"},
@@ -126,6 +161,9 @@ PROTOCOLS = [
     {
         "id": "http", "label": "HTTP 兜底（只落盘、不叫醒）",
         "can_be_woken": False, "needs_bridge": True, "needs_session": True,
+        "role": "bridge", "can_dispatch": False,
+        "can_receive_result": "no", "can_call_our_tools": False,
+        "can_read_session": "no", "transport": "http",
         "required": ["harness_id", "ai.model_name"],
         "cards": [
             {"action": "copy_guide", "title": "只落盘", "detail": "平台只把任务写进它的目录，等它自己来取"},
@@ -138,16 +176,55 @@ PROTOCOLS = [
 
 BY_ID = {p["id"]: p for p in PROTOCOLS}
 
+#: 向导层协议的合法 id（多选、`protocols` 字段、`protocol-plan` 校验**都读这一份**）
+PROTOCOL_IDS = tuple(p["id"] for p in PROTOCOLS)
+#: 向导 id → `TransportType` 值；`None` ＝ 传输层表达不了（只记 `protocols`，不硬塞）
+TRANSPORT_BY_ID = {p["id"]: p.get("transport") for p in PROTOCOLS}
+#: 能派活的协议，按**平台优先尝试**的顺序（`protocol_plan` 与派活触达共用这一份）
+DISPATCH_ORDER = tuple(p["id"] for p in PROTOCOLS if p.get("can_dispatch"))
+#: 角色的人话（界面/计划里直接显示，别在 JS 里另写一份）
+ROLE_LABELS = {
+    "task": "能派活（它有任务语义）",
+    "tools": "只能被调（它是工具面，平台不能给它派活）",
+    "session": "能派活（平台拉起会话，按轮次推进）",
+    "bridge": "只能落盘等它来取（不能叫醒）",
+    "manual": "只能人搬运（半自动）",
+}
+
+
+#: 视觉脚本能干什么、不能干什么（**一处真相**：界面/计划/文档都读这里，别各写一句）
+VISION = {
+    "can": ("配了**视觉脚本**（窗口标题或关键词 + 一句要送的话）后，平台能**自动把话送进它的窗口**："
+            "按 `cdp → 原生 → UIA → 半自动` 四通道选，能核实投递就核实，核不了如实说未核实。"),
+    "cannot": ("只能证明「**话送进去了**」，**不能证明它执行了 / 干完了**。"
+               "结果要靠人看产物、或它自己给回执；平台不会把「投递成功」记成「任务完成」。"),
+    "where": ("对接中心「脚本激活」工作台；一键激活 `POST /api/docking/harness/{id}/activate`；"
+              "派活到视觉档时也会走同一条投递（`dispatch.activate` 的 `c_visual` 分支）。"),
+    "fields": ["activation_script.text", "activation_script.title（最精确）",
+               "activation_script.keywords", "activation_script.verified（没自证过就是 false，不假装）"],
+    "which_protocols": ["clipboard（主要）", "http 兜底 / file_poll（桌面型也可配，能力归视觉这一档）"],
+}
+
 
 def build() -> dict:
-    """给界面用的整棵树（一步真相：界面别在 JS 里再抄一份字段）。"""
+    """给界面用的整棵树（一步真相：界面别在 JS 里再抄一份字段）。
+
+    `meta` 给界面判断"多选时能干什么"用（V132）：`dispatch_order` / `role_labels` /
+    `protocol_ids` —— 与 `protocol-plan` 端点**同一份真源**。
+    """
     return {
         "steps": STEPS,
         "protocols": PROTOCOLS,
+        "protocol_ids": list(PROTOCOL_IDS),
+        "meta": {"dispatch_order": list(DISPATCH_ORDER),
+                 "role_labels": dict(ROLE_LABELS),
+                 "note": "多选后调 /api/docking/protocol-plan 拿『这套组合能干什么』；别在前端自己拼 register 载荷"},
+        "vision": dict(VISION),
         "guide": {"endpoint": "/api/harness/register-prompt",
                   "query": {"wakeup_method": "<协议 id>", "format": "md"},
                   "note": "把返回的 Markdown 直接复制给外端 agent"},
         "test": {"endpoint": "/api/docking/harness/{harness_id}/test-now", "method": "POST"},
         "register": {"endpoint": "/api/harness/register", "method": "POST"},
+        "plan": {"endpoint": "/api/docking/protocol-plan", "method": "POST"},
         "next": {"add_member": "/api/workshop/{ws_id}/members", "method": "POST"},
     }

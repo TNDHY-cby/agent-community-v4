@@ -246,6 +246,24 @@ def validate(envelope, *, allowed: list | None = None, workshop_id: str = "",
                              "`owner` 不在本工作间名单里：%s" % owner,
                              "写名单里的成员/组长名（GET …/roster 看有哪些）"))
 
+    # ── ★2026-11-07（V138 §二 第一件）：「说给谁」与「回哪条」 ──────────────
+    #   两个都**可选**（老消息照样读）：`to` = lead / all / member:<工位>；`thread` = 回哪条 msg_id。
+    #   为什么放**信封级**而不是 `payload`：它们是"投递语义"，不是四类消息的内容，
+    #   放进 payload 会污染 `/api/ailp/types` 的字段表（规则 20：一处真相）。
+    to_whom = str(envelope.get("to") or "").strip()
+    if to_whom:
+        ok_to = (to_whom in ("lead", "all")
+                 or (to_whom.startswith("member:") and len(to_whom) > len("member:")))
+        if not ok_to:
+            errs.append(_err("to", "A018",
+                             "`to` 值不对：%r" % envelope.get("to"),
+                             "只能是 `lead` / `all` / `member:<工位目录>`（不给就是整个工作间）"))
+    thread = str(envelope.get("thread") or "").strip()
+    if thread and msg_ids is not None and thread not in msg_ids:
+        errs.append(_err("thread", "A019",
+                         "`thread` 指向的消息不存在：%s" % thread,
+                         "先 GET …/ailp 拿真实 msg_id 再回它；不给 thread 就是新话题"))
+
     if errs:
         return False, errs, None
 
@@ -259,6 +277,10 @@ def validate(envelope, *, allowed: list | None = None, workshop_id: str = "",
             "workshop_id": workshop_id,
             "payload": payload,
             "received_at": _now()}
+    if to_whom:                                  # 不给就不写（老消息与老读法都不受影响）
+        norm["to"] = to_whom
+    if thread:
+        norm["thread"] = thread
     norm["fingerprint"] = _sha(json.dumps(norm, ensure_ascii=False, sort_keys=True))
     return True, [], norm
 
@@ -274,6 +296,12 @@ def types_catalog() -> dict:
         for t in TYPES],
         "envelope": ["ailp_version", "msg_id", "msg_type", "sender", "target",
                      "manifest_ref", "timestamp", "payload"],
+        "optional_envelope": [
+            {"name": "to", "type": "str",
+             "rule": "说给谁：`lead` / `all` / `member:<工位目录>`；不给＝整个工作间"},
+            {"name": "thread", "type": "str",
+             "rule": "回哪条：必须是本工作间真实存在的 msg_id（A019）；不给＝新话题"},
+        ],
         "rules": ["自由聊天不收（只认这七类）",
                   "`manifest_ref` 必须在本工作间 manifest 的 entry_points 或 active_tasks 里",
                   "PROPOSE/CHALLENGE 的依据数组不许为空",

@@ -107,11 +107,11 @@ body.chrome-offset .app{min-height:calc(100vh - var(--tb))}
   background:radial-gradient(circle,rgba(var(--accent-rgb),.14),transparent 62%);
   pointer-events:none;
 }
-.mh-in{max-width:1320px; margin:0 auto; padding:34px 28px 26px 32px; position:relative; z-index:1}
-.mh-tag{font-family:var(--mono); font-size:11px; letter-spacing:.22em; color:var(--muted)}
+.mh-in{max-width:1320px; margin:0 auto; padding:18px 28px 14px 32px; position:relative; z-index:1}
+.mh-tag{font-family:var(--mono); font-size:10.5px; letter-spacing:.22em; color:var(--muted)}
 .mh-tag b{color:var(--accent); font-weight:800}
 .masthead h1{
-  font-size:clamp(40px,6.4vw,64px); font-weight:900; line-height:.95;
+  font-size:clamp(28px,3.6vw,38px); font-weight:900; line-height:1;
   /* 字距由 -.035em 放开到 +.08em：RGB split 最外层红带位移 8.2px，
      负字距下会伸进相邻汉字被白字盖掉，三色带读不全。 */
   letter-spacing:.08em; margin:12px 0 14px; color:var(--ink);
@@ -123,7 +123,7 @@ body.chrome-offset .app{min-height:calc(100vh - var(--tb))}
 .masthead h1 .slash{color:var(--accent); font-weight:900; padding:0 .06em}
 .mh-meta{display:flex; flex-wrap:wrap; gap:6px 22px; font-family:var(--mono); font-size:11.5px; color:var(--muted)}
 .mh-meta span::before{content:"▪"; color:var(--dim); margin-right:7px}
-.mh-hazard{height:8px; background:var(--stripe)}   /* 警戒带预算：整页 2 处（此处 + 说明面板） */
+.mh-hazard{height:2px; background:var(--stripe)}   /* P0（FE-32）：8→2px，保留语汇不抢视线 */   /* 警戒带预算：整页 2 处（此处 + 说明面板） */
 
 /* ========== 3. 面板：常态隐框，hover 浮起泛光 ==========
    老板 2026-10-29 反馈「直角不好看、直接视觉上的框也不好看，不如鼠标落上去时

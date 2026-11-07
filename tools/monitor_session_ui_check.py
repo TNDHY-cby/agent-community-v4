@@ -48,7 +48,10 @@ CJS = Path(__file__).resolve().parent / "monitor_session_ui_check.cjs"
 #:    rc=-1073741819、输出全空）——所以要先挑能用的，并且**真探测**过再用（见 _node_ok）。
 NODE_CANDIDATES = [
     os.environ.get("AC_NODE", ""),
-    r"C:\Users\1\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe",
+    # ⚠️ 用 `expanduser` 而不是写死用户名：这是**前端这台机器**的 DSH 自带 node，
+    #    写死 `C:\Users\<名字>` 换个人就跑不了（发布面可移植性扫描会直接判红）。
+    os.path.expanduser(
+        r"~\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe"),
     shutil.which("node") or "",
 ]
 

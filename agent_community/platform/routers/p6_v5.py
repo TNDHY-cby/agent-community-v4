@@ -168,15 +168,37 @@ async def discuss(workshop_id: str, request: Request):
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a", encoding="utf-8") as f:
         f.write(json.dumps(norm, ensure_ascii=False) + "\n")
+    # ★2026-11-07（V138 §二 第一件）：点了名的消息要**真通知到**（不是只存进流水）
+    notified = {}
+    to_whom = str(norm.get("to") or "")
+    ws_path = str(getattr(ws, "workspace_dir", "") or "")
+    if to_whom and ws_path:
+        from ..dispatch import append_notice as _append_notice
+
+        slot = "_lead" if to_whom in ("lead", "all") else to_whom.split(":", 1)[1]
+        line = "[AILP %s] %s → %s：%s" % (norm.get("msg_type"), norm.get("sender"),
+                                          to_whom, str(norm.get("manifest_ref") or ""))
+        try:
+            notified = dict(_append_notice(ws_path, slot, line) or {})
+            notified["slot"] = slot
+        except Exception as e:                                 # noqa: BLE001 — 通知写不进去不能把消息吞了
+            notified = {"ok": False, "error": "通知没写进去：%s: %s" % (type(e).__name__, e),
+                        "slot": slot,
+                        "note": "消息本身**已经记下了**（这条不会丢），只是对方没被点名提醒"}
     return {"ok": True, "msg_id": norm["msg_id"], "msg_type": norm["msg_type"],
             "manifest_ref": norm["manifest_ref"], "recorded_at": norm["received_at"],
+            "to": norm.get("to") or "", "thread": norm.get("thread") or "",
+            "notified": notified,
             "note": "平台只记了这条结构化消息，没有替任何人说话",
             "next": "同一条重复发按 sender+类型+target+fingerprint 判重（幂等返回已有 msg_id）"}
 
 
 @router.get("/api/workshop/{workshop_id}/ailp")
 async def discuss_list(workshop_id: str, limit: int = 50):
-    """读讨论：按时间正序给最近若干条（结构化，前端按 `msg_type` 渲染卡片）。"""
+    """读讨论：按时间正序给最近若干条（结构化，前端按 `msg_type` 渲染卡片）。
+
+    另给 `unread`（`V138`：与大厅同一套 `read_marks`，键 `ailp:<ws>`，只前进不后退）。
+    """
     ws = _ws(workshop_id)
     if ws is None:
         return _no_ws(workshop_id)
@@ -184,9 +206,43 @@ async def discuss_list(workshop_id: str, limit: int = 50):
     counts = {}
     for it in items:
         counts[it.get("msg_type", "?")] = counts.get(it.get("msg_type", "?"), 0) + 1
+    from .. import read_marks as _rm
+
+    total = len(_read(workshop_id, 100000))
+    rid = "ailp:%s" % workshop_id
+    seq = int((_rm.get(rid) or {}).get("seq") or 0)
+    unread = max(0, total - max(0, seq))
     return {"ok": True, "count": len(items), "counts": counts, "items": items,
+            "unread": {"total": total, "read": max(0, seq), "unread": unread},
             "hint": "这里是**结构化消息**（四类），不是聊天记录；"
                     "平台没有生成任何内容，也没做摘要"}
+
+
+@router.post("/api/workshop/{workshop_id}/ailp/read")
+async def discuss_read(workshop_id: str, request: Request):
+    """**把讨论区标为已读**（`V138`）：水位与大厅同一套（`read_marks`，只前进不后退）。
+
+    body 可给 `{seq: N}`（用户看到第 N 条）；不给就推进到"当前总条数"。
+    往回设会被拒并说明原因（`moved=false`），不报错 —— 与大厅未读口径一致。
+    """
+    ws = _ws(workshop_id)
+    if ws is None:
+        return _no_ws(workshop_id)
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001 — 空 body 就按"推到最新"
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    from .. import read_marks as _rm
+
+    total = len(_read(workshop_id, 100000))
+    rid = "ailp:%s" % workshop_id
+    want = body.get("seq")
+    res = _rm.mark(rid, total if want is None else want, only_forward=True)
+    seq = int((res or {}).get("seq") or 0)
+    return {"ok": True, "workshop_id": workshop_id, "moved": bool((res or {}).get("moved")),
+            "why": (res or {}).get("why") or "",
+            "unread": {"total": total, "read": max(0, seq), "unread": max(0, total - max(0, seq))}}
 
 
 @router.post("/api/workshop/{workshop_id}/ailp/replay")

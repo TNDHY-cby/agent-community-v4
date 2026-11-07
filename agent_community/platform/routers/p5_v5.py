@@ -53,8 +53,86 @@ async def harness_tooling():
 
 @router.get("/api/lead-roster")
 async def lead_roster(direction: str = ""):
-    """组长候选（**只列能当组长的**；按名字排序，不是推荐）。"""
-    return _roster_mod.candidates(direction)
+    """**组长列表**（老板 2026-11-07：「这是为了做组长列表的」）。
+
+    在既有"只列能当组长的（按名字排序，不是推荐）"之上，补三类**可判读**的信息
+    （算法在 `platform/lead_algorithm.py`，能力面在 `platform/lead_capabilities.py`）：
+
+    - 每个候选：`protocol_fit` / `covers`（覆盖哪几件事）/ `solo_feasible`（它自己能不能闭环）/
+      `needs_helpers`（缺什么）/ `helper_options`（谁能补）；
+    - 顶层 `groups`：**① 可独立胜任 ② 需配助手 ③ 只能当助手**（列表可以直接按这三组渲染）；
+    - 顶层 `plans`：`V136` 两条路的结论（solo / team / blocked），与列表同一份事实。
+
+    **仍然不排序、不推荐**：组内按 `harness_id` 字典序；分数不出现（只有事实与缺口）。
+    """
+    from .. import lead_algorithm as _alg
+    from .. import lead_capabilities as _caps
+    from ..server import harness_manager as _hm
+
+    base = _roster_mod.candidates(direction)
+    caps_by: dict = {}
+    for hid, sess in (getattr(_hm, "sessions", {}) or {}).items():
+        caps_by[str(hid)] = _caps.capabilities_of(getattr(sess, "info", None), harness_id=str(hid))
+
+    def _covers(hid: str) -> list:
+        c = caps_by.get(hid) or {}
+        return _alg.covers_of(c)
+
+    def _fit(hid: str) -> str:
+        return str(((caps_by.get(hid) or {}).get("protocol_fit") or {}).get("level") or "low")
+
+    # 助手候选：**不能当组长**但能补事的人（视觉型/落盘型都在这里）
+    helper_pool = []
+    for hid, c in sorted(caps_by.items()):
+        cov = _alg.covers_of(c)
+        if not cov:
+            continue
+        helper_pool.append({"harness_id": hid,
+                            "harness_name": c.get("harness_name") or hid,
+                            "protocol_fit": _fit(hid),
+                            "lead_eligible": bool(c.get("lead_eligible")),
+                            "covers": cov,
+                            "can_do_for_lead": [(_alg.NEED_LABELS.get(x, x)) for x in cov]})
+
+    groups = {"solo_ready": [], "needs_helpers": [], "helpers_only": []}
+    enriched: list = []
+    for c in base.get("candidates") or []:
+        hid = str(c.get("harness_id") or "")
+        cov = _covers(hid)
+        need = [n for n in _alg.DEFAULT_NEEDS if n not in cov]
+        opts = [h for h in helper_pool
+                if h["harness_id"] != hid and set(h["covers"]) & set(need)]
+        row = {**c,
+               "protocol_fit": _fit(hid),
+               "covers": cov,
+               "solo_feasible": not need,
+               "needs_helpers": need,
+               "helper_options": [{"harness_id": h["harness_id"], "adds": [x for x in h["covers"]
+                                                                           if x in need]}
+                                  for h in opts[:6]]}
+        enriched.append(row)
+        if not need:
+            groups["solo_ready"].append(hid)
+        else:
+            groups["needs_helpers"].append(hid)     # 需要助手（有没有人补，plans 里会如实说）
+    for h in helper_pool:
+        if not h["lead_eligible"] and h["covers"]:
+            groups["helpers_only"].append(h["harness_id"])
+
+    out = dict(base)
+    out["candidates"] = enriched
+    out["groups"] = groups
+    out["helpers"] = helper_pool
+    out["needs_def"] = {"items": list(_alg.DEFAULT_NEEDS),
+                        "labels": dict(_alg.NEED_LABELS),
+                        "note": "四件事：能派活 / 能收回执 / 能看产物 / 能自动唤醒"}
+    out["plans"] = _alg.plan([{"harness_id": hid,
+                               "harness_name": (caps_by.get(hid) or {}).get("harness_name") or hid,
+                               "capabilities": caps_by.get(hid) or {}}
+                              for hid in caps_by])
+    out["group_hint"] = ("① 可独立胜任（四件事全包）② 需配助手（缺的项有谁能补）"
+                         "③ 只能当助手 —— 顺序按 `harness_id` 字典序，**不是推荐度**")
+    return out
 
 
 def _a2a_contract_section(*, harness_id: str, workshop_id: str, slot_dir: str,
@@ -223,12 +301,33 @@ async def choose_lead(workshop_id: str, request: Request):
         return JSONResponse({"ok": False, "code": "NO_SUCH_HARNESS",
                              "error": "没有这个 harness：%s" % hid,
                              "next": "GET /api/harness-tooling 看已注册的"}, status_code=404)
+    # ★2026-11-07（V135，老板：「组长要用协议高适配型（单个/多个？）的agent来承担」）：
+    #   适配度先算出来，**放进入口闸门的响应里**（不新增错误码 —— 实测发现：
+    #   `fit=low` ⇔ 缺"能派活+能收回执"或写不了文件 ⇒ 必然 `lead_eligible=false`，
+    #   所以"低适配只能当助手"这件事天然由既有 `NOT_LEAD_ELIGIBLE` 拦住，只是要把原因说清）。
+    _fit = {}
+    try:
+        from .. import lead_capabilities as _caps_mod
+        from ..server import harness_manager as _hm
+
+        sess = (getattr(_hm, "sessions", {}) or {}).get(hid)
+        info = getattr(sess, "info", None) if sess is not None else None
+        _fit = (_caps_mod.capabilities_of(info, harness_id=hid).get("protocol_fit") or {})
+    except Exception as e:                                     # noqa: BLE001 — 算不出适配度不挡选人，但要标出来
+        print("[lead] 算适配度失败（%s: %s）；本次按不拦处理" % (type(e).__name__, e), flush=True)
     if not tool["lead_eligible"]:
+        _why = (tool["tooling"].get("why")
+                or "缺 fs_write 或（protocol_call / bridge_poll）")
+        if _fit.get("reasons"):
+            _why = "%s（适配度 %s：%s）" % (_why, _fit.get("level") or "?",
+                                         "；".join(_fit.get("reasons") or []))
         return JSONResponse({"ok": False, "code": "NOT_LEAD_ELIGIBLE",
-                             "error": "这个 harness 不能当组长",
-                             "why": tool["tooling"].get("why")
-                             or "缺 fs_write 或（protocol_call / bridge_poll）",
-                             "next": "换一个能写文件的；或先让它报 `tools` 再探测一次"},
+                             "error": "这个 harness 不能当主组长（只能当助手/成员）",
+                             "why": _why,
+                             "protocol_fit": _fit,
+                             "next": ("给它一个能派活并收回执的协议（A2A / HTTP_api / ACP / MCP / 桥），"
+                                      "或让它报 `tools` 让平台测得它能写文件；再不行就换一个主组长、让它当助手"),
+                             "policy": "拍板权唯一：主组长一个；助手可多个（只搬不拍板）"},
                             status_code=409)
     r = _rw.add_slots(workshop_id, [{"岗位": "_lead", "harness": hid,
                                      "model": str(body.get("model") or tool.get("model") or ""),
@@ -245,6 +344,10 @@ async def choose_lead(workshop_id: str, request: Request):
                              "next": "查日志后重试；名单不会重复建（幂等）"}, status_code=500)
     return {"ok": True, "workshop_id": workshop_id, "status": "lead_in",
             "harness_id": hid, "members_created": r["members_created"],
+            "protocol_fit": _fit,
+            "fit_note": ("它读不了文件 ⇒ 产物与证据由**平台代读**（L0 扫盘），结论仍要人复核"
+                         if str(_fit.get("level") or "") == "medium" else
+                         "适配度 high：能派活、能收回执、能读写文件 —— 适合当拍板人"),
             "next": "GET …/lead-kit 拿对接单，整段复制给组长"}
 
 
@@ -620,3 +723,113 @@ async def bridge_fill(workshop_id: str, for_: str = Query("lead", alias="for"),
             "how": ("把 `fields` 里的值填进这套模板生成桥（`POST /api/bridge/generate`）；"
                     "路径不要手改 —— 改错了就是接不上"),
             "source": "V116 §8.2.1：目录字段一律由平台填"}
+
+# ══════════════════════════════════════════════════════════════════════════
+# ★2026-11-07（V134 ⑦，老板「组长最适配…可以用来带动不适配者」）
+#
+# **把组长对接单送到它手上** —— 按组长的能力面选通道，选不出来就如实说。
+#
+# 为什么要这条：`GET …/lead-kit` 只返回文本，用户得自己复制粘贴给组长；
+# 而"组长自己就是不适配的那一端"（视觉型桌面 agent）时，这一步正是要靠平台代劳的。
+#
+# 通道优先级（一处真相在 `platform/lead_capabilities.py`）：
+#   ① 组长的档案里有可用视觉脚本 ⇒ 真投（`visual_send.send_text`），投递≠它执行；
+#   ② 组长能读文件（fs_write=true）⇒ 追加 `_lead/_notice.md` 一行 + 返回全文；
+#   ③ 都不行 ⇒ **不假装发了**：返回正文 + 明确说"这类接入没有'收一段长文本'的语义"。
+# ══════════════════════════════════════════════════════════════════════════
+@router.post("/api/workshop/{workshop_id}/lead-kit/send")
+async def lead_kit_send(workshop_id: str, request: Request):
+    """把**组长对接单**送到组长那里（按能力面选通道；失败如实说）。
+
+    body（可选）：`{"full": false}` —— 默认只投**开头摘要**（对接单可能几 KB，整段投进输入框不现实）；
+    `full=true` 才投全文。无论哪种，完整正文都在返回的 `kit` 里。
+    """
+    import asyncio
+
+    from .. import lead_capabilities as _caps
+    from .. import visual_send as _vs
+
+    ws = _ws(workshop_id)
+    if ws is None:
+        return _no_ws(workshop_id)
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001 — 无 body 用默认
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    mem = _rw.effective_members(workshop_id)
+    lead = next((m for m in (mem.get("members") or [])
+                 if str((m or {}).get("slot_dir") or "").strip().strip("/") == "_lead"), None)
+    if lead is None:
+        return JSONResponse({"ok": False, "code": "NO_LEAD",
+                             "error": "这个工作间还没选组长（名单里没有 `_lead` 工位）",
+                             "next": "先 POST /api/workshop/{id}/lead 选一个"},
+                            status_code=404)
+    hid = str(lead.get("harness") or "")
+    info = None
+    try:
+        from ..server import harness_manager  # type: ignore[attr-defined]
+
+        sess = (getattr(harness_manager, "sessions", {}) or {}).get(hid) if hid else None
+        info = getattr(sess, "info", None) if sess is not None else None
+    except Exception:                                          # noqa: BLE001 — 取不到档案就按"能力未知"
+        info = None
+    caps = _caps.capabilities_of(info, harness_id=hid)
+
+    kit_res = await lead_kit(workshop_id, format="json", issue_token=0)  # type: ignore[call-arg]
+    if not isinstance(kit_res, dict):
+        return kit_res                                         # 工作间没路径那类错误原样返回
+    kit = str(kit_res.get("kit") or "")
+    if not kit.strip():
+        return JSONResponse({"ok": False, "code": "EMPTY_KIT",
+                             "error": "对接单正文是空的（拼装失败）",
+                             "next": "先 GET …/lead-kit?format=json 看看哪里不对"},
+                            status_code=500)
+    text = kit if bool(body.get("full")) else (
+        "【生产合作社·组长对接单（摘要）】\n" + kit.strip()[:800]
+        + "\n\n（完整对接单在平台 `GET /api/workshop/%s/lead-kit`，"
+          "需要全文请让人复制，或重新请求时带 full=true）" % workshop_id)
+
+    channels: list = []
+    sent: dict = {}
+    # ① 视觉投递（真投；投递≠它执行，口径与 V132 一致）
+    if caps.get("can_be_visual"):
+        try:
+            res = await asyncio.to_thread(_vs.send_text, info, text)
+            sent["visual"] = {k: res.get(k) for k in
+                              ("ok", "delivered", "verified", "channel", "target", "detail", "error")}
+            if res.get("delivered"):
+                channels.append("visual")
+        except Exception as e:                                 # noqa: BLE001 — 投递失败要说，不假装已发
+            sent["visual"] = {"ok": False, "error": "%s: %s" % (type(e).__name__, str(e)[:160])}
+    # ② 写进它的 `_notice.md`（它能读文件时这一条最稳，不抢焦点）
+    if caps.get("can_receive_notice") == "file":
+        try:
+            from ..dispatch import append_notice
+
+            r = append_notice(str(getattr(ws, "workspace_dir", "") or ""), "_lead",
+                              "组长对接单已生成（%d 字）；完整正文见 `GET /api/workshop/%s/lead-kit`"
+                              % (len(kit), workshop_id))
+            sent["notice"] = {"ok": bool(r.get("ok")), "file": str(r.get("file") or "")}
+            if r.get("ok"):
+                channels.append("notice")
+        except Exception as e:                                 # noqa: BLE001 — 写通知失败要说
+            sent["notice"] = {"ok": False, "error": "%s: %s" % (type(e).__name__, str(e)[:160])}
+
+    ok = bool(channels)
+    out = {"ok": True, "workshop_id": workshop_id, "harness_id": hid,
+           "sent": ok, "channels": channels, "attempts": sent,
+           "capabilities": {k: caps.get(k) for k in
+                            ("can_receive_notice", "can_be_visual", "can_write_files",
+                             "can_read_files", "lead_eligible")},
+           "kit_chars": len(kit), "text_sent_chars": len(text), "full": bool(body.get("full")),
+           "kit": kit,
+           "note": ("投递成功 ≠ 组长收到并照做：平台只能证明「话进了它的窗口 / 通知写进了它的目录」，"
+                    "读不到它的回复、也不代表它已开始干活（`V132` §5.6.1 同一口径）。")}
+    if not ok:
+        out.update({"code": "NO_TEXT_CHANNEL",
+                    "error": ("这位组长既没有可用的视觉脚本，也不读 `_notice.md`（或读写不了文件）"
+                              "⇒ 平台**不会假装把它送达**"),
+                    "next": ("给它做一份视觉脚本（对接中心「脚本激活」工作台），"
+                             "或直接人工把 `kit` 复制给它")})
+    return out

@@ -100,8 +100,36 @@ def _advance(rec: dict, to: str, why: str, **extra) -> None:
     rec.setdefault("log", []).append({"at": _now(), "state": to, "why": why})
 
 
+def mark_delivered(workshop_id: str, task_seq: int, *, source: str = "artifact_inbox",
+                   note: str = "") -> dict:
+    """**平台在收件目录发现了产物** ⇒ 把任务从 `issued/working` 推到 `delivered`（`V134` ③）。
+
+    ★ 这**不是验收通过**：`delivered` 只表示"它有东西了"，真正的过闸仍要走 `review`（证据档）。
+    终态（`accepted` / `rejected`）不动；已经是 `delivered` 的也不重复推。
+    """
+    d = _load()
+    k = _key(workshop_id, task_seq)
+    rec = d.get(k)
+    if rec is None:
+        return {"ok": False, "code": "NO_SUCH_TASK",
+                "error": "账本里没有 T-%03d" % int(task_seq)}
+    st = str(rec.get("state") or "")
+    if st in ("accepted", "rejected"):
+        return {"ok": True, "moved": False, "state": st,
+                "why": "任务已经是终态（%s），不再改" % st}
+    if st == "delivered":
+        return {"ok": True, "moved": False, "state": st, "why": "已经是 delivered"}
+    _advance(rec, "delivered", "平台在收件目录发现产物（%s）" % (note or source),
+             delivered_by="platform", delivered_source=str(source or ""),
+             delivered_at=_now())
+    d[k] = rec
+    _save(d)
+    return {"ok": True, "moved": True, "state": "delivered", "task_seq": int(task_seq)}
+
+
 def review(workshop_id: str, task_seq: int, *, result: str, evidence_level: str = "",
-           note: str = "", artifacts: dict | None = None, who: str = "lead",
+           note: str = "", artifacts: dict | None = None, who: str = "user",
+           who_source: str = "user",
            evidence_ref: str = "", proof_exists: bool | None = None) -> dict:
     """验收：`result` ∈ 通过/返工/拒收。**通过必须有够格的证据**（`V121` / `V116` §15.1）。
 
@@ -167,13 +195,15 @@ def review(workshop_id: str, task_seq: int, *, result: str, evidence_level: str 
             extra.update({"evidence_ref": chk["evidence_ref"],
                           "evidence_ref_is_manual": True})
         _advance(rec, "accepted", "验收通过（%s）" % lvl, review_note=note,
-                 reviewed_by=who, reviewed_at=_now(), **extra)
+                 reviewed_by=who, reviewed_by_source=who_source, reviewed_at=_now(), **extra)
     elif result == "返工":
         _advance(rec, "rework", "验收返工（%s）" % (lvl or "无证据等级"),
-                 evidence_level=lvl, review_note=note, reviewed_by=who, reviewed_at=_now())
+                 evidence_level=lvl, review_note=note, reviewed_by=who,
+                 reviewed_by_source=who_source, reviewed_at=_now())
     else:
         _advance(rec, "rejected", "验收拒收（%s）" % (lvl or "无证据等级"),
-                 evidence_level=lvl, review_note=note, reviewed_by=who, reviewed_at=_now())
+                 evidence_level=lvl, review_note=note, reviewed_by=who,
+                 reviewed_by_source=who_source, reviewed_at=_now())
     if artifacts:
         rec["artifacts"] = artifacts
     d[k] = rec

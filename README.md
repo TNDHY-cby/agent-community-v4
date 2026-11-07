@@ -1,7 +1,7 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.42.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.43.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
@@ -76,7 +76,7 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 | **★ 我要怎么用这个平台（从零到跑通，15 步）** | [`design-docs/使用流程_从零到跑通.md`](design-docs/使用流程_从零到跑通.md) ← **用户先看这份** |
 | **项目到底在做什么、边界在哪** | [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) |
 | **完整建模（主模型 26 节 + 12 分册 + 明细册）** | [`V116`](design-docs/V116_v5完整模型_整合版_2026-10-27.md) · [`model/`](design-docs/model/) · [`V118`](design-docs/V118_组织拓扑与团队资产_建模_2026-10-28.md) |
-| **全部设计稿（174 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
+| **全部设计稿（183 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
 | **本地优先 + 中心中转**（当前架构方向） | [`design-docs/V66_本地优先与中心中转架构设计.md`](design-docs/V66_本地优先与中心中转架构设计.md) |
 | **派活与回执走中转 / 一个 Hub 服务多家公司** | [`V67`](design-docs/V67_派活与回执走中转_M2设计.md) · [`V68`](design-docs/V68_一个Hub服务多家公司_公司隔离设计.md) |
 | **没有公网服务器怎么当中转**（三条路） | [`design-docs/RUNBOOK_没有公网服务器怎么当中转.md`](design-docs/RUNBOOK_没有公网服务器怎么当中转.md) |
@@ -236,6 +236,7 @@ python -m agent_community.cli agents list
 | `AC_AGENT_TOKEN` | Agent-Token（桥回报鉴权；平台注册时签发，通常由平台注入） | `（空）` | 条件必需（平台为该 harness 启用了 Agent-Token 时） |
 | **— 功能开关 —** | | | |
 | `AC_LAUNCHER_NO_WATCHDOG` | 双击启动器时**不要**顺带拉起看门狗（默认 0＝顺带拉起：崩了能自动拉回）。排障或只想手动起一次时设 1 | `0` | 否 |
+| `AC_ARTIFACT_WATCH_SEC` | 收件目录监视间隔（秒，默认 20）：成员把产物文件放进收件目录（档案 `artifact_inbox_dir` 或默认 `<工位>/产物/`），平台每这么久扫一轮，发现新增/内容变化就发事件并写进组长的 `_lead/_notice.md`。**0＝关掉后台扫描**（仍可手动 `POST …/scan-inbox`） | `20` | 否 |
 | `AC_STATE_BACKUP_MINUTES` | 状态快照（`data/backups/`）多久拍一份，默认 30 分钟；**0＝关掉自动快照**。快照是 `data/*.json` 的字节复制，恢复用 `tools/state_restore.py` | `30` | 否 |
 | `AC_STATE_BACKUP_KEEP` | 状态快照保留最近多少份（默认 20；超出的删最旧的） | `20` | 否 |
 | `AC_AI_REASONING_EFFORT` | 思考强度：off/low/medium/high/max（默认 off 省钱） | `off` | 否 |

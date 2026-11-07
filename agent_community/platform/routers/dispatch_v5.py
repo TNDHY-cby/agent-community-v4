@@ -365,10 +365,45 @@ async def dispatch(workshop_id: str, request: Request):
     except Exception:                                          # noqa: BLE001 — 空 body 会被下面拒
         body = {}
     body = body if isinstance(body, dict) else {}
+    # ★2026-11-07（V138 §二 第二件）：可以**对一个**小队**派活** —— 平台展开成该**小队**每个工位各一条任务。
+    #   ⚠️ 复用 `do_dispatch` 核心（闸门/任务号/正文全走同一条路），**不是**批量放行：
+    #     每条任务各自记在 workshop_id+task_seq 上，验收仍逐条。
+    squad_id = str(body.get("squad_id") or "").strip()
+    if squad_id and not int(body.get("member_seq") or 0):
+        from .. import squads as _cells_mod
+        from .. import server as _srv
+
+        ws = (_srv.workshops or {}).get(workshop_id)
+        if ws is None:
+            return JSONResponse({"ok": False, "code": "NO_SUCH_WORKSHOP",
+                                 "error": "没有这个工作间"}, status_code=404)
+        cl = list(getattr(ws, "squads", None) or [])
+        if not _cells_mod.find(cl, squad_id):
+            return JSONResponse({"ok": False, "code": "NO_SUCH_CELL",
+                                 "error": "没有这个**小队**：%s" % squad_id,
+                                 "next": "GET …/squads 看现有的"}, status_code=404)
+        seqs = _cells_mod.squad_members_of(cl, squad_id)
+        if not seqs:
+            return JSONResponse({"ok": False, "code": "CELL_EMPTY",
+                                 "error": "这个**小队**还没有工位（派不出去）",
+                                 "next": "POST …/squads/%s {member_seqs: [...]} 先加人" % squad_id},
+                                status_code=409)
+        results = []
+        for s0 in seqs:
+            r = do_dispatch(workshop_id, {**body, "member_seq": s0},
+                            issued_by=str(body.get("issued_by") or "lead"), source="api")
+            results.append({"member_seq": s0, "ok": bool(r.get("ok")), "out": r})
+        n_ok = len([r for r in results if r["ok"]])
+        return {"ok": n_ok > 0, "squad_id": squad_id, "count": len(results), "ok_count": n_ok,
+                "results": results,
+                "note": ("按**小队**展开成 %d 条任务（每条各自记账）；验收仍**逐条**，"
+                         "没有整**小队**一键通过" % len(results)),
+                "next": "" if n_ok == len(results) else "看 results 里没派出去的那几条的 code/next"}
     if not int(body.get("member_seq") or 0):
         return JSONResponse({"ok": False, "code": "BAD_REQUEST",
-                             "error": "要 member_seq（派给哪个工位）",
-                             "next": "GET /api/workshop/{id}/roster 取一个 member_seq"}, status_code=400)
+                             "error": "要 member_seq（派给哪个工位）或 squad_id（派给整个 小队）",
+                             "next": "GET /api/workshop/{id}/roster 取 member_seq；"
+                                     "或 GET …/squads 取 squad_id"}, status_code=400)
     out = do_dispatch(workshop_id, body, issued_by=str(body.get("issued_by") or "lead"),
                       source="api")
     if out.get("ok"):

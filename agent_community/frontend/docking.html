@@ -30,6 +30,38 @@
     .mcp-state.st-unknown { color: #9A968E; }
     .mcp-text { white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow: auto;
       font-size: 12px; background: var(--bg3); padding: 6px 8px; border-radius: 6px; margin: 5px 0 0; }
+/* ★2026-11-06（老板：「帮我探一次不够明显，默认换成 hover 态，点击弹一下」） */
+.wiz-probe-cta{
+  background:rgba(var(--accent-rgb),.14) !important;
+  border:1px solid rgba(var(--accent-rgb),.62) !important;
+  color:var(--accent) !important;
+  font-weight:800 !important;
+  padding:7px 18px !important;
+  box-shadow:0 0 0 1px rgba(var(--accent-rgb),.10),
+             0 6px 18px rgba(var(--accent-rgb),.12),
+             inset 0 1px 0 rgba(255,255,255,.10);
+  transition:background-color .16s, box-shadow .18s, transform .12s;
+}
+.wiz-probe-cta:hover{
+  background:rgba(var(--accent-rgb),.22) !important;
+  box-shadow:0 0 0 1px rgba(var(--accent-rgb),.18),
+             0 8px 22px rgba(var(--accent-rgb),.22),
+             inset 0 1px 0 rgba(255,255,255,.14);
+}
+.wiz-probe-cta:active{transform:scale(.97)}
+.wiz-probe-cta.pop{animation:wizProbePop .30s cubic-bezier(.34,1.56,.64,1)}
+@keyframes wizProbePop{
+  0%{transform:scale(1)}
+  38%{transform:scale(1.07)}
+  70%{transform:scale(.98)}
+  100%{transform:scale(1)}
+}
+@media (prefers-reduced-motion: reduce){ .wiz-probe-cta.pop{animation:none} }
+/* ★2026-11-06 多选协议：首选角标 */
+.wiz-proto-card{position:relative}
+.wiz-proto-first{position:absolute;top:-7px;right:8px;font-style:normal;font-size:9px;
+  letter-spacing:.06em;padding:0 6px;border-radius:999px;background:var(--accent);color:#1a120b;
+  font-weight:800;line-height:16px}
 </style>
 <link rel="stylesheet" href="chrome.css">
 <link rel="stylesheet" href="glass.css">
@@ -48,7 +80,8 @@
       <a href="/">实时大厅</a>
       <a href="/monitor.html">监控室</a>
       <a href="/workshop.html" id="navWsDock">工作间</a>
-      <a href="/register.html" title="旧页已下线为只读镜像：内容（接入模板/题库/桥型速查）可回查，写操作已停用">接入模板（只读镜像）</a>
+      <a href="/handover.html" title="交付回执台 · 平台内部消化，用户不用管">回执</a>
+      <a href="/booths.html" title="成员隔间与桥 · 平台内部消化，用户不用管">隔间</a>
       <a href="/hub.html">流程说明</a>
       <a href="/ops.html">看板</a>
     </nav>

@@ -1161,7 +1161,8 @@ function wizRender(){
   if (WIZ.step === 1){
     body.innerHTML =
       '<p class="wiz-p">' + escPlain(meta.what || '平台先判断它是哪种接入方式。') + '</p>' +
-      '<div class="wiz-actions"><button class="btn mini quiet" onclick="wizProbe()">帮我探一次</button>' +
+      '<div class="wiz-actions"><button class="btn wiz-probe-cta" id="wizProbeBtn" ' +
+      'onclick="wizProbePop(this);wizProbe()">帮我探一次</button>' +
       '<span class="dock-msg" id="wizProbeMsg"></span></div>' +
       '<div id="wizProbeOut" class="wiz-result"></div>' +
       '<p class="wiz-hint">拿不准就往下一步走 —— 那边每个协议都有一句人话。</p>';
@@ -1171,10 +1172,19 @@ function wizRender(){
   if (WIZ.step === 2){
     body.innerHTML =
       '<div class="wiz-grid">' + (WIZ.tree.protocols || []).map(function (p){
-        const short = String(p.label || p.id).split('（')[0];
+        /* ★2026-11-06（老板：「把 HTTP 服务改名为 HTTP_api」）：两个 HTTP 协议功能不一样，
+           不该合并；但名字要用协议真名，否则用户分不清哪个是 http_api、哪个是 http。 */
+        const short = p.id === 'http_api' ? 'HTTP_api'
+          : String(p.label || p.id).split('（')[0];
         const tag = p.can_be_woken ? '能叫醒' : '叫不醒';
-        return '<button class="wiz-proto-card' + (WIZ.protocol === p.id ? ' on' : '') + '" onclick="wizPickProto(\'' + esc(p.id) + '\')">' +
-          '<b>' + esc(short) + '</b><span class="sub">' + esc(tag) + (p.needs_bridge ? ' · 要桥' : '') + '</span></button>';
+        const _picked = (Array.isArray(WIZ.protocols) ? WIZ.protocols : (WIZ.protocol ? [WIZ.protocol] : []));
+        const _on = _picked.indexOf(p.id) >= 0;
+        const _first = _on && _picked[0] === p.id;
+        return '<button class="wiz-proto-card' + (_on ? ' on' : '') + '" onclick="wizPickProto(\'' + esc(p.id) + '\')"'
+          + (WIZ.protocol === p.id ? ' aria-pressed="true"' : ' aria-pressed="false"') + '>' +
+          (_first ? '<i class="wiz-proto-first">首选</i>' : '') +
+          '<b>' + esc(short) + '</b><span class="sub">' + esc(tag) + (p.needs_bridge ? ' · 要桥' : '') +
+          (_on && !_first ? ' · 已选' : '') + '</span></button>';
       }).join('') + '</div>' +
       '<div id="wizDetail" class="wiz-detail"></div>';
     wizRenderDetail();
@@ -1183,7 +1193,10 @@ function wizRender(){
 
   if (WIZ.step === 3){
     body.innerHTML =
-      '<p class="wiz-p">把这段 Markdown 复制给外端 agent —— 它照着就能自己登记进来。</p>' +
+      '<p class="wiz-p">把这段 Markdown 复制给外端 agent —— 它照着就能自己登记进来。'
+      + ((Array.isArray(WIZ.protocols) ? WIZ.protocols.length : (WIZ.protocol ? 1 : 0)) > 1
+         ? '<br><span class="sub">你选了多个协议：正文按<b>首选</b>写，末尾会附一段「多协议声明」，'
+           + '让它在登记时把 transports 一起报上来。</span>' : '') + '</p>' +
       '<div class="wiz-actions"><button class="btn primary" onclick="wizCopyGuide()">复制引导（.md）</button>' +
       '<span class="dock-msg" id="wizGuideMsg"></span></div>' +
       '<details class="wiz-more"><summary>先看看这段内容</summary><pre id="wizGuidePre" class="wiz-pre"></pre></details>' +
@@ -1265,9 +1278,18 @@ function wizRenderDetail(){
   if (!box) return;
   if (!WIZ.protocol){ box.innerHTML = '<p class="wiz-hint">挑一个最像的；选完这里会出现它要做的事。</p>'; return; }
   const p = ((WIZ.tree.protocols || []).find(function (x){ return x.id === WIZ.protocol; })) || {};
+  const _pickedAll = (Array.isArray(WIZ.protocols) ? WIZ.protocols : (WIZ.protocol ? [WIZ.protocol] : []));
+  const _pickedNames = _pickedAll.map(function (id){
+    const q = (WIZ.tree.protocols || []).find(function (x){ return x.id === id; }) || {};
+    return (id === 'http_api') ? 'HTTP_api' : String(q.label || id).split('（')[0];
+  });
+  const _pickedHtml = _pickedAll.length > 1
+    ? '<p class="wiz-hint">已选 <b>' + _pickedAll.length + '</b> 个协议：' + escPlain(_pickedNames.join(' / ')) +
+      '（**' + escPlain(_pickedNames[0]) + '** 是首选；下面按首选展示，其余会一起记进它的档案 transports）</p>'
+    : '';
   const LBL = { harness_id: 'harness_id（标识）', api_base_url: '地址', acp_command: 'ACP 启动命令',
     wakeup_dir: '收件目录', 'ai.model_name': '模型名' };
-  box.innerHTML =
+  box.innerHTML = _pickedHtml +
     '<div class="wiz-cards">' + (p.cards || []).map(function (c, i){
       const needHid = (c.action === 'test_now' || c.action === 'verify' || c.action === 'add_member');
       const blocked = needHid && !WIZ.harnessId;
@@ -1323,7 +1345,14 @@ function wizPickHarness(id){
 }
 
 function wizPickProto(id){
-  WIZ.protocol = id;
+  /* ★2026-11-06（老板：「DSH 支持多种协议，并没有多选」）—— 点一下选中、再点取消；
+     第一个选中的是**首选**（WIZ.protocol 仍指向它，详情/引导/注册都按首选走）。 */
+  const arr = Array.isArray(WIZ.protocols) ? WIZ.protocols.slice()
+    : (WIZ.protocol ? [WIZ.protocol] : []);
+  const i = arr.indexOf(id);
+  if (i >= 0) arr.splice(i, 1); else arr.push(id);
+  WIZ.protocols = arr;
+  WIZ.protocol = arr[0] || '';
   wizSay('');
   wizRender();
 }
@@ -1342,7 +1371,11 @@ function wizFieldValues(){
 
 async function wizRegister(){
   if (!WIZ.protocol){ wizSay('先选一个协议', true); return; }
-  const body = Object.assign({ wakeup_method: WIZ.protocol }, wizFieldValues());
+  const _pl = (Array.isArray(WIZ.protocols) ? WIZ.protocols : (WIZ.protocol ? [WIZ.protocol] : [])).filter(Boolean);
+  /* ★2026-11-06：多选时把全量写进 transports，首选写 wakeup_method + preferred_transport */
+  const body = Object.assign({ wakeup_method: WIZ.protocol,
+    transports: _pl.length ? _pl : [WIZ.protocol],
+    preferred_transport: WIZ.protocol }, wizFieldValues());
   if (!body.harness_id){ wizSay('harness_id 必填', true); return; }
   wizSay('正在注册…');
   const res = await dockPost('/api/harness/register', body);
@@ -1390,19 +1423,37 @@ async function wizCard(action, idx){
   wizSay('这个动作还没接：' + action, true);
 }
 
+/* ★2026-11-06（老板：「支持多个协议，用户应该复制什么给对象」）
+   正文按首选协议生成（那是能直接登记的主路径），末尾附一段"多协议声明"，
+   让对象登记时把 transports / preferred_transport 一起报上来 —— 否则多选白选。 */
+function _wizGuideAppendix(){
+  const ids = (Array.isArray(WIZ.protocols) ? WIZ.protocols : (WIZ.protocol ? [WIZ.protocol] : [])).filter(Boolean);
+  if (ids.length < 2) return '';
+  const names = ids.map(function (id){
+    const q = ((WIZ.tree && WIZ.tree.protocols) || []).find(function (x){ return x.id === id; }) || {};
+    return id === 'http_api' ? 'HTTP_api' : String(q.label || id).split('（')[0];
+  });
+  return '\n\n---\n\n## 另外：它还声明支持这些接入方式\n\n' +
+    '这个对象不止一种接入方式。登记时请按下面填（平台按**首选**派活，其它留作备用）：\n\n' +
+    '- `wakeup_method` = `' + ids[0] + '`（首选：' + names[0] + '）\n' +
+    '- `transports` = `' + JSON.stringify(ids) + '`\n' +
+    '- `preferred_transport` = `' + ids[0] + '`\n\n' +
+    '> 上面正文是按**首选协议**写的；其它协议只需在登记时一并声明，不用重复适配。\n';
+}
 async function wizCopyGuide(){
   if (!WIZ.protocol){ wizSay('先选协议', true); return; }
   const msg = document.getElementById('wizGuideMsg');
   if (msg) msg.textContent = '正在取…';
   const res = await dockGetText('/api/harness/register-prompt?wakeup_method=' + encodeURIComponent(WIZ.protocol) + '&format=md');
-  const text = res.text || '';
-  if (!res.ok || !text){ if (msg) msg.textContent = '✗ ' + ((res.data && res.data.error) || ('HTTP ' + res.status)); return; }
+  const baseText = res.text || '';
+  if (!res.ok || !baseText){ if (msg) msg.textContent = '✗ ' + ((res.data && res.data.error) || ('HTTP ' + res.status)); return; }
+  const text = baseText + _wizGuideAppendix();      /* 多选时末尾附「多协议声明」 */
   WIZ.guide = text;
   const pre = document.getElementById('wizGuidePre');
   const det = document.querySelector('.wiz-more');
   if (pre) pre.textContent = text;
   if (det) det.open = true;
-  try { await navigator.clipboard.writeText(text); if (msg) msg.textContent = '✓ 已复制（' + text.length + ' 字节）'; }
+  try { await navigator.clipboard.writeText(text); if (msg) msg.textContent = '✓ 已复制（' + text.length + ' 字节' + (_wizGuideAppendix() ? '，含多协议声明' : '') + '）'; }
   catch (e) { if (msg) msg.textContent = '已取到，浏览器不让复制 —— 从下面那段手选'; }
 }
 
@@ -1422,6 +1473,16 @@ function _wizSessionPostHtml(h){
      ⇒ 对 A2A 不显示这条"让它加 session_post 工具"的提示（那是给 MCP/工具型接口的）。 */
   const _wm = String((h.wakeup && h.wakeup.wakeup_method) || h.wakeup_method || '').toLowerCase();
   if (_wm === 'a2a') return '';
+  /* ★2026-11-06（老板真机：注册的是 HTTP，复制到的却是 MCP 的 session_post 要求）：
+     HTTP 服务是平台**直接 POST 到它登记的地址**（/message），没有"在它自己会话里说话"这回事。
+     ⇒ 不再把 MCP 的那段要求甩给 HTTP 协议的用户，改显示 HTTP 专属说明。
+     （根因在后端 _is_proto 把 http_api 当成了需要 session_post 的协议，已在通道里报给后端。） */
+  if (_wm === 'http_api' || _wm === 'http' || _wm === 'httpapi') {
+    return '<div class="wiz-session-post"><p class="wiz-hint">' +
+      'HTTP 服务：平台会直接 <b>POST</b> 到它登记的地址（通常 <code>/message</code>），' +
+      '不需要它装"会话工具"。若它收不到或回不了话，先检查：地址是否可达、是否要鉴权头、' +
+      '返回体是不是 JSON。</p></div>';
+  }
   return '<div class="wiz-session-post"><p class="wiz-hint">' + escPlain(h.session_post_need || '它还不能在自己的会话里说话。') + '</p>' +
     '<div class="wiz-actions"><button class="btn mini" onclick="wizCopySessionPost()">复制要求给它</button>' +
     '<span class="dock-msg" id="wizSpMsg"></span></div></div>';
@@ -1438,6 +1499,15 @@ async function wizCopySessionPost(){
 }
 
 /** 第①步：帮我探一次（先列候选端口，选一条再真探） */
+/* ★2026-11-06（老板：「点击后放大缩小地弹一下」）—— 一次性弹动，动画结束自动回位；
+   同时给后续请求一个可见的"正在动"的反馈（不然点了没反应像坏的）。 */
+function wizProbePop(el) {
+  if (!el) return;
+  el.classList.remove('pop');
+  void el.offsetWidth;          /* 强制回流：连点也能重新触发动画 */
+  el.classList.add('pop');
+  setTimeout(function () { el.classList.remove('pop'); }, 320);
+}
 async function wizProbe(){
   const msg = document.getElementById('wizProbeMsg');
   const out = document.getElementById('wizProbeOut');
@@ -1473,6 +1543,7 @@ async function wizProbeUrl(port){
     ((d.evidence || []).length ? ('<ul class="wiz-steps-list">' + d.evidence.map(function (e){ return '<li>' + escPlain(String(e)) + '</li>'; }).join('') + '</ul>') : '');
   if (res.ok && d.protocol){
     WIZ.protocol = d.protocol;
+    WIZ.protocols = d.protocol ? [d.protocol] : [];
     WIZ.step = 2;
     wizRender();
   }

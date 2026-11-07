@@ -121,6 +121,10 @@ class Workshop:
     #   statements —— 已收到的**结构化陈述**（观点→证据→推理），有上限，防无限增长；
     #   round / prev_evidence / last_verdict —— 轮次、上一轮证据（算"有没有新信息"）、上次裁决。
     debate_state: dict = field(default_factory=dict)
+    #: ★2026-11-07（`V138` §二 第二件）**小队（模块化工作间）**：
+    #: `[{squad_id, name, direction, goal, member_seqs[], status}]` —— **只是分组**，
+    #: 账本仍按 `workshop_id+task_seq`，验收仍逐条，小队没有自己的组长。
+    squads: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """序列化为 dict（持久化 + 列表 API 用）。
@@ -200,6 +204,7 @@ class Workshop:
             # V52 辩论模式：不落盘的话重启后"开关被悄悄关回去 / 轮次清零"—— 属于状态静默丢失
             "debate_enabled": bool(getattr(self, "debate_enabled", False)),
             "debate_state": dict(getattr(self, "debate_state", {}) or {}),
+            "squads": list(getattr(self, "squads", None) or []),
         }
 
     @classmethod
@@ -248,6 +253,7 @@ class Workshop:
             # V52：旧数据没有这两个键 ⇒ 默认关、空状态（向后兼容，不假装开过）
             debate_enabled=bool(d.get("debate_enabled", False)),
             debate_state=dict(d.get("debate_state") or {}),
+            squads=list(d.get("squads") or d.get("cells") or []),   # 旧快照叫 cells，读回来照样认
         )
 
 

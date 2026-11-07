@@ -318,6 +318,11 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     ap = _mod("agent_community.platform.a2a_result_poll")
     if ap is not None:
         monkeypatch.setattr(ap, "_path", lambda: tmp / "a2a_pending.json", raising=False)
+    #    ★2026-11-06：大厅「未读回报」的后端水位也落在 `env_spec.data_dir()` 上（`read_marks.json`）。
+    #      同一个坑（新落盘模块没登记 ⇒ 单测写真实数据）不能再踩一次。
+    rm = _mod("agent_community.platform.read_marks")
+    if rm is not None:
+        monkeypatch.setattr(rm, "_path", lambda: tmp / "read_marks.json", raising=False)
 
     return tmp
 

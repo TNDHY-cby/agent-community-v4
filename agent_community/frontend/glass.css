@@ -18,13 +18,13 @@
 :is(.card, .panel, .dock-tile, .wiz-lane, .wiz-mcp-calls, .mcard, .h-card,
     .disc-zone, .rw-v5, .cap, .booth, .rules, .rc-noev, .shared, .dock-modal,
     .wiz-notes, .wiz-call-row, .wf-card, .q3-row) {
-  background-color: rgba(24, 22, 20, .55);
-  background-image: linear-gradient(115deg, rgba(255, 255, 255, .065) 0%, rgba(255, 255, 255, 0) 48%);
-  border: 1px solid rgba(255, 255, 255, .09);
+  background-color: rgba(30, 28, 25, .50);
+  background-image: linear-gradient(115deg, rgba(255, 255, 255, .10) 0%, rgba(255, 255, 255, 0) 48%);
+  border: 1px solid rgba(255, 255, 255, .13);
   border-radius: 14px;
   backdrop-filter: blur(14px) saturate(1.2);
   -webkit-backdrop-filter: blur(14px) saturate(1.2);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .10), 0 10px 26px rgba(0, 0, 0, .26);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .13), 0 10px 26px rgba(0, 0, 0, .26);
 }
 
 /* 弹窗/抽屉要更"厚"：它浮在内容之上，模糊太轻会读不清 */
@@ -39,8 +39,8 @@
    ⚠️ 只加在**当前没有背景图**的容器上（这些容器都继承 body 的底，不会盖掉页面纹理）。 */
 :is(.main, .stage, .stage-body, .ws-content, .col-center, .content, .wrap) {
   background-image:
-    radial-gradient(720px 340px at 12% 4%, rgba(var(--accent-rgb), .07), transparent 70%),
-    radial-gradient(820px 420px at 88% 92%, rgba(var(--navy-rgb), .09), transparent 72%);
+    radial-gradient(720px 340px at 12% 4%, rgba(var(--accent-rgb), .15), transparent 70%),
+    radial-gradient(820px 420px at 88% 92%, rgba(var(--navy-rgb), .18), transparent 72%);
 }
 
 /* 面板里的标题栏/分区线别被玻璃边吃掉 */
@@ -51,7 +51,7 @@
   :is(.card, .panel, .dock-tile, .wiz-lane, .wiz-mcp-calls, .mcard, .h-card,
       .disc-zone, .rw-v5, .cap, .booth, .rules, .rc-noev, .shared, .dock-modal,
       .wiz-notes, .wiz-call-row, .wf-card, .q3-row) {
-    background-color: rgba(28, 26, 24, .88);
+    background-color: rgba(32, 30, 27, .88);
   }
 }
 
@@ -67,7 +67,7 @@
 /* ── 对接中心是「装甲直角」作者（body.app-bg-dock .dock-tile 特异性更高），
       这里用同前缀把玻璃盖上去：瓦片圆角 10px（比卡片小一档）。 ── */
 body.app-bg-dock :is(.dock-tile, .card, .wiz-lane, .wiz-mcp-calls, .dock-modal) {
-  background-color: rgba(24, 22, 20, .55);
+  background-color: rgba(30, 28, 25, .50);
   background-image: linear-gradient(115deg, rgba(255,255,255,.065) 0%, rgba(255,255,255,0) 48%);
   border: 1px solid rgba(255,255,255,.09);
   border-radius: 10px;

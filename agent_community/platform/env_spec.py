@@ -109,6 +109,11 @@ SPEC: dict[str, Var] = {v.name: v for v in [
         "双击启动器时**不要**顺带拉起看门狗（默认 0＝顺带拉起：崩了能自动拉回）。"
         "排障或只想手动起一次时设 1",
         default="0", kind="feature", example="1"),
+    Var("AC_ARTIFACT_WATCH_SEC",
+        "收件目录监视间隔（秒，默认 20）：成员把产物文件放进收件目录"
+        "（档案 `artifact_inbox_dir` 或默认 `<工位>/产物/`），平台每这么久扫一轮，"
+        "发现新增/内容变化就发事件并写进组长的 `_lead/_notice.md`。**0＝关掉后台扫描**（仍可手动 `POST …/scan-inbox`）",
+        default="20", kind="feature", example="60"),
     Var("AC_STATE_BACKUP_MINUTES",
         "状态快照（`data/backups/`）多久拍一份，默认 30 分钟；**0＝关掉自动快照**。"
         "快照是 `data/*.json` 的字节复制，恢复用 `tools/state_restore.py`",

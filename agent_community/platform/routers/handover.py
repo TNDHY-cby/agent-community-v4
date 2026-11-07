@@ -226,3 +226,117 @@ async def handover_activate(request: Request):
     return {"success": bool(disp_ok), "dispatched": bool(disp_ok), "harness_id": hid,
             "wake_word": cp.get("wake_word", ""), "note": note,
             "prompt_preview": prompt[:300]}
+
+
+# ── ★2026-11-07（V138 §三）**跨间交接单**：A 间 → B 间，带凭据移交，不做跨间自由聊天 ──────────
+def _now_iso():
+    from datetime import datetime
+
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _append(path, line: str):
+    from pathlib import Path
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    head = "" if p.is_file() else "# 跨间交接（只追加）\n\n"
+    with p.open("a", encoding="utf-8") as fh:
+        fh.write(head + line + "\n")
+
+
+def _read_lines(path, limit: int = 200):
+    from pathlib import Path
+
+    p = Path(path)
+    if not p.is_file():
+        return []
+    try:
+        return [x for x in p.read_text(encoding="utf-8").splitlines() if x.startswith("- ")]
+    except OSError:
+        return []
+
+
+@router.post("/api/workshop/{ws_id}/handover-to-workshop")
+async def handover_to_workshop(ws_id: str, request: Request):
+    """**跨间交接单**：把一件事从本工作间移交给另一个工作间的**组长**。
+
+    body：`{target_workshop_id, title, goal?, accept?, due?, note?, proof?}`
+
+    为什么只做"交接单"、不做跨间聊天（`V138` §三）：跨间自由对话会立刻把责任链打散
+    （谁答应的、谁认的），与 `V134` ① 的"署名可兑现"冲突。
+
+    **平台只做三件事**：① 校验两间都存在且不是同一个；② 在**两边**各写一条只追加的留痕
+    （来源间 `_handover_out.md`、目标间 `_handover_in.md`）并给目标间组长 `_notice.md` 加一行；
+    ③ 返回交接单号（可双向查）。**不替目标间决定派给谁**（那是目标间组长的事）。
+    """
+    from .. import server as _srv
+
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001 — 空 body 会被下面拒
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    target = str(body.get("target_workshop_id") or "").strip()
+    title = str(body.get("title") or "").strip()
+    if not target or not title:
+        return _json_err("要 target_workshop_id 和 title（交接什么）", 400)
+    if target == ws_id:
+        return _json_err("目标工作间不能是自己（同间协作直接用讨论区/派活，不用交接单）", 400)
+    src = (_srv.workshops or {}).get(ws_id)
+    dst = (_srv.workshops or {}).get(target)
+    if src is None:
+        return _json_err("没有这个工作间（来源）：%s" % ws_id, 404)
+    if dst is None:
+        return _json_err("没有这个工作间（目标）：%s" % target, 404)
+    src_dir = str(getattr(src, "workspace_dir", "") or "")
+    dst_dir = str(getattr(dst, "workspace_dir", "") or "")
+    if not src_dir or not dst_dir:
+        return _json_err("工作区目录缺失（来源或目标没设 workshop_path）", 409)
+    hid = "H-%s" % (abs(hash((ws_id, target, title, _now_iso()))) % 1000000)
+    line = ("- %s | %s → %s | %s | goal=%s | accept=%s | due=%s | proof=%s | note=%s"
+            % (hid, ws_id, target, title,
+               str(body.get("goal") or ""), str(body.get("accept") or ""),
+               str(body.get("due") or ""), str(body.get("proof") or ""),
+               str(body.get("note") or "")))
+    _append("%s/_handover_out.md" % src_dir, line)
+    _append("%s/_handover_in.md" % dst_dir, line)
+    from ..dispatch import append_notice as _append_notice
+
+    notified = {}
+    try:
+        notified = dict(_append_notice(dst_dir, "_lead", "[跨间交接 %s] 来自「%s」：%s"
+                                       % (hid, ws_id, title)) or {})
+    except Exception as e:                                     # noqa: BLE001 — 通知失败不影响交接单本身
+        notified = {"ok": False, "error": "%s: %s" % (type(e).__name__, e)}
+    try:
+        from ..audit import record as _audit_record
+
+        _audit_record.record("workshop.handover_cross", actor="user", target=ws_id,
+                             detail="%s → %s：%s" % (ws_id, target, title),
+                             extra={"handover_id": hid, "target": target})
+    except Exception:                                          # noqa: BLE001 — 审计写不进去也要把交接单交出去
+        pass
+    return {"ok": True, "handover_id": hid, "from_workshop": ws_id, "to_workshop": target,
+            "title": title, "notified": notified,
+            "note": ("两边都留了只追加的痕（来源 `_handover_out.md` / 目标 `_handover_in.md`）；"
+                     "目标间组长已收到通知。**平台没有替目标间决定派给谁**。"),
+            "next": "目标间组长：GET /api/workshop/%s/handovers 看进来的交接单，再自己派活" % target}
+
+
+@router.get("/api/workshop/{ws_id}/handovers")
+async def list_handovers(ws_id: str, limit: int = 100):
+    """双向查：本间**交出去**的（out）与**收进来**的（in）。只读。"""
+    from .. import server as _srv
+
+    ws = (_srv.workshops or {}).get(ws_id)
+    if ws is None:
+        return _json_err("没有这个工作间：%s" % ws_id, 404)
+    d = str(getattr(ws, "workspace_dir", "") or "")
+    out = _read_lines("%s/_handover_out.md" % d, limit)
+    inn = _read_lines("%s/_handover_in.md" % d, limit)
+    return {"ok": True, "workshop_id": ws_id,
+            "out": out[-int(limit or 100):], "in": inn[-int(limit or 100):],
+            "count": {"out": len(out), "in": len(inn)},
+            "note": ("跨间只走交接单（带内容/验收要点/凭据），**不走自由聊天** —— "
+                     "跨间闲聊会把责任链打散（V138 §三）")}
