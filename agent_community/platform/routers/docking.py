@@ -3053,6 +3053,16 @@ async def docking_harness_update(harness_id: str, request: Request):
         return Utf8JSONResponse({"error": "请求体不是 JSON"}, status_code=400)
     if not isinstance(patch, dict):
         return Utf8JSONResponse({"error": "请求体必须是一个对象（字段名 → 新值）"}, status_code=400)
+    # ★2026-11-07（V134 ⑥）：改档案时重校验收件目录（不给"绕过一次"的机会）
+    if "artifact_inbox_dir" in patch:
+        from ..artifact_inbox import validate_artifact_inbox_dir as _valid_inbox
+        _ok_d, _why_d, _res_d = _valid_inbox(str(patch.get("artifact_inbox_dir") or ""))
+        if not _ok_d:
+            return Utf8JSONResponse({"ok": False, "code": "BAD_INBOX_DIR",
+                                     "error": "收件目录不合法：%s" % _why_d,
+                                     "next": "改成工作区子目录、或你自建的独立目录；"
+                                             "不要系统目录 / 盘根 / 网络路径"}, status_code=400)
+        patch = {**patch, "artifact_inbox_dir": _res_d}
     merged, err = patch_harness_dump(sess.info.model_dump(), patch)
     if err:
         return Utf8JSONResponse({"error": err}, status_code=400)

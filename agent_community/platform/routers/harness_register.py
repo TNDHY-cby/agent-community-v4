@@ -414,6 +414,17 @@ async def register_harness(request: Request):
     from ..protocol_plan import normalize_register_body as _normalize_register_body
     if isinstance(body, dict):
         body = _normalize_register_body(body)
+    # ★2026-11-07（V134 ⑥）：收件目录要过路径校验 —— 非法一律 400 并说清允许什么
+    _aid = str(body.get("artifact_inbox_dir") or "").strip()
+    if _aid:
+        from ..artifact_inbox import validate_artifact_inbox_dir as _valid_inbox
+        _ok_d, _why_d, _res_d = _valid_inbox(_aid)
+        if not _ok_d:
+            return Utf8JSONResponse({"ok": False, "code": "BAD_INBOX_DIR",
+                                     "error": "收件目录不合法：%s" % _why_d,
+                                     "next": "改成工作区子目录、或你自建的独立目录；"
+                                             "不要系统目录 / 盘根 / 网络路径"}, status_code=400)
+        body["artifact_inbox_dir"] = _res_d
     if _scripts and not isinstance(_scripts, dict):
         return Utf8JSONResponse({"error": "scripts 必须是对象：{动作名: {参数}}"}, status_code=400)
     _bad_actions = [k for k in (_scripts or {}) if k not in _ACTIONS]

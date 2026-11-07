@@ -181,6 +181,15 @@ async def discuss(workshop_id: str, request: Request):
         try:
             notified = dict(_append_notice(ws_path, slot, line) or {})
             notified["slot"] = slot
+            try:
+                from .. import notice_log as _nl
+
+                _nl.record(workshop_id, target=to_whom, slot=slot, channel="notice_file",
+                           result="written" if notified.get("ok") else "failed",
+                           detail="AILP %s" % norm.get("msg_type"),
+                           ref=norm.get("msg_id") or "")
+            except Exception as _e:                            # noqa: BLE001 — 记账失败不影响消息
+                print("[notice] 记通知账失败（不影响消息）: %s" % _e, flush=True)
         except Exception as e:                                 # noqa: BLE001 — 通知写不进去不能把消息吞了
             notified = {"ok": False, "error": "通知没写进去：%s: %s" % (type(e).__name__, e),
                         "slot": slot,

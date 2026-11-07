@@ -42,6 +42,56 @@
 > 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
 > ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
 
+## [4.44.0] - 2026-11-07
+
+本批把 `V134` 审计**最后五条**收干净（⑧⑨⑩ + ⑥ + 跨间交接的接收方确认），
+一句话：**"通知了"和"对方收到了"、"登记了"和"文件还在"、"发了交接单"和"对方接了单"—— 这三对不再混在一起。**
+
+### ⑧ 通知投递账（`notice_log`）
+- `platform/notice_log.py`：三类结果**分开记** ——
+  `written`（只写进通知文件，**对方看没看平台不知道**）/ `delivered`（真投递且核过）/ `failed`（带真实原因）；
+- 接进两处落点：产物转组长（`artifact_inbox`）、`ailp` 点名（`to=lead` / `member:<工位>`）；
+- `GET /api/workshop/{id}/notice-log`：按时间正序 + 三类计数 + `labels`（`written` 的说明里明写"不知道"）。
+- 为什么重要：以前"组长不看文件"＝没通知，界面仍显示"已通知" ⇒ **失败被吞**。
+
+### ⑨ 档位矩阵（`tier_matrix`）
+- **唯一一张表**：4 档 × 4 轴（派活 `reach` / 通知 `notice` / 产物 `artifact` / 验收 `review`），每格是行为码
+  （`protocol_push` / `bridge_file` / `manual_relay` / `notice_file` / `visual_paste` / `dir_scan` /
+  `gate_l0l2` / `gate_l1_needs_proof` / `gate_reject_auto` / `no_auto_notice` / `self_report`）；
+- `GET /api/tier-matrix`（表 + `gaps`）、`GET …/tier-plan`（每成员按档位在四件事上会怎么处理，读矩阵）；
+- **加档位不填满整行 ⇒ 守卫直接红**（`test_tier_matrix` 专门验这条）。
+- 为什么重要：以前 `dispatch.activate` / `artifact_inbox` / `p4_v5.review` 各写一套，加一档必漏
+  （B 档"只通没取件"被判 active 就是那次漏的）。
+
+### ⑩ 资源库存在性核对
+- `GET …/resources` 每条加 `exists`（**刚真 stat 过**）：在=`true`、不在=`false` 并给 `why`、核不了=`null`
+  （link 类 / stat 失败），另给 `checked_path`。登记 ≠ 文件还在，现在能看出来了。
+
+### ⑥ 收件目录路径校验
+- 新增 `artifact_inbox.validate_artifact_inbox_dir()`：相对路径必须落在**工作区内**（挡 `../..`）；
+  绝对路径不能是**盘根**、不能落**系统目录**（复用 `SYSTEM_DIR_PREFIXES`）、不能是**网络/设备路径**；
+- 三处受理：注册（400 `BAD_INBOX_DIR`）、改档案（同上）、扫描兜底（非法 ⇒ 这轮不扫它，并说清"不是没有新文件"）。
+- 为什么重要：收件目录会被扫盘，文件名 + 大小 + sha256 会进事件与组长通知 —— 指到系统目录等于外泄一片目录的指纹。
+
+### 跨间交接：接收方确认
+- `POST /api/workshop/{id}/handovers/{hid}/ack`：目标间确认收到 ⇒ 目标 `_handover_in.md` 写 `[已接收]`、
+  来源 `_handover_out.md` 写 `[对方已接收]`、通知账记一笔；**幂等**（`already=true`）；
+- `GET …/handovers` 的 `out`/`in` 改成对象（`line`/`handover_id`/`acked`），另给 `out_acked`/`in_acked` 计数；
+- 响应里明写「**确认 ≠ 干完了**」。
+
+### 判据（都真跑）
+- `tools/notice_tier_check.py`（8 格）、`tools/cross_handover_check.py`（8 格）、
+  `test_tier_matrix.py`（5 条）、`test_artifact_inbox.py`（14 条，新增 2 条路径校验）；
+- 全量 pytest 绿；重启 18920 真打：`tier-matrix` 200（4 档、`gaps=[]`）、
+  `notice-log`/`tier-plan`/`ack` 对不存在工作间如实 404。
+
+### 修掉的两处实现错误（判据抓出来的）
+- `validate_artifact_inbox_dir` 有**三个 `return False, "…"` 少了第三个元素**（`resolved`）⇒ 函数有时返回 2 元组；
+- `notice_log` 落在 `env_spec.data_dir()` 上但**没在 conftest 登记** ⇒ 单测写真实 data
+  （本项目第三次踩同一个坑，已在 conftest 第 8 节登记并写进注释）。
+
+接口面 412 → 418；设计稿 183 份。
+
 ## [4.43.0] - 2026-11-07
 
 本批四件**协作层结构性**的事：**组长枢纽（能力面 / 验收署名 / 产物绑任务 / 待验收未读 / 对接单投递）**、

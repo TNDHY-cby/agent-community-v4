@@ -101,6 +101,7 @@ python tools/inject_probe_check.py    # 视觉拉起**真机**判据：真窗口
 python tools/vision_capture_check.py  # 视觉抓图**真机**判据：抓的必须是**整扇窗** —— 真造一个自己声明 DPI 的靶子窗，比"抓图尺寸 vs 真值"（150% 缩放下不声明 DPI 只抓得到左上 2/3；本机 100% 缩放会**如实说这里测不出**，不假绿）
 python tools/frontend_endpoint_check.py  # 前端接线判据：前端 JS 里出现的每个 `/api/…` 都必须**真的挂在后端**（路由自省、参数段按 `{}` 通配、允许"前缀+拼接"写法）；前端改了调用路径就跑它，防"点了按钮 404"
 python tools/workshop_comm_check.py       # ★**工作间日常沟通八格**（V138）：`ailp` 的 `to`（说给组长/某工位/全间）**真通知到**（`_lead/_notice.md` / 该工位 `_notice.md`）、`thread` 回某条（不存在 ⇒ 422 A019）、`to` 非法 ⇒ 422 A018、未读与大厅同一套（只前进）、自由聊天仍 410
+python tools/notice_tier_check.py           # ★**通知账/档位矩阵/资源库八格**（V134 ⑧⑨⑩）：产物转组长与 AILP 点名都进通知账、`written` 不许说成已送达；档位矩阵 4 档 × 4 轴齐全且每格有人话；成员按档位出四格计划；资源库登记做**真 stat**（在=true / 不在=false+why）
 python tools/squads_check.py              # ★**小队八格**（V138，老板定名：工作间→**小队**→成员）：建小队落盘/同 id 拒/对**小队**派活展开成每成员一条/账本不新建（键仍是 ws+task_seq）/没有整小队一键验收/三级视图（workshop→squad→slot，`_lead` 单列、未分组列出）/拆分建议只给事实与理由
 python tools/lead_prelist_check.py        # ★**组长预列表十五格**（V137，老板「组长预列表，各组组长（单/团）适合不同方向/任务」）：按**方向**（只认接入自报的 `fit_directions`）给每方向「**一行结论**（一个人就够/得搭团/没人能接）+ 单 solo + 团 team」两套配置，附**梯队**（还有谁能一个人干）；没报方向的不归任何组；助手可跨方向借并标 `from_direction`；`?task=` 给**任务卡**（命中给方向；未命中给换词建议+现有方向，不退化）
 python tools/lead_plan_check.py            # ★**组长算法十四格**（V136）：两条路（① 单一多协议全能组长；② 少协议组长搭助手互补）—— 有 high ⇒ solo；无 high 能补 ⇒ team（每个助手带 `adds`）；补不齐 ⇒ blocked + 三条出路；`needs` 可缩小；同输入两次结果逐字一致（不排分不推荐）；**组长列表** `/api/lead-roster` 的三组（可独立胜任/需配助手/只能当助手）与每候选的适配度/覆盖/缺什么/谁能补；算法选的人真能选上

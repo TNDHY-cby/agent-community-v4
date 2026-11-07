@@ -364,6 +364,8 @@ from .routers.peer_companies import router as _peers_router
 app.include_router(_peers_router)  # V62 对端公司（我去连谁）：/api/peers 登记/验证/派活/回查/停用；隧道只体现为一个 http 地址
 from .routers.relay import router as _relay_router
 from .routers.squads import router as _squads_router
+from .routers.notice_tier import router as _notice_tier_router
+app.include_router(_notice_tier_router)  # V134 ⑧⑨：/api/workshop/{id}/notice-log · /api/tier-matrix · /api/workshop/{id}/tier-plan
 app.include_router(_squads_router)  # V138 小队模块化工作间：/api/workshop/{id}/squads（三级视图/建/改）
 app.include_router(_relay_router)  # V66 中转（本地优先）：/api/relay/status|send|inbox —— 终端只出站连 Hub
 app.add_middleware(

@@ -323,6 +323,11 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     rm = _mod("agent_community.platform.read_marks")
     if rm is not None:
         monkeypatch.setattr(rm, "_path", lambda: tmp / "read_marks.json", raising=False)
+    #    ★2026-11-07（V134 ⑧）：**通知投递账**也落在 `env_spec.data_dir()` 上（`notice_log.json`）。
+    #      同一个坑第三次 —— 新落盘模块必须在这里登记，否则单测会写真实 data（会话级守卫会红）。
+    nl = _mod("agent_community.platform.notice_log")
+    if nl is not None:
+        monkeypatch.setattr(nl, "_path", lambda: tmp / "notice_log.json", raising=False)
 
     return tmp
 

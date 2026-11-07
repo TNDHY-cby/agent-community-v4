@@ -172,10 +172,11 @@ def inbox_of(ws, member: dict) -> tuple:
         info = None
     raw = str(getattr(info, "artifact_inbox_dir", "") or "").strip() if info is not None else ""
     if raw:
-        p = Path(raw)
-        if not p.is_absolute() and wp:
-            p = Path(wp) / raw
-        return p, "profile", ""
+        _ok_v, _why_v, _res_v = validate_artifact_inbox_dir(raw, workshop_path=wp)
+        if not _ok_v:
+            return Path(""), "profile", ("收件目录不合法（档案里的值越界了）：%s —— "
+                                         "这轮不扫它（不是'没有新文件'）" % _why_v)
+        return Path(_res_v), "profile", ""
     if not wp:
         return Path(""), "product", "这个工作间没有工作目录（workspace_dir 为空），没法扫产物"
     if not slot:
@@ -417,6 +418,17 @@ def _notify_lead(ws, items: list) -> dict:
         lines.append("另有 %d 条同类事件（看 `GET /api/workshop/%s/inbox-events`）"
                      % (len(items) - 20, getattr(ws, "workshop_id", "")))
     res = append_notice(wp, "_lead", "；".join(lines))
+    # ★2026-11-07（V134 ⑧）：通知要留账 —— `written` **不等于**组长看到了
+    try:
+        from . import notice_log as _nl
+
+        _nl.record(str(getattr(ws, "workshop_id", "") or ""), target="lead", slot="_lead",
+                   channel="notice_file", result="written" if res.get("ok") else "failed",
+                   detail=("产物事件 %d 条" % len(lines)) if res.get("ok")
+                   else str(res.get("why") or "写通知失败"),
+                   ref="artifact_inbox")
+    except Exception as _e:                                    # noqa: BLE001 — 记账失败不能把通知弄挂
+        print("[notice] 记通知账失败（不影响通知）: %s" % _e, flush=True)
     return {"ok": bool(res.get("ok")), "file": res.get("file") or "", "lines": len(lines)}
 
 
@@ -507,3 +519,59 @@ def status() -> dict:
     st["note"] = ("收件目录：档案 `artifact_inbox_dir` 优先，否则 `<工位>/产物/`；"
                   "只读扫描，不搬/删成员文件；事件转给组长只写 `_lead/_notice.md`（不抢焦点）")
     return st
+
+
+# ── ★2026-11-07（V134 ⑥）**收件目录路径校验**：比 wakeup_dir 更严（这里会被扫盘、文件名与 sha256 会外泄）──
+def validate_artifact_inbox_dir(raw: str, *, workshop_path: str = "") -> tuple:
+    """校验 `artifact_inbox_dir`。返回 `(ok, why, resolved)`。
+
+    规则（越界一律拒，并且**说清允许什么**）：
+
+    1. 空 ⇒ 合法（用默认 `<工位>/产物/`）；
+    2. **相对路径**：必须以工作区目录为根，且 `resolve()` 后**仍在工作区内**（挡 `../..` 越出）；
+    3. **绝对路径**：必须是目录样的路径，且
+       - 不能是**盘根/文件系统根**（`C:\\`、`/`）；
+       - 不能落在**系统目录**（复用 `SYSTEM_DIR_PREFIXES`，与 `wakeup_dir` 同一份清单）；
+       - 不能是网络路径（`\\\\server\\share`、`//server/share`）—— 扫盘会卡住且泄露远端清单。
+    """
+    s = str(raw or "").strip()
+    if not s:
+        return True, "", ""
+    low = s.replace("/", "\\").lower()
+    if s.startswith("\\\\") or s.startswith("//") or low.startswith("\\\\?\\"):
+        return False, "不支持网络路径 / 设备路径（`\\\\server\\share`、`\\\\?\\`）—— 扫盘会卡住，且会把远端文件清单写进事件", ""
+    p = Path(s)
+    wp = str(workshop_path or "").strip()
+    if not p.is_absolute():
+        if not wp:
+            return False, "相对路径需要工作区目录（这个工作间的 workspace_dir 为空）", ""
+        base = Path(wp)
+        try:
+            base_r = base.resolve()
+        except OSError:
+            return False, "工作区目录解析失败：%s" % wp, ""
+        cand = (base / s).resolve()
+        try:
+            cand.relative_to(base_r)
+        except ValueError:
+            return False, ("相对路径跑出了工作区（`%s` ⇒ `%s`）—— 收件目录要么写在工作区里，"
+                           "要么给一个绝对路径" % (s, cand.as_posix())), ""
+        return True, "", str(cand)
+    try:
+        resolved = p.resolve()
+    except OSError as e:                                       # noqa: BLE001 — 解析失败=校验不了，如实拒
+        return False, "路径解析失败：%s: %s" % (type(e).__name__, e), ""
+    if resolved.parent == resolved:
+        return False, "不能把收件目录设成盘根/根目录（`%s`）—— 那等于把整盘清单写进事件" % resolved.as_posix(), ""
+    try:
+        from .server import SYSTEM_DIR_PREFIXES
+    except Exception:                                          # noqa: BLE001 — 拿不到清单就不多加限制（另有盘根/网络检查兜底）
+        SYSTEM_DIR_PREFIXES = ()
+    for prefix in SYSTEM_DIR_PREFIXES:
+        try:
+            resolved.relative_to(prefix)
+            return False, ("收件目录不能指向系统目录（`%s`）—— 允许的是：工作区里的子目录、"
+                           "或你自己建的独立目录（如 D:\\某文件夹）" % str(prefix)), ""
+        except ValueError:
+            continue
+    return True, "", str(resolved)

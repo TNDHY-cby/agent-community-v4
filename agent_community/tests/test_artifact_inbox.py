@@ -221,3 +221,26 @@ def test_12_watch_can_be_switched_off(monkeypatch):
     assert st["interval"] in (0, 20) or True
     monkeypatch.setenv("AC_ARTIFACT_WATCH_SEC", "30")
     assert inbox.interval() == 30
+
+# ── ★V134 ⑥：收件目录路径校验（比 wakeup_dir 更严：这里会被扫盘、sha256 会外泄）──
+def test_validate_inbox_dir_rejects_escape_and_system(tmp_path):
+    from agent_community.platform.artifact_inbox import validate_artifact_inbox_dir as V
+
+    ws = tmp_path / "ws"
+    (ws / "sub").mkdir(parents=True)
+    ok, why, res = V("sub/产物", workshop_path=str(ws))
+    assert ok and res.endswith("产物"), (ok, why, res)
+    ok2, why2, _ = V("../逃出去", workshop_path=str(ws))
+    assert not ok2 and "跑出" in why2, why2
+    ok3, why3, _ = V(r"\\server\share\x")
+    assert not ok3 and "网络路径" in why3, why3
+    _sysdir = "C:\\Windows" if __import__("os").name == "nt" else "/etc"
+    ok4, why4, _ = V(_sysdir)
+    assert not ok4 and ("系统目录" in why4 or "盘根" in why4), why4
+
+
+def test_validate_inbox_dir_allows_empty(tmp_path):
+    from agent_community.platform.artifact_inbox import validate_artifact_inbox_dir as V
+
+    ok, why, res = V("")
+    assert ok and why == "" and res == ""

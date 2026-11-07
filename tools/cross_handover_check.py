@@ -147,6 +147,28 @@ def main() -> int:
               "A(out=%r in=%r) B(in=%r out=%r)"
               % (len((b6a or {}).get("out") or []), len((b6a or {}).get("in") or []),
                  len((b6b or {}).get("in") or []), len((b6b or {}).get("out") or [])))
+        # ⑦⑧ 接收方确认（交接单不是"发出去就算"）
+        st7, b7 = _http(base, "/api/workshop/%s/handovers" % wb)
+        inn0 = (b7 or {}).get("in") or []
+        check("⑦ 未确认时：收到方看到 acked=false",
+              st7 == 200 and bool(inn0) and inn0[0].get("acked") is False,
+              "in=%r" % json.dumps(inn0[:1], ensure_ascii=False)[:200])
+
+        st8, b8 = _http(base, "/api/workshop/%s/handovers/%s/ack" % (wb, hid), {})
+        st8b, b8b = _http(base, "/api/workshop/%s/handovers/%s/ack" % (wb, hid), {})
+        _st_a, b_a = _http(base, "/api/workshop/%s/handovers" % wa)
+        _st_b, b_b = _http(base, "/api/workshop/%s/handovers" % wb)
+        out_a = (b_a or {}).get("out") or []
+        in_b = (b_b or {}).get("in") or []
+        check("⑧ 确认后：两边都标 acked=true，且重复确认幂等",
+              st8 == 200 and (b8 or {}).get("acked") is True
+              and st8b == 200 and (b8b or {}).get("already") is True
+              and bool(out_a) and out_a[0].get("acked") is True
+              and bool(in_b) and in_b[0].get("acked") is True,
+              "ack=%s already=%r out=%r in=%r"
+              % (st8, (b8b or {}).get("already"),
+                 out_a[:1], in_b[:1]))
+
     finally:
         try:
             srv.terminate()

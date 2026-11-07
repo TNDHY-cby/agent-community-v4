@@ -333,10 +333,100 @@ async def list_handovers(ws_id: str, limit: int = 100):
     if ws is None:
         return _json_err("没有这个工作间：%s" % ws_id, 404)
     d = str(getattr(ws, "workspace_dir", "") or "")
-    out = _read_lines("%s/_handover_out.md" % d, limit)
-    inn = _read_lines("%s/_handover_in.md" % d, limit)
+    out_all = _read_lines("%s/_handover_out.md" % d, 2000)
+    in_all = _read_lines("%s/_handover_in.md" % d, 2000)
+    # ★2026-11-07：**发出去 vs 对方收了** 分开标（`V134` ① 同一类问题：不许混成一个"已交接"）
+    _out_acked = _acked_set(out_all, "[对方已接收]")
+    _in_acked = _acked_set(in_all, "[已接收]")
+    out = []
+    for line in out_all:
+        _h = _hid_of(line)
+        out.append({"line": line, "handover_id": _h, "acked": _h in _out_acked})
+    inn = []
+    for line in in_all:
+        if str(line).lstrip("- ").strip().startswith("["):
+            continue
+        _h = _hid_of(line)
+        inn.append({"line": line, "handover_id": _h, "acked": _h in _in_acked})
+    n = max(1, int(limit or 100))
     return {"ok": True, "workshop_id": ws_id,
-            "out": out[-int(limit or 100):], "in": inn[-int(limit or 100):],
-            "count": {"out": len(out), "in": len(inn)},
-            "note": ("跨间只走交接单（带内容/验收要点/凭据），**不走自由聊天** —— "
-                     "跨间闲聊会把责任链打散（V138 §三）")}
+            "out": out[-n:], "in": inn[-n:],
+            "count": {"out": len(out), "in": len(inn),
+                      "out_acked": len([x for x in out if x["acked"]]),
+                      "in_acked": len([x for x in inn if x["acked"]])},
+            "note": ("跨间只走交接单（带内容/验收要点/凭据），**不走自由聊天**；"
+                     "`acked` 只表示'对方确认收到'，**不代表活干完了**")}
+
+
+# ── ★2026-11-07（V134 P1 收尾）跨间交接的**接收方确认**：交接单不是"发出去就算" ──────────
+def _hid_of(line: str) -> str:
+    """从一行交接记录里取交接单号（`- H-123 | ...` 或 `- [已接收] H-123 | ...`）。"""
+    s = str(line or "").lstrip("- ").strip()
+    if s.startswith("[已接收]"):
+        s = s[len("[已接收]"):].strip()
+    elif s.startswith("[对方已接收]"):
+        s = s[len("[对方已接收]"):].strip()
+    return s.split("|")[0].strip()
+
+
+def _acked_set(lines: list, tag: str) -> set:
+    return {_hid_of(x) for x in (lines or []) if str(x).lstrip("- ").strip().startswith(tag)}
+
+
+@router.post("/api/workshop/{ws_id}/handovers/{handover_id}/ack")
+async def ack_handover(ws_id: str, handover_id: str, request: Request):
+    """**接收方确认**：目标间（收到交接单的那一方）确认收到。
+
+    为什么要有它：交接单原来只有"发出去"的留痕，**没有"对方收了"的回执** ——
+    于是"我交了"和"他收了"混在一起（正是 `V134` ① 同一类问题）。
+
+    写三处：目标间 `_handover_in.md` 追加 `[已接收] <单号>`、来源间 `_handover_out.md` 追加
+    `[对方已接收] <单号>`、以及通知账一条（`written`/`failed`）。**重复确认幂等**。
+    """
+    from .. import server as _srv
+
+    hid = str(handover_id or "").strip()
+    if not hid:
+        return _json_err("要给 handover_id", 400)
+    ws = (_srv.workshops or {}).get(ws_id)
+    if ws is None:
+        return _json_err("没有这个工作间：%s" % ws_id, 404)
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001 — 空 body 表示"我就是确认"
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    d = str(getattr(ws, "workspace_dir", "") or "")
+    inn = _read_lines("%s/_handover_in.md" % d, 500)
+    if not any(_hid_of(x) == hid for x in inn):
+        return _json_err("这个工作间没有收到过交接单 %s（不是这一单的接收方）" % hid, 404)
+    already = hid in _acked_set(inn, "[已接收]")
+    by = str(body.get("by") or "lead")
+    if not already:
+        _append("%s/_handover_in.md" % d, "- [已接收] %s | %s | by=%s" % (hid, _now_iso(), by))
+        # 找到来源间，把"对方已接收"写回去（找不到就如实说，不假装）
+        src_dir, src_ws = "", ""
+        for line in inn:
+            if _hid_of(line) == hid and "→" in line:
+                try:
+                    src_ws = line.split("|", 1)[1].split("→")[0].strip()
+                except (IndexError, ValueError):
+                    src_ws = ""
+                break
+        if src_ws and (_srv.workshops or {}).get(src_ws) is not None:
+            src_dir = str(getattr((_srv.workshops or {}).get(src_ws), "workspace_dir", "") or "")
+        if src_dir:
+            _append("%s/_handover_out.md" % src_dir,
+                    "- [对方已接收] %s | %s | by=%s" % (hid, _now_iso(), ws_id))
+        try:
+            from .. import notice_log as _nl
+
+            _nl.record(ws_id, target="lead", slot="_lead", channel="notice_file",
+                       result="written", detail="交接单 %s 已确认收到" % hid, ref=hid)
+        except Exception as e:                                 # noqa: BLE001 — 记账失败不影响确认
+            print("[notice] 记 ack 通知账失败: %s" % e, flush=True)
+    return {"ok": True, "handover_id": hid, "acked": True, "already": already,
+            "back_written_to_source": bool(src_dir) if not already else True,
+            "note": ("接手方确认**不等于**活干完了：它只说明'这单我收到了'；"
+                     "交付仍以任务/产物/验收为准"),
+            "next": "GET /api/workshop/%s/handovers 看 in/out 的 acked 标记" % ws_id}

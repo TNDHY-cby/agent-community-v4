@@ -222,11 +222,34 @@ async def list_resources(ws_id: str):
     if not ws:
         return Utf8JSONResponse({"error": "工作间不存在"}, status_code=404)
     items = []
+    from pathlib import Path as _P
+
+    _base = _P(str(getattr(ws, "workspace_dir", "") or ""))
     for r in ws.resources:
         item = dict(r)
         item.setdefault("kind", "file")
+        # ★2026-11-07（V134 ⑩）：登记 ≠ 文件还在。**真 stat**，在就 True、不在就 False 并说清。
+        _kind = str(item.get("kind") or "file")
+        if _kind in ("file", "dir"):
+            _raw = str(item.get("path") or "")
+            _p = _P(_raw)
+            if not _p.is_absolute():
+                _p = _base / _raw
+            try:
+                item["exists"] = _p.exists()
+                item["checked_path"] = _p.as_posix()
+                if not item["exists"]:
+                    item["why"] = "登记的路径不在了（文件被移走/删掉，或登记时写的是相对路径而工作区已变）"
+            except OSError as e:                              # noqa: BLE001 — stat 失败按"核不了"如实说
+                item["exists"] = None
+                item["why"] = "核不了：%s: %s" % (type(e).__name__, e)
+        else:
+            item["exists"] = None
+            item["why"] = "link 类不做存在性核对"
         items.append(item)
-    return {"success": True, "workshop_id": ws_id, "resources": items}
+    return {"success": True, "workshop_id": ws_id, "resources": items,
+            "exists_note": ("`exists=true` = 刚才**真 stat** 过；`false` = 登记了但文件不在；"
+                            "`null` = 核不了（link 类 / stat 失败）")}
 
 @router.post("/api/workshop/{ws_id}/resources")
 async def add_resource(ws_id: str, request: Request):
