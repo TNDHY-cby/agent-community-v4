@@ -55,23 +55,7 @@ html body .workshop-item{
     0 2px 4px rgba(0,0,0,.16) !important;
 }
 /* 当前项：不用红色（红色位置待定）⇒ 用"更深一档 + 内凹"表示被选中 */
-html body .workshop-item.active{
-  background-color:#2A2927 !important;
-  border-color:rgba(0,0,0,.35) !important;
-  box-shadow:
-    inset 0 2px 5px rgba(0,0,0,.35),
-    inset 0 -1px 0 rgba(255,255,255,.55) !important;
-}
 /* 卡内小按钮：浅底上的"深色小凸块"（黑灰 + 阴影，不是红） */
-html body .wi-actions button{
-  background:linear-gradient(180deg,#4A4642 0%,#33302D 100%) !important;
-  border:1px solid rgba(0,0,0,.45) !important;
-  border-radius:4px !important;
-  color:#EDEAE4 !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.18),
-    0 1px 2px rgba(0,0,0,.35) !important;
-}
 html body .wi-actions button:hover{ background:linear-gradient(180deg,#565149 0%,#3C3834 100%) !important; }
 
 /* ─────────────────────────────────────────────
@@ -272,9 +256,6 @@ html body .wi-actions button::before{
   color:rgba(42,38,32,.55) !important;                 /* 刻痕本体：深色半透明 */
   text-shadow:0 1px 0 rgba(255,255,255,.80) !important; /* 下缘受光 → 凹刻 */
 }
-html body .wi-actions button[title="置顶"]::before{ content:"↑"; }
-html body .wi-actions button[title="重命名"]::before{ content:"✎"; }
-html body .wi-actions button[title^="删除"]::before{ content:"✕"; }
 html body .wi-actions button:hover{ background-color:rgba(0,0,0,.07) !important; }
 html body .wi-actions button:hover::before{ color:rgba(18,16,14,.88) !important; }
 html body .wi-actions button.wi-act-danger:hover::before{ color:#B3123A !important; }
@@ -481,7 +462,10 @@ html body .app-debox .fb-step .fb-num{ font-size:10px !important; color:#5F5A53 
 /* 已完成：中灰（比未完成深一档，比当前浅） */
 /* 流程条文字挤：5 段平分后每段约 100px，数字+中文贴在一起。
    收字号（11→10.5）、缩 gap（5→4）、数字右侧留 3px，中文强制不换行不省略。 */
+html body .app-debox .fb-step{ font-size:10.5px !important; gap:3px !important; }
 html body .app-debox .fb-step .fb-num{ margin-right:2px !important; letter-spacing:0 !important; }
+html body .app-debox .fb-step{ letter-spacing:.01em !important; }
+
 /* ─────────────────────────────────────────────
    ⑫ 返回大厅 → 一个**粗箭头方块**（2026-11-08 老板：「不用标返回大厅，一个粗箭头按钮即可」）
    —— 原样式是 fixed 的红底白字胶囊（在浅灰侧栏上又红又长，所以"很奇怪"）。
@@ -583,6 +567,14 @@ html body .statusbar{
       条本身 = 浅灰（白面，与侧栏同色系，占比大）；步骤 = **深色小块**（黑只占块）。
       当前步骤仍是品红（唯一强色）。这样顶栏读起来是"浅色面板上嵌了几颗深色按钮"。
    ───────────────────────────────────────────── */
+html body .app-debox .fb-step{
+  background-image:linear-gradient(180deg,#3B3834 0%,#232120 100%) !important;
+  color:#EDEAE4 !important;
+  border:1px solid rgba(0,0,0,.55) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.16),
+    0 1px 2px rgba(0,0,0,.35) !important;
+}
 html body .app-debox .fb-step .fb-num{ color:#B6B1A9 !important; }
 /* 顶栏右侧胶囊仍保持深色小块（在浅条上才跳得出来） */
 
@@ -591,8 +583,6 @@ html body .app-debox .fb-step .fb-num{ color:#B6B1A9 !important; }
    —— 之前面板 8px / 卡片 5px / 按钮 4px / 输入框 4px，四种半径混在一起，面板显得"太圆"。
       工业件的圆角只有一个量级：**4px 给面、3px 给块、2px 给小块**。
    ───────────────────────────────────────────── */
-html body .workshop-item{ border-radius:3px !important; }
-html body .wi-actions button{ border-radius:2px !important; }
 html body .app-debox .chip,
 html body .app-debox .ws-status,
 html body .app-debox .tag{ border-radius:3px !important; }
@@ -642,10 +632,6 @@ html body .app-debox .fb-step{
   clip-path:polygon(0 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%) !important;
 }
 /* 左栏工作间卡：右下 6px 倒角 */
-html body .workshop-item{
-  clip-path:polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%) !important;
-}
-
 /* ─────────────────────────────────────────────
    ⑲ 倒角加大（2026-11-08 老板：「增加倒角（大），然后在倒角上直接圆角（很小）」）
    ⚠️ 先记一次失败：我试过用 clip-path 做"大倒角 + 圆弧"，结果 **边框和投影全被裁掉**
@@ -691,6 +677,7 @@ html body .app-debox :is(.disc-zone,.panel)::before{
       面 2px / 块 2px / 小块 1px / 侧栏 0（侧栏本来就是通栏，不该有圆角）。
    ───────────────────────────────────────────── */
 html body .app-debox :is(.rw-v5,.dock-entry,.nextstep){ border-radius:2px !important; }
+html body .app-debox .fb-step{ border-radius:2px !important; }
 html body .app-debox input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 html body .app-debox textarea,
 html body .app-debox select{ border-radius:2px !important; }
@@ -700,7 +687,6 @@ html body .app-debox .chat-input button,
 html body .app-debox .btn.primary,
 html body .app-debox .dock-entry-btn{ border-radius:2px !important; }
 html body .workshop-item{ border-radius:2px !important; }
-html body .wi-actions button{ border-radius:1px !important; }
 html body .sidebar-back{ border-radius:2px !important; }
 /* 侧栏是通栏：上下两角做直角（原来 12px 的圆角在大屏上非常明显） */
 /* 流程条：直角（它是设备上的一条导轨，不是卡片） */
@@ -984,6 +970,10 @@ html body .app-debox .dock-entry-btn.alt{
    状态胶囊（已连接/已创建）与「画布」按钮：**恢复完整长方形**
    （2026-11-08 老板贴图指出这两处角上还有缺口）
    ═══════════════════════════════════════════════════════════ */
+html body .app-debox .ws-status,
+html body .app-debox .ws-status *{
+  clip-path:none !important;
+}
 /* ═══════════════════════════════════════════════════════════
    深底上的文字与刻纹（2026-11-08 老板：「把工作间的白换成深黑，其他 UI 不变」）
    —— 面从浅灰换成深黑后，原来"深字 + 白高光"的刻纹全部反转成"浅字 + 黑高光"，
@@ -1047,10 +1037,6 @@ html body .col-left, html body .col-right{
 html body .workshop-item{
   background-image:none !important;
   background-color:#1A1918 !important;
-}
-html body .workshop-item.active{
-  background-image:none !important;
-  background-color:#262422 !important;
 }
 /* 中区面板 */
 html body .app-debox :is(.disc-zone,.panel){

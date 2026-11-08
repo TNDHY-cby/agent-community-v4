@@ -456,7 +456,7 @@ body{font-size:var(--t2)}
 
 /* ── 广播通知（2026-10-23 功能；视觉沿用基线：实底面板 + 红左边线）── */
 .view-tabs .bc-open{margin-left:auto;align-self:center;margin-right:4px;flex:0 0 auto;white-space:nowrap}
-.bc-panel{margin:10px 22px 0;padding:12px 14px;border:1px solid var(--rule-strong,rgba(var(--ink-rgb),.2));
+.bc-panel{margin:12px 0 0;padding:12px 14px;border:1px solid var(--rule-strong,rgba(var(--ink-rgb),.2));
   border-left:2px solid var(--accent);background:var(--bg3);border-radius:2px;position:relative;z-index:3}
 .bc-panel[hidden]{display:none}
 .bc-panel .bc-head{font-size:12.5px;font-weight:700;margin-bottom:8px}
@@ -702,7 +702,7 @@ button.hall-entry{appearance:none;-webkit-appearance:none}
    工业皮：硬边框 + 左侧状态条（红=有先处理的事 / 绿=全清），数字用等宽制表数字。
    口径与工作间页 …/lead-todo 完全一致：只分「先处理 / 可以等等」两档，不排分。 */
 .lt-bar{border:1px solid var(--rule);border-left:3px solid var(--dim);background:var(--bg2);
-  border-radius:var(--radius-sm);margin:0 0 10px;font-size:12.5px;line-height:1.5}
+  border-radius:var(--radius-sm);margin:0 0 12px;font-size:12.5px;line-height:1.5}
 .lt-bar.has-urgent{border-left-color:var(--accent);background:var(--accent-soft)}
 .lt-bar.all-clear{border-left-color:var(--green)}
 .lt-head{display:flex;align-items:center;gap:10px;padding:8px 11px;flex-wrap:wrap}
@@ -775,28 +775,34 @@ button.hall-entry{appearance:none;-webkit-appearance:none}
       </div>
             <div class="center-bar"><span class="cb-h">大厅</span><span class="cb-s">一句话说清楚要做的事 —— 平台建工作间、定方向、再派活</span></div>
       <div class="hall-view" id="hallView">
-        <!-- ★2026-11-08 大厅第一批第 1 条「今天该管谁」：跨工作间汇总，只读（GET /api/lead-todo-all） -->
-        <div class="lt-bar" id="ltBar" hidden>
-          <div class="lt-head">
-            <span class="lt-title">今天该管谁</span>
-            <span class="lt-sum" id="ltSum">—</span>
-            <span class="lt-spacer"></span>
-            <button class="lt-btn" id="ltToggle" type="button" onclick="ltToggle()" hidden>展开</button>
-          </div>
-          <div class="lt-list" id="ltList" hidden></div>
-        </div>
-        <div class="bc-panel" id="bcPanel" hidden>
-          <div class="bc-head">广播通知 <span class="sub">所有开着的页面都会看到；不进任务列表、不派活</span></div>
-          <textarea id="bcText" rows="2" placeholder="要广播的通知，例如：今晚 20:00 统一停机维护 10 分钟" oninput="bcCount()"></textarea>
-          <div class="bc-row">
-            <select id="bcLevel"><option value="info">通知</option><option value="warn">提醒</option><option value="urgent">紧急</option></select>
-            <span class="bc-count" id="bcCount">0 / 500</span><span class="spacer"></span>
-            <button class="btn mini" onclick="bcToggle()">收起</button>
-            <button class="btn primary" id="bcSendBtn" onclick="bcSend()">发出广播</button>
-          </div>
-          <div class="bc-msg" id="bcMsg"></div>
-        </div>
+        <!-- ★2026-11-08（老板：「看不到，好像被遮挡了」/ D后端-87）
+             摘要条与广播面板连同卡片一起放进 .hall-cards —— 那一层是 position:absolute + z-index:6
+             的不透明玻璃覆盖层，放在 .hall-view 直接子节点会被玻璃压在下面（代码对、接口对，就是看不见）。
+             放进同一层且 DOM 在卡片之后 ⇒ 自然浮在玻璃之上；高度变化由 --cards-h 自动让位。 -->
         <div class="hall-cards" id="hallCards">
+          <!-- ★2026-11-08 大厅第一批第 1 条「今天该管谁」：一进大厅第一眼要看到，所以排在卡片最前。
+               必须在 .hall-cards 内部（这一层是 absolute + z-index:6 的不透明玻璃覆盖层，
+               放外面就被压在玻璃底下 —— 老板：「看不到，好像被遮挡了」/ D后端-87）。 -->
+          <div class="lt-bar" id="ltBar" hidden>
+            <div class="lt-head">
+              <span class="lt-title">今天该管谁</span>
+              <span class="lt-sum" id="ltSum">—</span>
+              <span class="lt-spacer"></span>
+              <button class="lt-btn" id="ltToggle" type="button" onclick="ltToggle()" hidden>展开</button>
+            </div>
+            <div class="lt-list" id="ltList" hidden></div>
+          </div>
+          <div class="bc-panel" id="bcPanel" hidden>
+            <div class="bc-head">广播通知 <span class="sub">所有开着的页面都会看到；不进任务列表、不派活</span></div>
+            <textarea id="bcText" rows="2" placeholder="要广播的通知，例如：今晚 20:00 统一停机维护 10 分钟" oninput="bcCount()"></textarea>
+            <div class="bc-row">
+              <select id="bcLevel"><option value="info">通知</option><option value="warn">提醒</option><option value="urgent">紧急</option></select>
+              <span class="bc-count" id="bcCount">0 / 500</span><span class="spacer"></span>
+              <button class="btn mini" onclick="bcToggle()">收起</button>
+              <button class="btn primary" id="bcSendBtn" onclick="bcSend()">发出广播</button>
+            </div>
+            <div class="bc-msg" id="bcMsg"></div>
+          </div>
           <div class="hall-entries">
             <button class="hall-entry primary he-plain" type="button" onclick="location.href='/docking.html'"
                     data-ico="▣" data-s="注册 / 检测 / 生成模板 / 架桥"
@@ -817,6 +823,8 @@ button.hall-entry{appearance:none;-webkit-appearance:none}
               <span class="he-s">工单审计 · 在线状态</span>
             </a>
           </div>
+          <!-- ★2026-11-08 大厅第一批第 1 条「今天该管谁」：跨工作间汇总，只读（GET /api/lead-todo-all）
+               必须待在 .hall-cards 里面（见上方注释），移出去就会被卡片玻璃盖住。 -->
         </div>
         <div class="hall-messages" id="hallMessages"><div class="hall-empty"></div></div>
         <div class="hall-input">
@@ -1341,13 +1349,36 @@ function ltFmtAge(m){
   if(m<1440){var h=m/60;return (h<10?h.toFixed(1):String(Math.round(h)))+' 小时'}
   var d=m/1440;return (d<10?d.toFixed(1):String(Math.round(d)))+' 天';
 }
+/* ★2026-11-08（D后端-86 口径）：取不到待办**不准静默隐藏** ——
+   隐藏会让"接口挂了"长得跟"今天没事"一模一样。失败就照实说「取不到待办：<原因>」。 */
+function ltFail(msg){
+  var bar=document.getElementById('ltBar');if(!bar)return;
+  var sum=document.getElementById('ltSum'),list=document.getElementById('ltList'),
+      tg=document.getElementById('ltToggle');
+  bar.hidden=false;
+  bar.classList.remove('has-urgent','all-clear');
+  _ltData=null;_ltOpen=false;
+  if(sum){sum.innerHTML='';sum.appendChild(document.createTextNode('取不到待办：'+msg))}
+  if(list){list.innerHTML='';list.hidden=true}
+  if(tg)tg.hidden=true;
+  if(typeof syncCardsHeight==='function')syncCardsHeight();
+}
 async function refreshLeadTodo(){
   var bar=document.getElementById('ltBar');if(!bar)return;
   try{
-    var r=await fetch('/api/lead-todo-all');var d=await r.json();
-    if(!d||!d.ok){bar.hidden=true;return}
+    var r=await fetch('/api/lead-todo-all');
+    var d=null;
+    try{d=await r.json()}catch(pe){console.warn('[lead-todo-all] 返回不是 JSON',pe);ltFail('返回不是 JSON（HTTP '+r.status+'）');return}
+    if(!r.ok||!d||!d.ok){
+      console.warn('[lead-todo-all] HTTP '+r.status,d);
+      ltFail('接口 HTTP '+r.status+(d&&d.error?' · '+d.error:''));
+      return;
+    }
     _ltData=d;renderLeadTodo();
-  }catch(e){bar.hidden=true}
+  }catch(e){
+    console.warn('[lead-todo-all] 取不到：',e);
+    ltFail((e&&e.message)?e.message:'网络错误');
+  }
 }
 function renderLeadTodo(){
   var d=_ltData,bar=document.getElementById('ltBar');if(!d||!bar)return;
@@ -1510,6 +1541,8 @@ function bcToggle() {
   if (!p) return;
   p.hidden = !p.hidden;
   if (!p.hidden) { const t = document.getElementById('bcText'); if (t) t.focus(); }
+  /* 面板现在长在卡片区里，展开会改变卡片区高度 —— 重量一次，消息区才不会被压 */
+  if (typeof syncCardsHeight === 'function') syncCardsHeight();
 }
 function bcCount() {
   const t = document.getElementById('bcText');
