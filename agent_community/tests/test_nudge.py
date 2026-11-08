@@ -80,3 +80,14 @@ def test_08_summarize_is_short_per_slot():
     lines = N.summarize(out["items"])
     assert len(lines) == 1 and "催办" in lines[0], lines
     assert "T-001" in lines[0]
+
+def test_09_rework_over_threshold_nudges_redelivery():
+    """被返工了但没重交 ⇒ 也要催（以前这一支谁都不管，任务永久卡在 rework）。"""
+    out = N.plan([_t(3, "rework", age_min=45)], now=NOW)
+    assert out["count"] == 1 and out["items"][0]["kind"] == "member_no_rework_delivery"
+    assert "改完再交" in out["items"][0]["ask"]
+    assert out["counts"]["member_no_rework_delivery"] == 1
+
+
+def test_10_rework_under_threshold_is_quiet():
+    assert N.plan([_t(3, "rework", age_min=5)], now=NOW)["count"] == 0

@@ -198,6 +198,18 @@ def main() -> int:
         check("⑦ 后台催办默认关（等 3 秒，通知账不增）", n_after == n_before,
               "log %d → %d" % (n_before, n_after))
 
+        # ⑨ 返工待重交：把 T-001 打成返工，等阈值（已压到 0）⇒ 清单里要出现"改完再交"
+        _http(base, "/api/workshop/%s/tasks/1/review" % wid,
+              {"result": "返工", "evidence_level": "L0", "note": "补一版说明"})
+        st9, b9 = _http(base, "/api/workshop/%s/nudge" % wid)
+        kinds9 = [x.get("kind") for x in ((b9 or {}).get("items") or [])]
+        asks9 = [str(x.get("ask") or "") for x in ((b9 or {}).get("items") or [])
+                 if x.get("kind") == "member_no_rework_delivery"]
+        check("⑨ 被返工没重交 ⇒ 也要催（以前谁都不管，任务永久卡在 rework）",
+              st9 == 200 and "member_no_rework_delivery" in kinds9
+              and any("改完再交" in a for a in asks9),
+              "kinds=%r asks=%r" % (kinds9, asks9[:1]))
+
         # ⑧ 开关生效：**独立数据目录**再起一个实例（同一数据目录不许起第二个，平台有保护），
         #   设 1 秒；断言它自己打印"后台催办已启用"（真写那条路由由 ②④ 与 apply 共用同一条路覆盖）
         import tempfile as _tf

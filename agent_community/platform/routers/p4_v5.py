@@ -279,6 +279,18 @@ async def review(workshop_id: str, task_seq: int, request: Request):
     if out.get("ok"):
         out["artifacts"] = arts_summary
         out["evidence_view"] = view
+        # ★2026-11-08：验收结果**必须通知到他** —— 以前只改账本，成员一个字都收不到
+        #   （组长点了"返工"，他还以为没事）。写他的 `_notice.md` + 记通知账；失败如实带回。
+        try:
+            from .. import review_notice as _rn
+
+            out["notify"] = _rn.notify(workshop_id, ws, dict(rec or {},
+                                                             task_seq=task_seq,
+                                                             task_id="T-%03d" % task_seq),
+                                       result=result, note=str(body.get("note") or ""), who=who)
+        except Exception as e:                                 # noqa: BLE001 — 通知失败不能让验收结果丢
+            out["notify"] = {"ok": False, "written": False,
+                             "why": "通知成员时出错：%s: %s" % (type(e).__name__, e)}
         return out
     merged = _ev.merge_into_failure(out, view)
     return JSONResponse(merged, status_code=409 if out.get("code") == "NO_SUCH_TASK" else 400)

@@ -9,7 +9,7 @@
         凹陷 = 顶边暗影 + 底边亮线 + 内侧阴影
       —— 全图没有一处"大面积渐变"，全靠这四种线/影。
    ③ **硬几何**：45° 切角、直角取代大圆角、圆形凹槽、细长凹线（groove）。
-   ④ **配色**：中性灰（浅 #C6C2BC / 中 #3A3937 / 深 #202020）+ **一处**品红霓虹。
+   ④ **配色**：中性灰（浅 #1B1A18 / 中 #3A3937 / 深 #202020）+ **一处**品红霓虹。
    ⑤ **丝印细节**：等宽大写 + 大字距、极小的标签、竖线阵列（散热线）、刻度、编号。
    ⑥ **克制**：红色只出现在一条发光带和两个小圆点上 —— 整图 90% 是灰。
 
@@ -21,8 +21,8 @@
    ============================================================ */
 
 :root{
-  --ind-light:#C6C2BC;      /* 浅面板（侧栏） */
-  --ind-light-2:#CFCBC5;    /* 浅面板上的凸块 */
+  --ind-light:#1B1A18;      /* 浅面板（侧栏） */
+  --ind-light-2:#242220;    /* 浅面板上的凸块 */
   --ind-mid:#3A3937;        /* 中灰（主区面） */
   --ind-deep:#202020;       /* 深灰（凹陷底） */
   --ind-deeper:#141312;     /* 近黑（凹槽/输入框） */
@@ -37,28 +37,8 @@
 /* ─────────────────────────────────────────────
    ① 侧边栏：浅灰、凸起
    ───────────────────────────────────────────── */
-html body .col-left,
-html body .col-right{
-  background-color:var(--ind-light) !important;
-  color:#1B1917 !important;
-  /* 凸起三件套：顶亮线 / 底暗线 / 外投影（不是渐变） */
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.85),
-    inset 0 -1px 0 rgba(0,0,0,.25),
-    0 16px 32px -18px rgba(0,0,0,.9) !important;
-}
 /* 浅底上的文字：统一深色（浅底上不存在"浅灰字"，那就是看不见） */
-html body .col-left, html body .col-left *,
-html body .col-right, html body .col-right *{ color:#1B1917 !important; }
 /* 次要信息留一档灰：可读但不抢标题 */
-html body .col-left .msg, html body .col-right .msg,
-html body .col-left .rv5-meta, html body .col-right .rv5-meta,
-html body .col-left .rv5-state, html body .col-right .rv5-state,
-html body .col-left .rv5-foot, html body .col-right .rv5-foot,
-html body .col-left .rv5-src, html body .col-right .rv5-src{ color:#5C574F !important; }
-html body .col-left .rv5-row, html body .col-right .rv5-row,
-html body .col-left .sq-grp, html body .col-right .sq-grp{ border-color:rgba(0,0,0,.16) !important; }
-html body .col-left .rv5-src, html body .col-right .rv5-src{ background-color:rgba(0,0,0,.07) !important; }
 html body .col-left .col-header, html body .col-right .col-header{
   color:#1B1917 !important; border-bottom:1px solid rgba(0,0,0,.22) !important;
 }
@@ -76,7 +56,7 @@ html body .workshop-item{
 }
 /* 当前项：不用红色（红色位置待定）⇒ 用"更深一档 + 内凹"表示被选中 */
 html body .workshop-item.active{
-  background-color:#B9B4AD !important;
+  background-color:#2A2927 !important;
   border-color:rgba(0,0,0,.35) !important;
   box-shadow:
     inset 0 2px 5px rgba(0,0,0,.35),
@@ -97,7 +77,7 @@ html body .wi-actions button:hover{ background:linear-gradient(180deg,#565149 0%
 /* ─────────────────────────────────────────────
    ② 中间框：灰色、凹陷
    ───────────────────────────────────────────── */
-html body .col-center{ background-color:var(--ind-deep) !important; }
+
 html body .app-debox :is(.disc-zone,.panel){
   background-color:var(--ind-mid) !important;
   background-image:none !important;
@@ -169,30 +149,10 @@ html body .app-debox .dock-entry-btn{
 /* ─────────────────────────────────────────────
    ④ 步骤条：直角小块（设备按钮排），当前项用"内凹"而不是红色
    ───────────────────────────────────────────── */
-html body .app-debox .fb-step{
-  border-radius:3px !important;
-  background-color:var(--ind-btn) !important;
-  border:1px solid rgba(255,255,255,.10) !important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 1px 2px rgba(0,0,0,.4) !important;
-}
-html body .app-debox .fb-step.done{
-  background-color:#3B3835 !important;
-}
-html body .app-debox .fb-step.active{
-  background-color:#0F0E0D !important;
-  border-color:rgba(255,255,255,.22) !important;
-  color:#F2EFE9 !important;
-  box-shadow:inset 0 2px 6px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.12) !important;
-}
-
 /* ─────────────────────────────────────────────
    ⑤ 红色点缀：**本版关闭**（老板说位置由他定）
       打开方式：把 --ind-accent-on 改成 1，下面的规则就会生效（当前只有顶栏一条线）
    ───────────────────────────────────────────── */
-html body .chrome-top{
-  border-bottom:1px solid rgba(255,255,255,.09) !important;
-}
-
 /* ─────────────────────────────────────────────
    ⑥ 侧栏与主区的**互补结构**（参考图的核心构图）
    —— 交界不是一条直线，而是一处 45° 折角：浅色侧栏在主区上沿"咬"进去一块，
@@ -208,16 +168,8 @@ html body .col-left::after{
   z-index:2;
 }
 /* 主区左缘一条暗槽，接住这块折角（互补的"凹"） */
-html body .col-center{
-  position:relative !important;
-  border-left:1px solid rgba(0,0,0,.55) !important;
-}
-html body .col-center::before{
-  content:""; position:absolute; left:0; top:0; width:3px; height:190px;
-  background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,0) 70%);
-  pointer-events:none;
-  z-index:1;
-}
+
+
 /* 右栏同理（左缘切角，与主区右缘咬合） */
 html body .col-right{ position:relative !important; border-left:1px solid rgba(0,0,0,.35) !important; }
 html body .col-right::before{
@@ -229,10 +181,6 @@ html body .col-right::before{
   z-index:2;
 }
 /* 顶部状态条在浅底上也要能读 */
-html body .statusbar,
-html body .status-bar,
-html body .bottom-bar{ color:#1B1917 !important; }
-
 /* ─────────────────────────────────────────────
    ⑦ 金属质感（第三次修正：上一版是**纯色 + 线**，那是"涂装"不是"金属"）
    —— 金属的表面一定有连续的明暗变化，只是幅度很小（6~10%），看不出"分带"：
@@ -250,7 +198,7 @@ html body .col-left,
 html body .col-right{
   background-image:
     var(--ind-grain),
-    linear-gradient(178deg,#D4D0CA 0%,#C8C4BE 44%,#B6B2AC 100%) !important;
+    linear-gradient(178deg,#232120 0%,#1D1C1A 44%,#B6B2AC 100%) !important;
   background-blend-mode:overlay, normal;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.55),      /* 倒角亮棱（不是纯白，.55 才像金属反光） */
@@ -261,20 +209,6 @@ html body .col-right{
 }
 
 /* 中灰面板：金属块（顶亮 → 底暗，只差 8%） */
-html body .app-debox :is(.disc-zone,.panel){
-  background-image:
-    var(--ind-grain),
-    linear-gradient(180deg,#454239 0%,#3B3A37 46%,#302E2B 100%) !important;
-  background-blend-mode:overlay, normal;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.14),      /* 倒角亮棱 */
-    inset 0 -1px 0 rgba(0,0,0,.70),
-    inset 2px 0 0 rgba(255,255,255,.05),      /* 左侧微亮棱 */
-    inset -2px 0 0 rgba(0,0,0,.35),           /* 右侧暗棱 */
-    inset 0 3px 10px rgba(0,0,0,.55),         /* 凹陷内影 */
-    0 1px 0 rgba(255,255,255,.06) !important;
-}
-
 /* 按钮：金属小块（渐变更陡一点，因为小件受光更明显） */
 html body .app-debox .btn,
 html body .app-debox button:not(.btn),
@@ -292,7 +226,7 @@ html body .app-debox .dock-entry-btn.alt{
 html body .workshop-item{
   background-image:
     var(--ind-grain),
-    linear-gradient(180deg,#D8D4CE 0%,#CFCBC5 50%,#BFBAB4 100%) !important;
+    linear-gradient(180deg,#262422 0%,#242220 50%,#1D1C1A 100%) !important;
   background-blend-mode:overlay, normal;
 }
 
@@ -372,14 +306,6 @@ html body .wi-actions button:focus-visible{
 }
 
 /* ── 底部状态条与侧栏导航：同一套浅色金属（原来深底 + 浅字，在浅栏下面很跳） ── */
-html body .statusbar{
-  background-image:linear-gradient(180deg,#C6C2BC 0%,#B8B4AE 100%) !important;
-  border-top:1px solid rgba(0,0,0,.28) !important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.55) !important;
-  color:#1B1917 !important;
-}
-html body .statusbar, html body .statusbar *{ color:#1B1917 !important; }
-html body .statusbar .sb-item strong{ color:#0E0C0B !important; }
 /* 侧栏里的导航链接（监控室/看板/回执/隔间…）在浅底上必须是深色 */
 html body .col-left a, html body .col-left button:not(.wi-act){ color:#1B1917 !important; }
 
@@ -397,15 +323,6 @@ html body .col-left a:hover{ color:#000 !important; -webkit-text-fill-color:#000
 
 /* 按 href 精准命中左栏底部那四个导航链接（它们的内联 style 写死了 var(--muted)，
    而且可能不在 .col-left 里；用 href 比猜容器稳） */
-html body a[href="/monitor.html"],
-html body a[href="/ops.html"],
-html body a[href="/handover.html"],
-html body a[href="/booths.html"]{
-  color:#2A2620 !important;
-  -webkit-text-fill-color:#2A2620 !important;
-  opacity:1 !important;
-}
-
 /* ─────────────────────────────────────────────
    ⑨ 栏间「机械连接件」（2026-11-08 老板：「三个栏直直的有些突兀，增加拓展点缀」）
    —— 三栏之间不再是一条直边，改成：**拼缝（深1px+亮1px）＋ 三颗铆钉 ＋ 顶部折角**。
@@ -443,26 +360,9 @@ html body .col-right::before{
   box-shadow:-4px 0 12px -6px rgba(0,0,0,.6) !important;
 }
 /* 中栏顶部：一条 45° 的小折角（呼应参考图上沿的斜切） */
-html body .col-center::after{
-  content:""; position:absolute; left:0; right:0; top:0; height:14px;
-  pointer-events:none; z-index:4;
-  background:linear-gradient(180deg, rgba(255,255,255,.05), transparent);
-  clip-path:polygon(0 0, 100% 0, 100% 100%, 68% 100%, 52% 0);
-}
 
 /* ── 拼缝/铆钉放大到"正常尺寸能看见"（第一次只有 3px，缩略图上直接消失）──
    实测：1px 线在 1000px 宽的截图上缩放后看不见 ⇒ 拼缝 6px、铆钉直径 11px、折角 40px。 */
-html body .col-left::before,
-html body .col-right::after{
-  width:6px !important;
-  background-image:
-    radial-gradient(circle 6px at 50% 11%, rgba(0,0,0,.45) 0 3.2px, rgba(255,255,255,.62) 3.2px 5.4px, rgba(0,0,0,.25) 5.4px 6px, transparent 6px),
-    radial-gradient(circle 6px at 50% 45%, rgba(0,0,0,.45) 0 3.2px, rgba(255,255,255,.62) 3.2px 5.4px, rgba(0,0,0,.25) 5.4px 6px, transparent 6px),
-    radial-gradient(circle 6px at 50% 81%, rgba(0,0,0,.45) 0 3.2px, rgba(255,255,255,.62) 3.2px 5.4px, rgba(0,0,0,.25) 5.4px 6px, transparent 6px),
-    linear-gradient(90deg, rgba(0,0,0,.45) 0 2px, rgba(255,255,255,.55) 2px 3px, rgba(0,0,0,.30) 3px 4px, transparent 4px) !important;
-}
-html body .col-left::before{ right:-6px !important; }
-html body .col-right::after{ left:-6px !important; }
 html body .col-left::after{
   right:-40px !important; width:40px !important; height:260px !important;
   clip-path:polygon(0 0, 100% 28%, 0 100%) !important;
@@ -554,7 +454,7 @@ html body .app-debox .wi-actions button:hover{
    —— 5 段平分中栏宽度，不再溢出；③ 字号/内边距/圆角一并收小（设备面板的按钮排）。
    ───────────────────────────────────────────── */
 html body .app-debox .fishbone{
-  background-image:linear-gradient(180deg,#D4D0CA 0%,#C4C0BA 100%) !important;
+  background-image:linear-gradient(180deg,#232120 0%,#1A1918 100%) !important;
   border-bottom:1px solid rgba(0,0,0,.30) !important;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.65), inset 0 -1px 0 rgba(0,0,0,.10) !important;
   gap:3px !important;
@@ -568,7 +468,7 @@ html body .app-debox .fb-step{
   font-size:11px !important;
   gap:5px !important;
   border-radius:4px !important;
-  background-image:linear-gradient(180deg,#E2DED8 0%,#CCC8C2 100%) !important;
+  background-image:linear-gradient(180deg,#2A2825 0%,#242220 100%) !important;
   border:1px solid rgba(0,0,0,.22) !important;
   color:#1B1917 !important;
   box-shadow:
@@ -578,26 +478,10 @@ html body .app-debox .fb-step{
 }
 html body .app-debox .fb-step .fb-num{ font-size:10px !important; color:#5F5A53 !important; opacity:1 !important; }
 /* 当前步骤：深色小块（内凹），不用红色 —— 红色位置仍等老板定 */
-html body .app-debox .fb-step.active{
-  background-image:linear-gradient(180deg,#3E3B37 0%,#211F1D 100%) !important;
-  color:#F6F3EE !important;
-  border-color:rgba(0,0,0,.65) !important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.16), 0 2px 7px rgba(0,0,0,.55) !important;
-}
-html body .app-debox .fb-step.active .fb-num{ color:#EDE9E2 !important; }
 /* 已完成：中灰（比未完成深一档，比当前浅） */
-html body .app-debox .fb-step.done{
-  background-image:linear-gradient(180deg,#BAB5AE 0%,#A7A29B 100%) !important;
-  color:#2A2620 !important;
-  border-color:rgba(0,0,0,.30) !important;
-}
-
 /* 流程条文字挤：5 段平分后每段约 100px，数字+中文贴在一起。
    收字号（11→10.5）、缩 gap（5→4）、数字右侧留 3px，中文强制不换行不省略。 */
-html body .app-debox .fb-step{ font-size:10.5px !important; gap:3px !important; }
 html body .app-debox .fb-step .fb-num{ margin-right:2px !important; letter-spacing:0 !important; }
-html body .app-debox .fb-step{ letter-spacing:.01em !important; }
-
 /* ─────────────────────────────────────────────
    ⑫ 返回大厅 → 一个**粗箭头方块**（2026-11-08 老板：「不用标返回大厅，一个粗箭头按钮即可」）
    —— 原样式是 fixed 的红底白字胶囊（在浅灰侧栏上又红又长，所以"很奇怪"）。
@@ -611,7 +495,7 @@ html body .sidebar-back{
   justify-content:center !important;
   font-size:0 !important;                 /* 隐藏 "←" 这个文本节点 */
   color:transparent !important;
-  background-image:linear-gradient(180deg,#DAD6D0 0%,#C2BEB8 100%) !important;
+  background-image:linear-gradient(180deg,#262422 0%,#1B1A18 100%) !important;
   border:1px solid rgba(0,0,0,.26) !important;
   border-radius:5px !important;
   box-shadow:
@@ -635,7 +519,7 @@ html body .sidebar-back::before{
   filter:drop-shadow(0 1px 0 rgba(255,255,255,.85));
 }
 html body .sidebar-back:hover{
-  background-image:linear-gradient(180deg,#E6E2DC 0%,#CCC8C2 100%) !important;
+  background-image:linear-gradient(180deg,#2A2825 0%,#242220 100%) !important;
   transform:none !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.95),
@@ -649,39 +533,8 @@ html body .sidebar-back:hover{
       条本身 = 深色金属（与中区同色系，黑色占比大）；步骤 = 白色小凸块（白色只出现在块上）；
       当前步骤 = 更白 + 外圈亮线（对比最强）。这就是参考图里"黑底白块按钮排"的读法。
    ───────────────────────────────────────────── */
-html body .app-debox .fishbone{
-  background-image:linear-gradient(180deg,#2F2C29 0%,#232120 100%) !important;
-  border-bottom:1px solid rgba(0,0,0,.65) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.09),
-    inset 0 -1px 0 rgba(0,0,0,.55) !important;
-}
-html body .app-debox .fb-step{
-  background-image:linear-gradient(180deg,#E4E0DA 0%,#C6C2BC 100%) !important;
-  color:#1B1917 !important;
-  border:1px solid rgba(0,0,0,.45) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.92),
-    0 1px 3px rgba(0,0,0,.55) !important;
-}
-html body .app-debox .fb-step .fb-num{ color:#5B564F !important; }
 /* 当前步骤：更白一档 + 一圈亮线（全场最亮的块，不用红色） */
-html body .app-debox .fb-step.active{
-  background-image:linear-gradient(180deg,#FBF9F5 0%,#E6E2DC 100%) !important;
-  color:#0E0C0B !important;
-  border-color:rgba(255,255,255,.55) !important;
-  box-shadow:
-    0 0 0 1px rgba(255,255,255,.28),
-    inset 0 1px 0 rgba(255,255,255,1),
-    0 2px 8px rgba(0,0,0,.65) !important;
-}
-html body .app-debox .fb-step.active .fb-num{ color:#3A352F !important; }
 /* 已完成：中灰（比未完成暗，比底色亮） */
-html body .app-debox .fb-step.done{
-  background-image:linear-gradient(180deg,#B8B3AC 0%,#9E9891 100%) !important;
-  color:#141210 !important;
-  border-color:rgba(0,0,0,.55) !important;
-}
 /* 顶栏（logo 那条）也压深一档，和流程条连成一条"黑带" */
 html body .chrome-top{
   background-color:#171614 !important;
@@ -711,26 +564,7 @@ html body .app-debox .topbar .btn:hover{
   border-color:rgba(255,255,255,.22) !important;
 }
 /* ② 侧栏顶缘：一条亮线收口（黑带压在浅侧栏上，不加这条会"直接切断"） */
-html body .col-left, html body .col-right{
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.55),
-    inset 0 -1px 0 rgba(0,0,0,.22),
-    inset 1px 0 0 rgba(255,255,255,.35),
-    inset -1px 0 0 rgba(0,0,0,.14),
-    0 16px 32px -18px rgba(0,0,0,.9) !important;
-}
 /* ③ 当前步骤：品红 + 外发光（唯一强发光处） */
-html body .app-debox .fb-step.active{
-  background-image:linear-gradient(180deg,#F5305A 0%,#B4133A 100%) !important;
-  color:#fff !important;
-  border-color:rgba(255,140,165,.65) !important;
-  box-shadow:
-    0 0 20px rgba(224,24,72,.55),
-    inset 0 1px 0 rgba(255,255,255,.38),
-    0 2px 8px rgba(0,0,0,.6) !important;
-}
-html body .app-debox .fb-step.active .fb-num{ color:rgba(255,255,255,.85) !important; }
-
 /* ─────────────────────────────────────────────
    ⑮ 去掉底部白带（2026-11-08 老板：「底边多余了，去掉底边白带」）
    —— 之前为了让"深底浅字"不跳，我把 .statusbar 也刷成了浅色金属，
@@ -743,35 +577,13 @@ html body .statusbar{
   box-shadow:inset 0 1px 0 rgba(255,255,255,.07) !important;
   color:#B6B2AA !important;
 }
-html body .statusbar, html body .statusbar *{ color:#B6B2AA !important; }
-html body .statusbar .sb-item strong{ color:#EDEAE4 !important; }
-
 /* ─────────────────────────────────────────────
    ⑯ 顶部流程条：**白占比加大**（2026-11-08 老板：「上边栏增加白占比」）
    —— 上一版是"黑带 + 白块"，白只占块。现在反过来：
       条本身 = 浅灰（白面，与侧栏同色系，占比大）；步骤 = **深色小块**（黑只占块）。
       当前步骤仍是品红（唯一强色）。这样顶栏读起来是"浅色面板上嵌了几颗深色按钮"。
    ───────────────────────────────────────────── */
-html body .app-debox .fishbone{
-  background-image:linear-gradient(180deg,#D2CEC8 0%,#BEBAB4 100%) !important;
-  border-bottom:1px solid rgba(0,0,0,.38) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.70),
-    inset 0 -1px 0 rgba(0,0,0,.12) !important;
-}
-html body .app-debox .fb-step{
-  background-image:linear-gradient(180deg,#3B3834 0%,#232120 100%) !important;
-  color:#EDEAE4 !important;
-  border:1px solid rgba(0,0,0,.55) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.16),
-    0 1px 2px rgba(0,0,0,.35) !important;
-}
 html body .app-debox .fb-step .fb-num{ color:#B6B1A9 !important; }
-html body .app-debox .fb-step.done{
-  background-image:linear-gradient(180deg,#5A554F 0%,#3E3A36 100%) !important;
-  color:#F0EDE7 !important;
-}
 /* 顶栏右侧胶囊仍保持深色小块（在浅条上才跳得出来） */
 
 /* ─────────────────────────────────────────────
@@ -779,20 +591,8 @@ html body .app-debox .fb-step.done{
    —— 之前面板 8px / 卡片 5px / 按钮 4px / 输入框 4px，四种半径混在一起，面板显得"太圆"。
       工业件的圆角只有一个量级：**4px 给面、3px 给块、2px 给小块**。
    ───────────────────────────────────────────── */
-html body .app-debox :is(.disc-zone,.panel){ border-radius:4px !important; }
-html body .app-debox :is(.rw-v5,.dock-entry,.nextstep){ border-radius:4px !important; }
-html body .app-debox .fb-step{ border-radius:3px !important; }
-html body .app-debox input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-html body .app-debox textarea,
-html body .app-debox select{ border-radius:3px !important; }
-html body .app-debox .btn,
-html body .app-debox button:not(.btn),
-html body .app-debox .chat-input button,
-html body .app-debox .btn.primary,
-html body .app-debox .dock-entry-btn{ border-radius:3px !important; }
 html body .workshop-item{ border-radius:3px !important; }
 html body .wi-actions button{ border-radius:2px !important; }
-html body .sidebar-back{ border-radius:4px !important; }
 html body .app-debox .chip,
 html body .app-debox .ws-status,
 html body .app-debox .tag{ border-radius:3px !important; }
@@ -865,10 +665,6 @@ html body .app-debox :is(.disc-zone,.panel)::before{
   height:16px !important;
 }
 /* 斜边两端的小圆角：用两个 3px 的"与中区同色"圆点压住尖角（近似刀位圆角） */
-html body .col-center::before{
-  content:""; position:absolute; left:0; top:0; width:100%; height:0;
-  pointer-events:none;
-}
 
 /* 倒角的两个尖端做 4px 小圆角（三角不吃 border-radius ⇒ 用 clip-path 多点近似：
    把斜边两端各切掉一小段，形成"刀位圆角"）。 */
@@ -894,9 +690,7 @@ html body .app-debox :is(.disc-zone,.panel)::before{
    —— 4px 在 1x 屏上看起来仍有明显圆弧，尤其面板上沿两个角。工业件的做法是**近乎直角**：
       面 2px / 块 2px / 小块 1px / 侧栏 0（侧栏本来就是通栏，不该有圆角）。
    ───────────────────────────────────────────── */
-html body .app-debox :is(.disc-zone,.panel){ border-radius:2px !important; }
 html body .app-debox :is(.rw-v5,.dock-entry,.nextstep){ border-radius:2px !important; }
-html body .app-debox .fb-step{ border-radius:2px !important; }
 html body .app-debox input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 html body .app-debox textarea,
 html body .app-debox select{ border-radius:2px !important; }
@@ -909,12 +703,8 @@ html body .workshop-item{ border-radius:2px !important; }
 html body .wi-actions button{ border-radius:1px !important; }
 html body .sidebar-back{ border-radius:2px !important; }
 /* 侧栏是通栏：上下两角做直角（原来 12px 的圆角在大屏上非常明显） */
-html body .col-left, html body .col-right{ border-radius:0 !important; }
 /* 流程条：直角（它是设备上的一条导轨，不是卡片） */
-html body .app-debox .fishbone{ border-radius:0 !important; }
 /* 右栏的大入口按钮：2px */
-html body .app-debox .dock-entry-btn.alt{ border-radius:2px !important; }
-
 /* ─────────────────────────────────────────────
    ㉑ 四个角都倒角（2026-11-08 老板：「中间的黑框也要倒角，避免长方形直角」）
    —— 之前只切了左上 16 / 右下 40，右上与左下仍是直角 ⇒ 还是"长方形"。
@@ -922,27 +712,6 @@ html body .app-debox .dock-entry-btn.alt{ border-radius:2px !important; }
       实现：把四个"与中区同色的三角"直接写进面板的 background-image（尺寸/位置分开给），
       不再用伪元素（伪元素只有两个，放不下四角），也不再动 border（边框和投影要留着）。
    ───────────────────────────────────────────── */
-html body .app-debox :is(.disc-zone,.panel){
-  background-image:
-    linear-gradient(135deg,#121110 50%,rgba(18,17,16,0) 50%),
-    linear-gradient(225deg,#121110 50%,rgba(18,17,16,0) 50%),
-    linear-gradient(45deg,#121110 50%,rgba(18,17,16,0) 50%),
-    linear-gradient(315deg,#121110 50%,rgba(18,17,16,0) 50%),
-    linear-gradient(180deg,#454239 0%,#3B3A37 46%,#302E2B 100%) !important;
-  background-size:
-    14px 14px,
-    14px 14px,
-    14px 14px,
-    40px 40px,
-    auto !important;
-  background-position:
-    left top,
-    right top,
-    left bottom,
-    right bottom,
-    center !important;
-  background-repeat:no-repeat !important;
-}
 /* 旧的"盖三角"伪元素作废（否则会和右下 40px 那块重叠出毛边） */
 html body .app-debox :is(.disc-zone,.panel)::before,
 html body .app-debox :is(.disc-zone,.panel)::after{
@@ -951,11 +720,6 @@ html body .app-debox :is(.disc-zone,.panel)::after{
 
 /* 修：background-blend-mode 还是 ⑦ 那版留下的 overlay, normal（层数对不上），
    它把四角三角和主渐变混色，整块面被压成近黑。这里显式按 5 层给 normal。 */
-html body .app-debox :is(.disc-zone,.panel){
-  background-blend-mode:normal, normal, normal, normal, normal !important;
-  background-color:#3B3A37 !important;
-}
-
 /* ============================================================
    ㉒ 整体审查后的五项优化（2026-11-08 老板：「整体看看有哪些地方需要优化的，设计并优化」）
    审查结论（按影响排序，都是真看出来的，不是套模板）：
@@ -980,14 +744,6 @@ html body .app-debox .zone-tag{
   vertical-align:middle !important;
 }
 /* 其余彩色徽标（tag/chip）一并压成灰阶描边；只有"在线/失败"这类状态色保留 */
-html body .app-debox .tag:not(.ok):not(.warn):not(.bad),
-html body .app-debox .chip:not(.ok):not(.warn):not(.bad){
-  background:transparent !important;
-  border:1px solid rgba(255,255,255,.22) !important;
-  color:#B8B4AC !important;
-  border-radius:2px !important;
-}
-
 /* ② 「下一步」条：去掉红色左边框，改成**深色块 + 左侧品红细条**（与当前步骤同一套语言） */
 html body .app-debox .nextstep{
   background-image:linear-gradient(180deg,#2B2825 0%,#1E1C1A 100%) !important;
@@ -1035,41 +791,10 @@ html body .app-debox :is(.disc-zone,.panel){
 }
 
 /* ② 顶部流程条：左上/右下各切一刀（12px）—— 老板画的白色倒角就是这两处 */
-html body .app-debox .fishbone{
-  clip-path:polygon(
-    12px 0, 100% 0,
-    100% calc(100% - 12px), calc(100% - 12px) 100%,
-    0 100%, 0 12px
-  ) !important;
-}
-
 /* ③ 顶部状态胶囊（已连接 / 已创建）：右下 6px */
-html body .app-debox .ws-status,
-html body .app-debox .ws-status *{
-  clip-path:polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%) !important;
-}
-
 /* ④ 右栏三个入口按钮：右下 8px */
-html body .app-debox .dock-entry-btn,
-html body .app-debox .dock-entry-btn.alt{
-  clip-path:polygon(
-    0 0, 100% 0,
-    100% calc(100% - 8px), calc(100% - 8px) 100%,
-    0 100%
-  ) !important;
-}
-
 /* ⑤ 左栏顶部折叠按钮 ◀：右下 6px */
-html body .app-debox .nav-toggle{
-  clip-path:polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%) !important;
-}
-
 /* ⑥ 顶栏"画布"这类小按钮：右下 5px（与状态胶囊同档） */
-html body .app-debox .chrome-top .btn,
-html body .app-debox .topbar .btn{
-  clip-path:polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%) !important;
-}
-
 /* ============================================================
    ㉕ 改成**反倒角**（2026-11-08 老板：「不是啊，是反倒角」）
    —— 之前我做的是"凸倒角"（把外角切掉）。老板要的是**凹进去的缺口**：
@@ -1087,44 +812,310 @@ html body .app-debox .fishbone{
     0 100%, 0 14px, 14px 14px
   ) !important;
 }
-html body .app-debox .dock-entry-btn,
-html body .app-debox .dock-entry-btn.alt{
-  clip-path:polygon(
-    8px 0, 100% 0,
-    100% calc(100% - 8px),
-    calc(100% - 8px) calc(100% - 8px),
-    calc(100% - 8px) 100%,
-    0 100%, 0 8px, 8px 8px
-  ) !important;
-}
-html body .app-debox .ws-status,
-html body .app-debox .ws-status *{
-  clip-path:polygon(
-    6px 0, 100% 0,
-    100% calc(100% - 6px),
-    calc(100% - 6px) calc(100% - 6px),
-    calc(100% - 6px) 100%,
-    0 100%, 0 6px, 6px 6px
-  ) !important;
-}
-html body .app-debox .nav-toggle{
-  clip-path:polygon(
-    6px 0, 100% 0,
-    100% calc(100% - 6px),
-    calc(100% - 6px) calc(100% - 6px),
-    calc(100% - 6px) 100%,
-    0 100%, 0 6px, 6px 6px
-  ) !important;
-}
-html body .app-debox .chrome-top .btn,
-html body .app-debox .topbar .btn{
-  clip-path:polygon(
-    5px 0, 100% 0,
-    100% calc(100% - 5px),
-    calc(100% - 5px) calc(100% - 5px),
-    calc(100% - 5px) 100%,
-    0 100%, 0 5px, 5px 5px
-  ) !important;
-}
+/* ============================================================
 
 /* ============================================================
+   ㉘ 中区**最上面两个角**用白色覆盖（2026-11-08 老板：
+        「把中间整个黑色板块看作整体，把最上面两个角倒角去掉，用白色填上去，
+          不过不太一样，我要的是白色覆盖上去」）
+   —— 读法：把中区当成一整块深色板，左上角/右上角各切掉一个三角，**切掉的部分是白的**
+      （白块盖在深色板上，不是露底色）。这样顶栏的浅色就"压"进了中区的两个角。
+   ⚠️ 上一轮失败原因已查明：.col-center 的 background-image 被 glass.css 的
+      :is(.main,.stage,…,.col-center,…) 光斑规则占着，我加的同名属性被它压过去。
+      这次显式覆盖 background-image（连相邻光斑一起拿掉，工业皮不需要红光）。
+   ============================================================ */
+
+/* ─────────────────────────────────────────────
+   ㉙ 修白色三角与顶栏的"衔接"（2026-11-08 老板：「对咯，就是衔接不好」）
+   断层有三个来源，逐个堵：
+     ① **色差**：顶栏底部是渐变末端 #1A1918，三角却用了侧栏色 #1B1A18（亮 8 级）⇒ 接缝处一道浅色边。
+        ⇒ 三角改用 #1F1E1C，并让它在顶部 20px 内从 #1A1918 过渡过来。
+     ② **黑线**：顶栏 border-bottom:1px solid rgba(0,0,0,.38) 横穿交界，三角跨不过去，
+        看起来三角是"贴"在下面而不是"连"上去。⇒ 中区 margin-top:-1px 压住这条线。
+     ③ **硬边**：三角斜边是纯色块，与深色区一刀切。⇒ 斜边上加一条 1px 亮线（受光棱）。
+   ───────────────────────────────────────────── */
+
+/* 三角顶部 18px 压一层与顶栏同色的渐变，让"白→白"真正连上，不在交界处变色 */
+
+/* ─────────────────────────────────────────────
+   ㉚ 清掉"胶囊里套框"的残留（2026-11-08 老板：截图指出「已连接/已创建」里有多余框线）
+   —— 根因是我自己的规则写宽了：html body .app-debox .ws-status * 把**每个子元素**
+      都刷了一遍深色背景 + 1px 边框 + clip-path 缺口，于是胶囊里出现"框里套框 + 残角"。
+   ⇒ 背景/边框/倒角只给胶囊本体；子元素只保留文字颜色，其余属性全部清掉。
+   ───────────────────────────────────────────── */
+/* 状态点（小圆）保留颜色，但不带框 */
+/* 上一条把 background:none 也清了，结果**状态小圆点**（靠 background-color 画的）一起没了。
+   改成只清"背景图/边框/阴影/倒角"，纯色背景保留 ⇒ 圆点回来，框线仍不回来。 */
+html body .app-debox .ws-status *{
+  background-image:none !important;
+  background-clip:padding-box !important;
+  border:0 !important;
+  box-shadow:none !important;
+  clip-path:none !important;
+  color:#D9D5CE !important;
+}
+/* 圆点颜色显式还给（原来的 background:none !important 把它清空了，光清 background-image 恢复不了） */
+html body .app-debox .ws-status .ws-dot{ background:var(--dim,#6B655C) !important; }
+html body .app-debox .ws-status .ws-dot.online,
+html body .app-debox .ws-status .ws-dot.executing,
+html body .app-debox .ws-status .ws-dot.done{ background:var(--green,#3FBF7F) !important; box-shadow:0 0 6px var(--green,#3FBF7F) !important; }
+/* ─────────────────────────────────────────────
+   ㉛ 右上角补齐刻纹（2026-11-08 老板：「这个角要像左边那个一样有一条刻纹」）
+   —— 左上三角的斜边有一道细线（受光棱），右上没有 ⇒ 两侧不对等。
+      原因：::after 那层 18px 过渡三角只覆盖了左侧的有效区（右侧被 background-position
+      的尺寸错位吃掉）。这次把刻纹直接写进 .col-center 的 4 层背景里，左右对称：
+        层1/2 = 左上：刻纹（0.6px 深线）+ 白三角
+        层3/4 = 右上：同样顺序、镜像角度 225deg
+   ───────────────────────────────────────────── */
+
+
+/* ─────────────────────────────────────────────
+   ㉜ 三角顶边那条接缝（2026-11-08 老板黄圈：两角三角的上边缘各有一条横线）
+   —— 三角是从元素 y=0 开始画的，而顶栏的 border-bottom（1px 深线）正好压在 y=-1~0，
+      margin-top:-1px 只能让**中区**盖住它，三角自己那一条却露在边界上。
+   ⇒ 三角整体往上、往左右各超出 1px（尺寸 80→82，position 到 -1px），把接缝盖死；
+      同时给顶栏的底边框去掉，改成 inset 阴影（从源头没有这条线）。
+   ───────────────────────────────────────────── */
+
+html body .app-debox .fishbone{
+  border-bottom:0 !important;
+  box-shadow:
+    inset 0 -1px 0 rgba(0,0,0,.18),
+    inset 0 1px 0 rgba(255,255,255,.70) !important;
+}
+
+/* ─────────────────────────────────────────────
+   ㉝ 三角里再刻一道平行纹（2026-11-08 老板紫线：要在那个位置刻一条纹路）
+   —— 现在三角只有"斜边一条线"，看着像贴片。工业件在斜边内侧还有一道**平行凹槽**
+      （刀走过的第二刀）。做法：在白三角之上再叠一层 0.8px 的平行暗带，距斜边约 7px。
+      左右各两层（平行纹 + 斜边纹），共 6 层背景。
+   ───────────────────────────────────────────── */
+
+/* ─────────────────────────────────────────────
+   ㉞ 刻**横纹**（2026-11-08 老板紫线是**水平**的一条，我上一轮刻成斜的是错的）
+   —— 在白色三角内部、距顶边 40px 处刻一条**水平**凹槽，宽 42px（正好落在三角内），
+      左右各一道。角度用 180deg（水平），不是 135/225。
+   ───────────────────────────────────────────── */
+
+/* 横纹太淡（.30 在浅灰上几乎看不见）⇒ 加深加宽：.45 / 1.6px */
+
+/* ─────────────────────────────────────────────
+   ㉟ 刻纹位置纠正（2026-11-08 老板紫线在**三角左侧的深色区**上，不是三角里面）
+   —— 紫线坐标换算：距中区右边界 65~115px、距顶 35px ⇒ 落在白三角的**左边**那道深色上。
+      所以这道纹应该刻在**深色区**上，而且是**亮纹**（凹槽边受光），不是暗纹。
+      宽 50px、距右 92px（右侧）；左侧镜像。
+   ───────────────────────────────────────────── */
+
+/*
+
+/* ㊲ 右侧刻纹不可见的原因：225deg 的暗线落在白三角的**外侧（靠元素右边界）**，
+       被 1px 裁边吃掉，与左侧（暗线落在内侧）不对称。
+   ⇒ 右侧改成 315deg（从右下到左上）：白三角仍在右上，但暗线落在白的**左下侧（内侧）**，
+      与左侧完全镜像；同时把暗线往里挪到 45%~47%（离斜边约 2px，看得见）。
+   ───────────────────────────────────────────── */
+
+/* ============================================================
+   ㊳ 两角改用**一张 SVG 画完**（白三角 + 刻纹一体），左右各一张、严格镜像
+   —— 之前用 4~6 层 CSS 渐变拼：层序、角度、裁边任何一处错都会左右不对称，
+      而且肉眼很难判断错在哪（我已经在这上面连错三轮）。
+      改成 SVG 后，几何在文件里写死：(0,0)-(80,0)-(0,80) 和它的镜像，
+      刻纹是 x+y=70 / x+y=90 两条平行线 —— 对称是**构造上**保证的，不靠调参。
+   ============================================================ */
+
+/* ㊴ 刻纹走向改正（2026-11-08 老板：「这条线延长一下会死是吗」）
+   —— 几何算错了：右三角的白区是 x+y>80（右下），我却把刻纹画成 x+y=90
+      （平行于**另一条**对角线），它在这个三角里只有一半相交，看起来就是"线断了、没延长到位"。
+      正确做法：刻纹必须**平行于斜边 y=x**：
+        左三角（白区 x+y<80）：刻纹 y = x + 10，从 (0,10) 到 (70,80)
+        右三角（白区 x+y>80）：刻纹 y = x - 10，从 (10,0) 到 (80,70)
+      这样两条线各自完整贯穿自己的三角，长度相等、严格镜像。
+   ───────────────────────────────────────────── */
+
+/* ㊵ 刻纹改成**水平线并贯穿三角**（2026-11-08 老板：紫线是横的、要求"延长"；
+        沿斜边的平行线**之前已被否定**，不能再做）
+   —— 左三角（白区 x+y<80）：水平线 y=12，从 x=0 画到 x=68（正好到斜边，不出头）
+      右三角（白区 x+y>80）：水平线 y=12，从 x=12 画到 x=80
+      两条等长（68px）、左右镜像，都"顶到边界"= 延长到位。
+   ───────────────────────────────────────────── */
+
+/* ㊶ 横线**贯穿整个中区宽度**（2026-11-08 老板连说两次"延长"、"两边又不一样"）
+   —— 之前两条线各自只在三角内部：左线贴左边界、右线贴右边界，长度虽等，但视觉上
+      一条"从边上起"、一条"到边上止"，就是不一样。
+      现在改成**一条横线横穿整个中区**（宽度 100%），两个三角都在这条线上 ——
+      左右天然完全一致，而且从侧栏交界一直到右栏交界，没有"截断"的观感。
+   ───────────────────────────────────────────── */
+
+/* 横线太细看不出（1.6px / .34）⇒ 加粗到 3px、浓度 .46，位置略下移到 y=13~16，
+   这样它清楚穿过两个白三角 + 中间的深色区，全宽一条。 */
+
+/* ═══════════════════════════════════════════════════════════
+   中区顶部两角：**只有两个白色三角，没有任何刻纹线**
+   （2026-11-08 老板：「不做加法了，做减法，两边的水平线都给我删掉」）
+   —— 之前所有横纹/斜纹/平行线/贯穿线全部删除，只留形状本身。
+   ═══════════════════════════════════════════════════════════ */
+html body .col-center{
+  margin-top:-1px !important;
+  background-color:#1D1C1A !important;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cpolygon points='0,0 80,0 0,80' fill='%23C0BCB6'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cpolygon points='80,0 80,80 0,0' fill='%23C0BCB6'/%3E%3C/svg%3E") !important;
+  background-size:80px 80px, 80px 80px !important;
+  background-position:left top, right top !important;
+  background-repeat:no-repeat, no-repeat !important;
+  background-blend-mode:normal, normal !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   右栏三个按钮的角：**切掉的正方形要方、要大**（2026-11-08 老板：「这里直接少了角上的正方形」）
+   —— 原来 8px 太小，加上按钮自身 2px 圆角，切口看起来是"毛边小缺口"而不是"切掉一个方块"。
+      改成 14px 的**直角方形**凹口（左上 + 右下各一个），并把圆角归零，切口才是硬边。
+   ═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════
+   右栏三个按钮：**恢复完整长方形**（2026-11-08 老板：「黑色方块恢复完整长方形」）
+   —— 取消角上的方形缺口（clip-path 全撤），回到规整矩形 + 2px 圆角。
+   ═══════════════════════════════════════════════════════════ */
+html body .app-debox .dock-entry-btn,
+html body .app-debox .dock-entry-btn.alt{
+  clip-path:none !important;
+  border-radius:2px !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   状态胶囊（已连接/已创建）与「画布」按钮：**恢复完整长方形**
+   （2026-11-08 老板贴图指出这两处角上还有缺口）
+   ═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════
+   深底上的文字与刻纹（2026-11-08 老板：「把工作间的白换成深黑，其他 UI 不变」）
+   —— 面从浅灰换成深黑后，原来"深字 + 白高光"的刻纹全部反转成"浅字 + 黑高光"，
+      否则黑底黑字看不见。形状、位置、尺寸一个没动。
+   ═══════════════════════════════════════════════════════════ */
+html body .col-left, html body .col-left *,
+html body .col-right, html body .col-right *{ color:#E6E2DA !important; }
+html body .col-left a, html body .col-left a:link, html body .col-left a:visited,
+html body a[href="/monitor.html"], html body a[href="/ops.html"],
+html body a[href="/handover.html"], html body a[href="/booths.html"]{
+  color:#C9C5BD !important;
+  -webkit-text-fill-color:#C9C5BD !important;
+}
+/* 刻纹图标：浅色刻痕 + 下方黑色高光 */
+html body .wi-actions button::before{
+  background-color:rgba(226,222,214,.72) !important;
+  filter:drop-shadow(0 1px 0 rgba(0,0,0,.75)) !important;
+}
+html body .wi-actions button:hover::before{ background-color:rgba(255,253,248,.95) !important; }
+/* 返回按钮箭头 */
+html body .sidebar-back::before{
+  background-color:#E6E2DA !important;
+  filter:drop-shadow(0 1px 0 rgba(0,0,0,.8)) !important;
+}
+/* 侧栏与中区之间的拼缝：原来亮线在浅底上，现在改成深缝 + 微弱亮边 */
+html body .col-left::before, html body .col-right::after{
+  background-image:linear-gradient(90deg,
+    rgba(0,0,0,0) 0 1px,
+    rgba(0,0,0,.55) 1px 2px,
+    rgba(255,255,255,.16) 2px 3px,
+    rgba(0,0,0,.45) 3px 4px,
+    rgba(0,0,0,0) 4px 5px) !important;
+}
+
+/* ── 深黑化后的三处收尾 ──
+   ① 步骤块与流程条同色了 ⇒ 步骤块提亮一档，否则"01~05"糊成一片；
+   ② 底部状态条又变回浅灰（页面 .statusbar{background:var(--bg2)} 压过了我的规则）⇒ 强制深色；
+   ③ 右栏"系统统计 / Agent 列表"标题原来是深字，深底上几乎看不见 ⇒ 提亮。 */
+html body .statusbar, html body .statusbar *{ color:#A8A49C !important; }
+/* 右栏「系统统计 / Agent 列表」那行标题在深底上几乎看不见（探针确认它在 .panel#layout 里，
+   原来的深色字没被反转）⇒ 右栏面板内文字统一提亮。 */
+html body .col-right .panel, html body .col-right .panel *,
+html body .col-right #layout, html body .col-right #layout *{ color:#E6E2DA !important; }
+/* ═══════════════════════════════════════════════════════════
+   全黑（2026-11-08 老板：「全黑，除了字体和图标其他都黑，不要渐变白」）
+   —— 所有"面"一律改成**纯色**：background-image:none，只留 background-color。
+      之前每块面都带 linear-gradient(180deg,#亮→#暗)，那就是老板说的"渐变白"。
+      立体感只靠已有的 1px 边线与投影（不再用白色渐变压出来）。
+   ═══════════════════════════════════════════════════════════ */
+/* 页面底 / 中区 */
+html body .col-center{
+  background-image:none !important;
+  background-color:#0E0D0C !important;
+}
+/* 左右侧栏 */
+html body .col-left, html body .col-right{
+  background-image:none !important;
+  background-color:#121110 !important;
+}
+/* 左栏工作间卡 */
+html body .workshop-item{
+  background-image:none !important;
+  background-color:#1A1918 !important;
+}
+html body .workshop-item.active{
+  background-image:none !important;
+  background-color:#262422 !important;
+}
+/* 中区面板 */
+html body .app-debox :is(.disc-zone,.panel){
+  background-image:none !important;
+  background-color:#181716 !important;
+}
+/* 顶部流程条 */
+html body .app-debox .fishbone{
+  background-image:none !important;
+  background-color:#121110 !important;
+}
+/* 步骤块（比条亮一档，纯色） */
+html body .app-debox .fb-step{
+  background-image:none !important;
+  background-color:#232120 !important;
+  color:#DAD6CE !important;
+}
+/* 按钮：纯色 */
+html body .app-debox .btn,
+html body .app-debox button:not(.btn),
+html body .app-debox .chat-input button,
+html body .app-debox .btn.primary,
+html body .app-debox .dock-entry-btn,
+html body .app-debox .dock-entry-btn.alt,
+html body .wi-actions button{
+  background-image:none !important;
+  background-color:#1E1D1B !important;
+}
+/* 输入框：更黑 */
+html body .app-debox input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html body .app-debox textarea,
+html body .app-debox select{
+  background-image:none !important;
+  background-color:#0A0908 !important;
+}
+/* 状态胶囊 / 顶栏小按钮 */
+html body .app-debox .ws-status{ background-image:none !important; background-color:#1A1918 !important; }
+/* 底部状态条 */
+html body .statusbar{ background-image:none !important; background-color:#100F0E !important; }
+/* 返回按钮 */
+html body .sidebar-back{ background-image:none !important; background-color:#1C1B19 !important; }
+/* 顶部两角三角：不再是白色，改成与侧栏同色的深黑（保持形状，不显白） */
+html body .col-center{
+  background-image:
+    linear-gradient(135deg, #121110 49.4%, rgba(18,17,16,0) 50%),
+    linear-gradient(225deg, #121110 49.4%, rgba(18,17,16,0) 50%) !important;
+  background-size:80px 80px, 80px 80px !important;
+  background-position:left top, right top !important;
+  background-repeat:no-repeat, no-repeat !important;
+}
+/* 白色高光压到最低（只保留"有边"的观感，不形成渐变白） */
+html body .app-debox :is(.disc-zone,.panel),
+html body .col-left, html body .col-right,
+html body .workshop-item{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.035),
+    inset 0 -1px 0 rgba(0,0,0,.80),
+    0 1px 0 rgba(0,0,0,.60) !important;
+}
+
+/* ══ 三张单（2026-11-08）：成员在不在动 / 组长待办条 ══ */
+/* 右栏那两条折叠标题（成员在不在动 / 系统统计）在深底上看不清 —— 它们用的是
+   summary.col-header，之前按 .panel 找当然命中不了。这里按真实标签命中。 */
+html body .col-right summary.col-header,
+html body .col-right .col-header{
+  color:#E6E2DA !important;
+  font-weight:700 !important;
+}

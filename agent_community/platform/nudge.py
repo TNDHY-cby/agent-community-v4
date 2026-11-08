@@ -13,6 +13,7 @@
 |---|---|---|---|
 | 任务派出去了，迟迟没有回执/产物 | `AC_NUDGE_ISSUED_MIN`（默认 30 分钟） | 接活的那个成员 | 回执（`task-result`） |
 | 产物到了，但组长迟迟没验收 | `AC_NUDGE_DELIVERED_MIN`（默认 60 分钟） | 组长 | 验收（`review`） |
+| **被返工了，但他还没重交** | `AC_NUDGE_ISSUED_MIN`（默认 30 分钟） | 接活的那个成员 | 按意见改完再交 |
 
 ## 三条纪律
 
@@ -84,6 +85,15 @@ def plan(tasks: list, *, members: list | None = None, now: float | None = None,
                           "slot_dir": slot, "member_seq": seq, "state": st,
                           "age_min": round(age_min, 1), "threshold_min": i_min,
                           "ask": "回执（POST /api/harness/task-result：做了什么/产物路径/怎么验证）"})
+        elif st == "rework" and age_min >= i_min:
+            # ★2026-11-08：`rework`（被返工）以前**谁都不管** —— 催办只认 issued/working/delivered，
+            #   presence 也只认 issued/working ⇒ 被返工的人不动，这条任务就永久卡在 rework。
+            items.append({"kind": "member_no_rework_delivery", "task_seq": t.get("task_seq"),
+                          "task_id": t.get("task_id") or ("T-%03d" % int(t.get("task_seq") or 0)),
+                          "slot_dir": slot, "member_seq": seq, "state": st,
+                          "age_min": round(age_min, 1), "threshold_min": i_min,
+                          "ask": "按组长的意见改完再交一次（产物放 `产物/`，或回一次 task-result）"
+                                 "—— 平台扫到新产物会自动把它推回 delivered"})
         elif st == "delivered" and age_min >= d_min:
             items.append({"kind": "lead_no_review", "task_seq": t.get("task_seq"),
                           "task_id": t.get("task_id") or ("T-%03d" % int(t.get("task_seq") or 0)),
@@ -92,6 +102,8 @@ def plan(tasks: list, *, members: list | None = None, now: float | None = None,
                           "ask": "验收（POST …/tasks/{seq}/review；产物已到，等你放行）"})
     return {"ok": True, "items": items, "count": len(items),
             "counts": {"member_no_receipt": len([x for x in items if x["kind"] == "member_no_receipt"]),
+                       "member_no_rework_delivery": len([x for x in items
+                                                         if x["kind"] == "member_no_rework_delivery"]),
                        "lead_no_review": len([x for x in items if x["kind"] == "lead_no_review"])},
             "thresholds": {"issued_min": i_min, "delivered_min": d_min},
             "note": ("`issued/working` 超阈值 ⇒ 催成员回执；`delivered` 超阈值 ⇒ 催组长验收。"
@@ -113,7 +125,10 @@ def summarize(items: list, limit: int = 8) -> list:
     lines = []
     for (slot, kind), its in list(by_slot.items())[:limit]:
         ids = "、".join(str(x.get("task_id")) for x in its[:6])
-        if kind == "member_no_receipt":
+        if kind == "member_no_rework_delivery":
+            lines.append("【催办】%s：%s 是**返工**状态、还没重交（已超 %s 分钟）—— 改完再交一次"
+                         % (slot or "?", ids, int(its[0].get("threshold_min") or 0)))
+        elif kind == "member_no_receipt":
             lines.append("【催办】%s：%s 还没回执（已超 %s 分钟）—— 请调 task-result 交回执"
                          % (slot or "?", ids, int(its[0].get("threshold_min") or 0)))
         else:

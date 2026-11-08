@@ -106,9 +106,15 @@ python tools/delivery_check.py     # 统一投递层真机判据：channels 选�
 python tools/inject_probe_check.py    # 视觉拉起**真机**判据：真窗口置顶 / 两档投递发生 / 剪贴板写入经核对 / **不弹控制台黑框** / 无文本框窗口如实 exit 3（非 Windows 与无窗口如实跳过）
 python tools/vision_capture_check.py  # 视觉抓图**真机**判据：抓的必须是**整扇窗** —— 真造一个自己声明 DPI 的靶子窗，比"抓图尺寸 vs 真值"（150% 缩放下不声明 DPI 只抓得到左上 2/3；本机 100% 缩放会**如实说这里测不出**，不假绿）
 python tools/frontend_endpoint_check.py  # 前端接线判据：前端 JS 里出现的每个 `/api/…` 都必须**真的挂在后端**（路由自省、参数段按 `{}` 通配、允许"前缀+拼接"写法）；前端改了调用路径就跑它，防"点了按钮 404"
-python tools/nudge_check.py                 # ★**催办六格**（V134 ⑧ 延伸）：`GET …/nudge` 列出"派出去了没回执（issued 超阈值）"/"产物到了组长没验收（delivered 超阈值）"；`POST …/nudge` 才真写（`_notice.md` + 通知账 written）；dry_run 一个字不写；同一条任务同一天只催一次；没时间戳的不催
+python tools/my_todo_check.py                # ★**成员待办七格**：`GET …/members/{seq}/my-todo` 一条查询给成员"我该干什么"（`do` 该你动 / `wait` 等组长 / `done` 已通过 / `stop` 别再动）+ 给我的通知；`next` 只挑一件；同工位多条未结任务时产物**不被瞎绑**
+python tools/review_notice_check.py         # ★**验收通知六格**：`review` 返工/拒收/通过都要**写进成员 `_notice.md`** + 通知账 `written`（以前只改账本，成员一个字都收不到）；正文带任务号/组长原话/验收人；响应里有 `notify` 字段
+python tools/lead_digest_check.py            # ★**组长日报九格**：`GET …/lead-digest` 只算、`POST` 才写进组长 `_lead/_notice.md`（通知账 written）；**同一天只发一次**、没活就不发（不打扰）、超 8 条折成一句；`AC_DIGEST_WATCH_SEC`（默认 0＝关）>0 时后台自动跑（开关两格真验）
+python tools/lead_todo_all_check.py          # ★**跨间汇总七格**：`GET /api/lead-todo-all` 一次给出**所有工作间**的「今天该管谁」（有事的列出来、空的只计数；不排分）；大厅首页用这一口
+python tools/lead_todo_check.py              # ★**组长待办八格**：`GET …/lead-todo` 把三类事合成一张单（silent 人不动=先处理 / no_review 待验收 / no_receipt 没回执），每条带具体端点；只分两档不排分；没活可管就是空清单
+python tools/presence_check.py             # ★**成员在不在动七格**（V131 延伸）：`GET …/presence` 给每个成员的最后痕迹（任务/产物）+ 是否失联；**只有有在途任务的人才可能被判失联**（空闲成员不制造噪音）、组长不进表、从没痕迹也算失联且说清；阈值 `AC_PRESENCE_SILENT_MIN`（默认 120 分钟）
+python tools/nudge_check.py                 # ★**催办九格**（V134 ⑧ 延伸）：`GET …/nudge` 列出"派出去了没回执（issued 超阈值）"/"产物到了组长没验收（delivered 超阈值）"；`POST …/nudge` 才真写（`_notice.md` + 通知账 written）；dry_run 一个字不写；同一条任务同一天只催一次；没时间戳的不催
 python tools/workshop_comm_check.py       # ★**工作间日常沟通十格**（V138：含整队通知 `to=squad:<id>`）：`ailp` 的 `to`（说给组长/某工位/全间）**真通知到**（`_lead/_notice.md` / 该工位 `_notice.md`）、`thread` 回某条（不存在 ⇒ 422 A019）、`to` 非法 ⇒ 422 A018、未读与大厅同一套（只前进）、自由聊天仍 410
-python tools/notice_tier_check.py           # ★**通知账/档位矩阵/资源库八格**（V134 ⑧⑨⑩）：产物转组长与 AILP 点名都进通知账、`written` 不许说成已送达；档位矩阵 4 档 × 4 轴齐全且每格有人话；成员按档位出四格计划；资源库登记做**真 stat**（在=true / 不在=false+why）
+python tools/notice_tier_check.py           # ★**通知账/档位矩阵/资源库十二格**（V134 ⑧⑨⑩）：产物转组长与 AILP 点名都进通知账、`written` 不许说成已送达；档位矩阵 4 档 × 4 轴齐全且每格有人话；成员按档位出四格计划；资源库登记做**真 stat**（在=true / 不在=false+why）
 python tools/squads_check.py              # ★**小队十格**（V138：含暂停/关闭拦派活，老板定名：工作间→**小队**→成员）：建小队落盘/同 id 拒/对**小队**派活展开成每成员一条/账本不新建（键仍是 ws+task_seq）/没有整小队一键验收/三级视图（workshop→squad→slot，`_lead` 单列、未分组列出）/拆分建议只给事实与理由
 python tools/lead_prelist_check.py        # ★**组长预列表十五格**（V137，老板「组长预列表，各组组长（单/团）适合不同方向/任务」）：按**方向**（只认接入自报的 `fit_directions`）给每方向「**一行结论**（一个人就够/得搭团/没人能接）+ 单 solo + 团 team」两套配置，附**梯队**（还有谁能一个人干）；没报方向的不归任何组；助手可跨方向借并标 `from_direction`；`?task=` 给**任务卡**（命中给方向；未命中给换词建议+现有方向，不退化）
 python tools/lead_plan_check.py            # ★**组长算法十四格**（V136）：两条路（① 单一多协议全能组长；② 少协议组长搭助手互补）—— 有 high ⇒ solo；无 high 能补 ⇒ team（每个助手带 `adds`）；补不齐 ⇒ blocked + 三条出路；`needs` 可缩小；同输入两次结果逐字一致（不排分不推荐）；**组长列表** `/api/lead-roster` 的三组（可独立胜任/需配助手/只能当助手）与每候选的适配度/覆盖/缺什么/谁能补；算法选的人真能选上

@@ -42,6 +42,111 @@
 > 用途：本次发版的条目文件（`publish_acv4.ps1 -ChangelogFile <本文件绝对路径> -Target gitee`）。
 > ⚠️ 本文件里**不许出现真实本机路径**，下面全是相对路径与虚拟名。
 
+## [4.46.0] - 2026-11-08
+
+这批的主题是**"让平台自己会催、会报、会通知"** —— 把 4.45.0 之后那些"平台知道但没人知道"的状态
+（谁不动了 / 该管谁 / 被返工了没人管 / 验收结果没通知到人）一件件接到"有人会看见"的地方。
+
+一句话：**"他在干 / 他没动"、"该管谁 / 没事"，现在平台自己会说，不用你去翻表。**
+
+### 成员在不在动（`GET …/presence`）
+- 每个成员取**最后痕迹**（任务账本与收件事件取最大），给 `last_seen_at` / `idle_min` /
+  `last_seen_channel`（`task` / `artifact` / `none`）/ `open_tasks` / `silent` / `why`；
+- **只有有在途任务的成员才可能被判失联**（空闲成员不制造噪音）；**组长不进这张表**；
+  **从没任何痕迹也算失联**，`why` 里写清；
+- 阈值 `AC_PRESENCE_SILENT_MIN`（默认 **120 分钟**）。
+
+### 组长待办（`GET …/lead-todo`）
+- 把催办与失联合成一张单：`silent`（人不动，**先处理**）/ `no_review`（产物待验收，超 2 倍算先处理）/
+  `no_receipt`（没回执，可以等等）/ `awaiting_rework`（**返工待重交，先处理**）；
+- 每条带 `ask`（该做什么）与 `how`（**具体端点**）；只分「先处理 / 可以等等」两档，**不排分**；
+- **没活可管就是空清单**（不硬凑）。
+
+### 组长日报（`GET/POST …/lead-digest`）
+- `GET` 只算：把"该管谁"压成一段人话（先处理 N / 可以等等 M + 谁·哪条·该做什么），超 8 条折成一句；
+- `POST` 才写：进组长 `_lead/_notice.md` + 通知账 `written`；**同一天只发一次**、**没事可管就不发**（不打扰）；
+- `{dry_run:true}` 只回文本。
+
+### 催办补上 `rework`（本轮自查抓到的真漏洞）
+`review` 打出「返工」后任务进 `rework`，而催办只认 `issued/working/delivered`、在场判定只认
+`issued/working`、待办三类都不覆盖 ⇒ **被返工的人只要不动，这条任务就永久卡在 rework，谁都不会知道**。
+- `nudge`：`rework` 超阈值 ⇒ 催**成员**重交（`member_no_rework_delivery`，写清"改完再交一次；
+  平台扫到新产物会自动推回 `delivered`"）；
+- `presence`：`OPEN_STATES` 加 `rework`（等重交 = 还在干）；
+- `lead_todo`：新增 `awaiting_rework`，归**先处理**。
+
+### 验收结果通知到成员（`review` 的 `notify`）
+以前 `review` **只改账本** —— 组长点「返工」「拒收」，成员那边**一个字都没有**，他不会知道要改。
+- 返工/拒收/通过都写进该成员 `_notice.md`（带任务号 + 组长原话 + 验收人 + 该做什么）+ 通知账 `written`；
+- 响应里多 `notify` 字段（`written/file/line`）；通知失败**不影响验收结果**，但会在响应里说清为什么。
+
+### 顺带修的前端资产缺陷（两轮）
+`agent_community/frontend/industrial.css` 有 8 处**被吞掉的首字母**（`0x0C`/`0x08` 顶掉了
+`flex` / `border-bottom` / `background`），把 `test_doc_credibility` 判红、**会挡住双平台判据**。
+两轮都已还原成正确字母（留 `.bak`，材料在 `D:\Desktop\开发交流\`），前端会话待复核。
+
+
+### 成员自己该干什么（`GET …/members/{seq}/my-todo`）
+组长侧有 `lead-todo` / `lead-digest`，但**成员这侧一直靠自己翻工位**（任务文件 + `_notice.md` + 账本）。
+现在一条查询给全：状态 → 我该做什么（**一处真相**，`platform/member_todo.py`）
+
+| 状态 | 动作 |
+|---|---|
+| `issued` / `working` | `do` 干完了就交回执（带 `task-result` 端点） |
+| `rework` | `do` 按组长意见改完再交（产物放 `产物/`，平台扫到自动推回 `delivered`） |
+| `delivered` | `wait` 等组长验收，别重复交 |
+| `accepted` / `rejected` | `done` 不用再做 / `stop` 别再动 |
+
+外加：给我的通知（通知账 `target=member:<工位>`）、`next` **只挑一件**最该做的（先返工，再没交的，
+最后等验收的；**不排分**）；不认识的状态**如实说不认识**。
+
+另记一条**判据抓到的正确行为**：同工位有**两条未结任务**时，平台**不瞎绑**产物
+（任务仍是 `issued`，视图照实说"该交回执"）—— 这是 `V134` ③ 的歧义保护，我第一版夹具以为会被推成 `delivered`。
+
+### 一条已知 flake（如实记）
+`test_v5_ailp_validation::test_http_post_dedup_keeps_single_row`（AILP 重发幂等）在全量跑里
+**偶发红**：同一份代码连着跑两次全量，第一次红、第二次绿，单跑也绿 ⇒ 判定为**顺序/状态依赖的既有 flake**，
+**不是本批引入**。下次要收敛它得让该用例自己清 `msg` 计数（留给后续批次）。
+
+
+### 跨工作间汇总（`GET /api/lead-todo-all`）
+大厅首页要的那一口：**一次给出所有工作间「今天该管谁」**。
+
+- `totals`：`workshops` / `workshops_with_todo` / `empty_workshops` / `total` / `urgent` / `later`
+  + 分类计数（`silent` / `awaiting_rework` / `no_receipt` / `no_review`）；
+- `workshops[]`：每个**有事**的工作间（含 `urgent[]` / `later[]`）；**一个事都没有的间只计入数字**
+  （`empty_workshops`），不列出来（不刷屏）；
+- 收件事件**只读一次**再按间分组（避免 N 个间读 N 遍盘）；口径与单间 `…/lead-todo` **完全一致**；
+- `generated_at` 给前端显示"什么时候算的"。
+
+### 后台日报（`AC_DIGEST_WATCH_SEC`，**默认 0＝关**）
+- >0 时 `server._digest_watch_loop()` 每 N 秒看一遍所有工作间，有活就 `lead_digest.send()` 真发进
+  组长 `_lead/_notice.md`；**同一天只发一次 / 没活不发** 由 `send()` 保证（循环不重复实现）；
+- 默认关：主动给人写通知属于自动兜底，不该开箱就动别人的目录。
+
+### 判据（本批总计）
+`presence_check`(7) / `lead_todo_check`(8) / **`lead_todo_all_check`(7)** / `lead_digest_check`(**9**) /
+`nudge_check`(9) / `review_notice_check`(6) / `my_todo_check`(7)；
+单测 `test_presence`(9) / `test_lead_todo`(13) / `test_lead_digest`(5) / `test_review_notice`(6) /
+`test_member_todo`(7) / `test_nudge`(10)；全量 2700+ 条绿；`test_core_matrix` 需服务在跑（起服务后 3/3）。
+
+**接口面 422 → 426**（presence / lead-todo / lead-digest×2 / my-todo / lead-todo-all）；设计稿 **184 份**。
+
+### 判据（含本批新增）
+`presence_check` **7 格**、`lead_todo_check` **8 格**、`lead_digest_check` **7 格**、
+`nudge_check` **9 格**、`review_notice_check` **6 格**、`my_todo_check` **7 格**；
+单测新增 `test_presence`(9) / `test_lead_todo`(7) / `test_lead_digest`(5) /
+`test_review_notice`(6) / `test_member_todo`(7) / `test_nudge`(10)。
+接口面 422 → **425**。
+
+### 判据（旧行，已被上一节覆盖）
+`presence_check` **7 格**、`lead_todo_check` **8 格**、`lead_digest_check` **7 格**、
+`nudge_check` **9 格**、`review_notice_check` **6 格**；单测新增
+`test_presence`(9) / `test_lead_todo`(7) / `test_lead_digest`(5) / `test_review_notice`(6) / `test_nudge`(10)；
+全量 2700+ 条绿；`test_core_matrix` 需服务在跑（起服务后 3/3）。
+
+接口面 422 → **424**；设计稿 183 份。
+
 ## [4.45.0] - 2026-11-08
 
 本批把 **V134 审计的最后五条收干净**（⑥ / ⑧⑨⑩ / ⑤ 与"组长枢纽"的延伸），并让两件事第一次"自己会说话"：

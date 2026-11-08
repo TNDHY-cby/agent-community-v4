@@ -89,6 +89,45 @@ STATIC_DIR = Path(__file__).parent.parent / "frontend"
 DATA_DIR = Path(os.environ.get("AC_DATA_DIR") or (Path(__file__).parent.parent / "data"))
 # ── 状态 ──────────────────────────────────────────────────────
 from contextlib import asynccontextmanager
+async def _digest_watch_loop() -> None:
+    """后台组长日报（默认关：`AC_DIGEST_WATCH_SEC`>0 才跑）。
+
+    每轮：遍历所有工作间 → `lead_todo.collect()` 取数 → `lead_digest.send()` 真发。
+    **同一天只发一次 / 没活不发** 都由 `lead_digest.send()` 保证（这里不重复实现）。
+    """
+    import asyncio as _aio
+    import os as _os
+
+    _raw = _os.environ.get("AC_DIGEST_WATCH_SEC", "0")
+    try:
+        sec = int(str(_raw).strip() or "0")
+    except (TypeError, ValueError):
+        print("[digest] AC_DIGEST_WATCH_SEC 不是整数（收到 %r）⇒ 后台日报不启用" % _raw, flush=True)
+        sec = 0
+    if sec <= 0:
+        return
+    from . import lead_digest as _ld
+    from . import lead_todo as _lt
+
+    print("[digest] 后台日报已启用：每 %d 秒检查一次（同一天只发一次、没活不发）" % sec, flush=True)
+    while True:
+        try:
+            await _aio.sleep(sec)
+            for wid, ws in list((globals().get("workshops") or {}).items()):
+                try:
+                    data = _lt.collect(str(wid))
+                    out = _ld.send(str(wid), ws, data)
+                    if out.get("sent"):
+                        print("[digest] %s：今天的日报已发" % wid, flush=True)
+                except Exception as e:                    # noqa: BLE001 — 单个工作间出错不影响其它
+                    print("[digest] %s 出错（跳过）: %s: %s"
+                          % (wid, type(e).__name__, e), flush=True)
+        except _aio.CancelledError:
+            raise
+        except Exception as e:                            # noqa: BLE001 — 循环不能因一次异常停掉
+            print("[digest] 本轮异常（继续）: %s: %s" % (type(e).__name__, e), flush=True)
+
+
 async def _nudge_watch_loop() -> None:
     """后台催办（默认关：`AC_NUDGE_WATCH_SEC`>0 才跑）。
 
@@ -209,6 +248,13 @@ async def _app_lifespan(_app):
         print("[startup] 收件目录监视没起来（可手动 POST …/scan-inbox）：%s: %s"
               % (type(_ie).__name__, _ie), flush=True)
     # ★2026-11-07（V134 ⑧ 延伸）：后台催办（`AC_NUDGE_WATCH_SEC>0` 才跑；默认关）
+    # ★2026-11-08：后台组长日报（`AC_DIGEST_WATCH_SEC>0` 才跑；默认关）
+    try:
+        task7 = asyncio.create_task(_digest_watch_loop())
+    except Exception as _de:                            # noqa: BLE001 — 起不来要说，但不挡启动
+        task7 = None
+        print("[startup] 后台日报没起来（可手动 POST …/lead-digest）：%s: %s"
+              % (type(_de).__name__, _de), flush=True)
     try:
         task6 = asyncio.create_task(_nudge_watch_loop())
     except Exception as _ne:                                   # noqa: BLE001 — 催办起不来要说，但不挡启动
@@ -254,6 +300,8 @@ async def _app_lifespan(_app):
         task5.cancel()
         if task6 is not None:
             task6.cancel()
+        if task7 is not None:
+            task7.cancel()
     try:
         from .peer_poll import stop as _peer_poll_stop
         _peer_poll_stop()
@@ -415,6 +463,8 @@ from .routers.relay import router as _relay_router
 from .routers.squads import router as _squads_router
 from .routers.notice_tier import router as _notice_tier_router
 from .routers.nudge import router as _nudge_router
+from .routers.presence import router as _presence_router
+app.include_router(_presence_router)  # V131 延伸：/api/workshop/{id}/presence（成员在不在动）
 app.include_router(_nudge_router)  # V134 ⑧ 延伸：/api/workshop/{id}/nudge（该催谁 / 真催一次）
 app.include_router(_notice_tier_router)  # V134 ⑧⑨：/api/workshop/{id}/notice-log · /api/tier-matrix · /api/workshop/{id}/tier-plan
 app.include_router(_squads_router)  # V138 小队模块化工作间：/api/workshop/{id}/squads（三级视图/建/改）

@@ -119,6 +119,16 @@ SPEC: dict[str, Var] = {v.name: v for v in [
         "`GET …/nudge` 会把它列出来，`POST …/nudge` 会给接活的人写一条催办通知。"
         "**只算不写**的是 GET；真写的是 POST（同一条任务同一天只催一次）",
         default="30", kind="feature", example="10"),
+    Var("AC_DIGEST_WATCH_SEC",
+        "后台组长日报的检查间隔（秒，**默认 0＝关**）：>0 时平台每这么久看一遍所有工作间，"
+        "有要管的事就**自动发一份日报**进组长的 `_lead/_notice.md`（同一天只发一次，没活不发）。"
+        "**默认关**：主动给人写通知属于自动兜底，不该开箱就动别人的目录",
+        default="0", kind="feature", example="3600"),
+    Var("AC_PRESENCE_SILENT_MIN",
+        "成员失联阈值（分钟，默认 120）：成员**有在途任务**（issued/working）且这么久没有任何痕迹"
+        "（任务账本更新 / 产物事件）⇒ `GET …/presence` 把他标成 silent 并写清理由。"
+        "空闲成员不算失联（不制造噪音）；不看窗口画面。",
+        default="120", kind="feature", example="30"),
     Var("AC_NUDGE_WATCH_SEC",
         "后台催办的间隔（秒，**默认 0＝关**）：>0 时平台每这么久自动跑一轮催办"
         "（`issued` 超阈值催成员回执 / `delivered` 超阈值催组长验收），同一任务同一天只催一次。"

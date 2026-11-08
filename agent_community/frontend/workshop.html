@@ -4254,6 +4254,9 @@ function loadWorkshop(id){
     renderMembersV5(d);
     /* ★2026-11-07：小队分组单独拉（失败就退回平铺名单，不影响上面那行） */
     loadSquads(id);
+    /* 2026-11-08：三张单（在不在动 / 待办 / 日报） */
+    loadPresence(id);
+    loadLeadTodo(id);
 
 
     const msgs=d.discussion||[];
@@ -5280,6 +5283,101 @@ function wsvMonRenderMirror(cam,hid,m){
     setInterval(mark, 4000);
   } catch (e) { /* 不支持 URLSearchParams 的旧浏览器：不标记（不影响主功能） */ }
 })();
+
+/* ═══════════════════════════════════════════════════════════════
+   后端「四张单」里的三张（2026-11-08）：成员在不在动 / 组长待办 / 发日报
+   —— 现取现画；失败只 console.warn，不打断页面。
+   ═══════════════════════════════════════════════════════════════ */
+function _fmtAgo(ts){
+  if(!ts) return '没有痕迹';
+  const d = Math.max(0, Math.floor(Date.now()/1000 - ts));
+  if(d < 60) return '刚刚';
+  if(d < 3600) return Math.floor(d/60) + ' 分钟前';
+  if(d < 86400) return Math.floor(d/3600) + ' 小时前';
+  return Math.floor(d/86400) + ' 天前';
+}
+async function loadPresence(id){
+  try{
+    const r = await fetch('/api/workshop/' + id + '/presence');
+    if(!r.ok) return;
+    renderPresence(await r.json());
+  }catch(e){ console.warn('presence 取不到', e); }
+}
+function renderPresence(d){
+  const right = document.querySelector('.col-right');
+  if(!right) return;
+  let box = document.getElementById('presenceBox');
+  if(!box){
+    box = document.createElement('details');
+    box.id = 'presenceBox';
+    box.className = 'presence-box';
+    box.open = true;
+    right.insertBefore(box, right.firstChild);
+  }
+  const list = (d && d.members) || [];
+  const bad = list.filter(m => m.silent).length;
+  const rows = list.length
+    ? list.map(m => {
+        const nm = esc(m.slot_dir || (m.state === 'pending' ? '待激活' : ('工位 ' + m.member_seq)));
+        const nt = m.silent ? '不动了' : _fmtAgo(m.last_seen_ts);
+        return '<div class="pr-row' + (m.silent ? ' pr-bad' : '') + '"><span class="pr-name">' + nm
+             + '</span><span class="pr-time">' + esc(nt) + '</span></div>';
+      }).join('')
+    : '<div class="pr-empty">这一间还没有成员</div>';
+  box.innerHTML = '<summary class="col-header">成员在不在动'
+    + (bad ? '<span class="pr-flag">' + bad + ' 不动</span>' : '')
+    + '</summary>' + rows;
+}
+async function loadLeadTodo(id){
+  try{
+    const r = await fetch('/api/workshop/' + id + '/lead-todo');
+    if(!r.ok) return;
+    renderLeadTodo(await r.json());
+  }catch(e){ console.warn('lead-todo 取不到', e); }
+}
+function renderLeadTodo(d){
+  const zone = document.getElementById('zone2');
+  if(!zone) return;
+  const head = zone.querySelector('.side-head');
+  if(!head) return;
+  let bar = document.getElementById('leadTodoBar');
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'leadTodoBar';
+    bar.className = 'ltb';
+    zone.insertBefore(bar, head.nextSibling);
+  }
+  const c = (d && d.counts) || {};
+  const urgent = c.urgent || 0, later = c.later || 0, total = c.total || 0;
+  if(!total){
+    bar.innerHTML = '<span class="ltb-empty">没有要你管的事 —— 不用发日报</span>';
+    return;
+  }
+  bar.innerHTML = '<span class="ltb-num">先处理 ' + urgent + '</span>'
+    + '<span class="ltb-num ltb-later">可以等等 ' + later + '</span>'
+    + '<button class="btn mini" id="leadDigestBtn" title="把这份清单写进组长收件箱（同一天只发一次）">发日报</button>';
+  const b = document.getElementById('leadDigestBtn');
+  if(b) b.onclick = () => postLeadDigest(wsId);
+}
+async function postLeadDigest(id){
+  const b = document.getElementById('leadDigestBtn');
+  if(b){ b.disabled = true; b.textContent = '发送中…'; }
+  try{
+    const r = await fetch('/api/workshop/' + id + '/lead-digest',
+      { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d = await r.json().catch(() => ({}));
+    if(r.ok && d.ok){
+      if(b) b.textContent = d.sent ? '已发' : '没发';
+      if(typeof _nfNote === 'function') _nfNote(d.sent ? '日报已写进组长收件箱' : (d.note || '没发日报'));
+    }else{
+      if(b){ b.disabled = false; b.textContent = '发日报'; }
+      if(typeof _nfNote === 'function') _nfNote('发日报失败：' + (d.detail || d.note || r.status));
+    }
+  }catch(e){
+    if(b){ b.disabled = false; b.textContent = '发日报'; }
+    if(typeof _nfNote === 'function') _nfNote('发日报失败：' + e.message);
+  }
+}
 </script>
 </body>
 

@@ -1,7 +1,7 @@
 
 # 外端Agent生产合作社（External Agent Community） v4
 
-> **当前版本：`4.45.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
+> **当前版本：`4.46.0`**（以 `agent_community/__init__.py` 的 `__version__` 为准；每次发版见 [`CHANGELOG.md`](CHANGELOG.md)）
 
 **外端 Agent 生产协作平台** — 让接入不同 harness 的外端 Agent 协同生产，通过命令行即可启动、无需浏览器。
 
@@ -76,7 +76,7 @@ python -m agent_community.cli task "写一个排序函数"   # 另一终端：�
 | **★ 我要怎么用这个平台（从零到跑通，15 步）** | [`design-docs/使用流程_从零到跑通.md`](design-docs/使用流程_从零到跑通.md) ← **用户先看这份** |
 | **项目到底在做什么、边界在哪** | [`design-docs/项目完整模型.md`](design-docs/项目完整模型.md) |
 | **完整建模（主模型 26 节 + 12 分册 + 明细册）** | [`V116`](design-docs/V116_v5完整模型_整合版_2026-10-27.md) · [`model/`](design-docs/model/) · [`V118`](design-docs/V118_组织拓扑与团队资产_建模_2026-10-28.md) |
-| **全部设计稿（183 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
+| **全部设计稿（184 份设计稿 + 1 份索引，带状态）** | [`design-docs/索引.md`](design-docs/索引.md) ← 从这里挑 |
 | **本地优先 + 中心中转**（当前架构方向） | [`design-docs/V66_本地优先与中心中转架构设计.md`](design-docs/V66_本地优先与中心中转架构设计.md) |
 | **派活与回执走中转 / 一个 Hub 服务多家公司** | [`V67`](design-docs/V67_派活与回执走中转_M2设计.md) · [`V68`](design-docs/V68_一个Hub服务多家公司_公司隔离设计.md) |
 | **没有公网服务器怎么当中转**（三条路） | [`design-docs/RUNBOOK_没有公网服务器怎么当中转.md`](design-docs/RUNBOOK_没有公网服务器怎么当中转.md) |
@@ -238,6 +238,8 @@ python -m agent_community.cli agents list
 | `AC_LAUNCHER_NO_WATCHDOG` | 双击启动器时**不要**顺带拉起看门狗（默认 0＝顺带拉起：崩了能自动拉回）。排障或只想手动起一次时设 1 | `0` | 否 |
 | `AC_ARTIFACT_WATCH_SEC` | 收件目录监视间隔（秒，默认 20）：成员把产物文件放进收件目录（档案 `artifact_inbox_dir` 或默认 `<工位>/产物/`），平台每这么久扫一轮，发现新增/内容变化就发事件并写进组长的 `_lead/_notice.md`。**0＝关掉后台扫描**（仍可手动 `POST …/scan-inbox`） | `20` | 否 |
 | `AC_NUDGE_ISSUED_MIN` | 催办阈值（分钟，默认 30）：任务派出去了（`issued`/`working`）超过这么久还没有回执/产物，`GET …/nudge` 会把它列出来，`POST …/nudge` 会给接活的人写一条催办通知。**只算不写**的是 GET；真写的是 POST（同一条任务同一天只催一次） | `30` | 否 |
+| `AC_DIGEST_WATCH_SEC` | 后台组长日报的检查间隔（秒，**默认 0＝关**）：>0 时平台每这么久看一遍所有工作间，有要管的事就**自动发一份日报**进组长的 `_lead/_notice.md`（同一天只发一次，没活不发）。**默认关**：主动给人写通知属于自动兜底，不该开箱就动别人的目录 | `0` | 否 |
+| `AC_PRESENCE_SILENT_MIN` | 成员失联阈值（分钟，默认 120）：成员**有在途任务**（issued/working）且这么久没有任何痕迹（任务账本更新 / 产物事件）⇒ `GET …/presence` 把他标成 silent 并写清理由。空闲成员不算失联（不制造噪音）；不看窗口画面。 | `120` | 否 |
 | `AC_NUDGE_WATCH_SEC` | 后台催办的间隔（秒，**默认 0＝关**）：>0 时平台每这么久自动跑一轮催办（`issued` 超阈值催成员回执 / `delivered` 超阈值催组长验收），同一任务同一天只催一次。**默认关**是因为「平台主动给人写通知」属于自动兜底，不该开箱就动别人的目录 | `0` | 否 |
 | `AC_NUDGE_DELIVERED_MIN` | 催办阈值（分钟，默认 60）：产物已到（`delivered`）但组长超过这么久没验收，`POST …/nudge` 会给组长写一条«等你验收»。 | `60` | 否 |
 | `AC_STATE_BACKUP_MINUTES` | 状态快照（`data/backups/`）多久拍一份，默认 30 分钟；**0＝关掉自动快照**。快照是 `data/*.json` 的字节复制，恢复用 `tools/state_restore.py` | `30` | 否 |

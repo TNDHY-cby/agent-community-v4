@@ -698,6 +698,42 @@ button.hall-entry{appearance:none;-webkit-appearance:none}
 .hall-messages .hmsg .hm-ws{font-size:10px;letter-spacing:.04em;color:var(--muted);
   padding:0 7px;border-left:1px solid rgba(255,255,255,.14);max-width:220px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ★2026-11-08 大厅「今天该管谁」摘要条（消费 GET /api/lead-todo-all；只读，不写库）
+   工业皮：硬边框 + 左侧状态条（红=有先处理的事 / 绿=全清），数字用等宽制表数字。
+   口径与工作间页 …/lead-todo 完全一致：只分「先处理 / 可以等等」两档，不排分。 */
+.lt-bar{border:1px solid var(--rule);border-left:3px solid var(--dim);background:var(--bg2);
+  border-radius:var(--radius-sm);margin:0 0 10px;font-size:12.5px;line-height:1.5}
+.lt-bar.has-urgent{border-left-color:var(--accent);background:var(--accent-soft)}
+.lt-bar.all-clear{border-left-color:var(--green)}
+.lt-head{display:flex;align-items:center;gap:10px;padding:8px 11px;flex-wrap:wrap}
+.lt-title{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--muted);
+  text-transform:uppercase;border-right:1px solid var(--rule);padding-right:10px}
+.lt-sum{color:var(--muted)}
+.lt-sum b{color:var(--ink);font-variant-numeric:tabular-nums}
+.lt-sum .lt-urg,.lt-sum .lt-urg b{color:var(--accent-strong)}
+.lt-sum .lt-dim{color:var(--dim)}
+.lt-bar.all-clear .lt-sum{color:var(--green-ink)}
+.lt-spacer{flex:1}
+.lt-btn{background:var(--bg3);border:1px solid var(--rule);color:var(--muted);
+  font-size:11.5px;padding:2px 9px;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit}
+.lt-btn:hover{color:var(--ink);border-color:var(--line-soft)}
+.lt-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.lt-list{border-top:1px solid var(--rule);padding:2px 0}
+.lt-ws{padding:7px 11px;border-top:1px dashed var(--rule)}
+.lt-ws:first-child{border-top:0}
+.lt-ws-name{font-weight:600;color:var(--ink);margin-right:8px}
+.lt-ws-meta{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+.lt-item{display:flex;gap:8px;align-items:baseline;padding:3px 2px;cursor:pointer;
+  border-radius:var(--radius-sm);min-width:0}
+.lt-item:hover{background:var(--bg3)}
+.lt-tag{flex:none;font-family:var(--mono);font-size:10.5px;padding:0 6px;border-radius:2px;
+  border:1px solid currentColor;letter-spacing:.04em}
+.lt-tag.now{color:var(--accent-strong)}
+.lt-tag.later{color:var(--yellow-ink)}
+.lt-item-label{color:var(--ink);flex:none}
+.lt-item-seq{font-family:var(--mono);font-size:11px;color:var(--dim);flex:none;
+  font-variant-numeric:tabular-nums}
+.lt-item-why{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 </style>
 <link rel="stylesheet" href="chrome.css">
 <link rel="stylesheet" href="glass.css">
@@ -739,6 +775,16 @@ button.hall-entry{appearance:none;-webkit-appearance:none}
       </div>
             <div class="center-bar"><span class="cb-h">大厅</span><span class="cb-s">一句话说清楚要做的事 —— 平台建工作间、定方向、再派活</span></div>
       <div class="hall-view" id="hallView">
+        <!-- ★2026-11-08 大厅第一批第 1 条「今天该管谁」：跨工作间汇总，只读（GET /api/lead-todo-all） -->
+        <div class="lt-bar" id="ltBar" hidden>
+          <div class="lt-head">
+            <span class="lt-title">今天该管谁</span>
+            <span class="lt-sum" id="ltSum">—</span>
+            <span class="lt-spacer"></span>
+            <button class="lt-btn" id="ltToggle" type="button" onclick="ltToggle()" hidden>展开</button>
+          </div>
+          <div class="lt-list" id="ltList" hidden></div>
+        </div>
         <div class="bc-panel" id="bcPanel" hidden>
           <div class="bc-head">广播通知 <span class="sub">所有开着的页面都会看到；不进任务列表、不派活</span></div>
           <textarea id="bcText" rows="2" placeholder="要广播的通知，例如：今晚 20:00 统一停机维护 10 分钟" oninput="bcCount()"></textarea>
@@ -1284,6 +1330,88 @@ function markUnread() {
   };
   renderWorkshops.__wsFilterHooked = true;
 })();
+
+/* ★2026-11-08 大厅第一批第 1 条：今天该管谁（跨工作间汇总，只读）
+   后端 GET /api/lead-todo-all 已把「谁有事」算好：urgent=先处理、later=可以等等；
+   一个事都没有的工作间只计入 empty_workshops 不列出，前端也不刷屏。 */
+var _ltData=null,_ltOpen=false;
+function ltFmtAge(m){
+  if(m==null)return'';
+  if(m<60)return Math.round(m)+' 分钟';
+  if(m<1440){var h=m/60;return (h<10?h.toFixed(1):String(Math.round(h)))+' 小时'}
+  var d=m/1440;return (d<10?d.toFixed(1):String(Math.round(d)))+' 天';
+}
+async function refreshLeadTodo(){
+  var bar=document.getElementById('ltBar');if(!bar)return;
+  try{
+    var r=await fetch('/api/lead-todo-all');var d=await r.json();
+    if(!d||!d.ok){bar.hidden=true;return}
+    _ltData=d;renderLeadTodo();
+  }catch(e){bar.hidden=true}
+}
+function renderLeadTodo(){
+  var d=_ltData,bar=document.getElementById('ltBar');if(!d||!bar)return;
+  var t=d.totals||{},sum=document.getElementById('ltSum'),
+      list=document.getElementById('ltList'),tg=document.getElementById('ltToggle');
+  bar.hidden=false;
+  bar.classList.toggle('has-urgent',(t.urgent||0)>0);
+  bar.classList.toggle('all-clear',!(t.total||0));
+  if(!(t.total||0)){
+    sum.innerHTML='没有要管的活 <span class="lt-dim">· '+(t.workshops||0)+' 个工作间都静着</span>';
+  }else{
+    var p=['<b>'+(t.total||0)+'</b> 件待办'];
+    if(t.urgent)p.push('<span class="lt-urg"><b>'+t.urgent+'</b> 件先处理</span>');
+    if(t.later)p.push('<span class="lt-dim">'+t.later+' 件可以等等</span>');
+    p.push('<span class="lt-dim">· '+(t.workshops_with_todo||0)+' 个间有事 / 共 '+(t.workshops||0)+' 个</span>');
+    sum.innerHTML=p.join(' ');
+  }
+  var groups=[];
+  (d.workshops||[]).forEach(function(w){
+    var arr=[];
+    (w.urgent||[]).forEach(function(it){arr.push({it:it,now:true})});
+    (w.later||[]).forEach(function(it){arr.push({it:it,now:false})});
+    if(arr.length)groups.push({w:w,items:arr});
+  });
+  list.innerHTML='';
+  groups.forEach(function(g){
+    var box=document.createElement('div');box.className='lt-ws';
+    var head=document.createElement('div');
+    var nm=document.createElement('span');nm.className='lt-ws-name';
+    nm.textContent=g.w.name||g.w.workshop_id||'工作间';
+    var mt=document.createElement('span');mt.className='lt-ws-meta';
+    var c=g.w.counts||{},ms=[];
+    if(c.urgent)ms.push(c.urgent+' 先处理');
+    if(c.later)ms.push(c.later+' 可以等等');
+    mt.textContent=ms.join(' · ');
+    head.appendChild(nm);head.appendChild(mt);box.appendChild(head);
+    g.items.forEach(function(x){
+      var it=x.it,row=document.createElement('div');row.className='lt-item';
+      row.title=(it.why||'')+(it.ask?'\n怎么管：'+it.ask:'')+(it.how?'\n'+it.how:'');
+      var tag=document.createElement('span');
+      tag.className='lt-tag '+(x.now?'now':'later');
+      tag.textContent=x.now?'先处理':'可以等等';
+      var lab=document.createElement('span');lab.className='lt-item-label';
+      lab.textContent=it.label||it.kind||'待办';
+      var seq=document.createElement('span');seq.className='lt-item-seq';
+      seq.textContent=it.task_id||'';
+      var why=document.createElement('span');why.className='lt-item-why';
+      /* 行内只放"超了多久 / 阈值多少"这类短句，长原因（含具体时间戳）放 title —— 一行不截断才读得顺 */
+      why.textContent=(it.age_min!=null&&it.threshold_min!=null)
+        ? ('已 '+ltFmtAge(it.age_min)+' · 阈值 '+ltFmtAge(it.threshold_min))
+        : (it.why||'');
+      row.appendChild(tag);row.appendChild(lab);row.appendChild(seq);row.appendChild(why);
+      if(g.w.workshop_id){row.onclick=function(){location.href='/workshop.html?ws_id='+encodeURIComponent(g.w.workshop_id)}}
+      box.appendChild(row);
+    });
+    list.appendChild(box);
+  });
+  var hasDetail=groups.length>0;
+  tg.hidden=!hasDetail;
+  tg.textContent=_ltOpen?'收起':'展开';
+  list.hidden=!(hasDetail&&_ltOpen);
+  if(typeof syncCardsHeight==='function')syncCardsHeight();
+}
+function ltToggle(){_ltOpen=!_ltOpen;renderLeadTodo()}
 
 async function refreshWorkshops(){try{const r=await fetch('/api/workshops');const d=await r.json();workshops=d.workshops||[];renderWorkshops()}catch(e){}}
 async function sendCommand(){const inp=document.getElementById('cmdInput'),btn=document.getElementById('sendBtn'),text=inp.value.trim();if(!text||isExecuting)return;isExecuting=true;btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';inp.value='';autoResize(inp);document.getElementById('lastAction').textContent='拉入工作间...';try{const r=await fetch('/api/workshop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hall_content:text})});const d=await r.json();if(d.success&&d.workshop_id){location.href='/workshop.html?ws_id='+d.workshop_id;return}else{appendMessage({from_agent:'system',to_agent:'user',content:d.error||'创建失败',message_type:'text',timestamp:new Date().toISOString()})}}catch(e){appendMessage({from_agent:'system',to_agent:'user',content:'请求失败: '+e.message,message_type:'text',timestamp:new Date().toISOString()})}isExecuting=false;btn.disabled=false;btn.textContent='发布'}
@@ -1907,7 +2035,7 @@ async function saveAdvancedConfig(){
 
 
 
-async function init(){initNav();initDsResizer();connectWS();await checkConfigStatus();await refreshAgents();await refreshTasks();await refreshStats();await checkHealth();await restoreSession();loadNotices();setInterval(refreshAgents,10000);setInterval(refreshTasks,5000);setInterval(refreshStats,5000);setInterval(refreshBudget,3000);setInterval(checkHealth,30000);/* ★2026-11-05：/api/bridge/pending 已退役（后端 test_route_uniqueness 里列为老桩）⇒ 不再轮询它，免得每拍 404 刷控制台。桥接面板仍由具体任务触发。 */document.getElementById('cmdInput').focus();syncCardsHeight();addEventListener('resize',syncCardsHeight)}
+async function init(){initNav();initDsResizer();connectWS();await checkConfigStatus();await refreshAgents();await refreshTasks();await refreshStats();await checkHealth();await restoreSession();loadNotices();await refreshLeadTodo();setInterval(refreshLeadTodo,60000);setInterval(refreshAgents,10000);setInterval(refreshTasks,5000);setInterval(refreshStats,5000);setInterval(refreshBudget,3000);setInterval(checkHealth,30000);/* ★2026-11-05：/api/bridge/pending 已退役（后端 test_route_uniqueness 里列为老桩）⇒ 不再轮询它，免得每拍 404 刷控制台。桥接面板仍由具体任务触发。 */document.getElementById('cmdInput').focus();syncCardsHeight();addEventListener('resize',syncCardsHeight)}
 init();
 /* ===== 自定义弹窗 UI ===== */
 (function(){var ov=null,timer=null,escH=null;
