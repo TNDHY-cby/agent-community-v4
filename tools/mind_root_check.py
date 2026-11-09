@@ -23,6 +23,7 @@ import shutil
 import socket
 import subprocess
 import sys
+
 import tempfile
 import time
 import urllib.error
@@ -115,8 +116,8 @@ def main() -> int:
         st, mk2 = _http(base, "/api/mind/A-01", {})
         check("② 幂等：第二次不再建、不覆盖已有文件",
               st == 200 and mk2.get("created") == [], str(mk2.get("created")))
-        st, mem1 = _http(base, "/api/mind/A-01/memories", {"text": "联调先看 manifest", "tags": ["联调"]})
-        st, mem2 = _http(base, "/api/mind/A-01/memories", {"text": "别在迁移中间改索引", "tags": ["迁移"]})
+        st, mem1 = _http(base, "/api/mind/A-01/memories", {"text": "联调先看 manifest", "tags": ["联调"], "grade": "reusable"})
+        st, mem2 = _http(base, "/api/mind/A-01/memories", {"text": "别在迁移中间改索引", "tags": ["迁移"], "grade": "record"})
         check("③ 记忆 append-only（两条两个文件，不覆盖）",
               mem1.get("file") and mem2.get("file") and mem1["file"] != mem2["file"],
               "%s / %s" % (mem1.get("file"), mem2.get("file")))
@@ -185,6 +186,46 @@ def main() -> int:
         body = log.read_text(encoding="utf-8")
         check("⑫ 同一天再日结 ⇒ 追加（两条都在，不覆盖）",
               "接口联调完成" in body and "自测通过" in body, body[:160])
+        # ── ★50-3（V118 §4）：资产三处位置必须在（储藏根要有地方放）─────────────────
+        #   `asset/风格指南.md`（49-8 体检读的五维指纹）/ `asset/经典案例/` / `asset/失败教训.md`
+        #   ⚠️ 验法是**纯 HTTP + 真文件**：让平台建一个新心智根（`POST /api/mind/<key>`），
+        #      再去临时实例的数据目录里看那三处在不在。**不在判据进程里 import `mind`**
+        #      （那会牵出 sys.path / from __future__ 一堆事，我在这上面白绕了三圈）。
+        try:
+            judge_key = "judge-asset"
+            _http(base, "/api/mind/%s" % judge_key, {})
+            home = Path(str(minds)) / judge_key
+            style_p = home / "asset" / "风格指南.md"
+            cases_d = home / "asset" / "经典案例"
+            lessons_p = home / "asset" / "失败教训.md"
+            style_txt = style_p.read_text(encoding="utf-8", errors="replace") if style_p.is_file() else ""
+            dims = ["代码审美", "协作节奏", "风险偏好", "验证严格度", "沟通密度"]
+            have_dims = [d for d in dims if ("- %s:" % d) in style_txt]
+            check("⑬ `asset/风格指南.md` 在，且五维字段齐全（骨架只写「待填」，不塞假数据）",
+                  style_p.is_file() and len(have_dims) == 5 and "待填" in style_txt,
+                  "在=%r 五维=%d 含待填=%r"
+                  % (style_p.is_file(), len(have_dims), "待填" in style_txt))
+
+            check("⑭ `asset/经典案例/` 是目录、`asset/失败教训.md` 在",
+                  cases_d.is_dir() and lessons_p.is_file(),
+                  "案例目录=%r 教训=%r" % (cases_d.is_dir(), lessons_p.is_file()))
+
+            # ⑮ 重复建根**不覆盖**已有资产文件（append-only 精神）
+            marker = "判据标记行（重复建根不许覆盖）"
+            ok15 = False
+            if style_p.is_file():
+                original = style_p.read_text(encoding="utf-8", errors="replace")
+                style_p.write_text(original + "\n%s\n" % marker, encoding="utf-8")
+                _http(base, "/api/mind/%s" % judge_key, {})       # 再让平台建一次
+                after = style_p.read_text(encoding="utf-8", errors="replace")
+                ok15 = marker in after
+                style_p.write_text(original, encoding="utf-8")
+            check("⑮ 重复建心智根 **不覆盖**已有资产文件（append-only 精神）",
+                  ok15, "标记还在=%r" % ok15)
+        except Exception as e:                                     # noqa: BLE001 — 判据自己炸了要如实报
+            check("⑬⑭⑮ 资产三处位置", False, "%s: %s" % (type(e).__name__, e))
+
+
     finally:
         if proc is not None and not a.keep:
             try:

@@ -47,8 +47,9 @@ def test_dr5_mind_scaffold_and_idempotent(roots):
 
 def test_mind_memories_append_only(roots):
     mind.ensure("A-01")
-    a = mind.add_memory("A-01", "打包后要验体积", tags=["打包"])
-    b = mind.add_memory("A-01", "别在迁移中间改索引", tags=["迁移"])
+    # ★R1（V141 §3.2）：经验**必须分档** —— 不给 grade 会被拒（下面还有一格专测这个）
+    a = mind.add_memory("A-01", "打包后要验体积", tags=["打包"], grade="reusable")
+    b = mind.add_memory("A-01", "别在迁移中间改索引", tags=["迁移"], grade="record")
     assert a["file"] != b["file"], "同一秒两条也不能覆盖"
     files = sorted(x.name for x in (Path(a["mind_path"]) / "memories").glob("*.md"))
     assert len(files) == 2
@@ -205,7 +206,8 @@ def test_http_manifest_g0_and_boot_prompt(client, roots):
 
 def test_http_daily_close_and_memory(client, roots):
     assert client.post("/api/mind/A-01", json={"display_name": "示例"}).json()["ok"]
-    m = client.post("/api/mind/A-01/memories", json={"text": "联调先看 manifest", "tags": ["联调"]})
+    m = client.post("/api/mind/A-01/memories",
+                    json={"text": "联调先看 manifest", "tags": ["联调"], "grade": "record"})
     assert m.status_code == 200 and m.json()["ok"]
     d = client.post("/api/workshop/WS-T/daily-close",
                     json={"agent_key": "A-01", "date": "2026-10-27",
@@ -511,3 +513,14 @@ def test_reviewer_emits_real_patch_and_lands(tmp_path):
     core = (md / "00_核心基模.md").read_text(encoding="utf-8")
     assert "2026-10-31 夜间审忆" in core, "批了之后基模没真变（等于审完没下文）"
     assert Path(out["archive"]).is_file(), "原文没归档（不可回滚）"
+
+def test_mind_memory_requires_grade(roots):
+    """★R1：`memories` 写入**必须带 grade**，不给就拒（否则可复用经验与一次性记录混一层）。"""
+    mind.ensure("A-01")
+    r = mind.add_memory("A-01", "没带档的一条")
+    assert r.get("ok") is False, "不带 grade 必须拒，不能默默收下"
+    assert r.get("code") == "GRADE_REQUIRED", r
+    bad = mind.add_memory("A-01", "档写错的一条", grade="whatever")
+    assert bad.get("code") == "BAD_GRADE", bad
+    ok = mind.add_memory("A-01", "合法的复用级", grade="reusable")
+    assert ok.get("ok") is True and ok.get("grade") == "reusable", ok

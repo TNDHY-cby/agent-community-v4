@@ -132,6 +132,15 @@ async def lead_roster(direction: str = ""):
                               for hid in caps_by])
     out["group_hint"] = ("① 可独立胜任（四件事全包）② 需配助手（缺的项有谁能补）"
                          "③ 只能当助手 —— 顺序按 `harness_id` 字典序，**不是推荐度**")
+    # ★V142（老板 2026-11-09「大厅里选组长，选定后再建工作间」）：告诉前端**下一步只要一步** ——
+    #   选中谁，把它的 harness_id 传给 `POST /api/workshop`，建间时组长就进名单了；
+    #   不需要"先建间、再进间里选人"这两步。
+    out["how_to_use"] = ("选中一个候选后：`POST /api/workshop` 带 "
+                         "`{name, hall_content, lead_harness_id: <选中项的 harness_id>}` ⇒ "
+                         "建间的同时组长已落 `_lead` 槽位（状态 lead_in）。"
+                         "不传 lead_harness_id 就是老流程（先建间、后选组长）。")
+    out["pick_policy"] = ("仍**不排序不推荐**：这里只列事实（能不能当组长、缺什么、适合哪些方向）；"
+                          "选谁是你的决定，平台不替你挑。")
     return out
 
 
@@ -277,79 +286,29 @@ async def lead_kit(workshop_id: str, format: str = "text", agent_key: str = "",
 
 @router.post("/api/workshop/{workshop_id}/lead")
 async def choose_lead(workshop_id: str, request: Request):
-    """选定组长：落 roster（`_lead` 工位）+ 置 `lead_in`。body：`{harness_id, model?, agent_key?}`。"""
+    """选定组长：落 roster（`_lead` 工位）+ 置 `lead_in`。body：`{harness_id, model?, agent_key?}`。
+
+    ★`V142`：具体动作搬进 `platform/pick_lead.apply()` —— 与「建间时顺带选组长」
+    （`POST /api/workshop` 带 `lead_harness_id`）**走同一段代码**，校验规则只有一份。
+    """
     ws = _ws(workshop_id)
     if ws is None:
         return _no_ws(workshop_id)
     try:
         body = await request.json()
-    except Exception:                                          # noqa: BLE001
+    except Exception:                                          # noqa: BLE001 — 空 body 下面会按缺项拒
         body = {}
     body = body if isinstance(body, dict) else {}
-    hid = str(body.get("harness_id") or "").strip()
-    if not hid:
-        return JSONResponse({"ok": False, "code": "BAD_REQUEST",
-                             "error": "要 harness_id（选哪个壳当组长）",
-                             "next": "GET /api/lead-roster 挑一个；网页版那类不能当组长"},
-                            status_code=400)
-    tool = None
-    for item in _roster_mod.harness_options():
-        if item["harness_id"] == hid:
-            tool = item
-            break
-    if tool is None:
-        return JSONResponse({"ok": False, "code": "NO_SUCH_HARNESS",
-                             "error": "没有这个 harness：%s" % hid,
-                             "next": "GET /api/harness-tooling 看已注册的"}, status_code=404)
-    # ★2026-11-07（V135，老板：「组长要用协议高适配型（单个/多个？）的agent来承担」）：
-    #   适配度先算出来，**放进入口闸门的响应里**（不新增错误码 —— 实测发现：
-    #   `fit=low` ⇔ 缺"能派活+能收回执"或写不了文件 ⇒ 必然 `lead_eligible=false`，
-    #   所以"低适配只能当助手"这件事天然由既有 `NOT_LEAD_ELIGIBLE` 拦住，只是要把原因说清）。
-    _fit = {}
-    try:
-        from .. import lead_capabilities as _caps_mod
-        from ..server import harness_manager as _hm
 
-        sess = (getattr(_hm, "sessions", {}) or {}).get(hid)
-        info = getattr(sess, "info", None) if sess is not None else None
-        _fit = (_caps_mod.capabilities_of(info, harness_id=hid).get("protocol_fit") or {})
-    except Exception as e:                                     # noqa: BLE001 — 算不出适配度不挡选人，但要标出来
-        print("[lead] 算适配度失败（%s: %s）；本次按不拦处理" % (type(e).__name__, e), flush=True)
-    if not tool["lead_eligible"]:
-        _why = (tool["tooling"].get("why")
-                or "缺 fs_write 或（protocol_call / bridge_poll）")
-        if _fit.get("reasons"):
-            _why = "%s（适配度 %s：%s）" % (_why, _fit.get("level") or "?",
-                                         "；".join(_fit.get("reasons") or []))
-        return JSONResponse({"ok": False, "code": "NOT_LEAD_ELIGIBLE",
-                             "error": "这个 harness 不能当主组长（只能当助手/成员）",
-                             "why": _why,
-                             "protocol_fit": _fit,
-                             "next": ("给它一个能派活并收回执的协议（A2A / HTTP_api / ACP / MCP / 桥），"
-                                      "或让它报 `tools` 让平台测得它能写文件；再不行就换一个主组长、让它当助手"),
-                             "policy": "拍板权唯一：主组长一个；助手可多个（只搬不拍板）"},
-                            status_code=409)
-    r = _rw.add_slots(workshop_id, [{"岗位": "_lead", "harness": hid,
-                                     "model": str(body.get("model") or tool.get("model") or ""),
-                                     "人数": 1}], source="lead-choice")
-    try:
-        ws.status = "lead_in"
-        from ..server import save_state
+    from .. import pick_lead as _pl
 
-        save_state()
-    except Exception as e:                                     # noqa: BLE001 — 置状态失败要说
-        return JSONResponse({"ok": False, "code": "STATE_WRITE_FAILED",
-                             "error": "组长已落名单，但工作间状态没写成 lead_in（%s: %s）"
-                                      % (type(e).__name__, e),
-                             "next": "查日志后重试；名单不会重复建（幂等）"}, status_code=500)
-    return {"ok": True, "workshop_id": workshop_id, "status": "lead_in",
-            "harness_id": hid, "members_created": r["members_created"],
-            "protocol_fit": _fit,
-            "fit_note": ("它读不了文件 ⇒ 产物与证据由**平台代读**（L0 扫盘），结论仍要人复核"
-                         if str(_fit.get("level") or "") == "medium" else
-                         "适配度 high：能派活、能收回执、能读写文件 —— 适合当拍板人"),
-            "next": "GET …/lead-kit 拿对接单，整段复制给组长"}
-
+    out = _pl.apply(ws, str(body.get("harness_id") or ""),
+                    model=str(body.get("model") or ""))
+    if out.get("ok"):
+        return out
+    st = int(out.get("status") or 400)
+    payload = {k: v for k, v in out.items() if k != "status"}
+    return JSONResponse(payload, status_code=st)
 
 @router.post("/api/workshop/{workshop_id}/members/{member_seq}/kit")
 async def member_kit(workshop_id: str, member_seq: int, request: Request):

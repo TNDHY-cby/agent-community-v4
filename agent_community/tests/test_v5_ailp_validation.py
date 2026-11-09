@@ -207,3 +207,22 @@ def test_recommend_does_not_create_terminal_state(client, tmp_path):
     assert body.get("msg_type") == "RECOMMEND"
     assert "state" not in body and "decided" not in body, "推荐不许产生终态"
     assert _log_lines(tmp_path) == 2
+
+def test_http_post_dedup_survives_crossing_a_second(client, tmp_path):
+    """**跨秒**重发也必须幂等。
+
+    2026-11-09：`fingerprint` 原来把 `received_at`（秒级时间戳）也算进去了 ⇒
+    同一份内容晚一秒再发就换了指纹、去重不命中。这条用例故意 `sleep(1.1)` 跨过一秒，
+    把那个 bug 钉死（它曾是 `test_http_post_dedup_keeps_single_row` 偶发红的根因）。
+    """
+    import time as _t
+
+    first = client.post("/api/workshop/WS-A/ailp", json=_env())
+    assert first.status_code == 200, first.text
+    _t.sleep(1.1)                                   # 跨过一秒，received_at 一定不同
+    again = client.post("/api/workshop/WS-A/ailp", json=_env())
+    assert again.status_code == 200, again.text
+    body = again.json()
+    assert body.get("duplicate") is True, "跨秒重发也必须判重（指纹不能含时间戳）"
+    assert body.get("msg_id") == first.json().get("msg_id")
+    assert _log_lines(tmp_path) == 1, "跨秒重发也不许重复入账"

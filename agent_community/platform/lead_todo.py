@@ -27,6 +27,7 @@ KIND_LABELS = {
     "no_review": "产物待验收",
     "no_receipt": "任务没回执",
     "awaiting_rework": "返工待重交",
+    "redispatch_exhausted": "重派到顶（烂尾）",
 }
 
 
@@ -55,6 +56,23 @@ def build(members: list, tasks: list, events: list, workshop_id: str = "",
             "how": ("`POST /api/workshop/%s/nudge` 会给他写催办；"
                     "要换人就用 `POST …/dispatch` 派给别人" % workshop_id),
         })
+    # ①b 烂尾（重派次数到顶）—— 必须进待办，否则"超限"只是账本里的死字段（A6）
+    for t in (tasks or []):
+        if not (t or {}).get("redispatch_budget_exhausted"):
+            continue
+        items.append({
+            "kind": "redispatch_exhausted", "priority": URGENT,
+            "label": "重派到顶（烂尾）",
+            "member_seq": t.get("member_seq"), "slot_dir": str(t.get("slot_dir") or ""),
+            "task_id": str(t.get("task_id") or "T-%03d" % int(t.get("task_seq") or 0)),
+            "task_seq": t.get("task_seq"),
+            "age_min": None, "threshold_min": int(t.get("redispatch_budget_max") or 0),
+            "why": "已经重派过 %d 次（上限 %s）"
+                   % (len(t.get("redispatch_chain") or []), t.get("redispatch_budget_max") or "?"),
+            "ask": "换办法：换工位 / 拆细任务 / 找老板确认需求",
+            "how": "`POST …/dispatch` 派给别的工位；或 `POST …/tasks/{seq}/redispatch` 已被上限挡住",
+        })
+
     # ② 催办（待验收 / 没回执 / 返工待重交）
     for it in nd.get("items") or []:
         _k = str(it.get("kind") or "")
@@ -89,7 +107,9 @@ def build(members: list, tasks: list, events: list, workshop_id: str = "",
                    "silent": len([x for x in items if x["kind"] == "silent"]),
                    "no_review": len([x for x in items if x["kind"] == "no_review"]),
                    "no_receipt": len([x for x in items if x["kind"] == "no_receipt"]),
-                   "awaiting_rework": len([x for x in items if x["kind"] == "awaiting_rework"])},
+                   "awaiting_rework": len([x for x in items if x["kind"] == "awaiting_rework"]),
+                   "redispatch_exhausted": len([x for x in items
+                                                if x["kind"] == "redispatch_exhausted"])},
         "urgent": [x for x in items if x["priority"] == URGENT],
         "later": [x for x in items if x["priority"] != URGENT],
         "items": items,

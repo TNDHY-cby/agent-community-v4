@@ -27,6 +27,8 @@ from .. import verify as _verify
 
 router = APIRouter()
 
+from .. import error_semantics as _esem   # 错误码语义（旧 A4）
+
 
 def _is_lead_member(workshop_id: str, member: str) -> bool:
     """`member` 是不是这个工作间的**组长**（名单里 `slot_dir == "_lead"`）。"""
@@ -293,7 +295,8 @@ async def review(workshop_id: str, task_seq: int, request: Request):
                              "why": "通知成员时出错：%s: %s" % (type(e).__name__, e)}
         return out
     merged = _ev.merge_into_failure(out, view)
-    return JSONResponse(merged, status_code=409 if out.get("code") == "NO_SUCH_TASK" else 400)
+    return JSONResponse(_esem.annotate(merged),
+                        status_code=409 if out.get("code") == "NO_SUCH_TASK" else 400)
 
 
 @router.post("/api/workshop/{workshop_id}/integrate-report")
@@ -352,3 +355,12 @@ async def list_tasks(workshop_id: str):
     tasks = _ledger.list_tasks(workshop_id)
     return {"ok": True, "count": len(tasks), "tasks": tasks,
             "hint": "`state=accepted` 才算验收过；`rework` 要按 `review_note` 改完再交"}
+
+@router.get("/api/error-semantics")
+async def error_semantics_table():
+    """**错误码语义表**（借鉴竞品 A4）：哪些该重试、哪些该停手、哪些是幂等命中。
+
+    调用方拿到错误先看 `retryable`：`true` ⇒ 稍后重试；`false` ⇒ 停手，按 `next` 那句人话改。
+    **不要对 409 一律重试**（会形成重试风暴）。
+    """
+    return _esem.table()

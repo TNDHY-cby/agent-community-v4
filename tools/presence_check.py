@@ -178,6 +178,16 @@ def main() -> int:
               "row=%r" % json.dumps({k: row4b.get(k) for k in ("open_tasks", "open_task_ids", "silent")},
                                     ensure_ascii=False))
 
+        # ④c state_reason 要说人话（pending 与"有活没痕迹"必须分开）
+        st4c, b4c = _http(base, "/api/workshop/%s/presence" % wid)
+        rows4c = {r.get("slot_dir"): r for r in ((b4c or {}).get("members") or [])}
+        s2r = rows4c.get(S2, {})
+        check("④c 每个成员带 state_reason（pending ⇒ 还没接入成功）",
+              st4c == 200 and bool(s2r.get("state_reason"))
+              and "还没接入成功" in str(s2r.get("state_reason")),
+              "row=%r" % json.dumps({k: s2r.get(k) for k in ("slot_dir", "state", "state_reason")},
+                                    ensure_ascii=False))
+
         env2 = dict(env)
         env2["AC_PRESENCE_SILENT_MIN"] = "0"
         port2 = _free_port()

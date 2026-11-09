@@ -18,6 +18,22 @@ from .. import presence as _pr
 router = APIRouter()
 
 
+def _no_ws(workshop_id: str):
+    """工作间不存在时的统一 404（与 `dispatch_v5._no_ws` 同口径、同字段）。
+
+    ⚠️ 这里**刻意重复一份**（不跨路由模块 import）：路由模块之间互相 import 容易成环，
+    而这 5 行是稳定契约。守卫 `test_no_undefined_calls` 盯着"调用了必须有定义"。
+    """
+    from fastapi.responses import JSONResponse
+
+    from .. import error_semantics as _esem
+
+    return JSONResponse(_esem.annotate({"ok": False, "code": "NO_SUCH_WORKSHOP",
+                                        "error": "没有这个工作间：%s" % workshop_id,
+                                        "next": "GET /api/workshops 看有哪些"}),
+                        status_code=404)
+
+
 def _ws(workshop_id: str):
     from .. import server as _srv
 
@@ -153,14 +169,12 @@ def _lt_build(workshop_id: str, data: dict) -> dict:
                      data.get("events") or [], workshop_id)
 
 @router.get("/api/lead-todo-all")
-async def lead_todo_all():
+async def lead_todo_all(status: str = ""):
     """**跨工作间**的"今天该管谁"（大厅首页用；只读）。
 
-    `?status=active` 只算未关闭的工作间（默认全部）。收件事件**只读一次**再按间分组，
-    避免 N 个间读 N 遍盘。
+    `?status=active` 只算**没关闭**的工作间（归档间里的旧任务不该出现在"你今天该管什么"里）；
+    默认 `""`＝全部。收件事件**只读一次**再按间分组，避免 N 个间读 N 遍盘。
     """
-    from fastapi import Query  # noqa: F401 — 仅为类型清晰，FastAPI 已处理
-
     from .. import artifact_inbox as _inbox
     from .. import lead_todo as _lt
     from .. import server as _srv
@@ -173,8 +187,12 @@ async def lead_todo_all():
     by_ws: dict = {}
     for e in events:
         by_ws.setdefault(str((e or {}).get("workshop_id") or ""), []).append(e)
+    _want = str(status or "").strip()
     entries = []
     for wid, ws in wss.items():
+        _st = str(getattr(ws, "status", "") or "")
+        if _want and _st != _want:            # ?status=active ⇒ 只留未关闭的
+            continue
         entries.append({"workshop_id": str(wid), "name": str(getattr(ws, "name", "") or ""),
                         "status": str(getattr(ws, "status", "") or ""),
                         "members": [], "tasks": [], "events": by_ws.get(str(wid), []),
@@ -195,4 +213,33 @@ async def lead_todo_all():
             e["members"] = []
     out = _lt.build_all(entries)
     out["generated_at"] = __import__("time").strftime("%Y-%m-%dT%H:%M:%S")
+    out["filter"] = {"status": _want or "(全部)"}
     return out
+
+@router.get("/api/workshop/{workshop_id}/org-chart")
+async def org_chart(workshop_id: str):
+    """**组织关系**（借鉴竞品 A1 / 设计稿 V139）：谁向谁汇报。
+
+    只描述**事实**：`reports_to`（汇报对象槽位）、`level`（0=组长 / 1=成员）、`squad_id`（分组，**不是上级**）。
+    **不排分、不推荐、不评价谁更该当组长**。`AC_ORG_CHART=0` 时本端点 404（可回滚）。
+    """
+    from .. import org_chart as _org
+
+    if not _org.enabled():
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse({"ok": False, "code": "ORG_CHART_DISABLED", "retryable": False,
+                             "error": "组织关系输出已关闭（AC_ORG_CHART=0）",
+                             "next": "要看得把 AC_ORG_CHART 设回 1 并重启服务"}, status_code=404)
+    ws = _ws(workshop_id)
+    if ws is None:
+        return _no_ws(workshop_id)
+    from .. import squads as _sqs
+    from .. import v5_roster as _roster
+
+    members = (_roster.roster(workshop_id).get("members") or [])
+    try:
+        sq_list = list((getattr(ws, "squads", None) or []))
+    except Exception:                                          # noqa: BLE001 — 分队读不出来就按"没分队"算（会列进 unassigned）
+        sq_list = []
+    return _org.build(members, sq_list, workshop_id=workshop_id)

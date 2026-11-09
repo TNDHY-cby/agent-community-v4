@@ -184,3 +184,111 @@ async def split_advice(workshop_id: str):
     out = _squads.split_advice(list(getattr(ws, "squads", None) or []), _members(workshop_id), tasks)
     out["workshop_id"] = workshop_id
     return out
+
+@router.get("/api/workshop/{workshop_id}/squads/{squad_id}/record")
+async def squad_record(workshop_id: str, squad_id: str):
+    """**分队履历**（`V140` §2.1 / 队列 47-1）：只读，从现有任务账本聚合，不新建表。
+
+    只统计**已结束**的任务（通过/拒收），进行中的不进分母（否则越忙的队越难看）；
+    `total < 3` 会带 `insufficient: true` 提醒"别据此判断"；**不排分、不排名**。
+    `AC_SQUAD_HISTORY=0` 时返回空履历并说明是开关关掉了。
+    """
+    from fastapi.responses import JSONResponse
+
+    from .. import squad_record as _sr
+    from .. import task_ledger as _tl
+
+    ws = _ws(workshop_id)
+    if ws is None:
+        return _no_ws(workshop_id)
+    sq = _squads.find(list(getattr(ws, "squads", None) or []), squad_id)
+    # ⚠️ `squads.find()` 找不到返回 **`{}`**（不是 None）⇒ 必须用 `not sq`，
+    #   否则不存在的分队会返回 `ok:true, squad_id:null`（"看起来成功"的死状态，铁律 6 禁止）。
+    if not sq:
+        return JSONResponse({"ok": False, "code": "NO_SUCH_SQUAD", "retryable": False,
+                             "error": "没有这个分队：%s" % squad_id,
+                             "next": "GET …/squads 看有哪些分队"}, status_code=404)
+    try:
+        tasks = list(_tl.list_tasks(workshop_id) or [])
+    except Exception as e:                                     # noqa: BLE001 — 账本读不出来就如实说，不假装"零任务"
+        return JSONResponse({"ok": False, "code": "LEDGER_UNREADABLE", "retryable": True,
+                             "error": "任务账本读不出来，没法算履历：%s: %s" % (type(e).__name__, e),
+                             "next": "稍后重试；持续失败看 data/task_ledger.json 是否损坏"},
+                            status_code=503)
+    return _sr.build(sq, _members(workshop_id), tasks, workshop_id=workshop_id)
+
+
+@router.post("/api/workshop/{workshop_id}/squads/{squad_id}/clone")
+async def squad_clone(workshop_id: str, squad_id: str, request: Request):
+    """**分队模板化**（`V140` §2.2 / 队列 47-2）：复制方向/目标/成员构成，**不复制任务历史**。
+
+    body：`{name?, direction?, goal?, member_seqs?, copy_experience?}`
+    - `copy_experience=true` ⇒ 返回**经验索引指针**（memories 的路径），**不含正文**
+      —— 这就是老板要的"清其他任务上下文影响"；
+    - `target_workshop_id` 只允许**同一工作间**（跨间迁移属另一档，明确拒并说清）。
+    - `AC_SQUAD_TEMPLATE=0` ⇒ 404。
+    """
+    from fastapi.responses import JSONResponse
+
+    from .. import env_spec as _env
+    from .. import squad_record as _sr
+
+    if not _sr.template_enabled():
+        return JSONResponse({"ok": False, "code": "SQUAD_TEMPLATE_DISABLED", "retryable": False,
+                             "error": "分队模板化已关闭（AC_SQUAD_TEMPLATE=0）",
+                             "next": "要建副本把 AC_SQUAD_TEMPLATE 设回 1 并重启服务"}, status_code=404)
+    ws = _ws(workshop_id)
+    if ws is None:
+        return _no_ws(workshop_id)
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001 — 空 body = 全按源队复制
+        body = {}
+    body = body if isinstance(body, dict) else {}
+
+    tgt_ws = str(body.get("target_workshop_id") or "").strip()
+    if tgt_ws and tgt_ws != workshop_id:
+        return JSONResponse({"ok": False, "code": "CROSS_WORKSHOP_MIGRATION_NOT_SUPPORTED",
+                             "retryable": False,
+                             "error": "跨工作间复制分队**没做**（涉及成员接管，属另一档）",
+                             "next": "只在同一个工作间内建副本：去掉 target_workshop_id"}, status_code=400)
+
+    squads = list(getattr(ws, "squads", None) or [])
+    src = _squads.find(squads, squad_id)
+    if not src:                                                # 同上：find 返回 {} 不是 None
+        return JSONResponse({"ok": False, "code": "NO_SUCH_SQUAD", "retryable": False,
+                             "error": "没有这个分队：%s" % squad_id,
+                             "next": "GET …/squads 看有哪些分队"}, status_code=404)
+
+    member_seqs = body.get("member_seqs")
+    if member_seqs is not None:
+        member_seqs = [int(x) for x in (member_seqs or []) if str(x).strip().isdigit()]
+    payload = _sr.clone_payload(src, name=str(body.get("name") or ""),
+                                direction=str(body.get("direction") if body.get("direction") is not None else ""),
+                                goal=str(body.get("goal") if body.get("goal") is not None else ""),
+                                member_seqs=member_seqs)
+    payload["squad_id"] = _squads._auto_id(payload["name"]) if hasattr(_squads, "_auto_id") else ""
+    if not payload["squad_id"]:
+        payload["squad_id"] = "squad-clone-%d" % int(__import__("time").time())
+    squads = [c for c in squads if str((c or {}).get("squad_id")) != payload["squad_id"]]
+    squads.append(payload)
+    ws.squads = squads
+
+    out = {"ok": True, "squad": {k: payload.get(k) for k in
+                                 ("squad_id", "name", "direction", "goal", "member_seqs", "copied_from")},
+           "copied": ["direction", "goal", "成员构成"],
+           "not_copied": ["任务历史（新队从零记履历）", "账本条目", "成员的会话上下文"],
+           "note": "新分队**没有**旧队的任务历史：履历从 0 开始算（这是故意的）。"}
+    if bool(body.get("copy_experience")):
+        try:
+            root = str(_env.get("AC_MIND_ROOT") or "")
+        except Exception:                                      # noqa: BLE001 — 没配心智根就如实说"没指针可给"
+            root = ""
+        if not root:
+            from pathlib import Path as _P
+
+            from ..env_spec import data_dir as _dd
+
+            root = str(_P(_dd()) / "minds")
+        out["experience_index"] = _sr.experience_index(root)
+    return out

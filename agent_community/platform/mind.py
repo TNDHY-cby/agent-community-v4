@@ -89,7 +89,9 @@ def ensure(agent_key: str, *, display_name: str = "") -> dict:
     """建（或确认）一个心智根。**幂等**：已有的文件一个都不动。"""
     p = mind_path(agent_key)
     created = []
-    for d in ("memories", "02_任务日志", "06_死胡同", "_meta"):
+    # ★V118 §4 / 队列 50-3：**资产三处位置**（挂在心智根里，不另立第二套记忆体系）
+    for d in ("memories", "02_任务日志", "06_死胡同", "_meta",
+              "asset", "asset/经典案例"):
         sub = p / d
         if not sub.is_dir():
             sub.mkdir(parents=True, exist_ok=True)
@@ -112,6 +114,7 @@ def ensure(agent_key: str, *, display_name: str = "") -> dict:
         info["created_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         meta.write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
         created.append("_meta/mind.json")
+    _ensure_asset_files(mind_path(agent_key))   # ★50-3：资产三处（已存在不覆盖）
     return {"ok": True, "agent_key": safe_key(agent_key), "mind_path": str(p),
             "created": created, "files": describe(agent_key)}
 
@@ -134,9 +137,52 @@ def describe(agent_key: str) -> dict:
             "task_logs": [m.name for m in logs][-10:]}
 
 
+def _ensure_asset_files(root: Path) -> None:
+    """建 `asset/风格指南.md` 与 `asset/失败教训.md` 的**骨架**（已存在不覆盖）。
+
+    ⚠️ 骨架里只放"待你填"的提示与**字段名**，不塞假数据 —— 开箱默认不许是
+    "看起来配好、其实必然失败"的样子（`PRODUCTIZATION.md` 规则 B）。
+    `asset/风格指南.md` 头部的五维就是 `49-8` 资产体检要读的指纹；
+    `asset/失败教训.md` 是「教训遗忘」信号要对比的那份。
+    """
+    style = root / "asset" / "风格指南.md"
+    if not style.is_file():
+        style.write_text(
+            "# 风格指南（团队指纹）\n\n"
+            "> 下面五行是**这支队伍的做事口味**，一行一维，直接改右边的说明就行。\n"
+            "> 平台只读不改；资产体检会拿它跟当前名单/案例对照（只报事实，不评分）。\n\n"
+            "- 代码审美: （待填：比如「函数短、注释写为什么」）\n"
+            "- 协作节奏: （待填：比如「先对齐再动手，一天一报」）\n"
+            "- 风险偏好: （待填：比如「宁可慢一点，也不动没测过的路径」）\n"
+            "- 验证严格度: （待填：比如「必须有真跑证据，不接受'我觉得』」）\n"
+            "- 沟通密度: （待填：比如「结论先给，细节按需」）\n"
+            "- 成员数: （待填：当前人数，填了才能算「默契退化」）\n",
+            encoding="utf-8")
+    lessons = root / "asset" / "失败教训.md"
+    if not lessons.is_file():
+        lessons.write_text(
+            "# 失败教训\n\n"
+            "> 这里只记**踩过的坑**，一条一句：什么情况 → 为什么错 → 下次怎么做。\n"
+            "> 素材来自 `06_死胡同/`；资产体检发现「死胡同有内容但这份没跟上」会提醒你。\n\n",
+            encoding="utf-8")
+
+
 def add_memory(agent_key: str, text: str, *, tags: list | None = None,
-               source: str = "agent") -> dict:
-    """agent 自己追加一条记忆（**append-only**，一条一文件）。"""
+               source: str = "agent", grade: str = "") -> dict:
+    """agent 自己追加一条记忆（**append-only**，一条一文件）。
+
+    ★R1（`V141` §3.2 / 队列 49-2）：**必须带 `grade`**（`reusable` | `record`）。
+    不给就拒 —— 否则「能复用的经验」和「只是记录」混在一层，检索面很快被垃圾淹没
+    （储藏根层的治理参数就是「分级入库、可淘汰」）。
+    档位校验只有一处：`root_tiers.validate_grade()`。
+    """
+    from . import root_tiers as _rt
+
+    _ok, _code, _why = _rt.validate_grade("experience", grade)
+    if not _ok:
+        return {"ok": False, "code": _code, "error": _why,
+                "next": "带上 `grade: reusable`（能复用）或 `grade: record`（只是记录）再发",
+                "grades": _rt.grades_of("experience")}
     body = str(text or "").strip()
     if not body:
         return {"ok": False, "code": "EMPTY", "error": "记忆内容不能为空"}
@@ -149,11 +195,17 @@ def add_memory(agent_key: str, text: str, *, tags: list | None = None,
     while f.exists():                                          # 同一秒多条：加序号，不覆盖
         i += 1
         f = p / ("%s-%s-%d.md" % (stamp, slug, i))
-    f.write_text("# 记忆 %s\n\n- 来源: %s\n- 标签: %s\n- 时间: %s\n\n%s\n"
+    from . import root_tiers as _rt2
+
+    g = str(grade or "").strip().lower()
+    f.write_text("# 记忆 %s\n\n- 来源: %s\n- 标签: %s\n- 时间: %s\n- 档: %s（%s）\n\n%s\n"
                  % (f.stem, source, "、".join(tags or []) or "-",
-                    time.strftime("%Y-%m-%dT%H:%M:%S"), body), encoding="utf-8")
-    return {"ok": True, "file": f.name, "mind_path": str(mind_path(agent_key)),
-            "note": "记忆只增不改；索引表由夜间审忆员更新（`01_记忆索引表.md`）"}
+                    time.strftime("%Y-%m-%dT%H:%M:%S"), g,
+                    _rt2.GRADES.get(g, ""), body), encoding="utf-8")
+    return {"ok": True, "file": f.name, "grade": g, "mind_path": str(mind_path(agent_key)),
+            "note": ("记忆只增不改；索引表由夜间审忆员更新（`01_记忆索引表.md`）。"
+                     "`grade=record` 的条目长期没人用可被 `tools/memory_evict.py` 归档；"
+                     "`reusable` 不受自动淘汰（要人决定）")}
 
 
 def append_daily(agent_key: str, *, date: str, body: str, kind: str = "task_log") -> dict:

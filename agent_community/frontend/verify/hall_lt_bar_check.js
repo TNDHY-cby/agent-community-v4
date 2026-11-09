@@ -18,7 +18,9 @@
  * 用法：node frontend/verify/hall_lt_bar_check.js [--base http://127.0.0.1:18920] [--shots <dir>]
  * 依赖：playwright；需要本地服务已起（默认 18920）。
  * 环境（D后端-88 §2 已装好，dev-only 不进仓库）：
- *   NODE_PATH / AC_PLAYWRIGHT_PATH = D:\DSH工作区1\dsh-tooling\pw\node_modules
+ *   NODE_PATH / AC_PLAYWRIGHT_PATH = <装着 playwright 的 node_modules 目录>
+ *   （示例：<你的工作区>\dsh-tooling\pw\node_modules —— **不要写死本机路径**，
+ *    产品侧零本机路径是守卫 `test_frontend_localization` 的硬要求）
  * ⚠ node 必须用系统 node（C:\Program Files\nodejs\node.exe，本机 v24）；
  *   用 Marvis 自带 node（v22, binaries\node\current）跑会
  *   "Subprocess crashed with STATUS_ACCESS_VIOLATION (0xC0000005)"。

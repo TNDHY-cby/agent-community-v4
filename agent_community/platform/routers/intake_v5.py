@@ -417,6 +417,21 @@ async def get_roster(workshop_id: str):
         return _no_ws(workshop_id)
     out = _roster.roster(workshop_id)
     out["ok"] = True
+    # ★A1（V139）：每个成员补 `reports_to` / `level` / `squad_id`（**只加字段，不改既有字段**）。
+    #   `AC_ORG_CHART=0` 时不动（回滚开关）。
+    try:
+        from .. import org_chart as _org
+        from .. import squads as _sqs
+
+        if _org.enabled():
+            _sq_list = []
+            try:
+                _sq_list = list((getattr(ws, "squads", None) or []))
+            except Exception:                                  # noqa: BLE001 — 分队读不出来就不带 squad 字段
+                _sq_list = []
+            _org.annotate_roster(out, _sq_list, workshop_id=workshop_id)
+    except Exception as e:                                     # noqa: BLE001 — 组织关系是**加法**，出问题不能把名单也弄挂
+        out["org_chart_error"] = "%s: %s" % (type(e).__name__, e)
     out["roster_summary"] = _roster.roster_summary(workshop_id)
     out["hint"] = ("slot.proposed 不参与闸门；member 要 active 才算接上。"
                    "证据攒不齐就停在 acked，并会告诉你还缺哪项")

@@ -26,6 +26,9 @@ from .. import v5_roster as _roster
 
 router = APIRouter()
 
+from .. import error_semantics as _esem   # 错误码语义（旧 A4）
+from .. import dispatch_fingerprint as _dfp   # 派活内容指纹（旧 A2）
+
 
 def _ws(workshop_id: str):
     from ..server import workshops
@@ -34,9 +37,11 @@ def _ws(workshop_id: str):
 
 
 def _no_ws(workshop_id: str):
-    return JSONResponse({"ok": False, "code": "NO_SUCH_WORKSHOP",
-                         "error": "没有这个工作间：%s" % workshop_id,
-                         "next": "GET /api/workshops 看有哪些"}, status_code=404)
+    # ★A4：这个 helper 是**全族共用**的错误返回 ⇒ 在这里 annotate，一次覆盖所有调用点
+    return JSONResponse(_esem.annotate({"ok": False, "code": "NO_SUCH_WORKSHOP",
+                                        "error": "没有这个工作间：%s" % workshop_id,
+                                        "next": "GET /api/workshops 看有哪些"}),
+                        status_code=404)
 
 
 def _dispatch_log_path() -> Path:
@@ -146,6 +151,34 @@ def do_dispatch(workshop_id: str, body: dict, *, issued_by: str = "lead",
             _seq_from_id = int(_tid[2:])
         except ValueError:
             _seq_from_id = 0
+    # ★A2（借鉴 paperclip 的唯一约束）：**同工位 + 同内容 + 还在进行中 ⇒ 判重复派活**，
+    #   返回已有任务号而不是新建第二条；`force: true` 可显式绕过（"就是要两份"的场景留门）。
+    #   ⚠️ 只跟**未结任务**比（已 accepted/rejected 的老任务不算 —— 同一个活隔一阵再做是合法的）；
+    #   ⚠️ 指纹**不含任何时间字段**（AILP 的幂等 bug 就是时间进了指纹，跨秒就失效）。
+    _fp = _dfp.fingerprint_of(seq, body.get("title"), body.get("goal"), body.get("accept"))
+    if not bool(body.get("force")):
+        from .. import task_ledger as _lgr   # ⚠️ 这个函数里 `_ledger` 只在后面（issue 处）局部 import，
+        #   我这里必须自己 import —— 第一次写时直接用了 `_ledger` ⇒ NameError ⇒ 被下面的 except 吞掉
+        #   ⇒ 判重**永远不生效**（`dispatch_idem_check` 的 ②③⑦ 三格当场抓出来的）。
+        try:
+            _dup = _dfp.find_open_duplicate(_lgr.list_tasks(workshop_id),
+                                            member_seq=seq, fp=_fp)
+        except (OSError, ValueError, KeyError) as e:            # noqa: BLE001 — 只吞"数据读不出来"，不吞代码 bug
+            #   ⚠️ 故意**不写 `except Exception`**：NameError/AttributeError 属于我自己的 bug，
+            #   必须冒出来（上次就是被宽 except 吞掉，判重静默失效）。
+            _dup = None
+            print("[dispatch] 幂等检查读账本失败（本条按新派处理）：%s: %s"
+                  % (type(e).__name__, e), flush=True)
+        if _dup is not None:
+            return _esem.annotate({"ok": True, "duplicate": True, "code": "ALREADY_DISPATCHED",
+                                   "task_seq": int(_dup.get("task_seq") or 0),
+                                   "task_id": str(_dup.get("task_id") or ""),
+                                   "state": str(_dup.get("state") or ""),
+                                   "fingerprint": _fp,
+                                   "note": ("这条活已经派过（同工位 + 同内容 + 还在进行中）⇒ "
+                                            "**没有新建第二条**。要真的再派一份，带 `force: true`。"),
+                                   "next": "GET …/tasks 看那条的状态；要改内容/撤回请走 review 或重派流程"})
+
     _explicit_seq = int(body.get("task_seq") or _seq_from_id or 0)
     _no_write = str(body.get("write_file", "1")) in ("0", "false", "False")
     if _explicit_seq:
@@ -301,7 +334,12 @@ def do_dispatch(workshop_id: str, body: dict, *, issued_by: str = "lead",
 
         ledger_rec = _ledger.issue(workshop_id, task_seq, slot_dir=slot_dir,
                                    file=task_rel, member_seq=seq, title=title,
-                                   wake=str(wake.get("result") or ""))
+                                   wake=str(wake.get("result") or ""),
+                                   # ★2026-11-09：这三项也记账 —— 拒收后重派要靠它们复制内容
+                                   goal=str(body.get("goal") or ""),
+                                   accept=str(body.get("accept") or ""),
+                                   due=str(body.get("due") or ""),
+                                   fingerprint=_fp)
     _record(entry)
     # ★2026-10-31：把"三步激活"摊成**显式四步**，并指出卡在哪一步（失败要说话）
     _res = str(wake.get("result") or "")
@@ -422,7 +460,7 @@ async def dispatch(workshop_id: str, request: Request):
     if out.get("ok"):
         return out
     st = 409 if str(out.get("code", "")).startswith("GATE_G") else 400
-    return JSONResponse(out, status_code=st)
+    return JSONResponse(_esem.annotate(out), status_code=st)
 
 
 @router.post("/api/workshop/{workshop_id}/wakeup/poll")
@@ -483,4 +521,90 @@ async def dispatch_detail(workshop_id: str, task_seq: int):
            "hint": "文件在 + 在 manifest.active_tasks 里 + activated_at 有值 ⇒ 这条派活是真落地的"}
     # ★2026-10-31：与派活返回**同一份**四步表（规则 20：一处真相，两处显示不许对不上）
     out.update(_steps_from_record(ws, e))
+    return out
+
+@router.post("/api/workshop/{workshop_id}/tasks/{task_seq}/redispatch")
+async def redispatch(workshop_id: str, task_seq: int, request: Request):
+    """**拒收后重派**：把被拒收那条任务的内容复制成一条**新任务**，并让两条**双向关联**。
+
+    为什么要有它：`rejected` 是终态，`mark_delivered` 也不再推进它（设计如此）；
+    要重做只能手工再派一条，而两条之间没有任何关系 —— 一周后没人说得清"T-007 是 T-003 的重派"。
+
+    body（都可选，给了就覆盖原内容）：`{title, goal, accept, due, member_seq}`
+    - 只允许对 **`rejected`** 的任务重派（其它状态 409 并说清为什么不许）；
+    - 真派活仍走 `do_dispatch`（闸门/任务号/正文/通知同一条路，不另写一套）；
+    - 回写 `link_redispatch()`：原任务 `redispatched_to`、新任务 `redispatched_from`（两侧都能查）。
+    """
+    from fastapi.responses import JSONResponse
+
+    ws = _ws(workshop_id)
+    if ws is None:
+        return _no_ws(workshop_id)
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001 — 空 body = 完全按原任务重派
+        body = {}
+    body = body if isinstance(body, dict) else {}
+
+    from .. import task_ledger as _ledger
+
+    rec = _ledger.get(workshop_id, task_seq)
+    if rec is None:
+        return JSONResponse(_esem.annotate({"ok": False, "code": "NO_SUCH_TASK",
+                                            "error": "账本里没有 T-%03d" % int(task_seq),
+                                            "next": "GET …/tasks 看现有任务号"}), status_code=404)
+    # ★A6（借鉴 agent-swarm 的续跑预算）：**重派有硬上限**，到顶就给一个带名字的终态。
+    import os as _os
+
+    try:
+        _max = int(str(_os.environ.get("AC_REDISPATCH_MAX") or "3").strip())
+    except (TypeError, ValueError):
+        _max = 3
+    _chain = list(rec.get("redispatch_chain") or [])
+    if _max > 0 and len(_chain) >= _max:
+        try:
+            _ledger.mark_redispatch_budget_exhausted(workshop_id, int(task_seq), max_times=_max)
+        except Exception as e:                                 # noqa: BLE001 — 标记失败要说，但不挡返回
+            print("[redispatch] 标烂尾失败：%s: %s" % (type(e).__name__, e), flush=True)
+        return JSONResponse(_esem.annotate({"ok": False, "code": "REDISPATCH_BUDGET_EXHAUSTED",
+                             "error": "T-%03d 已经重派过 %d 次（上限 %d），不再自动重派"
+                                      % (int(task_seq), len(_chain), _max),
+                             "next": ("这活儿反复做不成，该换办法了：换个工位 / 把任务拆细 / "
+                                      "找老板确认需求。它已经进『烂尾』清单，不会自己消失"),
+                             "redispatch_chain": ["T-%03d" % x for x in _chain],
+                             "max": _max}), status_code=409)
+
+    st = str(rec.get("state") or "")
+    if st != "rejected":
+        return JSONResponse(_esem.annotate({"ok": False, "code": "NOT_REJECTED",
+                             "error": "只有被**拒收**（rejected）的任务才谈得上重派；T-%03d 现在是 %s"
+                                      % (int(task_seq), st or "未知"),
+                             "next": ("返工（rework）请让他改完再交，不用重派；"
+                                      "已通过（accepted）不用重派；还没验收的先走 review"),
+                             "state": st}), status_code=409)
+
+    new_body = {
+        "member_seq": int(body.get("member_seq") or rec.get("member_seq") or 0),
+        "title": str(body.get("title") or rec.get("title") or ("重派：T-%03d" % int(task_seq))),
+        "goal": str(body.get("goal") or rec.get("goal") or ""),
+        "accept": str(body.get("accept") or rec.get("accept") or ""),
+        "due": str(body.get("due") or rec.get("due") or ""),
+    }
+    if not new_body["member_seq"]:
+        return JSONResponse(_esem.annotate({"ok": False, "code": "NO_MEMBER",
+                             "error": "原任务没有 member_seq，重派不知道派给谁",
+                             "next": "body 里带 member_seq（或原任务账本缺这项，先用 …/dispatch 手工派）"}),
+                            status_code=400)
+    out = do_dispatch(workshop_id, new_body,
+                      issued_by=str(body.get("issued_by") or "lead"), source="redispatch")
+    if not out.get("ok"):
+        st_code = 409 if str(out.get("code", "")).startswith("GATE_G") else 400
+        return JSONResponse(_esem.annotate(out), status_code=st_code)
+    new_seq = int(out.get("task_seq") or 0)
+    link = _ledger.link_redispatch(workshop_id, from_seq=int(task_seq), to_seq=new_seq) \
+        if new_seq else {"ok": False, "why": "派活成功但没拿到新任务号，没法建关联"}
+    out["redispatched_from"] = "T-%03d" % int(task_seq)
+    out["link"] = link
+    out["note"] = ("已按原任务内容重派成 T-%03d；两条互相记得（原任务 `redispatched_to`、"
+                   "新任务 `redispatched_from`）。成员已经收到新任务通知。" % new_seq)
     return out

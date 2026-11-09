@@ -99,6 +99,8 @@ python tools/gen_entry.py               # 由模板生成双击入口（启动�
 python tools/make_shortcut.py --check    # 桌面快捷方式必须**指向本仓库**（指到别的副本 = 起错数据）
 python tools/move_endpoints.py --module x.py --title "某族" --paths /api/a,/api/b --dry-run  # 把一组 @app 端点搬进 routers/（惰性 import 自动算；拒绝搬带 global 的）
 python tools/fix_doc_split.py --src design-docs/某大文档.md --out-dir design-docs/model --dry-run  # 大文档拆「主索引 + 分册」
+python tools/audit_time_check.py            # ★**审计时间带时区五格**（F-1）：新写的 `ts` 带 `+08:00`；
+                                        #   老记录（无时区）能解析且**如实标「时区未知」**；跨时区同一瞬间能认出；倒序正确
 python tools/silent_except_report.py     # 静默吞异常的存量与"只减不增"闸门（--check / --write）
 python tools/credential_check.py         # 凭据体检（V86）：只给位置/指纹/弱值/桥产物明文，**绝不打印明文**；exit 1＝有问题
 python tools/monitor_frame_check.py      # 监控室真抓一帧（V88）：health 契约 / 没开监控 403 / stream 说人话 / **真窗口抓一帧且不是黑图** / 不污染监控名单（非 Windows 与无窗口如实跳过）
@@ -109,6 +111,39 @@ python tools/frontend_endpoint_check.py  # 前端接线判据：前端 JS 里出
 python tools/my_todo_check.py                # ★**成员待办七格**：`GET …/members/{seq}/my-todo` 一条查询给成员"我该干什么"（`do` 该你动 / `wait` 等组长 / `done` 已通过 / `stop` 别再动）+ 给我的通知；`next` 只挑一件；同工位多条未结任务时产物**不被瞎绑**
 python tools/review_notice_check.py         # ★**验收通知六格**：`review` 返工/拒收/通过都要**写进成员 `_notice.md`** + 通知账 `written`（以前只改账本，成员一个字都收不到）；正文带任务号/组长原话/验收人；响应里有 `notify` 字段
 python tools/lead_digest_check.py            # ★**组长日报九格**：`GET …/lead-digest` 只算、`POST` 才写进组长 `_lead/_notice.md`（通知账 written）；**同一天只发一次**、没活就不发（不打扰）、超 8 条折成一句；`AC_DIGEST_WATCH_SEC`（默认 0＝关）>0 时后台自动跑（开关两格真验）
+python tools/audit_checks_check.py              # ★**审忆员扩面六格**（V118 §8 G6 / 队列 50-4）：身体检报告三类（拓扑/资产/越权）
+                                        #   **只报不改、不评分**（no_score）；`GET /api/workshop/{id}/audit-report` 一口拿全；跑完不改盘
+python tools/topology_route_check.py           # ★**看板强制路由七格**（V118 §8 G5 / 队列 50-2）：只写自己看板 / 往父只收摘要 / 跨组拒并给出 **LCA**；
+                                        #   不能替**后代**写；不认识的 Cell 拒（不假成功）；`POST /api/workshop/{id}/topology/route` 问「我能往哪写」
+python tools/topology_check.py                  # ★**组织拓扑五条硬约束七格**（V118 §2 / 队列 50-1）：`组织拓扑.md` 一份文件描述整棵树；
+                                        #   C001 无环 / C002 单亲 / C003 跳度（警告）/ C004 深度（警告）/ C005 可验证产物；
+                                        #   **校验失败文件一个字节不动**（版本号不变）；`GET/POST /api/workshop/{id}/topology` 校验通过才写
+python tools/pick_lead_check.py              # ★**大厅先选组长再建间六格**（V142）：`POST /api/workshop` 带 `lead_harness_id`，
+                                        #   合格组长⇒建间完组长已在名单（status=lead_in）；不合格/不存在 ⇒ **拒绝且不建间**；
+                                        #   不传参数 = 老三步不变；`lead-roster` 给 `how_to_use`；两条路装出的 `_lead` 字段一致
+python tools/escalation_check.py          # ★**分层协商七格**（V118 §5 / 队列 49-7）：危急度 L1-L5 表（时限/处理层级）；
+                                        #   **超时自动升一级**（L5 到顶不再升但标「超时未决」）；升级写审计；看板只报事实
+python tools/asset_health_check.py          # ★**团队资产体检七格**（V118 §4 / 队列 49-8）：五维风格指纹（未登记就写「未登记」）
+                                        #   + 腐化四信号（僵化/默契退化/案例陈旧/教训遗忘），**只报事实不评分**；子集派遣只带**只读快照**（不自动稀释）
+python tools/root_tiers_check.py              # ★**根系治理八格**（V141 / 队列 49-1~49-4）：四层治理参数（宪章只人改）；
+                                        #   经验 **grade 必填**（reusable/record）；淘汰只动 record、归档不物理删；
+                                        #   申诉**带证据才收、不自动通过、宪章不可申诉**；端点表与 `TIERS` 逐字相同
+python tools/memory_evict.py --dry-run      # ★经验淘汰（R2）：只列 `record` 档且超阈值的；
+                                        #   `--apply` 移进 `archive/memories/`（**不物理删**）；`reusable` 一条不动
+python tools/squad_record_check.py         # ★**分队履历 + 模板化七格**（V140 / 队列 47-1、47-2）：
+                                        #   履历 **只算已结束的任务**（在途不进分母）、**不给分数排名**、样本<3 标 `insufficient`；
+                                        #   clone 复制方向/目标/成员构成、**不复制账本条目**；
+                                        #   `copy_experience` **只给经验索引指针、不给正文**；两个开关真生效
+python tools/org_chart_check.py               # ★组织关系八格（借鉴 A1 / V139）：`GET …/org-chart` 给「谁向谁汇报」
+                                        #   （组长 level 0 / 成员 level 1 / `reports_to` 显式化）；分队只是**分组不是上级**；
+                                        #   roster 也带 `reports_to`/`level`；不排分；`AC_ORG_CHART=0` 时端点 404（回滚开关真生效）
+python tools/dispatch_idem_check.py            # ★**派活幂等七格**（借鉴 A2）：同工位+同内容+**还在进行中**
+                                        #   ⇒ `ALREADY_DISPATCHED`（返回已有任务号，不新建第二条）；`force:true` 可绕过；
+                                        #   内容改了/换了工位/任务已了结 ⇒ 算新活；**指纹不含时间**（跨秒仍判重）
+python tools/error_semantics_check.py          # ★**错误码语义七格**（借鉴 A4）：`GET /api/error-semantics` 给整张表；
+                                        #   默认**停手**（不认识的码 retryable=false）；`ALREADY_*` 是成功语义（+done=true）；
+                                        #   临时状态才 retryable=true；真响应里带 `retryable` 且**不丢人话** `next`
+python tools/redispatch_check.py             # ★**拒收后重派七格**：`POST …/tasks/{seq}/redispatch` 只对 rejected 的任务生效（其它 409 NOT_REJECTED）；复用原内容建新任务、**两条双向关联**（`redispatched_to`/`redispatched_from`/`redispatch_chain`）、成员收到新任务通知
 python tools/lead_todo_all_check.py          # ★**跨间汇总七格**：`GET /api/lead-todo-all` 一次给出**所有工作间**的「今天该管谁」（有事的列出来、空的只计数；不排分）；大厅首页用这一口
 python tools/lead_todo_check.py              # ★**组长待办八格**：`GET …/lead-todo` 把三类事合成一张单（silent 人不动=先处理 / no_review 待验收 / no_receipt 没回执），每条带具体端点；只分两档不排分；没活可管就是空清单
 python tools/presence_check.py             # ★**成员在不在动七格**（V131 延伸）：`GET …/presence` 给每个成员的最后痕迹（任务/产物）+ 是否失联；**只有有在途任务的人才可能被判失联**（空闲成员不制造噪音）、组长不进表、从没痕迹也算失联且说清；阈值 `AC_PRESENCE_SILENT_MIN`（默认 120 分钟）
@@ -144,6 +179,9 @@ python tools/p6_check.py               # ★**P6 十五格**：AILP 2.0 四类�
 python tools/discussion_retire_check.py  # ★**三级讨论区已退役十格**：旧自由发言 `POST …/discuss` 默认 **410 FREECHAT_RETIRED**（带 why/next、**不落库、不驱动 AI**）/新入口 `/ailp` 真能用且拒自由聊天/`manifest_ref` 强校验/兼容开关 `AC_ALLOW_LEGACY_DISCUSS=1` 时标 `legacy`
 python tools/roster_dual_check.py  # ★**两套名单体检**（旧 Workshop.members vs v5 名单）：「旧有新无」⇒ exit 1（派活/验收会派不出去）；--fix 把旧名单同步进 v5（标 manual，只增不删、不触发激活）
 python tools/reset_platform_data.py   # ★**清回出厂空白**（盲测用）：默认 dry-run 只列清单；--yes 先自动备份到 data/backups/pre-reset-<时间戳>/ 再删；**服务在跑/探活不确定一律拒绝**；非交互还需 --force-noninteractive；回滚=把备份拷回
+python tools/workshops_hygiene_check.py      # ★**工作间数据卫生**：`data/workshops/` 下的**孤儿目录**
+                                        #   （删工作间后残留、没被任何工作间声明的）与「账上声明但目录不在」；
+                                        #   默认只读，`--quarantine` 移到 `data/回收站/orphan-<时间戳>/`（可恢复，不物理删）
 python tools/state_restore.py --list     # 状态快照（data/backups/）：列快照 / --verify 校验完整性（sha256）/ --backup-now 立刻拍 / --restore <名> 恢复（先校验快照、再给当前状态拍一张，然后逐文件回读校验）
                                         #   机制在 platform/state_backup.py：启动必拍一张 + 每 AC_STATE_BACKUP_MINUTES(30) 分钟一张，保留 AC_STATE_BACKUP_KEEP(20) 份
 python -m pytest -q                     # 全部回归（含双平台守卫）

@@ -180,6 +180,20 @@ def main() -> int:
               "两次 total=%r / %r" % (tot.get("total"),
                                       ((b6 or {}).get("totals") or {}).get("total")))
 
+        # ⑧ ?status=active 只算未关闭的间（归档间里的旧任务不该出现在"今天该管什么"）
+        import json as _json
+        # 把一个间关掉，再对比两种查询
+        _wid_to_close = _mk_workshop(base, ddir, "closing", with_member=False)
+        # 先看总数（含 status 全部）
+        _st_a, b_a = _http(base, "/api/lead-todo-all")
+        n_all = int(((b_a or {}).get("totals") or {}).get("workshops") or 0)
+        st8, b8 = _http(base, "/api/lead-todo-all?status=active")
+        n_act = int(((b8 or {}).get("totals") or {}).get("workshops") or 0)
+        filt = (b8 or {}).get("filter") or {}
+        check("⑧ ?status=active 生效且如实回显过滤条件",
+              st8 == 200 and n_act <= n_all and filt.get("status") == "active",
+              "all=%r active=%r filter=%r" % (n_all, n_act, filt))
+
         check("⑦ 有 generated_at（前端要显示什么时候算的）",
               bool((b2 or {}).get("generated_at")) or bool((b6 or {}).get("generated_at")),
               "generated_at=%r" % ((b2 or {}).get("generated_at") or (b6 or {}).get("generated_at")))

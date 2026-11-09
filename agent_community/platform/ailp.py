@@ -283,7 +283,13 @@ def validate(envelope, *, allowed: list | None = None, workshop_id: str = "",
         norm["to"] = to_whom
     if thread:
         norm["thread"] = thread
-    norm["fingerprint"] = _sha(json.dumps(norm, ensure_ascii=False, sort_keys=True))
+    # ★2026-11-09（修真 bug）：fingerprint **不含 received_at** —— 否则同一份内容
+    #   晚一秒再发就换了指纹，"重发幂等"只在同一秒内成立（`dedup_keeps_single_row` 偶发红的根因）。
+    #   ⚠️ `timestamp` 同样要排除：信封没带时间时它由服务端补 `_now()`，一秒后就变 ——
+    #      第一次只排 `received_at` 仍然不幂等（跨秒用例当场抓出来的）。
+    _fp_src = {k: v for k, v in norm.items()
+               if k not in ("received_at", "timestamp", "fingerprint")}
+    norm["fingerprint"] = _sha(json.dumps(_fp_src, ensure_ascii=False, sort_keys=True))
     return True, [], norm
 
 

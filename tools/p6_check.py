@@ -119,12 +119,48 @@ def main() -> int:
                          "active_tasks": [REF]})
         check("夹具：写合法 manifest（含 active_tasks 供对账）", st == 200, raw[:150])
 
+        # ★2026-11-09：**先派一条活建 T-001** —— `env_msg()` 的 `basis_ids: ["T-001"]`
+        #   要去账本里查依据，不派活就没这条 ⇒ A014 ⇒ ②⑦⑧⑨ 连环红（不是代码问题，是夹具缺这步）。
+        (tmpdir / "lead_inbox").mkdir(parents=True, exist_ok=True)
+        _http(base, "/api/harness/register", {
+            "harness_id": "示例Harness-Lead", "harness_name": "示例Harness-Lead",
+            "harness_type": "custom", "wakeup_method": "file_poll",
+            "wakeup_dir": str(tmpdir / "lead_inbox"),
+            "tools": [{"name": "write_file"}], "ai": {"model_name": "示例模型"}})
+        _http(base, "/api/harness/register", {
+            "harness_id": "示例Harness-M1", "harness_name": "示例Harness-M1",
+            "harness_type": "custom", "wakeup_method": "a2a",
+            "api_base_url": "http://127.0.0.1:9/a2a/x",
+            "tools": [{"name": "write_file"}], "ai": {"model_name": "示例模型"}})
+        for d in (wsroot / "前端组", wsroot / "前端组" / "员工01" / "任务",
+                  wsroot / "前端组" / "员工01" / "产物"):
+            d.mkdir(parents=True, exist_ok=True)
+        (wsroot / "前端组" / "分工.md").write_text("- 版本: 1\n", encoding="utf-8")
+        roster_txt = ("#回执 v1\n类型: 名单\n工作间: %s\n成员: 组长\n凭据:\n序号: 31\n---\n" % wid
+                      + "岗位: 前端组/员工01 | harness: 示例Harness-M1 | model: 示例模型 | 人数: 1\n"
+                      + "岗位: _lead | harness: 示例Harness-Lead | model: 示例模型 | 人数: 1\n"
+                      + "---\n行数: 2")
+        _http(base, "/api/workshop/%s/intake?source=C&confirm=1" % wid, {"text": roster_txt})
+        _st_r, raw_r = _http(base, "/api/workshop/%s/roster" % wid)
+        _seq = {str((m or {}).get("slot_dir") or ""): int((m or {}).get("member_seq") or 0)
+                for m in (load(raw_r).get("members") or [])}.get("前端组/员工01", 0)
+        if _seq:
+            _http(base, "/api/workshop/%s/members/%s/evidence" % (wid, _seq),
+                  {"protocol_ok": True, "verified_scope": "判据", "tier": "a_protocol"})
+            _st_d, raw_d = _http(base, "/api/workshop/%s/dispatch" % wid,
+                                 {"member_seq": _seq, "title": "P6 夹具任务（T-001）",
+                                  "goal": "做接口", "accept": "能调通"})
+        check("夹具：先派活建 T-001（basis_ids 才有依据可查）",
+              _seq > 0 and _st_d == 200, "seq=%r dispatch=%s %s" % (_seq, _st_d, str(raw_d)[:120]))
+
         # ① 字段表是唯一真源
         st, raw = _http(base, "/api/ailp/types")
         cat = load(raw)
-        check("① `/api/ailp/types` 给四类字段表 + 规则（前端照它渲染）",
-              st == 200 and len(cat.get("types") or []) == 4 and cat.get("rules"),
-              str(len(cat.get("types") or [])))
+        _tnames = {str(t.get("msg_type") or "") for t in (cat.get("types") or [])}
+        _must = {"PROPOSE", "CHALLENGE", "REFINE", "CONTEXT_ECHO"}
+        check("① `/api/ailp/types` 给字段表 + 规则（四类必须在；新增类型不算错）",
+              st == 200 and _must <= _tnames and cat.get("rules"),
+              "have=%r n=%d" % (sorted(_tnames), len(_tnames)))
 
         # ② 结构化消息收下
         st, raw = _http(base, "/api/workshop/%s/ailp" % wid, env_msg())
@@ -164,24 +200,31 @@ def main() -> int:
 
         # ⑦ 四类都能过
         payloads = {
-            "CHALLENGE": {"contradiction": "与基模冲突", "evidence_ids": ["mem_005"],
+            # ★2026-11-09：依据要指向**本间真实存在**的 id（原来写 "mem_005" 是空的 ⇒ 被依据校验拒）
+            "CHALLENGE": {"contradiction": "与基模冲突", "evidence_ids": ["msg-e2e-1"],
                           "counter_proposal": "改用另一种"},
-            "REFINE": {"target_id": "msg-e2e-1", "modifications": "限定条件", "new_confidence": 0.9},
+            # ★2026-11-09：REFINE 现在必须有 `reason`（A008）—— 判据跟不上接口，不是接口坏了
+            "REFINE": {"target_id": "msg-e2e-1", "modifications": "限定条件",
+                       "new_confidence": 0.9, "reason": "边界条件需要收紧"},
             "CONTEXT_ECHO": {"echo_target": "蚁群算法", "shared_context": "呼应去中心化"},
         }
         all_ok = True
+        why7 = []          # ★"失败要说话"：哪一类没收、什么错误码，必须打出来
         for i, (t, payload) in enumerate(payloads.items(), 1):
             st, raw = _http(base, "/api/workshop/%s/ailp" % wid,
                             env_msg(msg_id="msg-%s" % t, msg_type=t, payload=payload))
+            if st != 200:
+                why7.append("%s: HTTP %s %s" % (t, st, str(raw)[:140]))
             all_ok = all_ok and st == 200
-        check("⑦ CHALLENGE / REFINE / CONTEXT_ECHO 三类也都收", all_ok, "")
+        check("⑦ CHALLENGE / REFINE / CONTEXT_ECHO 三类也都收", all_ok, "; ".join(why7))
 
         # ⑧ 读回来是结构化的，不是聊天
         st, raw = _http(base, "/api/workshop/%s/ailp?limit=10" % wid)
         listed = load(raw)
         kinds = {i.get("msg_type") for i in listed.get("items") or []}
-        check("⑧ 读回来按类型分组（4 类都在，且是结构化条目）",
-              st == 200 and len(kinds) == 4 and listed.get("counts"),
+        check("⑧ 读回来按类型分组（四类都在，且是结构化条目）",
+              st == 200 and {"PROPOSE", "CHALLENGE", "REFINE", "CONTEXT_ECHO"} <= kinds
+              and listed.get("counts"),
               json.dumps(listed.get("counts"), ensure_ascii=False))
 
         # ⑨ 重放幂等

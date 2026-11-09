@@ -119,6 +119,29 @@ SPEC: dict[str, Var] = {v.name: v for v in [
         "`GET …/nudge` 会把它列出来，`POST …/nudge` 会给接活的人写一条催办通知。"
         "**只算不写**的是 GET；真写的是 POST（同一条任务同一天只催一次）",
         default="30", kind="feature", example="10"),
+    Var("AC_ESCALATION",
+        "分层协商的危急度上报（`/api/escalation*`）开关。"
+        "默认 1；设 0 时端点 404",
+        default="1", kind="feature", example="0"),
+    Var("AC_ASSET_HEALTH",
+        "团队资产体检（`/api/asset-health/*`）开关。默认 1；设 0 时只回 enabled=false",
+        default="1", kind="feature", example="0"),
+    Var("AC_SQUAD_HISTORY",
+        "分队履历（`GET …/squads/{id}/record`）开关。默认 1；设 0 时履历为空并说明"
+        "（不是没有数据，是开关关了）",
+        default="1", kind="feature", example="0"),
+    Var("AC_SQUAD_TEMPLATE",
+        "分队模板化（`POST …/squads/{id}/clone`）开关。默认 1；设 0 时端点 404",
+        default="1", kind="feature", example="0"),
+    Var("AC_ORG_CHART",
+        "组织关系指针化（`GET …/org-chart` + roster 的 `reports_to`/`level`）开关。"
+        "默认 1；设 0 时端点 404、roster 不带新字段（**一处开关回滚**，见 V139）",
+        default="1", kind="feature", example="0"),
+    Var("AC_REDISPATCH_MAX",
+        "同一条任务**最多能被重派几次**（默认 3）。到顶以后 `redispatch` 返回 "
+        "`REDISPATCH_BUDGET_EXHAUSTED` 并把任务标成烂尾（进组长待办），不再无限重试 —— "
+        "没有上限时失败只会表现为\"一直 pending\"，日报里看不出异常",
+        default="3", kind="feature", example="5"),
     Var("AC_DIGEST_WATCH_SEC",
         "后台组长日报的检查间隔（秒，**默认 0＝关**）：>0 时平台每这么久看一遍所有工作间，"
         "有要管的事就**自动发一份日报**进组长的 `_lead/_notice.md`（同一天只发一次，没活不发）。"

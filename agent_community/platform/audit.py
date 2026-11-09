@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime
+
+from . import timeutil as _timeutil
 from pathlib import Path
 from typing import Optional
 
@@ -63,8 +65,12 @@ class AuditLog:
             防止调用方误用把审计的身份字段冲掉；
           - `detail` **永久保留**，老记录也没有 extra 字段，故前端必须能同时处理两种形态。
         """
+        # ★F-1（2026-11-09）：`datetime.now()` **不带时区** ⇒ 存下来是 `2026-11-08T16:28:00`，
+        #   排障时"到底是本地还是 UTC"只能靠猜（查「工作间 20 → 19」时就被这个坑过）。
+        #   改成 `astimezone()` ⇒ `2026-11-08T16:28:00+08:00`，**一条时间戳就是完整证据**。
+        #   老记录（无偏移）不动，读侧用 `timeutil.parse_ts()` 按本机时区解释并标 `tz_known=False`。
         ev = {
-            "ts": datetime.now().isoformat(timespec="seconds"),
+            "ts": _timeutil.now_iso(),
             "event": event,
             "actor": actor,
             "target": target,

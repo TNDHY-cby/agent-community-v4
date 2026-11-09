@@ -105,6 +105,17 @@ def plan(members: list, tasks: list, events: list, *, now: float | None = None,
                    ("task" if task_ts else "none"))
         idle_min = round((now - last) / 60.0, 1) if last else None
         silent = bool(open_its) and (last == 0 or (idle_min is not None and idle_min >= mins))
+        # 人话状态（别让前端从 state 自己猜）：
+        #   pending ⇒ 还没接入成功；active + silent ⇒ 不动了；active + 有活 ⇒ 在干；没活 ⇒ 空闲
+        mstate = str((m or {}).get("state") or "")
+        if mstate == "pending":
+            state_reason = "还没接入成功（在名单里，但成员没连上平台）"
+        elif silent:
+            state_reason = "有在途任务但没有任何新痕迹（该问问他）"
+        elif open_its:
+            state_reason = "在干（有在途任务，最近有痕迹）"
+        else:
+            state_reason = "空闲（没有在途任务）"
         why = ""
         if silent:
             why = ("有 %d 条在途任务（%s），但从派活到现在**没有任何痕迹**"
@@ -125,6 +136,7 @@ def plan(members: list, tasks: list, events: list, *, now: float | None = None,
                      "last_seen_ts": round(last, 3),
                      "last_seen_at": _fmt(last),
                      "last_seen_channel": channel,
+                     "state_reason": state_reason,
                      "idle_min": idle_min,
                      "silent": silent, "why": why})
     rows.sort(key=lambda r: (not r["silent"], r["slot_dir"] or ""))

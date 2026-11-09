@@ -103,6 +103,24 @@ async def create_workshop(request: Request):
     body = await request.json()
     if not isinstance(body, dict):
         body = {}
+    # ★V142（老板 2026-11-09「大厅里选好组长，选定后才建工作间」）：
+    #   `lead_harness_id` 给了就**先预检**——不合格连间都不建，不留"建了间没组长"的半成品。
+    _lead_hid = str(body.get("lead_harness_id") or "").strip()
+    _lead_model = str(body.get("lead_model") or "").strip()
+    if _lead_hid:
+        from .. import pick_lead as _pl
+
+        _chk = _pl.precheck(_lead_hid)
+        if not _chk.get("ok"):
+            _code = str(_chk.get("code") or "LEAD_NOT_USABLE")
+            _st = int(_chk.get("status") or 400)
+            return Utf8JSONResponse({"success": False, "code": _code,
+                                     "error": _chk.get("error"),
+                                     "why": _chk.get("why"),
+                                     "protocol_fit": _chk.get("protocol_fit"),
+                                     "next": _chk.get("next"),
+                                     "note": "**没有建工作间**：组长这批不能用，先别建（免得留下一个没组长的间）"},
+                                    status_code=_st)
     name = (body.get("name") or "").strip()
     hall = body.get("hall_content", "") or ""
     # 工作间以工作内容命名：未传 name 或仍为默认值时，用任务内容截断
@@ -187,6 +205,21 @@ async def create_workshop(request: Request):
     save_state()
     out = {"success": True, "workshop_id": ws.workshop_id, "workspace_dir": ws.workspace_dir,
            "name": ws.name}
+    # ★V142：建间时带了组长 ⇒ **建完立即装进名单**（老板要的"选定组长才建间"的收尾动作）。
+    #   预检在上面做过（不合格压根没建间）；这里若绑定失败，**建间已成功就别回滚**，
+    #   但必须把真实原因带回响应（`lead.error`）—— 不许静默留一个没组长的间。
+    if _lead_hid:
+        from .. import pick_lead as _pl
+
+        _wake_lead = body.get("wake_lead")
+        _wake_lead = True if _wake_lead is None else bool(_wake_lead)
+        _bound = _pl.apply(ws, _lead_hid, model=_lead_model, wake=_wake_lead)
+        out["lead"] = _bound
+        if not _bound.get("ok"):
+            out["lead_warning"] = ("工作间建好了，但组长**没装进名单**：%s。"
+                                   "可以修好后重试 `POST /api/workshop/{id}/lead`（幂等）"
+                                   % (_bound.get("error") or _bound.get("code")))
+
     # ★`create_task`：外部 agent 按协议建活时，工作间背后**必须真有一条任务**
     #   （否则它没法回报 `task_id`，平台也没处收结果 —— MCP 全链路判据先抓到这个洞，
     #     2026-10-25 又发现 **A2A / gRPC 的"派任务"是同一个洞**：它们把客户端给的 task_id

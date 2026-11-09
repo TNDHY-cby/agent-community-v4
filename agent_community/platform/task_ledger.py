@@ -70,8 +70,14 @@ def _now() -> str:
 
 
 def issue(workshop_id: str, task_seq: int, *, slot_dir: str, file: str,
-          member_seq: int = 0, title: str = "", wake: str = "") -> dict:
-    """登记一条已派出的任务（P3 派活成功后调用；幂等：同一条重复登记只更新字段）。"""
+          member_seq: int = 0, title: str = "", wake: str = "",
+          goal: str = "", accept: str = "", due: str = "",
+          fingerprint: str = "") -> dict:
+    """登记一条已派出的任务（P3 派活成功后调用；幂等：同一条重复登记只更新字段）。
+
+    ★2026-11-09：也记 `goal` / `accept` / `due` —— 不然"拒收后重派"只能继承标题，
+    新任务是个空壳（`redispatch_check` 的 ⑤ 格抓到的正是这个）。老记录没有这几项 ⇒ 读出来是空的。
+    """
     d = _load()
     k = _key(workshop_id, task_seq)
     rec = d.get(k) or {"workshop_id": workshop_id, "task_seq": int(task_seq),
@@ -79,6 +85,14 @@ def issue(workshop_id: str, task_seq: int, *, slot_dir: str, file: str,
                        "title": title, "state": "issued", "created_at": _now(), "log": []}
     rec.update({"slot_dir": slot_dir, "file": file, "member_seq": member_seq,
                 "title": title or rec.get("title", ""), "wakeup_result": wake or rec.get("wakeup_result", "")})
+    if goal:
+        rec["goal"] = goal
+    if accept:
+        rec["accept"] = accept
+    if due:
+        rec["due"] = due
+    if fingerprint:                                            # ★A2：内容指纹（查重用，不含时间）
+        rec["fingerprint"] = fingerprint
     rec.setdefault("log", []).append({"at": _now(), "state": rec["state"], "why": "派活（P3）"})
     d[k] = rec
     _save(d)
@@ -442,3 +456,44 @@ def integrate(workshop_id: str, *, workshop_path: str | Path, note: str = "") ->
     out_p.write_text(json.dumps(body, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"ok": True, "written": out_p.as_posix(), "summary": body,
             "next": "确认无误后点「归档」（POST …/close）把工作间置 closed 并吊销 token"}
+
+def link_redispatch(workshop_id: str, *, from_seq: int, to_seq: int) -> dict:
+    """把"重派"关系写进**两边**：原任务 `redispatched_to`，新任务 `redispatched_from`。
+
+    为什么两边都写：从原任务能追到"后来重派给谁"，从新任务能追到"这是重派的第几次"。
+    只写一边，另一头就查不到（`V134` 反复强调的"别让同一件事有两套口径"）。
+    """
+    if not from_seq or not to_seq or int(from_seq) == int(to_seq):
+        return {"ok": False, "why": "from/to 必须是非零且不同的任务号"}
+    d = _load()
+    k_from, k_to = _key(workshop_id, from_seq), _key(workshop_id, to_seq)
+    rec_from, rec_to = d.get(k_from), d.get(k_to)
+    if rec_from is None:
+        return {"ok": False, "code": "NO_SUCH_TASK", "error": "账本里没有 T-%03d" % int(from_seq)}
+    if rec_to is None:
+        return {"ok": False, "code": "NO_SUCH_TASK", "error": "账本里没有 T-%03d" % int(to_seq)}
+    chain = list(rec_from.get("redispatch_chain") or [])
+    chain.append(int(to_seq))
+    rec_from.update({"redispatched_to": int(to_seq), "redispatch_chain": chain,
+                     "redispatched_at": _now()})
+    rec_to.update({"redispatched_from": int(from_seq),
+                   "redispatch_chain": list(rec_from.get("redispatch_chain") or [])})
+    d[k_from], d[k_to] = rec_from, rec_to
+    _save(d)
+    return {"ok": True, "from": "T-%03d" % int(from_seq), "to": "T-%03d" % int(to_seq),
+            "chain": ["T-%03d" % x for x in rec_from["redispatch_chain"]]}
+
+def mark_redispatch_budget_exhausted(workshop_id: str, task_seq: int, *, max_times: int = 3) -> dict:
+    """把一条任务标成**烂尾**（重派次数到顶）。`A6` 的命名终态，可统计、进待办。"""
+    d = _load()
+    k = _key(workshop_id, task_seq)
+    rec = d.get(k)
+    if rec is None:
+        return {"ok": False, "code": "NO_SUCH_TASK", "error": "账本里没有 T-%03d" % int(task_seq)}
+    rec["redispatch_budget_exhausted"] = True
+    rec["redispatch_budget_max"] = int(max_times)
+    rec.setdefault("log", []).append({"at": _now(), "state": rec.get("state") or "",
+                                      "why": "重派次数到顶（%d）⇒ 标烂尾" % int(max_times)})
+    d[k] = rec
+    _save(d)
+    return {"ok": True, "task_seq": int(task_seq), "max": int(max_times)}
